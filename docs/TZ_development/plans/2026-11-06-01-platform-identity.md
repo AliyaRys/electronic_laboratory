@@ -31,11 +31,11 @@
 
 **Interfaces:** потребляет fork SHA/ADR; производит `Clock`, `UnitOfWork`, `CommandContext`, Problem/Page и API-01/09. Локальный command journal и outbox DATA-05 создаются здесь; внешняя обработка позже.
 
-- [ ] Написать `test_no_public_signup`, `test_ready_rejects_wrong_schema`, `test_command_rollback`, `test_etag_and_problem_contract`: assert signup=404, ready=503 при старой схеме, после injected exception нет записи/idempotency-success, errors включает code/trace_id.
-- [ ] Запустить `uv run --frozen pytest backend/tests/test_platform.py -v`; до реализации ожидается FAIL, не ошибочный успешный пропуск тестов.
-- [ ] Внести закреплённый форк в backend с MIT notices; сохранить baseline lock; удалить tier/SQLAdmin/SQLite/Memcached/Taskiq и неиспользуемые брокеры. Ввести схемы DATA-01/05, one-shot Alembic и общий middleware ошибок/ревизий/идемпотентности SPEC-04. Redis/arq compatibility smoke, без реального VetIS adapter. Создать closed bootstrap CLI `uv run --frozen python -m backend.src.modules.identity.bootstrap` с вводом секретов без shell argv/log; повтор при непустом реестре запрещён.
-- [ ] Запустить frozen install, миграцию с нуля/повтор head и тесты I01; CI lint/type/coverage и миграция PostgreSQL обязательны. Намеренно сломанная миграция/тип должны блокировать pipeline. Compose base не публикует DB/backend, dev DB только 127.0.0.1; /api/v1 не переписывается.
-- [ ] Просмотреть diff и зафиксировать адресные файлы: `feat: establish pinned platform and API infrastructure`.
+- [x] Написать `test_no_public_signup`, `test_ready_rejects_wrong_schema`, `test_command_rollback`, `test_etag_and_problem_contract`: assert signup=404, ready=503 при старой схеме, после injected exception нет записи/idempotency-success, errors включает code/trace_id.
+- [x] Запустить `uv run --frozen pytest backend/tests/test_platform.py -v`; до реализации ожидается FAIL, не ошибочный успешный пропуск тестов.
+- [x] Внести закреплённый форк в backend с MIT notices; сохранить baseline lock; удалить tier/SQLAdmin/SQLite/Memcached/Taskiq и неиспользуемые брокеры. Ввести схемы DATA-01/05, one-shot Alembic и общий middleware ошибок/ревизий/идемпотентности SPEC-04. Redis/arq compatibility smoke, без реального VetIS adapter. Создать closed bootstrap CLI `uv run --frozen python -m backend.src.modules.identity.bootstrap` с вводом секретов без shell argv/log; повтор при непустом реестре запрещён.
+- [x] Запустить frozen install, миграцию с нуля/повтор head и тесты I01; CI lint/type/coverage и миграция PostgreSQL обязательны. Намеренно сломанная миграция/тип должны блокировать pipeline. Compose base не публикует DB/backend, dev DB только 127.0.0.1; /api/v1 не переписывается.
+- [x] Просмотреть diff и зафиксировать адресные файлы: `feat: establish pinned platform and API infrastructure`.
 
 ### Task I02: Сеанс и единая авторизация
 

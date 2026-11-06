@@ -415,7 +415,11 @@ describe("app shell routing", () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ["/labs/11111111-1111-1111-1111-111111111111/arrivals"],
     });
-    render(<RouterProvider router={router} />);
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
     expect(await screen.findByText(/Поступления/)).toBeInTheDocument();
 
     // A real dirty form syncs through useDirtyGuard; the flag in the store is

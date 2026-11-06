@@ -1,0 +1,498 @@
+/*
+ * Canonical tokens for the new SPA working screens — ported from
+ * components/app/tokens.css (DESIGN.md is absent from the repo; UX-CONTRACT.md
+ * and the owners' CSS are the design authority). Values are copied verbatim.
+ */
+.vse-app {
+  --app-ink: #17323a;
+  --app-muted: #668087;
+  --app-muted-readable: #566e75;
+  --app-line: #dfe9e9;
+  --app-page: #f5f9f8;
+  --app-panel: #fff;
+  --app-teal: #146c73;
+  --app-teal-dark: #0d5358;
+  --app-tint: #eaf6f4;
+  --app-danger: #a33943;
+  --app-focus: #75bfc2;
+  --app-input-line: #cbdadb;
+
+  /* Mandatory research cards: calm blue tone. Green is reserved for «Соответствует» results. */
+  --app-mandatory-line: #c9d6ec;
+  --app-mandatory-tint: #f1f4fa;
+  --app-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Compatibility aliases used by the established app shell. */
+  --ink: var(--app-ink);
+  --muted: var(--app-muted);
+  --line: var(--app-line);
+  --page: var(--app-page);
+  --panel: var(--app-panel);
+  --teal: var(--app-teal);
+  --teal-dark: var(--app-teal-dark);
+  --tint: var(--app-tint);
+  --danger: var(--app-danger);
+}
+
+.vse-app {
+  box-sizing: border-box;
+  color: var(--app-ink);
+  font: 14px/1.45 var(--app-font);
+  min-height: 100vh;
+  background: var(--app-page);
+}
+.vse-app *,
+.vse-app *::before,
+.vse-app *::after {
+  box-sizing: border-box;
+}
+.vse-app [hidden] {
+  display: none !important;
+}
+.vse-app input,
+.vse-app button {
+  font: inherit;
+}
+.vse-app button,
+.vse-app a {
+  cursor: pointer;
+}
+.vse-app :is(button, a, input, [tabindex]):focus-visible,
+.vse-app:is(button, a, input):focus-visible {
+  outline: 3px solid var(--app-focus);
+  outline-offset: 2px;
+}
+
+/* --- main working area: the page never scrolls horizontally (UI-03) ---------- */
+.app-main {
+  display: block;
+  margin: 0 auto;
+  max-width: 1440px;
+  padding: 20px 24px 40px;
+}
+@media (max-width: 800px) {
+  .app-main {
+    padding: 14px 10px 32px;
+  }
+}
+
+/* --- Button (components/app/Button.js + app.css) ---------------------------- */
+.app-button {
+  min-height: 43px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 10px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--app-panel);
+  color: #4d676d;
+  font-weight: 720;
+  text-decoration: none;
+  transition:
+    background 0.16s,
+    border-color 0.16s,
+    color 0.16s,
+    box-shadow 0.16s;
+}
+.app-button.secondary:hover:not(:disabled) {
+  border-color: #b9d6d3;
+  background: #f5f8f8;
+  color: var(--app-teal-dark);
+}
+.app-button.primary {
+  border-color: var(--app-teal);
+  background: var(--app-teal);
+  color: #fff;
+  box-shadow: 0 5px 12px #146c7330;
+}
+.app-button.primary:hover:not(:disabled) {
+  border-color: var(--app-teal-dark);
+  background: var(--app-teal-dark);
+}
+.app-button.danger {
+  border-color: var(--app-danger);
+  background: var(--app-danger);
+  color: #fff;
+  box-shadow: 0 5px 12px #a3394326;
+}
+.app-button.danger:hover:not(:disabled) {
+  border-color: #842d36;
+  background: #842d36;
+}
+.app-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.app-button:disabled {
+  cursor: not-allowed;
+  border-color: #dfe7e7;
+  background: #edf2f2;
+  color: #667b80;
+  box-shadow: none;
+}
+.app-button[aria-busy="true"] {
+  cursor: progress;
+}
+.app-button.icon-only {
+  width: 43px;
+  padding: 0;
+}
+.app-button .app-spinner {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: app-spin 0.8s linear infinite;
+}
+
+/* --- Field (auth TextField contract, working density) ------------------------ */
+.app-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.app-field-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.app-field label {
+  color: var(--app-muted-readable);
+  font-size: 12px;
+  font-weight: 700;
+}
+.app-field input {
+  min-height: 43px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--app-panel);
+  color: var(--app-ink);
+  font: inherit;
+  width: 100%;
+}
+.app-field input:disabled {
+  background: #edf2f2;
+  color: #667b80;
+  cursor: not-allowed;
+}
+.app-field input[aria-invalid="true"] {
+  border-color: var(--app-danger);
+}
+.app-field-message {
+  margin: 0;
+  font-size: 12px;
+  color: var(--app-muted-readable);
+  overflow-wrap: anywhere;
+}
+.app-field-message.app-field-error {
+  color: var(--app-danger);
+  font-weight: 650;
+}
+
+/* --- InfoField (components/app/InfoField.js + app.css) ----------------------- */
+.app-info-field {
+  min-width: 0;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+  padding: 14px 15px;
+  background: var(--app-panel);
+}
+.app-info-label {
+  margin-bottom: 5px;
+  color: var(--app-muted-readable);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.app-info-value {
+  font-weight: 740;
+  overflow-wrap: anywhere;
+}
+.app-info-field.wide {
+  grid-column: 1 / -1;
+}
+
+/* --- StatusView (UI-03 shared acceptance states) ------------------------------ */
+.app-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+  padding: 18px;
+  background: var(--app-panel);
+  color: var(--app-ink);
+  max-width: 720px;
+}
+.app-status.tone-neutral {
+  border-color: var(--app-line);
+}
+.app-status.tone-positive {
+  border-color: #c9e6e2;
+  background: var(--app-tint);
+}
+.app-status.tone-negative {
+  border-color: #e7c3c7;
+  background: #fdf6f6;
+}
+.app-status-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 740;
+  overflow-wrap: anywhere;
+}
+.app-status.tone-negative .app-status-title {
+  color: var(--app-danger);
+}
+.app-status-detail {
+  margin: 4px 0 0;
+  color: var(--app-muted-readable);
+  overflow-wrap: anywhere;
+}
+.app-status-trace {
+  margin: 10px 0 0;
+  max-width: 100%;
+}
+.app-status-trace summary {
+  cursor: pointer;
+  color: var(--app-muted-readable);
+  font-size: 12px;
+}
+.app-status-trace pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f2f7f7;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.app-status .app-spinner {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  margin-top: 2px;
+  border: 2px solid var(--app-teal);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: app-spin 0.8s linear infinite;
+}
+
+/* --- DataTable (UI-03: horizontal scroll only inside the table) --------------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.app-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+  background: var(--app-panel);
+}
+.app-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: inherit;
+}
+.app-table caption {
+  padding: 12px 15px 10px;
+  text-align: left;
+  color: var(--app-muted-readable);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.app-table th,
+.app-table td {
+  padding: 10px 15px;
+  border-top: 1px solid var(--app-line);
+  text-align: left;
+  vertical-align: top;
+}
+.app-table thead th {
+  border-top: 0;
+  color: var(--app-muted-readable);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.app-table tbody tr:hover {
+  background: #f8fbfb;
+}
+.app-table td {
+  overflow-wrap: anywhere;
+} /* long values stay fully readable without hover */
+.app-table a {
+  color: var(--app-teal-dark);
+  font-weight: 650;
+  text-decoration: none;
+}
+.app-table a:hover {
+  text-decoration: underline;
+}
+.app-table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.app-table-menu-button {
+  min-height: 36px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 9px;
+  padding: 0 10px;
+  background: var(--app-panel);
+  color: #4d676d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+.app-table-menu-button:hover {
+  border-color: #b9d6d3;
+  background: #f5f8f8;
+  color: var(--app-teal-dark);
+}
+.app-table-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 190px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 18px 42px #17323a22;
+}
+.app-table-menu button {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #4d676d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 620;
+  text-align: left;
+  white-space: nowrap;
+}
+.app-table-menu button:hover,
+.app-table-menu button:focus-visible {
+  background: var(--app-tint);
+  color: var(--app-teal-dark);
+}
+
+/* --- Dialog (Radix; safe cancel first, visible focus, described errors) ------- */
+.app-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: #17323a59;
+}
+.app-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 24px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border: 1px solid var(--app-line);
+  border-radius: 16px;
+  background: var(--app-panel);
+  padding: 20px;
+  color: var(--app-ink);
+  box-shadow: 0 24px 60px #17323a3d;
+}
+.app-dialog.danger {
+  border-color: #e7c3c7;
+}
+.app-dialog-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 760;
+}
+.app-dialog.danger .app-dialog-title {
+  color: var(--app-danger);
+}
+.app-dialog-description {
+  margin: 0 0 14px;
+  color: var(--app-muted-readable);
+  overflow-wrap: anywhere;
+}
+.app-dialog-error {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #e7c3c7;
+  border-radius: 10px;
+  background: #fdf6f6;
+  color: var(--app-danger);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.app-dialog-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--app-muted-readable);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+}
+.app-dialog-close:hover {
+  border-color: var(--app-line);
+  background: #f5f8f8;
+  color: var(--app-ink);
+}
+
+@keyframes app-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vse-app .app-button {
+    transition: none;
+  }
+  .app-button:active:not(:disabled) {
+    transform: none;
+  }
+  .app-spinner {
+    animation: none;
+  }
+}

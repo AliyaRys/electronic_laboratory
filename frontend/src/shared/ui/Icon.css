@@ -1,0 +1,12 @@
+/* Icon adapter styles — mirrors components/icons/icons.css + app .app-icon. */
+.app-icon {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

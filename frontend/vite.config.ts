@@ -19,5 +19,6 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     css: false,
     restoreMocks: true,
+    exclude: ["**/node_modules/**", "tests/e2e/**"],
   },
 });

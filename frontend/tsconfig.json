@@ -21,7 +21,7 @@
     "src",
     "scripts",
     ".storybook",
-    "e2e",
+    "tests",
     "vitest.setup.ts",
     "playwright.config.ts",
     "vite.config.ts"

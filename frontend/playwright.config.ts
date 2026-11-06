@@ -6,7 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
  * Run locally with a built SPA or leave empty until specs land.
  */
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "./tests/e2e",
   timeout: 30_000,
   fullyParallel: true,
   reporter: [["list"]],
@@ -17,11 +17,20 @@ export default defineConfig({
   ...(process.env.CI
     ? {}
     : {
-        webServer: {
-          command: "npm run dev -- --port 4173 --strictPort",
-          url: "http://localhost:4173",
-          reuseExistingServer: true,
-          timeout: 60_000,
-        },
+        webServer: [
+          {
+            command: "npm run dev -- --port 4173 --strictPort",
+            url: "http://localhost:4173",
+            reuseExistingServer: true,
+            timeout: 60_000,
+          },
+          {
+            // Storybook serves the component stories the shell checks open.
+            command: "npm run storybook -- --port 6006 --no-open --ci",
+            url: "http://localhost:6006",
+            reuseExistingServer: true,
+            timeout: 120_000,
+          },
+        ],
       }),
 });

@@ -4,25 +4,22 @@
  * A01/A02, C02, D02, E04, R03, S03). History routing keeps deep links working;
  * the deploy nginx already serves index.html for non-API fallbacks.
  */
-import { createBrowserRouter, Outlet, type RouteObject } from "react-router";
-import { AppLayout } from "../shared/ui/AppLayout";
+import { createBrowserRouter, type RouteObject } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { AppShell } from "../shared/ui/AppShell";
 import { PlaceholderPage } from "../shared/ui/PlaceholderPage";
-import { DirtyLeaveDialog } from "../features/context/SwitchContext";
+import { DirtyLeaveDialog, performLogout } from "../features/context/SwitchContext";
 
 /** Placeholder until the owning task delivers the real page. */
 function Stub({ title, note }: { title: string; note: string }): React.ReactElement {
-  return (
-    <AppLayout>
-      <PlaceholderPage title={title} note={note} />
-    </AppLayout>
-  );
+  return <PlaceholderPage title={title} note={note} />;
 }
 
 export const routes: RouteObject[] = [
   {
     // The shell owns the dirty-leave blocker once for the whole tree; every
     // route renders inside it (AppShell → Outlet → page).
-    element: <AppShell />,
+    element: <AppShellLayout />,
     children: [
       { path: "/login", element: <Stub title="Вход" note="Страница входа — задача F03." /> },
       { path: "/password-help", element: <Stub title="Восстановление пароля" note="Задача F03." /> },
@@ -67,11 +64,7 @@ export const routes: RouteObject[] = [
       { path: "/labs/:labId/reports/samples", element: <Stub title="Учёт проб" note="Задача S03." /> },
       {
         path: "*",
-        element: (
-          <AppLayout>
-            <PlaceholderPage title="Запись не указана" note="Такой маршрут отсутствует." notFound />
-          </AppLayout>
-        ),
+        element: <PlaceholderPage title="Запись не указана" note="Такой маршрут отсутствует." notFound />,
       },
     ],
   },
@@ -81,13 +74,16 @@ export function createAppRouter(): ReturnType<typeof createBrowserRouter> {
   return createBrowserRouter(routes);
 }
 
-/** Layout wrapper: the dirty-leave decision lives at the shell level. */
-export function AppShell(): React.ReactElement {
+/**
+ * Layout wrapper (single source of truth lives in shared/ui/AppShell): the
+ * dirty-leave decision and the logout command belong to the app layer.
+ */
+function AppShellLayout(): React.ReactElement {
+  const queryClient = useQueryClient();
   return (
-    <>
-      <Outlet />
+    <AppShell onLogout={() => void performLogout(queryClient)}>
       <DirtyLeaveDialog />
-    </>
+    </AppShell>
   );
 }
 

@@ -32,11 +32,18 @@ import {
   DirtyLeaveDialog,
 } from "./SwitchContext";
 import { scopedKey } from "../../shared/api/queryKeys";
-import { apiClient } from "../../shared/api/client";
+import { apiClient, SESSION_EXPIRED_EVENT } from "../../shared/api/client";
+import { AppProviders } from "../../app/providers";
+import { routes } from "../../app/router";
+import { useContextStore, useDirtyStore, LOGOUT_EVENT } from "../../entities/session/context";
 
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  useContextStore.getState().reset();
+  useDirtyStore.getState().setDirty(false);
+});
 afterAll(() => server.close());
 
 const USER_ID = "00000000-0000-0000-0000-00000000000a";
@@ -338,5 +345,98 @@ describe("logout", () => {
 
     expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
     expect(currentScope()).toMatchObject({ userId: null, labId: null, productId: null });
+  });
+
+  it("performLogout notifies open screens exactly once (regression F01-r1)", async () => {
+    server.use(http.post("*/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })));
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let clears = 0;
+    const originalClear = queryClient.clear.bind(queryClient);
+    queryClient.clear = () => {
+      clears += 1;
+      originalClear();
+    };
+    let notifications = 0;
+    const onLogout = (): void => {
+      notifications += 1;
+    };
+    window.addEventListener(LOGOUT_EVENT, onLogout);
+
+    switchContext(queryClient, { userId: USER_ID, labId: LAB_A });
+    queryClient.setQueryData(["seed"], { closed: "данные закрытого контура" });
+
+    // The provider tree is mounted as in the app, but the LOGOUT_EVENT must
+    // not re-enter the cleanup (dispatchEvent is synchronous).
+    render(
+      <AppProviders queryClient={queryClient}>
+        <div>экран</div>
+      </AppProviders>,
+    );
+    await performLogout(queryClient);
+
+    expect(clears).toBe(1);
+    expect(notifications).toBe(1);
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(currentScope()).toMatchObject({ userId: null, labId: null, productId: null });
+    window.removeEventListener(LOGOUT_EVENT, onLogout);
+  });
+
+  it("a 401 session expiry clears the cache exactly once without recursion (regression F01-r1)", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let clears = 0;
+    const originalClear = queryClient.clear.bind(queryClient);
+    queryClient.clear = () => {
+      clears += 1;
+      originalClear();
+    };
+
+    switchContext(queryClient, { userId: USER_ID, labId: LAB_A });
+    queryClient.setQueryData(["seed"], { closed: "данные закрытого контура" });
+
+    render(
+      <AppProviders queryClient={queryClient}>
+        <div>экран</div>
+      </AppProviders>,
+    );
+
+    // SESSION_EXPIRED_EVENT is dispatched by the transport on 401; the handler
+    // must not dispatch anything back (recursion would overflow the stack).
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+
+    expect(clears).toBe(1);
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(currentScope()).toMatchObject({ userId: null, labId: null, productId: null });
+  });
+});
+
+describe("app shell routing", () => {
+  it("a dirty route change in the real router opens the blocker dialog (F01-r1 #2)", async () => {
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/labs/11111111-1111-1111-1111-111111111111/arrivals"],
+    });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByText(/Поступления/)).toBeInTheDocument();
+
+    // A real dirty form syncs through useDirtyGuard; the flag in the store is
+    // what the shell dialog reads.
+    act(() => {
+      useDirtyStore.getState().setDirty(true, "Сверка");
+    });
+
+    await act(async () => {
+      await router.navigate("/labs/22222222-2222-2222-2222-222222222222/examinations");
+    });
+
+    expect(screen.getByRole("dialog", { name: "Несохранённый ввод" })).toBeInTheDocument();
+    expect(screen.queryByText("Журнал ВСЭ")).not.toBeInTheDocument();
+
+    // Safe cancel first: staying keeps the current page and the dirty flag.
+    await userEvent.setup().click(screen.getByRole("button", { name: "Остаться" }));
+    expect(screen.getByText(/Поступления/)).toBeInTheDocument();
+
+    await act(async () => {
+      useDirtyStore.getState().setDirty(false);
+    });
   });
 });

@@ -8,9 +8,10 @@
  */
 import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { http, HttpResponse, delay } from "msw";
 import { setupServer } from "msw/node";
-import { createElement, useState, type ReactElement } from "react";
+import { createElement, useState, type ReactElement, type ReactNode } from "react";
 import { afterEach, beforeAll, afterAll, describe, expect, it } from "vitest";
 import { apiClient } from "./client";
 import { useCommand } from "./command";
@@ -98,15 +99,41 @@ describe("useCommand", () => {
   });
 
   it("test_conflict_keeps_input", async () => {
+    const getCalls: number[] = [];
     server.use(
       http.put("*/api/v1/users/:id", () =>
         problemResponse(409, "REVISION_CONFLICT", "Запись изменена другим сотрудником."),
       ),
+      http.get("*/api/v1/users/:id", () => {
+        getCalls.push(1);
+        return HttpResponse.json(
+          {
+            id: "00000000-0000-0000-0000-000000000001",
+            full_name: "Актуальное Иванов",
+            login: "ivanov",
+            email: "ivanov@example.test",
+            position: null,
+            role: "VET",
+            active: true,
+            scopes: [],
+            capabilities: [],
+            revision: 2,
+          },
+          { headers: { ETag: '"2"' } },
+        );
+      }),
     );
+
+    const ACTUAL_KEY = ["users", "00000000-0000-0000-0000-000000000001"] as const;
 
     function ConflictForm(): ReactElement {
       const [reason, setReason] = useState("Загрязнение кузова");
       const command = useCommand();
+      const actual = useQuery({
+        queryKey: ACTUAL_KEY,
+        queryFn: ({ signal }) => raw.GET("/api/v1/users/00000000-0000-0000-0000-000000000001", { signal }),
+        select: (result: RawResult) => (result.data as { full_name?: string } | undefined)?.full_name,
+      });
       return createElement(
         "div",
         null,
@@ -120,11 +147,17 @@ describe("useCommand", () => {
           {
             type: "button",
             onClick: () =>
-              void command.submit(async (ctx) =>
-                raw.PUT("/api/v1/users/00000000-0000-0000-0000-000000000001", {
-                  headers: { "idempotency-key": ctx.idempotencyKey, "if-match": '"1"', "x-csrf-token": "t" },
-                  signal: ctx.signal,
-                }),
+              void command.submit(
+                async (ctx) =>
+                  raw.PUT("/api/v1/users/00000000-0000-0000-0000-000000000001", {
+                    headers: {
+                      "idempotency-key": ctx.idempotencyKey,
+                      "if-match": '"1"',
+                      "x-csrf-token": "t",
+                    },
+                    signal: ctx.signal,
+                  }),
+                { queryKey: ACTUAL_KEY },
               ),
           },
           "Сохранить",
@@ -132,17 +165,46 @@ describe("useCommand", () => {
         command.error !== null
           ? createElement("output", { "aria-label": "Ошибка команды" }, command.error.code)
           : null,
+        command.conflict
+          ? createElement(
+              "div",
+              { role: "status" },
+              "Запись изменена другим сотрудником. Доступно актуальное состояние.",
+              createElement(
+                "button",
+                { type: "button", onClick: () => void command.refresh() },
+                "Загрузить актуальное",
+              ),
+            )
+          : null,
+        createElement("output", { "aria-label": "Актуальное состояние" }, actual.data ?? "—"),
       );
     }
 
-    render(createElement(ConflictForm));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function Wrapper({ children }: { children: ReactNode }): ReactElement {
+      return createElement(QueryClientProvider, { client: queryClient }, children);
+    }
+    render(createElement(ConflictForm), { wrapper: Wrapper });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Сохранить" }));
 
-    // 409 keeps the typed input available: no silent clearing, no optimistic save.
+    // 409 keeps the typed input available and offers the actual state: no
+    // silent clearing, no optimistic save, no merge.
     await waitFor(() =>
       expect(screen.getByLabelText("Ошибка команды")).toHaveTextContent("REVISION_CONFLICT"),
     );
+    await screen.findByText(/Доступно актуальное состояние/);
+    expect(screen.getByLabelText("Причина")).toHaveValue("Загрязнение кузова");
+
+    const readsBefore = getCalls.length;
+    await user.click(screen.getByRole("button", { name: "Загрузить актуальное" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Актуальное состояние")).toHaveTextContent("Актуальное Иванов"),
+    );
+    expect(getCalls.length).toBeGreaterThan(readsBefore);
+    // The refresh re-reads the actual state; the local input is NOT merged
+    // with it and stays exactly as the user typed it.
     expect(screen.getByLabelText("Причина")).toHaveValue("Загрязнение кузова");
   });
 });

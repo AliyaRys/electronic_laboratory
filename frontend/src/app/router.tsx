@@ -19,48 +19,61 @@ function Stub({ title, note }: { title: string; note: string }): React.ReactElem
 }
 
 export const routes: RouteObject[] = [
-  { path: "/login", element: <Stub title="Вход" note="Страница входа — задача F03." /> },
-  { path: "/password-help", element: <Stub title="Восстановление пароля" note="Задача F03." /> },
-  { path: "/profile", element: <Stub title="Профиль" note="Задача F03." /> },
-  { path: "/users", element: <Stub title="Пользователи" note="Задача F03." /> },
-  { path: "/users/new", element: <Stub title="Создание пользователя" note="Задача F03." /> },
-  { path: "/users/:userId/edit", element: <Stub title="Редактирование пользователя" note="Задача F03." /> },
-  { path: "/users/:userId/history", element: <Stub title="История пользователя" note="Задача F03." /> },
-  { path: "/catalogs", element: <Stub title="Справочники" note="Задача C02." /> },
-  { path: "/catalogs/methods", element: <Stub title="Нормы исследований" note="Задача C02." /> },
-  { path: "/catalogs/tariffs", element: <Stub title="Стоимость исследований" note="Задача C02." /> },
   {
-    path: "/labs/:labId/arrivals",
-    element: <Stub title="Поступления" note="Очереди expected/work/accepted — задача A01." />,
-  },
-  {
-    path: "/labs/:labId/arrivals/:partyId/reconciliation",
-    element: <Stub title="Сверка эВСД" note="Задача A02." />,
-  },
-  {
-    path: "/labs/:labId/arrivals/:partyId/examination/new",
-    element: <Stub title="Создание ВСЭ" note="Задача E04." />,
-  },
-  {
-    path: "/labs/:labId/arrivals/:partyId/conclusion",
-    element: <Stub title="Заключение" note="Задача D02." />,
-  },
-  { path: "/labs/:labId/examinations", element: <Stub title="Журнал ВСЭ" note="Задача E04." /> },
-  {
-    path: "/labs/:labId/examinations/:examinationId",
-    element: <Stub title="Просмотр ВСЭ" note="Задача E04." />,
-  },
-  { path: "/labs/:labId/reports", element: <Stub title="Отчёты" note="Задача R03." /> },
-  { path: "/labs/:labId/reports/new", element: <Stub title="Создание отчёта" note="Задача R03." /> },
-  { path: "/labs/:labId/reports/:reportId", element: <Stub title="Просмотр отчёта" note="Задача R03." /> },
-  { path: "/labs/:labId/reports/samples", element: <Stub title="Учёт проб" note="Задача S03." /> },
-  {
-    path: "*",
-    element: (
-      <AppLayout>
-        <PlaceholderPage title="Запись не указана" note="Такой маршрут отсутствует." notFound />
-      </AppLayout>
-    ),
+    // The shell owns the dirty-leave blocker once for the whole tree; every
+    // route renders inside it (AppShell → Outlet → page).
+    element: <AppShell />,
+    children: [
+      { path: "/login", element: <Stub title="Вход" note="Страница входа — задача F03." /> },
+      { path: "/password-help", element: <Stub title="Восстановление пароля" note="Задача F03." /> },
+      { path: "/profile", element: <Stub title="Профиль" note="Задача F03." /> },
+      { path: "/users", element: <Stub title="Пользователи" note="Задача F03." /> },
+      { path: "/users/new", element: <Stub title="Создание пользователя" note="Задача F03." /> },
+      {
+        path: "/users/:userId/edit",
+        element: <Stub title="Редактирование пользователя" note="Задача F03." />,
+      },
+      { path: "/users/:userId/history", element: <Stub title="История пользователя" note="Задача F03." /> },
+      { path: "/catalogs", element: <Stub title="Справочники" note="Задача C02." /> },
+      { path: "/catalogs/methods", element: <Stub title="Нормы исследований" note="Задача C02." /> },
+      { path: "/catalogs/tariffs", element: <Stub title="Стоимость исследований" note="Задача C02." /> },
+      {
+        path: "/labs/:labId/arrivals",
+        element: <Stub title="Поступления" note="Очереди expected/work/accepted — задача A01." />,
+      },
+      {
+        path: "/labs/:labId/arrivals/:partyId/reconciliation",
+        element: <Stub title="Сверка эВСД" note="Задача A02." />,
+      },
+      {
+        path: "/labs/:labId/arrivals/:partyId/examination/new",
+        element: <Stub title="Создание ВСЭ" note="Задача E04." />,
+      },
+      {
+        path: "/labs/:labId/arrivals/:partyId/conclusion",
+        element: <Stub title="Заключение" note="Задача D02." />,
+      },
+      { path: "/labs/:labId/examinations", element: <Stub title="Журнал ВСЭ" note="Задача E04." /> },
+      {
+        path: "/labs/:labId/examinations/:examinationId",
+        element: <Stub title="Просмотр ВСЭ" note="Задача E04." />,
+      },
+      { path: "/labs/:labId/reports", element: <Stub title="Отчёты" note="Задача R03." /> },
+      { path: "/labs/:labId/reports/new", element: <Stub title="Создание отчёта" note="Задача R03." /> },
+      {
+        path: "/labs/:labId/reports/:reportId",
+        element: <Stub title="Просмотр отчёта" note="Задача R03." />,
+      },
+      { path: "/labs/:labId/reports/samples", element: <Stub title="Учёт проб" note="Задача S03." /> },
+      {
+        path: "*",
+        element: (
+          <AppLayout>
+            <PlaceholderPage title="Запись не указана" note="Такой маршрут отсутствует." notFound />
+          </AppLayout>
+        ),
+      },
+    ],
   },
 ];
 

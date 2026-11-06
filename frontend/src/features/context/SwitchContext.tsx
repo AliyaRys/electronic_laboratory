@@ -13,14 +13,20 @@ import { useBlocker } from "react-router";
 import type { QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { currentScope, useContextStore, useDirtyStore } from "../../app/context";
+import {
+  clearQueryCache,
+  LOGOUT_EVENT,
+  currentScope,
+  useContextStore,
+  useDirtyStore,
+} from "../../entities/session/context";
 import { isForeignScope } from "../../shared/api/queryKeys";
 import { apiClient } from "../../shared/api/client";
-import { clearCsrfToken, setCsrfToken } from "../../shared/api/csrf";
+import { setCsrfToken } from "../../shared/api/csrf";
 
-export { currentScope };
+export { clearQueryCache, currentScope };
 
-export const LOGOUT_EVENT = "vse:logout";
+export { LOGOUT_EVENT } from "../../entities/session/context";
 
 export interface ScopeUpdate {
   userId?: string;
@@ -54,7 +60,8 @@ export async function switchContext(queryClient: QueryClient, next: ScopeUpdate)
 
 /**
  * Log out: revoke the session server-side (best effort), then clear every
- * closed surface. 401 from the revoke attempt still clears local state.
+ * closed surface and notify open screens once (LOGOUT_EVENT is one-shot and
+ * no cleanup handler re-enters it — regression F01-r1).
  */
 export async function performLogout(queryClient: QueryClient): Promise<void> {
   try {
@@ -63,17 +70,10 @@ export async function performLogout(queryClient: QueryClient): Promise<void> {
     // The session is being discarded either way; no mutation retry here.
   }
   clearQueryCache(queryClient);
-}
-
-/** Shared cleanup used by logout and 401 session expiry (SPEC-05). */
-export function clearQueryCache(queryClient: QueryClient): void {
-  queryClient.cancelQueries().catch(() => undefined);
-  queryClient.clear();
-  useContextStore.getState().reset();
-  useDirtyStore.getState().setDirty(false);
-  clearCsrfToken();
   window.dispatchEvent(new CustomEvent(LOGOUT_EVENT));
 }
+
+/** Shared cleanup lives in the session entity; re-exported for app providers. */
 
 /** Select the current scope inside components (stable snapshot). */
 export function useContextScope(): { userId: string | null; labId: string | null; productId: string | null } {

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Права и доступная продукция</title>
+  <link rel="preload" as="image" href="../vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="../components/app/app.css">
+  <link rel="stylesheet" href="../app-shell.css">
+  <link rel="stylesheet" href="../components/admin/admin.css">
+  <link rel="stylesheet" href="../components/admin/admin-forms.css">
+  <link rel="stylesheet" href="admin-access-editor-page.css">
+  <script src="../components/icons/VseIcon.js" defer></script>
+  <script src="../components/app/Icon.js" defer></script>
+  <script src="../components/app/Button.js" defer></script>
+  <script src="../components/app/InfoField.js" defer></script>
+  <script src="../components/shell/AppHeader.js" defer></script>
+  <script src="../app-shell.js" defer></script>
+  <script src="../components/admin/AdminData.js" defer></script>
+  <script src="../components/admin/AdminDemoStore.js" defer></script>
+  <script src="../components/admin/AdminTextField.js" defer></script>
+  <script src="../components/admin/AccessEditor.js" defer></script>
+  <script src="admin-access-editor-page.js" defer></script>
+</head>
+<body class="vse-app admin-page">
+  <header class="topbar"
+    data-app-header-mode="admin"
+    data-logo-src="../vse-lab-icon-transparent.png"
+    data-brand-href="admin-users.html"
+    data-admin-users-href="admin-users.html"
+    data-profile-href="admin-profile.html">
+    <a class="brand" href="admin-users.html"><img src="../vse-lab-icon-transparent.png" alt=""><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav"><a class="navlink" href="admin-users.html">Управление пользователями</a></nav>
+    <div class="user-area"><a class="user-link" href="admin-profile.html"><span class="avatar">ЕМ</span><span>Елена Морозова</span></a><button class="logout" id="logout" type="button">Выйти</button></div>
+  </header>
+
+  <main class="admin-access-main">
+    <a class="admin-back-link" href="admin-users.html" id="back-to-users">
+      <span data-back-icon aria-hidden="true"></span>
+      <span>К списку пользователей</span>
+    </a>
+    <div class="admin-access-heading">
+      <h1>Права доступа и типы продукции</h1>
+      <p>Встроенный блок для экранов создания и редактирования пользователя. Выбор флажков не сохраняется сам: его возвращает форме.</p>
+    </div>
+
+    <nav class="admin-access-demo-nav" aria-label="Демонстрационные состояния">
+      <a class="active" href="admin-access-editor.html">Создание: всё выключено</a>
+      <a href="admin-access-editor.html?state=partial">Редактирование: частичный выбор</a>
+      <a href="admin-access-editor.html?state=all">Все права и продукция</a>
+      <a href="admin-access-editor.html?state=rights-only">Только права</a>
+      <a href="admin-access-editor.html?state=products-only">Только продукция</a>
+      <a href="admin-access-editor.html?state=revoke">Отзыв выбранного типа</a>
+      <a href="admin-access-editor.html?state=loading">Загрузка</a>
+      <a href="admin-access-editor.html?state=disabled">Блок недоступен</a>
+    </nav>
+
+    <section class="admin-form-card">
+      <div class="admin-form-card-head">
+        <div>
+          <h2>Права доступа и доступные типы продукции</h2>
+          <p>Лаборатория задаётся сеансом: ВСЭ №1 г. Казань</p>
+        </div>
+      </div>
+      <div id="admin-access-root"></div>
+      <div class="admin-form-actions">
+        <button class="vse-app app-button secondary" type="button" id="reset-access">Отменить изменения</button>
+        <button class="vse-app app-button primary" type="button" id="save-access">Сохранить</button>
+      </div>
+      <p class="admin-access-demo-note" id="access-message" role="status"></p>
+    </section>
+
+    <section class="admin-form-card admin-access-demo-panel" aria-label="Демонстрационная панель">
+      <div class="admin-form-card-head">
+        <div>
+          <h2>Демонстрационная панель</h2>
+          <p>Техническая оснастка макета, не часть продуктового интерфейса</p>
+        </div>
+      </div>
+      <p class="admin-access-demo-note">Кнопка имитирует отзыв доступного типа продукции администратором во время работы. Редактор проверяет доступный набор, а не старое значение: если выбранный тип отозван, его флажок снимается и не восстанавливается. Значение текущего выбора здесь показывается как «тип, открытый пользователем в этот момент» и после отзыва предлагается заменить разрешённым.</p>
+      <div class="admin-access-demo-actions">
+        <button class="vse-app app-button secondary" type="button" id="revoke-current-type" hidden>Отозвать доступ</button>
+      </div>
+      <p class="admin-access-demo-note" id="revoke-note"></p>
+    </section>
+  </main>
+</body>
+</html>

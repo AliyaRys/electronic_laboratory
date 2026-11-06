@@ -1,0 +1,60 @@
+/* Единая поверхность значений, полученных из эВСД, на экранах сверки. */
+.compare-row:not(.quantity-row) .mercury-value {
+  background: #fff;
+}
+
+/* Состояния сохранённых ответов о перевозке на итоговых экранах сверки. */
+.check-card.info-card[data-completed-status] {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 9px;
+  align-items: end;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #e1ebeb;
+  border-radius: 14px;
+  background: #fbfdfd;
+}
+
+.check-card.info-card[data-completed-status] .field-name {
+  grid-column: 1 / -1;
+  color: #29474d;
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1.2;
+}
+
+.check-card.info-card[data-completed-status] .mercury-value {
+  height: 40px;
+  overflow: hidden;
+  border: 1px solid #d8e5e5;
+  border-radius: 10px;
+  background: #fff;
+  color: #405e64;
+  padding: 9px 11px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-card.info-card[data-completed-status].is-positive {
+  border-color: #b9ddcb;
+  background: #f7fcfa;
+}
+
+.check-card.info-card[data-completed-status].is-positive .mercury-value {
+  border-color: #c9e5d8;
+  background: #fbfffd;
+  color: #176346;
+}
+
+.check-card.info-card[data-completed-status].is-negative {
+  border-color: #e2a3ab;
+  background: #fff0f1;
+}
+
+.check-card.info-card[data-completed-status].is-negative .mercury-value {
+  border-color: #e7b7bc;
+  background: #fffafa;
+  color: #9b2f3d;
+}

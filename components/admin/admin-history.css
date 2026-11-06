@@ -1,0 +1,41 @@
+@import '../app/tokens.css';
+
+.admin-user-history { color: var(--app-ink); }
+.admin-history-summary { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.admin-history-summary .app-info-field { background: #fff; }
+.admin-history-deleted { position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; min-height: 27px; padding: 0 10px; border-radius: 999px; background: #fdebed; color: #963741; font-size: 12px; font-weight: 750; }
+.admin-history-timezone { margin: 10px 0 20px; color: var(--app-muted-readable); font-size: 12px; }
+.admin-history-controls { display: flex; align-items: end; gap: 12px; margin-bottom: 16px; }
+.admin-history-controls .admin-filter { width: min(310px, 100%); }
+.admin-history-content { display: grid; gap: 10px; }
+.admin-history-event { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 2px 14px; padding: 18px 20px; border: 1px solid var(--app-line); border-radius: 14px; background: #fff; box-shadow: 0 6px 18px #17323a08; }
+.admin-history-marker { grid-row: 1 / span 4; display: grid; place-items: center; align-self: start; width: 38px; height: 38px; border-radius: 10px; background: var(--app-tint); color: var(--app-teal-dark); }
+.admin-history-marker .admin-icon { width: 19px; height: 19px; }
+.admin-history-event-head { grid-column: 2 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+.admin-history-event h3 { margin: 0; font-size: 15px; line-height: 1.35; }
+.admin-history-event time { flex: 0 0 auto; color: var(--app-muted-readable); font-size: 12px; }
+.admin-history-actor { grid-column: 2 / -1; margin: 3px 0 10px; color: var(--app-muted-readable); font-size: 12px; }
+.admin-history-details { grid-column: 2 / -1; display: grid; gap: 7px; margin: 0; }
+.admin-history-detail { display: grid; grid-template-columns: minmax(145px, .34fr) minmax(0, 1fr); gap: 12px; padding-top: 7px; border-top: 1px solid #edf2f2; }
+.admin-history-detail dt { color: var(--app-muted-readable); font-size: 12px; font-weight: 700; }
+.admin-history-detail dd { margin: 0; color: #29474d; overflow-wrap: anywhere; }
+.admin-history-detail.added dd { color: #176346; }
+.admin-history-detail.removed dd { color: #963741; }
+.admin-history-toggle { grid-column: 2 / -1; justify-self: start; min-height: 34px; margin-top: 5px; padding: 0; border: 0; background: transparent; color: var(--app-teal); font: inherit; font-size: 12px; font-weight: 750; }
+.admin-history-toggle:hover { color: var(--app-teal-dark); text-decoration: underline; text-underline-offset: 3px; }
+.admin-user-history .admin-pagination-count,
+.admin-user-history .admin-list-state p { color: var(--app-muted-readable); }
+
+@media (max-width: 620px) {
+  .admin-history-summary { grid-template-columns: 1fr; }
+  .admin-history-deleted { position: static; justify-self: start; }
+  .admin-history-controls { align-items: stretch; flex-direction: column; }
+  .admin-history-controls .admin-filter { width: 100%; }
+  .admin-history-controls .admin-reset { align-self: flex-start; }
+  .admin-history-event { grid-template-columns: 34px minmax(0, 1fr); padding: 16px; column-gap: 11px; }
+  .admin-history-marker { width: 32px; height: 32px; }
+  .admin-history-event-head { grid-column: 2; align-items: flex-start; flex-direction: column; gap: 4px; }
+  .admin-history-actor, .admin-history-details, .admin-history-toggle { grid-column: 1 / -1; }
+  .admin-history-actor { margin-top: 10px; }
+  .admin-history-detail { grid-template-columns: 1fr; gap: 2px; }
+}

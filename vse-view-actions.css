@@ -1,0 +1,9 @@
+/* Shared actions from the existing VSE view. */
+.btn{border:1px solid #cbdadb;border-radius:10px;min-height:43px;padding:0 16px;font-weight:720;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#fff;color:#4d676d}
+.btn:hover{background:#f5f8f8}
+.btn.icon-only{width:43px;padding:0}
+.btn svg{width:19px;height:19px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.tooltip{position:relative}
+.tooltip::before{content:attr(data-tooltip);position:absolute;right:0;bottom:calc(100% + 9px);z-index:25;min-width:max-content;border:1px solid #c9e6e2;border-radius:10px;background:#173f43;color:#fff;padding:8px 10px;font-size:12px;font-weight:720;line-height:1.25;box-shadow:0 12px 28px #16333730;opacity:0;transform:translateY(5px);pointer-events:none;transition:.16s}
+.tooltip::after{content:"";position:absolute;right:15px;bottom:calc(100% + 3px);z-index:26;border:6px solid transparent;border-top-color:#173f43;opacity:0;transform:translateY(5px);pointer-events:none;transition:.16s}
+.tooltip:hover::before,.tooltip:hover::after,.tooltip:focus-visible::before,.tooltip:focus-visible::after{opacity:1;transform:none}

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Блокировка пользователя</title>
+  <link rel="preload" as="image" href="../vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="../components/app/app.css">
+  <link rel="stylesheet" href="../app-shell.css">
+  <link rel="stylesheet" href="../components/admin/admin.css">
+  <link rel="stylesheet" href="admin-user-status-page.css">
+  <script src="../components/icons/VseIcon.js" defer></script>
+  <script src="../components/app/Icon.js" defer></script>
+  <script src="../components/app/Button.js" defer></script>
+  <script src="../components/app/InfoField.js" defer></script>
+  <script src="../components/shell/AppHeader.js" defer></script>
+  <script src="../app-shell.js" defer></script>
+  <script src="../components/admin/AdminData.js" defer></script>
+  <script src="../components/admin/AdminDemoStore.js" defer></script>
+  <script src="../components/admin/UserStatusDialog.js" defer></script>
+  <script src="admin-user-status-page.js" defer></script>
+</head>
+<body class="vse-app admin-page">
+  <header class="topbar"
+    data-app-header-mode="admin"
+    data-logo-src="../vse-lab-icon-transparent.png"
+    data-brand-href="admin-users.html"
+    data-admin-users-href="admin-users.html"
+    data-profile-href="admin-profile.html">
+    <a class="brand" href="admin-users.html"><img src="../vse-lab-icon-transparent.png" alt=""><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav"><a class="navlink active" id="admin-users-link" href="admin-users.html">Управление пользователями</a></nav>
+    <div class="user-area"><a class="user-link" href="admin-profile.html"><span class="avatar">ЕМ</span><span>Елена Морозова</span></a><button class="logout" id="logout" type="button">Выйти</button></div>
+  </header>
+  <main class="admin-status-main">
+    <a class="admin-status-back" href="admin-users.html">К списку пользователей</a>
+    <div class="admin-status-heading"><h1>Карточка пользователя</h1><p>Демонстрация общего диалога блокировки и разблокировки.</p></div>
+    <div class="admin-status-feedback" id="status-feedback" role="status" hidden></div>
+    <section class="admin-status-card" aria-labelledby="user-name">
+      <div><h2 id="user-name"></h2><span class="admin-status" id="user-status"></span></div>
+      <dl><div><dt>Логин</dt><dd id="user-login"></dd></div><div><dt>Email</dt><dd id="user-email"></dd></div></dl>
+      <button id="status-action" type="button"></button>
+    </section>
+  </main>
+</body>
+</html>

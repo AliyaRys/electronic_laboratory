@@ -1,0 +1,23 @@
+.milk-max-dialog { max-width: calc(100vw - 32px); max-height: calc(100dvh - 48px); padding: 0; overflow: auto; color: var(--ink); }
+.milk-max-dialog::backdrop { background: #17323a66; }
+.milk-page .inspection-item { width: 100%; border: 0; border-radius: 0; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.milk-page .inspection-item:hover { background: var(--tint); }
+.inspection-history-dialog { width: min(640px, calc(100vw - 32px)); }
+.inspection-history-list { display: grid; gap: 12px; }
+.inspection-history-card { border: 1px solid var(--line); border-radius: 14px; background: #fbfdfd; padding: 15px 16px; }
+.inspection-history-card.is-link { display: block; color: inherit; text-decoration: none; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease, background .16s ease; }
+.inspection-history-card.is-link:hover { border-color: #91c8c2; background: #fff; box-shadow: 0 10px 25px #17323a17; transform: translateY(-1px); }
+.inspection-history-card.is-link:focus-visible { outline: 3px solid #75bdb633; outline-offset: 3px; border-color: var(--teal); }
+.inspection-history-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+.inspection-history-title { display: flex; align-items: center; gap: 9px; }
+.inspection-history-head span { color: var(--ink); font-size: 14px; font-weight: 780; }
+.inspection-history-open { display: inline-flex; align-items: center; justify-content: center; width: 20px; color: var(--teal-dark); }
+.inspection-history-open svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s ease; }
+.inspection-history-card.is-link:hover .inspection-history-open svg { transform: translateX(2px); }
+.inspection-history-head time { color: var(--teal-dark); font-size: 12px; font-weight: 760; white-space: nowrap; }
+.inspection-history-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; margin: 0; }
+.inspection-history-card dl > div { min-width: 0; }
+.inspection-history-card dl > .wide { grid-column: 1 / -1; padding-top: 11px; border-top: 1px solid var(--line); }
+.inspection-history-card dt { margin: 0 0 3px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.inspection-history-card dd { margin: 0; color: var(--ink); font-size: 13px; font-weight: 680; overflow-wrap: anywhere; }
+@media(max-width:520px) { .inspection-history-card dl { grid-template-columns: minmax(0, 1fr); } .inspection-history-card dl > .wide { grid-column: auto; } .inspection-history-head { align-items: flex-start; flex-direction: column; gap: 4px; } }

@@ -1,0 +1,29 @@
+@import url("components/shell/app-header.css?v=20261020-1");
+
+/* Stable document geometry prevents the whole shell from shifting between pages. */
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+@view-transition { navigation: auto; }
+
+::view-transition-group(root),
+::view-transition-group(lab-logo),
+::view-transition-old(root),
+::view-transition-new(root),
+::view-transition-old(lab-logo),
+::view-transition-new(lab-logo) {
+  animation: none;
+}
+
+::view-transition-old(root) { display: none; }
+
+::view-transition-old(lab-logo),
+::view-transition-new(lab-logo) { mix-blend-mode: normal; }
+
+/* Отправка заключений в Max исключена из продукта. */
+#send-max,
+.conclusion-max,
+#milk-max,
+#max-modal { display: none !important; }

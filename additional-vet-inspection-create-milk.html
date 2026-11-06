@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Дополнительный ветеринарный осмотр</title>
+  <style>
+    :root{--ink:#17323a;--muted:#668087;--line:#dfe9e9;--page:#f5f9f8;--panel:#fff;--teal:#146c73;--teal-dark:#0d5358;--tint:#eaf6f4;--danger:#a33943}
+    *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}button,input,select,textarea{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #75bfc2;outline-offset:2px}
+    .topbar{height:76px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 max(24px,calc((100vw - 1440px)/2));gap:26px;position:sticky;top:0;z-index:10}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink);min-width:275px}.brand strong{display:block;font-size:15px;letter-spacing:-.01em}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+    .topnav{display:flex;align-items:center;gap:6px;flex:1}.navlink,.user-link{border:1px solid var(--line);background:#fff;color:#4c6870;min-height:42px;border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;gap:9px;padding:0 12px;font-weight:600}.navlink:hover,.user-link:hover,.navlink.active,.nav-item:hover>.navlink,.nav-item:focus-within>.navlink{background:var(--tint);color:var(--teal-dark)}.navlink.active{border-color:#c9e6e2;box-shadow:inset 0 0 0 1px #c9e6e2}.icon{width:19px;height:19px;display:inline-grid;place-items:center;font-size:18px}.icon svg,.nav-caret{width:19px;height:19px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}.nav-item{position:relative;width:340px}.nav-item>.navlink{width:100%;justify-content:flex-start}.nav-item .navtext{margin-right:auto}.nav-caret{width:14px;height:14px;margin-left:auto}.journal-menu{position:absolute;left:0;top:calc(100% - 1px);z-index:30;display:none;width:100%;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 18px 42px #17323a22}.nav-item:hover .journal-menu,.nav-item:focus-within .journal-menu,.nav-item.open .journal-menu{display:grid}.journal-menu a{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;border-radius:10px;padding:0 10px;text-decoration:none;color:#4d676d;font-weight:620;line-height:1.2}.journal-menu a:hover,.journal-menu a.active{background:var(--tint);color:var(--teal-dark)}.journal-menu a.active::after{content:"✓";font-weight:900;color:var(--teal)}.user-area{display:flex;align-items:center;gap:5px}.avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#d7efec;color:var(--teal-dark);font-weight:750;font-size:12px}.logout{border:1px solid var(--line);background:white;color:#587077;border-radius:9px;min-height:38px;padding:0 12px;font-weight:650}.logout:hover{border-color:#e7b7bc;color:var(--danger);background:#fff8f8}
+    main{max-width:1180px;margin:0 auto;padding:37px 24px 96px}.breadcrumbs{color:var(--muted);font-size:13px;margin-bottom:20px}.breadcrumbs a{color:var(--teal);text-decoration:none}.title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:28px}.eyebrow{color:var(--teal);font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;margin:0 0 6px}.title-row h1{font-size:30px;line-height:1.15;letter-spacing:-.035em;margin:0}.title-row p{margin:8px 0 0;color:var(--muted);max-width:720px}.legend{color:var(--muted);font-size:12px;white-space:nowrap}.req{color:#bd3d48;font-weight:800}
+    form{display:grid;gap:18px}.section{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:25px;box-shadow:0 8px 24px #1f5a5b08}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:21px}.section-title{display:flex;gap:12px;align-items:center}.section-icon{display:inline-flex;align-items:center;justify-content:center;width:37px;height:37px;min-width:37px;border-radius:11px;background:var(--tint);color:var(--teal);font-size:18px;line-height:1}.section-icon svg{display:block;width:20px;height:20px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}.section h2{margin:0;font-size:17px;letter-spacing:-.015em}.section-head p{margin:3px 0 0;color:var(--muted);font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:17px 18px}.field{grid-column:span 4;min-width:0}.field.wide{grid-column:span 6}.field.full{grid-column:1/-1}.field label{display:block;font-weight:690;font-size:13px;margin:0 0 7px}input,select,textarea{width:100%;min-height:43px;border:1px solid #cbdadb;border-radius:9px;padding:0 12px;background:#fff;color:var(--ink);transition:border .15s,box-shadow .15s}textarea{min-height:78px;padding:10px 12px;resize:none}input:hover,select:hover,textarea:hover{border-color:#a6c4c5}input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px #1b8b9130;outline:none}input[readonly]{background:#f5f9f9;color:#4f6768;border-color:#d8e5e5;cursor:default}.hint{color:var(--muted);font-size:12px;margin:5px 0 0}
+    .research-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.research{border:1px solid var(--line);border-radius:13px;padding:16px;background:#fff}.research.primary{border-color:#bbded9;background:linear-gradient(135deg,#f9fdfc,#eff9f7)}.research header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:13px}.research h3{font-size:14px;margin:0}.research-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}.research-fields .result{min-width:0}
+    .actions{position:sticky;bottom:18px;display:flex;justify-content:flex-end;gap:10px;padding:15px 18px;background:#ffffffed;backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:15px;box-shadow:0 12px 36px #274e501c}.btn{border:1px solid transparent;border-radius:10px;min-height:43px;padding:0 16px;font-weight:720;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.secondary{border-color:#cbdadb;background:#fff;color:#4d676d}.btn.secondary:hover{background:#f5f8f8}.btn.primary{background:var(--teal);color:#fff;box-shadow:0 5px 12px #146c7330}.btn.primary:hover{background:var(--teal-dark)}.toast{position:fixed;right:24px;bottom:87px;background:#173f43;color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 12px 28px #16333735;transform:translateY(12px);opacity:0;pointer-events:none;transition:.2s}.toast.show{transform:none;opacity:1}
+    @media(max-width:800px){.topbar{padding:0 15px;gap:8px}.brand{min-width:0}.brand span,.topnav .navtext,.user-link{display:none}.nav-item{width:52px}.nav-item>.navlink{justify-content:center}.nav-caret{display:none}.journal-menu{width:270px}main{padding:28px 16px 70px}.title-row{align-items:flex-start;flex-direction:column}.field,.field.wide{grid-column:1/-1}.research-grid{grid-template-columns:1fr}.section{padding:18px}.logout{padding:0 9px}.actions{bottom:8px;gap:7px;padding:11px}.btn{padding:0 11px}}
+  </style>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="app-shell.css">
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="app-shell.js" defer></script>
+  <link rel="stylesheet" href="milk-repeat-inspection.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="journal-milk.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43" loading="eager" decoding="sync" fetchpriority="high"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink active" href="arrivals-milk.html" id="arrivals-link" aria-current="page"><span class="icon"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"/><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"/><path d="M12 12.4V20"/></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink" href="journal-milk.html" id="journal-home"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink" href="directories.html" id="directories"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Молоко и молочная продукция" data-short-label="Молоко"><span class="navtext" data-product-label>Молоко и молочная продукция</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
+          <button type="button" role="option" aria-selected="false" data-product-option="meat">Мясо и продукты убоя</button>
+          <button class="active" type="button" role="option" aria-selected="true" data-product-option="milk">Молоко и молочная продукция</button>
+        </div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link" href="profile.html" id="profile"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <main>
+    <div class="breadcrumbs"><a href="arrivals-accepted-milk.html">Принятые поступления</a> / Дополнительный ветеринарный осмотр</div>
+    <div class="title-row"><div><p class="eyebrow">Новая запись</p><h1>Дополнительный ветеринарный осмотр</h1></div><div class="legend"><span class="req">*</span> обязательные поля</div></div>
+    <form id="inspection-form" novalidate>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2v4"/><path d="M17 2v4"/><path d="M4 9h16"/><path d="M5 5h14v16H5z"/></svg></span><div><h2>Сведения об осмотре</h2></div></div></div>
+        <div class="grid">
+          <div class="field wide"><label for="created-at">Дата создания <span class="req">*</span></label><input id="created-at" type="datetime-local" value="2026-08-13T10:20" required></div>
+          <div class="field wide"><label for="specialist">Специалист Госветслужбы <span class="req">*</span></label><select id="specialist" required><option selected>Кузнецова Анна Сергеевна</option><option>Гарифуллина Гузель Рамилевна</option><option>Сафин Ильдар Ринатович</option><option>Закиров Рамиль Фаритович</option></select></div>
+          <div class="field wide"><label for="enterprise">Наименование предприятия <span class="req">*</span></label><input id="enterprise" value="КФХ «Ак Барс»" required></div>
+          <div class="field wide"><label for="owner">Владелец продукции</label><input id="owner" value="КФХ «Ак Барс»"></div>
+          <div class="field wide"><label for="address">Адрес предприятия</label><input id="address" value=""></div>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"/><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"/><path d="M12 12.4V20"/></svg></span><div><h2>Партия продукции</h2></div></div></div>
+        <div class="grid">
+          <div class="field wide"><label for="evsd">Номер эВСД <span class="req">*</span></label><input id="evsd" value="RU016:260812-007214" required></div>
+          <div class="field wide"><label for="vse-record">Запись ВСЭ</label><input id="vse-record" value="№ 204 от 12.08.2026"></div>
+          <div class="field wide"><label for="product">Наименование продукции <span class="req">*</span></label><input id="product" value="Молоко коровье сырое" required></div>
+          <div class="field wide"><label for="batch-weight">Исходный объем / масса партии</label><input id="batch-weight" value="120 л"></div>
+          <div class="field wide"><label for="remaining-weight">Остаток партии <span class="req">*</span></label><input id="remaining-weight" value="120 л" required></div>
+          <div class="field wide"><label for="storage">Условия хранения</label><select id="storage"><option selected>Холодильная камера</option><option>Охлаждаемая ёмкость</option></select></div>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><div><h2>Исследования</h2></div></div></div>
+        <div class="research-grid">
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50" checked><span>Консистенция</span></label></header><div class="research-fields"><div class="result"><label for="test-consistency">Результат</label><select id="test-consistency" required><option value="" selected disabled hidden></option><option>Соответствует</option><option>Не соответствует</option></select></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50" checked><span>Вкус и запах</span></label></header><div class="research-fields"><div class="result"><label for="test-taste">Результат</label><select id="test-taste" required><option value="" selected disabled hidden></option><option>Соответствует</option><option>Не соответствует</option></select></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50" checked><span>Цвет</span></label></header><div class="research-fields"><div class="result"><label for="test-color">Результат</label><select id="test-color" required><option value="" selected disabled hidden></option><option>Соответствует</option><option>Не соответствует</option></select></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50" checked><span>Температура, °C</span></label></header><div class="research-fields"><div class="result"><label for="test-temperature">Значение</label><input id="test-temperature" type="number" step="0.1" required></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50"><span>Массовая доля жира, %</span></label></header><div class="research-fields"><div class="result"><label for="test-fat">Значение</label><input id="test-fat" type="number" step="0.01" disabled></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50"><span>Массовая доля белка, %</span></label></header><div class="research-fields"><div class="result"><label for="test-protein">Значение</label><input id="test-protein" type="number" step="0.01" disabled></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50"><span>Плотность, кг/м³</span></label></header><div class="research-fields"><div class="result"><label for="test-density">Значение</label><input id="test-density" type="number" step="0.1" disabled></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50"><span>Кислотность, °Т</span></label></header><div class="research-fields"><div class="result"><label for="test-acidity">Значение</label><input id="test-acidity" type="number" step="0.1" disabled></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50"><span>СОМО, %</span></label></header><div class="research-fields"><div class="result"><label for="test-somo">Значение</label><input id="test-somo" type="number" step="0.01" disabled></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50"><span>Соматические клетки, тыс./см³</span></label></header><div class="research-fields"><div class="result"><label for="test-somatic">Значение</label><input id="test-somatic" type="number" step="1" disabled></div></div></article>
+<article class="research"><header><label class="inspection-test-toggle"><input type="checkbox" data-test-toggle data-cost="50"><span>Кольцевая реакция на бруцеллёз</span></label></header><div class="research-fields"><div class="result"><label for="test-brucellosis">Результат</label><select id="test-brucellosis" disabled><option value="" selected disabled hidden></option><option>Отрицательная</option><option>Сомнительная</option><option>Положительная</option></select></div></div></article>
+
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon">✓</span><div><h2>Заключение по осмотру</h2></div></div></div>
+        <div class="grid">
+          <div class="field wide"><label for="result">Результат осмотра <span class="req">*</span></label><select id="result" required><option value="" selected disabled hidden></option><option>Реализацию продолжить</option><option>Реализацию приостановить</option><option>Направить на дополнительную экспертизу</option><option>Утилизировать</option></select></div>
+          <div class="field full"><label for="comment">Комментарий</label><textarea id="comment"></textarea></div>
+        </div>
+      </section>
+      <p id="inspection-error" class="inspection-error" role="alert" hidden></p><div class="inspection-cost">Стоимость осмотра: <strong id="inspection-cost" aria-live="polite">200 ₽</strong></div><div class="actions"><a class="btn secondary" href="arrivals-accepted-milk.html">Отменить</a><button class="btn primary" type="submit">Сохранить осмотр</button></div>
+    </form>
+  </main>
+  <div class="toast" role="status" aria-live="polite" id="toast"></div>
+  <script src="milk-accepted-parties.js" defer></script><script src="milk-repeat-inspection.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Сверка молочной партии КФХ «Ак Барс»</title>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="milk-evsd-check.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="stylesheet" href="evsd-invoice.css">
+  <link rel="stylesheet" href="components/app/evsd-check-values.css?v=20261018-1">
+  <link rel="stylesheet" href="components/checks/check-ui.css?v=20261102-4">
+  <link rel="stylesheet" href="components/checks/prior-conclusion.css?v=20261030-1">
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="app-shell.js" defer></script>
+  <script src="components/icons/VseIcon.js?v=20261030-3" defer></script>
+  <script src="components/checks/CheckUi.js?v=20261102-6" defer></script>
+  <script src="components/checks/PriorConclusion.js?v=20261030-2" defer></script>
+  <script src="milk-evsd-check-canonical.js?v=20261102-1" defer></script>
+  <script src="milk-evsd-check.js?v=20261102-2" defer></script>
+</head>
+<body data-party="ak-bars" data-number="RU016:260812-007101">
+  <header class="topbar">
+    <a class="brand" href="journal-milk.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43" loading="eager" decoding="sync" fetchpriority="high"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink active" href="arrivals-milk.html" id="arrivals-link" aria-current="page"><span class="icon"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"/><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"/><path d="M12 12.4V20"/></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink" href="journal-milk.html" id="journal-home"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink" href="directories.html" id="directories"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Молоко и молочная продукция" data-short-label="Молоко"><span class="navtext" data-product-label>Молоко и молочная продукция</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
+          <button type="button" role="option" aria-selected="false" data-product-option="meat">Мясо и продукты убоя</button>
+          <button class="active" type="button" role="option" aria-selected="true" data-product-option="milk">Молоко и молочная продукция</button>
+        </div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link" href="profile.html" id="profile"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <main>
+    <div class="title-row"><div><h1>Сверка данных транспортного эВСД</h1></div><span class="mercury-badge"><img src="mercury-logo.webp" alt="">Меркурий</span></div>
+    <form id="milk-check-form" class="vse-check-ui" novalidate>
+      <section class="section" data-check-section="document">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Документ</h2><p>Реквизиты поступившего эВСД.</p></div></div></div>
+        <div class="compare-grid"><div class="compare-row reference"><div class="field-name">Номер эВСД</div><div class="mercury-value">RU016:260812-007101</div></div>
+          <div class="compare-row" data-check="date">
+      <div class="field-name">Дата создания ВСД</div><div class="mercury-value" title="12.08.2026 08:40">12.08.2026 08:40</div>
+      <button class="check-button ok" type="button" data-state="ok" aria-label="Дата создания ВСД соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button>
+      <button class="check-button bad" type="button" data-state="bad" aria-label="Дата создания ВСД не соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <div class="fact-field"><label for="fact-date">Фактическое значение</label><input id="fact-date" placeholder="Укажите значение"></div>
+    </div></div>
+      </section>
+      <section class="section" data-check-section="product">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Идентификация продукции по наименованию и визуальным осмотром</h2><p>Состав и общий объём партии.</p></div></div></div>
+        <div class="compare-grid">
+          <div class="compare-row" data-check="owner">
+      <div class="field-name">Хозяйство</div><div class="mercury-value" title="КФХ «Ак Барс»">КФХ «Ак Барс»</div>
+      <button class="check-button ok" type="button" data-state="ok" aria-label="Хозяйство соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button>
+      <button class="check-button bad" type="button" data-state="bad" aria-label="Хозяйство не соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <div class="fact-field"><label for="fact-owner">Фактическое значение</label><input id="fact-owner" placeholder="Укажите значение"></div>
+    </div>
+          <div class="compare-row" data-check="product">
+      <div class="field-name">Продукция</div><div class="mercury-value" title="Молоко коровье сырое">Молоко коровье сырое</div>
+      <button class="check-button ok" type="button" data-state="ok" aria-label="Продукция соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button>
+      <button class="check-button bad" type="button" data-state="bad" aria-label="Продукция не соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <div class="fact-field"><label for="fact-product">Фактическое значение</label><input id="fact-product" placeholder="Укажите значение"></div>
+    </div>
+          <div class="compare-row" data-check="composition">
+      <div class="field-name">Состав партии</div><div class="mercury-value" title="3 секции">3 секции</div>
+      <button class="check-button ok" type="button" data-state="ok" aria-label="Состав партии соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button>
+      <button class="check-button bad" type="button" data-state="bad" aria-label="Состав партии не соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <div class="fact-field"><label for="fact-composition">Фактическое значение</label><input id="fact-composition" placeholder="Укажите значение"></div>
+    </div>
+          <div class="compare-row" data-check="amount">
+      <div class="field-name">Объём / масса</div><div class="mercury-value" title="120 л">120 л</div>
+      <button class="check-button ok" type="button" data-state="ok" aria-label="Объём / масса соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button>
+      <button class="check-button bad" type="button" data-state="bad" aria-label="Объём / масса не соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <div class="fact-field"><label for="fact-amount">Фактическое значение</label><input id="fact-amount" placeholder="Укажите значение"></div>
+    </div>
+        </div>
+      </section>
+      <section class="section" data-check-section="transport">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Ветеринарно-санитарная оценка и идентификация транспорта</h2><p>Транспортное средство и фактическое состояние перевозки.</p></div></div></div>
+        <div class="compare-grid"><div class="compare-row" data-check="vehicle">
+      <div class="field-name">Номер ТС</div><div class="mercury-value" title="А245КМ 116">А245КМ 116</div>
+      <button class="check-button ok" type="button" data-state="ok" aria-label="Номер ТС соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button>
+      <button class="check-button bad" type="button" data-state="bad" aria-label="Номер ТС не соответствует" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <div class="fact-field"><label for="fact-vehicle">Фактическое значение</label><input id="fact-vehicle" placeholder="Укажите значение"></div>
+    </div></div>
+        <div class="transport-observations" aria-label="Фактическое состояние перевозки">
+          <div class="transport-observation"><label for="cargo-condition">Состояние грузового отделения</label><select id="cargo-condition" required><option value="" selected disabled hidden>Выберите значение</option><option>Соответствует требованиям</option><option>Есть загрязнения или повреждения</option></select></div>
+          <div class="transport-observation"><label for="combined-cargo">Совместная перевозка с другими грузами</label><select id="combined-cargo" required><option value="" selected disabled hidden>Выберите значение</option><option>Нет</option><option>Да, грузы разделены</option><option>Да, разделение не обеспечено</option></select></div>
+        </div>
+      </section>
+      <section class="section invoice-section" data-check-section="invoice" aria-labelledby="invoice-title">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2 id="invoice-title">Расчёт стоимости услуг</h2><p>Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма.</p></div></div></div>
+        <div class="invoice-table-wrap"><table class="invoice-table">
+          <thead><tr><th scope="col">Услуга</th><th scope="col">Количество</th><th scope="col">Тариф</th><th scope="col">Сумма</th></tr></thead>
+          <tbody><tr><td>Идентификация продукции по наименованию и визуальным осмотром</td><td>3 секции</td><td>94 ₽</td><td>282 ₽</td></tr>
+          <tr><td>Ветеринарно-санитарная оценка и идентификация транспорта</td><td>1 ТС</td><td>94 ₽</td><td>94 ₽</td></tr></tbody>
+        </table></div>
+        <div class="invoice-total"><span>Итого к оплате</span><strong>376 ₽</strong></div>
+      </section>
+      <p class="form-error" id="check-error" role="alert" aria-live="assertive"></p>
+      <div class="actions"><a class="btn" href="arrivals-milk.html">Отмена</a><button class="btn success" id="mark-all-ok" type="button" data-check-complete-icon>Все соответствует</button><button class="btn primary" type="submit">Завершить</button></div>
+    </form>
+  </main>
+  <dialog class="check-dialog" id="check-confirmation" aria-labelledby="confirmation-title">
+    <div class="dialog-head"><h2 id="confirmation-title">Завершить сверку?</h2><p id="confirmation-note"></p></div>
+    <div class="dialog-facts"><div class="dialog-fact"><span>ЭВСД</span><strong>RU016:260812-007101</strong></div><div class="dialog-fact"><span>Партия</span><strong>3 секции · 120 л</strong></div><div class="dialog-fact"><span>Хозяйство</span><strong>КФХ «Ак Барс»</strong></div><div class="dialog-fact"><span>Сверка</span><strong id="confirmation-result"></strong></div></div>
+    <div class="dialog-actions"><button class="btn" id="cancel-check" type="button">Вернуться</button><button class="btn primary" id="confirm-check" type="button">Завершить</button></div>
+  </dialog>
+  <div class="modal-backdrop" id="extinguish-modal" aria-hidden="true">
+    <div class="extinguish-modal" role="dialog" aria-modal="true" aria-labelledby="extinguish-title">
+      <div class="modal-head"><div><h2 id="extinguish-title">Гашение транспортного эВСД</h2><p>Данные заполнены автоматически по результатам сверки.</p></div><button class="modal-close" type="button" data-close-extinguish aria-label="Закрыть">×</button></div>
+      <div class="modal-body">
+        <div class="extinguish-method"><div><div class="method-title">Способ гашения</div><div class="method-value" id="extinguish-method-value">Полное гашение</div></div></div>
+        <div class="extinguish-grid">
+          <div class="extinguish-field"><div class="extinguish-label">Дата поступления груза</div><div class="extinguish-value" id="extinguish-date">12.08.2026 08:40</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Номер эВСД</div><div class="extinguish-value" id="extinguish-number">RU016:260812-007101</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Получатель</div><div class="extinguish-value">Лаборатория ВСЭ №1 г. Казань</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Продукция</div><div class="extinguish-value">Молоко коровье сырое</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Количество принято</div><div class="extinguish-value" id="accepted-quantity">3 секции</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Объём принят</div><div class="extinguish-value" id="accepted-weight">120 л</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Специалист</div><div class="extinguish-value">Кузнецова А. М.</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Количество к возврату</div><div class="extinguish-value" id="return-quantity">0 секций</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Объём к возврату</div><div class="extinguish-value" id="return-weight">0 л</div></div>
+        </div>
+        <div class="modal-note" id="extinguish-note">После гашения эВСД партия будет принята полностью. Возвратный эВСД не формируется.</div>
+      </div>
+      <div class="modal-actions"><button class="btn" type="button" data-close-extinguish>Отмена</button><button class="btn" type="button" data-close-extinguish>Вернуться к сверке</button><button class="btn primary" type="button" id="extinguish-confirm">Погасить</button></div>
+    </div>
+  </div>
+  <div class="modal-backdrop" id="refusal-modal" aria-hidden="true">
+    <div class="extinguish-modal" role="dialog" aria-modal="true" aria-labelledby="refusal-title">
+      <div class="modal-head"><div><h2 id="refusal-title">Отказ от партии</h2><p>Система обнаружила несоответствия, не связанные с частичной приемкой веса или количества.</p></div><button class="modal-close" type="button" data-close-refusal aria-label="Закрыть">×</button></div>
+      <div class="modal-body">
+        <div class="extinguish-grid">
+          <div class="extinguish-field"><div class="extinguish-label">Решение</div><div class="extinguish-value">Отказ от всей партии</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Номер эВСД</div><div class="extinguish-value" id="refusal-number">RU016:260812-007101</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Отправитель</div><div class="extinguish-value" id="refusal-sender">КФХ «Ак Барс»</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Получатель</div><div class="extinguish-value">Лаборатория ВСЭ №1 г. Казань</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Продукция</div><div class="extinguish-value">Молоко коровье сырое</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Количество к отказу</div><div class="extinguish-value" id="refusal-quantity">1 секция</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Объём к отказу</div><div class="extinguish-value" id="refusal-weight">80 л</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Специалист</div><div class="extinguish-value">Кузнецова А. М.</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Причина отказа</div><div class="extinguish-value" id="refusal-reason">Несоответствие данных партии</div></div>
+        </div>
+        <div class="modal-note warn">Партия не будет принята. На всю партию потребуется создать возвратный транспортный эВСД.</div>
+      </div>
+      <div class="modal-actions"><button class="btn" type="button" data-close-refusal>Отмена</button><button class="btn" type="button" data-close-refusal>Вернуться к сверке</button><button class="btn primary" type="button" id="refusal-confirm">Оформить</button></div>
+    </div>
+  </div>
+</body>
+</html>
+

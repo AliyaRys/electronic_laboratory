@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Сверка эВСД</title>
+  <style>
+    :root{--ink:#17323a;--muted:#668087;--line:#dfe9e9;--page:#f5f9f8;--panel:#fff;--teal:#146c73;--teal-dark:#0d5358;--tint:#eaf6f4;--danger:#a33943;--danger-bg:#fff3f4;--good:#176346;--good-bg:#e4f4ed;--warn:#8a6415}
+    *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}button,input,textarea{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #75bfc2;outline-offset:2px}
+    .topbar{height:76px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 max(24px,calc((100vw - 1440px)/2));gap:26px;position:sticky;top:0;z-index:10}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink);min-width:275px}.brand strong{display:block;font-size:15px}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+    .topnav{display:flex;align-items:center;gap:6px;flex:1}.nav-item{position:relative;width:340px}.nav-item>.navlink{width:100%;justify-content:flex-start}.nav-item .navtext{margin-right:auto}.navlink,.user-link{border:1px solid var(--line);background:#fff;color:#4c6870;min-height:42px;border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;gap:9px;padding:0 12px;font-weight:600}.navlink:hover,.user-link:hover,.navlink.active,.nav-item:hover>.navlink,.nav-item:focus-within>.navlink{background:var(--tint);color:var(--teal-dark)}.navlink.active{border-color:#c9e6e2;box-shadow:inset 0 0 0 1px #c9e6e2}.icon{width:19px;height:19px;display:inline-grid;place-items:center}.icon svg,.nav-caret{width:19px;height:19px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}.nav-caret{width:14px;height:14px;margin-left:auto}.journal-menu{position:absolute;left:0;top:calc(100% - 1px);z-index:30;display:none;width:100%;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 18px 42px #17323a22}.nav-item:hover .journal-menu,.nav-item:focus-within .journal-menu,.nav-item.open .journal-menu{display:grid}.journal-menu a{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;border-radius:10px;padding:0 10px;text-decoration:none;color:#4d676d;font-weight:620;line-height:1.2}.journal-menu a:hover{background:#f5f9f8;color:var(--teal-dark)}.journal-menu a.active{background:var(--tint);color:var(--teal-dark);font-weight:720;box-shadow:inset 0 0 0 1px #c9e6e2}.journal-menu a.active::after{content:"✓";font-weight:900;color:var(--teal)}.user-area{display:flex;align-items:center;gap:5px}.avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#d7efec;color:var(--teal-dark);font-weight:750;font-size:12px}.logout{border:1px solid var(--line);background:white;color:#587077;border-radius:9px;min-height:38px;padding:0 12px;font-weight:650}.logout:hover{border-color:#e7b7bc;color:var(--danger);background:#fff8f8}
+    main{max-width:1180px;margin:0 auto;padding:37px 24px 104px}.title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:22px}.title-row h1{font-size:30px;line-height:1.15;letter-spacing:-.035em;margin:0}.title-row p{margin:7px 0 0;color:var(--muted);max-width:760px}.mercury-badge{display:inline-flex;align-items:center;gap:8px;min-height:34px;border:1px solid #d8e8e6;border-radius:99px;background:#f8fbfb;color:#4d676d;padding:0 12px;font-weight:720;font-size:12px;box-shadow:0 6px 14px #1f5a5b08}.mercury-badge img{width:22px;height:22px;border-radius:50%;object-fit:cover}
+    form{display:grid;gap:16px}.section{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 8px 24px #1f5a5b08}.section-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.section-title{display:flex;align-items:center;gap:10px}.section-icon{width:34px;height:34px;border-radius:11px;background:var(--tint);color:var(--teal-dark);display:grid;place-items:center}.section-icon svg{width:19px;height:19px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.section h2{margin:0;font-size:17px}.section p{margin:2px 0 0;color:var(--muted);font-size:13px}
+    .compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.compare-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 40px 40px;gap:9px;align-items:end;padding:13px;border:1px solid #edf3f3;border-radius:14px;background:#fbfdfd;min-width:0}.compare-row.match{border-color:#8cc7ad;background:#e4f4ed;box-shadow:inset 0 0 0 1px #c8e6d8}.compare-row.mismatch{border-color:#e2a3ab;background:#fff0f1;box-shadow:inset 0 0 0 1px #f3cdd2}.field-name{grid-column:1/-1;font-weight:780;color:#29474d;font-size:13px;line-height:1.2}.mercury-value{height:40px;border:1px solid #d8e5e5;border-radius:10px;background:#f7fbfb;color:#405e64;padding:9px 11px;line-height:20px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.compare-row.match .mercury-value{border-color:#a8d4c1;background:#f7fffb}.compare-row.mismatch .mercury-value{border-color:#e7b7bc;background:#fffafa}.compare-row.reference{grid-template-columns:minmax(0,1fr);background:#f8fbfb;border-color:#edf3f3}.compare-row.reference .mercury-value{border-color:#d8e5e5;background:#fff}.compare-row.reference .check-button,.compare-row.reference .fact-field{display:none}.check-button{width:40px;height:40px;min-height:40px;border:1px solid #d8e5e5;border-radius:11px;background:#fff;color:#5d757b;display:grid;place-items:center;padding:0;font-weight:760}.check-button svg{width:18px;height:18px;stroke:currentColor;stroke-width:2.15;fill:none;stroke-linecap:round;stroke-linejoin:round}.check-button.ok.active{background:#d7efe4;border-color:#8cc7ad;color:var(--good)}.check-button.bad.active{background:var(--danger-bg);border-color:#e7b7bc;color:var(--danger)}.fact-field{position:absolute;right:12px;top:calc(100% - 4px);z-index:20;display:none;width:min(330px,calc(100% - 24px));gap:8px;border:1px solid #d8e5e5;border-radius:14px;background:#fff;padding:12px;box-shadow:0 18px 42px #17323a24}.compare-row.mismatch:not(.fact-collapsed) .fact-field{display:grid}.fact-field label{color:var(--muted);font-size:10px;font-weight:760;text-transform:uppercase;letter-spacing:.06em}.fact-field input,.fact-field textarea,.fact-field select{width:100%;min-height:38px;border:1px solid #cbdadb;border-radius:10px;background:#fff;color:var(--ink);padding:8px 10px}.fact-field textarea{resize:vertical;min-height:62px;padding-top:9px}.fact-actions{display:flex;justify-content:flex-end;gap:8px}.fact-actions button{min-height:33px;border:1px solid #cbdadb;border-radius:9px;background:#fff;color:#4d676d;padding:0 12px;font-size:12px;font-weight:760}.fact-actions .fact-ok{background:var(--teal);border-color:var(--teal);color:#fff}.hint-line{font-size:12px;color:var(--muted);margin-top:10px}.research-results{margin-top:14px;border:1px solid var(--line);border-radius:15px;background:#fbfdfd;overflow:hidden}.research-results summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;color:#29474d;font-size:14px;font-weight:780}.research-results summary::-webkit-details-marker{display:none}.research-results summary::after{content:"";width:9px;height:9px;border-right:2px solid #7a9297;border-bottom:2px solid #7a9297;transform:rotate(45deg);transition:.16s}.research-results[open] summary::after{transform:rotate(225deg);margin-top:6px}.research-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0 14px 14px}.research-item{border:1px solid #edf3f3;border-radius:12px;background:#fff;padding:11px 12px;min-width:0}.research-name{font-size:12px;font-weight:780;color:#7a9297;text-transform:uppercase;letter-spacing:.045em}.research-value{margin-top:5px;color:#29474d;font-size:14px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .actions{position:sticky;bottom:14px;z-index:8;display:flex;justify-content:flex-end;gap:10px;margin-top:8px;padding:13px;background:#ffffffeb;backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 40px #17323a18}.btn{min-height:43px;border:1px solid #cbdadb;border-radius:11px;padding:0 18px;background:#fff;color:#4d676d;font-weight:760;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}.btn svg{width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 8px 18px #146c7324}.btn.success{background:#fff;color:var(--teal-dark);border-color:#b8dcda}.btn.primary:hover{background:var(--teal-dark)}.btn:hover{background:#f8fbfb}.btn.success:hover{background:var(--tint);border-color:#9cc4c2;color:var(--teal-dark)}
+    .modal-backdrop{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:24px;background:#17323a52;backdrop-filter:blur(7px)}.modal-backdrop.open{display:flex}.extinguish-modal{width:min(760px,100%);border:1px solid #dbe8e8;border-radius:22px;background:#fff;box-shadow:0 24px 70px #102c342e;overflow:hidden}.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:22px 24px 16px;border-bottom:1px solid var(--line)}.modal-head h2{margin:0;font-size:22px;letter-spacing:-.025em}.modal-head p{margin:5px 0 0;color:var(--muted)}.modal-close{width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:#fff;color:#5d757b;font-size:22px;line-height:1}.modal-body{padding:20px 24px 22px}.extinguish-method{display:flex;align-items:center;justify-content:space-between;gap:14px;border:1px solid #b8dcda;border-radius:16px;background:linear-gradient(135deg,#f7fffb,#eaf6f4);padding:14px 16px;margin-bottom:16px}.method-title{color:var(--muted);font-size:12px;font-weight:780;text-transform:uppercase;letter-spacing:.055em}.method-value{margin-top:3px;color:var(--teal-dark);font-size:18px;font-weight:780}.extinguish-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.extinguish-field{border:1px solid #edf3f3;border-radius:13px;background:#fbfdfd;padding:11px 12px;min-width:0}.extinguish-field.wide{grid-column:1/-1}.extinguish-label{font-size:11px;font-weight:780;color:#7a9297;text-transform:uppercase;letter-spacing:.05em}.extinguish-value{margin-top:5px;color:#29474d;font-weight:680;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.modal-note{margin-top:14px;border:1px solid #d8e8e6;border-radius:14px;background:#f8fbfb;color:#4d676d;padding:12px 14px;font-size:13px}.modal-note.warn{border-color:#ead49f;background:#fffaf0;color:#735314}.modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:16px 24px 22px;border-top:1px solid var(--line);background:#fbfdfd}
+    @media(max-width:1020px){.compare-grid{grid-template-columns:1fr}}@media(max-width:800px){.topbar{padding:0 15px;gap:8px}.brand{min-width:0}.brand span,.topnav .navtext,.user-link{display:none}.logout{padding:0 9px}.nav-item{width:52px}.nav-item>.navlink{justify-content:center}.nav-caret{display:none}.journal-menu{width:270px}.title-row{align-items:flex-start;flex-direction:column}.compare-row{grid-template-columns:minmax(0,1fr) 40px 40px}.actions{justify-content:stretch}.btn{flex:1}}
+.parts-table{width:100%;border:1px solid #d8e5e5;border-radius:10px;overflow:hidden;background:#fff}.parts-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.9fr) 72px}.parts-row>div{min-width:0;display:flex;align-items:center;padding:6px 9px}.parts-row>div+div{border-left:1px solid #d8e5e5}.parts-row:not(:first-child)>div{border-top:1px solid #d8e5e5}.parts-head{background:#eef7f5;color:var(--muted);font-size:10px;font-weight:780;text-transform:uppercase;letter-spacing:.04em}.parts-head>div{white-space:nowrap}.parts-row:not(.parts-head){color:#29474d;font-size:12px;font-weight:650}.readonly-badge{display:block;max-width:100%;color:#405e64;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .transport-observations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.transport-observation{min-width:0;display:flex;flex-direction:column;gap:8px;border:1px solid #edf3f3;border-radius:14px;background:#fbfdfd;padding:13px}.transport-observation.selected{border-color:#8cc7ad;background:#e4f4ed;box-shadow:inset 0 0 0 1px #c8e6d8}.transport-observation label{min-height:34px;color:#29474d;font-size:13px;font-weight:780;line-height:1.2}.transport-observation select{width:100%;height:40px;margin-top:auto;border:1px solid #d8e5e5;border-radius:10px;background:#fff;color:#405e64;appearance:none;padding:0 40px 0 10px;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='m5 7 5 5 5-5' fill='none' stroke='%23668087' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:16px 16px;background-position:calc(100% - 16px) center}.transport-observation.selected select{border-color:#a8d4c1;background-color:#f7fffb}.transport-observation select:invalid{color:#7a9297}.transport-observation select:focus{outline:3px solid #75bfc2;outline-offset:2px}.section-title{min-width:0}.section-price{flex:none;display:flex;align-items:baseline;gap:7px;color:var(--teal-dark);white-space:nowrap}.section-price strong{font-size:18px;font-weight:700}.section-price small{font-size:12px;color:var(--muted)}@media(max-width:1020px){.transport-observations{grid-template-columns:1fr}.transport-observation label{min-height:0}}@media(max-width:700px){.section-head{align-items:flex-start;flex-wrap:wrap}.section-price{margin-left:44px}}
+    .compare-grid{align-items:start}
+    .invoice-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:13px}
+    .invoice-table{width:100%;min-width:650px;border-collapse:collapse;text-align:left}
+    .invoice-table th{padding:11px 14px;background:#f5f9f8;color:var(--muted);font-size:11px;font-weight:780;letter-spacing:.05em;text-transform:uppercase}
+    .invoice-table td{padding:15px 14px;border-top:1px solid var(--line);vertical-align:top}
+    .invoice-table td:first-child{font-weight:700;color:#29474d}
+    .invoice-table th:not(:first-child),.invoice-table td:not(:first-child){white-space:nowrap;text-align:right}
+    .invoice-table td:last-child{font-weight:780}
+    .invoice-total{display:flex;justify-content:flex-end;align-items:baseline;gap:20px;margin-top:17px;padding-top:15px;border-top:1px solid var(--line);font-weight:760}
+    .invoice-total strong{font-family:"Segoe UI",Arial,sans-serif;font-size:24px;font-weight:500;line-height:1;color:var(--teal-dark)}
+    @media(max-width:700px){.invoice-total{justify-content:space-between}.invoice-total strong{font-size:21px}}
+  </style>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="stylesheet" href="components/app/evsd-check-values.css?v=20261018-1">
+  <link rel="stylesheet" href="components/checks/check-ui.css?v=20261102-6">
+  <link rel="stylesheet" href="components/checks/prior-conclusion.css?v=20261030-1">
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="app-shell.js" defer></script>
+  <script src="components/icons/VseIcon.js?v=20261030-3" defer></script>
+  <script src="components/checks/CheckUi.js?v=20261103-1" defer></script>
+  <script src="components/checks/PriorConclusion.js?v=20261030-2" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="journal.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43" loading="eager" decoding="sync" fetchpriority="high"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink active" href="arrivals.html" id="arrivals-link" aria-current="page"><span class="icon"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"/><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"/><path d="M12 12.4V20"/></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink" href="journal.html" id="journal-home"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink" href="directories.html" id="directories"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Мясо и продукты убоя" data-short-label="Мясо"><span class="navtext" data-product-label>Мясо и продукты убоя</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
+          <button class="active" type="button" role="option" aria-selected="true" data-product-option="meat">Мясо и продукты убоя</button>
+          <button type="button" role="option" aria-selected="false" data-product-option="milk">Молоко и молочная продукция</button>
+        </div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link" href="profile.html" id="profile"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <main>
+    <div class="title-row"><div><h1>Сверка данных транспортного эВСД</h1></div><span class="mercury-badge"><img src="mercury-logo.webp" alt=""> Меркурий</span></div>
+    <form id="check-form" class="vse-check-ui" novalidate data-receipt-auto-act="true" data-receipt-reason-catalog="meat" data-mismatch-reason-fields="Тип транспортного документа|Номер транспортного документа|Дата оформления транспортного документа|Номер ТС|Номер прицепа|Вес|Срок годности|Количество, шт.|Маркировка (ветеринарное клеймо)|Название продукции">
+      <section class="section" data-check-section="document">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Документ</h2><p>Реквизиты транспортного эВСД и связанного контроля поставки.</p></div></div></div>
+        <div class="compare-grid">
+          <div class="compare-row reference"><div class="field-name">Номер эВСД</div><div class="mercury-value">RU016:260812-005102</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Введите фактический номер"></div></div>
+          <div class="compare-row reference"><div class="field-name">Дата оформления</div><div class="mercury-value">12.08.2026 08:12</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input type="datetime-local"></div></div>
+          <div class="compare-row reference"><div class="field-name">Статус эВСД</div><div class="mercury-value">Оформлен</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический статус эВСД"></div></div>
+          <div class="compare-row reference"><div class="field-name">Назначение груза</div><div class="mercury-value">Реализация на розничном рынке</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Укажите назначение"></div></div>
+        </div>
+      </section>
+      <section class="section" data-check-section="participants">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Участники перевозки</h2><p>Отправитель, получатель и площадки, указанные в эВСД.</p></div></div></div>
+        <div class="participants-grid">
+          <div class="participant-card" aria-labelledby="sender-title">
+            <h3 id="sender-title">Сведения об отправителе</h3>
+            <div class="compare-row participant-row"><div class="field-name">Название предприятия</div><textarea rows="3" readonly>ИП Усманов И.К. (Республика Татарстан, г. Казань, ул. Аграрная, 7)</textarea><button class="check-button ok" type="button" data-state="ok" aria-label="Название предприятия отправителя соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Название предприятия отправителя не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><textarea placeholder="Фактическое название и адрес отправителя"></textarea></div></div>
+            <div class="compare-row participant-row"><div class="field-name">Владелец продукции</div><input value="ИП Усманов И.К." readonly><button class="check-button ok" type="button" data-state="ok" aria-label="Владелец продукции отправителя соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Владелец продукции отправителя не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический владелец продукции"></div></div>
+          </div>
+          <div class="participant-card" aria-labelledby="recipient-title">
+            <h3 id="recipient-title">Сведения о получателе</h3>
+            <div class="compare-row participant-row"><div class="field-name">Название предприятия</div><textarea rows="3" readonly>Лаборатория ВСЭ №1 г. Казань (Республика Татарстан, г. Казань, ул. Аграрная, д. 2)</textarea><button class="check-button ok" type="button" data-state="ok" aria-label="Название предприятия получателя соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Название предприятия получателя не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><textarea placeholder="Фактическое название и адрес получателя"></textarea></div></div>
+            <div class="compare-row participant-row"><div class="field-name">Владелец продукции</div><input value="Лаборатория ВСЭ №1 г. Казань" readonly><button class="check-button ok" type="button" data-state="ok" aria-label="Владелец продукции получателя соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Владелец продукции получателя не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический владелец продукции"></div></div>
+          </div>
+        </div>
+      </section>
+      <section class="section" data-check-section="transport">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Ветеринарно-санитарная оценка и идентификация транспорта</h2><p>Сведения о перевозке и транспортном средстве.</p></div></div></div>
+        <div class="compare-grid">
+          <div class="compare-row"><div class="field-name">Вид транспорта</div><div class="mercury-value">Автомобильный</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический вид транспорта"></div></div>
+          <div class="compare-row"><div class="field-name">Номер ТС</div><div class="mercury-value">А245КМ 116</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический номер ТС"></div></div>
+          <div class="compare-row"><div class="field-name">Номер прицепа</div><div class="mercury-value">Прицеп отсутствует</div><button class="check-button ok" type="button" data-state="ok" aria-label="Номер прицепа соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Номер прицепа не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический номер прицепа"></div></div>
+          <div class="compare-row"><div class="field-name">Способ хранения продукции при перевозке</div><div class="mercury-value">Охлажденное</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический способ хранения"></div></div>
+        </div>
+        <div class="transport-observations" aria-label="Фактическое состояние перевозки"><div class="transport-observation"><label for="cargo-condition">Состояние грузового отделения</label><select id="cargo-condition" required><option value="" selected disabled hidden>Выберите значение</option><option>Соответствует требованиям</option><option>Есть загрязнения или повреждения</option></select></div><div class="transport-observation"><label for="combined-cargo">Совместная перевозка с другими грузами</label><select id="combined-cargo" required><option value="" selected disabled hidden>Выберите значение</option><option>Нет</option><option>Да, грузы разделены</option><option>Да, разделение не обеспечено</option></select></div></div>
+      </section>
+      <section class="section" data-check-section="product">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Идентификация продукции по наименованию и визуальным осмотром</h2><p>Классификация, наименование, объём и ветеринарные характеристики партии.</p></div></div></div>
+        <div class="compare-grid product-compare-grid">
+          <div data-product-taxonomy data-product-type="Мясо и мясопродукты" data-product="Говядина" data-product-kind="Говядина в тушах охлажденная (0201)" data-product-name="Говядина в тушах охлажденная"></div>
+          <div class="compare-row producer-row"><div class="field-name">Производитель</div><div class="mercury-value">ИП Усманов И.К.</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический производитель"></div></div>
+          <div class="compare-row weight-row"><div class="field-name">Вес</div><div class="mercury-value">486,5 кг</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический вес, кг"></div></div>
+          <div class="compare-row"><div class="field-name">Маркировка (ветеринарное клеймо)</div><div class="mercury-value">111943</div><button class="check-button ok" type="button" data-state="ok" aria-label="Маркировка соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Маркировка не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический номер клейма"></div></div>
+          <div class="compare-row quantity-simple-row" data-quantity="3" data-quantity-label="3"><div class="field-name">Количество, шт.</div><input class="mercury-value" type="number" min="1" step="1" value="3" readonly aria-label="Количество: 3"><button class="check-button ok" type="button" data-state="ok" aria-label="Количество соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Количество не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input type="number" min="0" step="1" placeholder="Фактическое количество, шт."></div></div>
+          <div class="compare-row"><div class="field-name">Дата выработки</div><div class="mercury-value">11.08.2026</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input type="date"></div></div>
+          <div class="compare-row"><div class="field-name">Срок годности</div><div class="mercury-value">до 16.08.2026</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input type="date"></div></div>
+        </div>
+      </section>
+      <section class="section" data-check-section="documents">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Сопроводительные документы</h2><p>Реквизиты транспортного документа партии.</p></div></div></div>
+        <div class="compare-grid">
+          <div class="compare-row" data-check="transport-document-type"><div class="field-name">Тип транспортного документа</div><div class="mercury-value">Товарно-транспортная накладная</div><button class="check-button ok" type="button" data-state="ok" aria-label="Тип транспортного документа соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Тип транспортного документа не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label for="fact-transport-document-type-usmanov">Фактическое значение</label><select id="fact-transport-document-type-usmanov"><option value="" selected disabled hidden>Выберите тип документа</option><option>Товарно-транспортная накладная</option><option>Коносамент</option><option>CMR</option><option>Авианакладная</option><option>Транспортная накладная</option></select></div></div>
+          <div class="compare-row" data-check="transport-document-number"><div class="field-name">Номер транспортного документа</div><div class="mercury-value">102</div><button class="check-button ok" type="button" data-state="ok" aria-label="Номер транспортного документа соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Номер транспортного документа не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Укажите фактический номер"></div></div>
+          <div class="compare-row" data-check="transport-document-date"><div class="field-name">Дата оформления транспортного документа</div><div class="mercury-value">12.08.2026</div><button class="check-button ok" type="button" data-state="ok" aria-label="Дата оформления транспортного документа соответствует"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad" aria-label="Дата оформления транспортного документа не соответствует"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input type="date"></div></div>
+        </div>
+      </section>
+      <section class="section" data-check-section="priorVse">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2>Ранее проведённая ВСЭ</h2><p>Сведения из мероприятий с партией продукции: номер экспертизы, дата, организация и результат осмотра.</p></div></div></div>
+        <div class="compare-grid">
+          <div class="compare-row reference"><div class="field-name">Номер экспертизы</div><div class="mercury-value">ВСЭ № 902</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический номер экспертизы"></div></div>
+          <div class="compare-row reference"><div class="field-name">Дата проведения</div><div class="mercury-value">12.08.2026 07:55</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input type="datetime-local"></div></div>
+          <div class="compare-row reference"><div class="field-name">Организация-оператор</div><div class="mercury-value">Лаборатория ВСЭ №2 г. Казань</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактическая лаборатория"></div></div>
+          <div class="compare-row reference"><div class="field-name">Результат ВСЭ</div><div class="mercury-value">Пригодно</div><button class="check-button ok" type="button" data-state="ok"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></button><button class="check-button bad" type="button" data-state="bad"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div class="fact-field"><label>Фактическое значение</label><input placeholder="Фактический результат осмотра"></div></div>
+        </div>
+        <div data-prior-conclusion data-text="По результатам ветеринарно-санитарной экспертизы туши и внутренние органы признаны пригодными для пищевых целей. Органолептические показатели соответствуют требованиям, патологические изменения и признаки инвазионных заболеваний не выявлены. Продукция допускается к реализации без ограничений при соблюдении установленных условий хранения и сроков годности."></div>
+      </section>
+      <div data-check-results data-transaction="true"></div>
+      <section class="section invoice-section" data-check-section="invoice" aria-labelledby="invoice-title">
+        <div class="section-head"><div class="section-title"><span class="section-icon"></span><div><h2 id="invoice-title">Расчёт стоимости услуг</h2><p>Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма.</p></div></div></div>
+        <div class="invoice-table-wrap">
+          <table class="invoice-table">
+            <thead><tr><th scope="col">Услуга</th><th scope="col">Количество</th><th scope="col">Тариф</th><th scope="col">Сумма</th></tr></thead>
+            <tbody>
+              <tr><td>Идентификация продукции по наименованию и визуальным осмотром</td><td>3 туши</td><td>94 ₽</td><td>282 ₽</td></tr>
+              <tr><td>Ветеринарно-санитарная оценка и идентификация транспорта</td><td>1 ТС</td><td>94 ₽</td><td>94 ₽</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <label class="invoice-waiver"><input type="checkbox" id="invoice-waiver-usmanov" name="invoiceWaiver"><span class="invoice-waiver-copy"><span class="invoice-waiver-title">Ярмарка</span><span class="invoice-waiver-note">Сверка данных и ВСЭ по этой партии проводятся без оплаты.</span></span></label>
+        <div class="invoice-total"><span>Итого к оплате</span><strong>376 ₽</strong></div>      </section>
+      <div class="actions"><a class="btn" href="arrivals.html">Отмена</a><button class="btn success" id="mark-all-ok" type="button" data-check-complete-icon>Все соответствует</button><button class="btn primary" type="submit">Завершить</button></div>
+    </form>
+  </main>
+  <div class="modal-backdrop" id="extinguish-modal" aria-hidden="true">
+    <div class="extinguish-modal" role="dialog" aria-modal="true" aria-labelledby="extinguish-title">
+      <div class="modal-head">
+        <div><h2 id="extinguish-title">Гашение транспортного эВСД</h2><p>Данные заполнены автоматически по результатам сверки.</p></div>
+        <button class="modal-close" type="button" data-close-extinguish aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="extinguish-method">
+          <div><div class="method-title">Способ гашения</div><div class="method-value" id="extinguish-method-value">Полное гашение</div></div>
+        </div>
+        <div class="extinguish-grid">
+          <div class="extinguish-field"><div class="extinguish-label">Дата поступления груза</div><div class="extinguish-value">12.08.2026 08:31</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Номер эВСД</div><div class="extinguish-value">RU016:260812-005102</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Получатель</div><div class="extinguish-value">Лаборатория ВСЭ №1 г. Казань</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Продукция</div><div class="extinguish-value">Говядина охлажденная</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Количество принято</div><div class="extinguish-value" id="accepted-quantity">3 туши</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Вес принят</div><div class="extinguish-value" id="accepted-weight">486,5 кг</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Специалист</div><div class="extinguish-value">Кузнецова А. М.</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Количество к возврату</div><div class="extinguish-value" id="return-quantity">0 туш</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Вес к возврату</div><div class="extinguish-value" id="return-weight">0 кг</div></div>
+        </div>
+        <div class="modal-note" id="extinguish-note">После гашения эВСД партия будет принята полностью. Возвратный эВСД не формируется.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" type="button" data-close-extinguish>Отмена</button>
+        <button class="btn" type="button" data-close-extinguish>Вернуться к сверке</button>
+        <button class="btn primary" type="button" id="extinguish-confirm">Погасить</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal-backdrop" id="refusal-modal" aria-hidden="true">
+    <div class="extinguish-modal" role="dialog" aria-modal="true" aria-labelledby="refusal-title">
+      <div class="modal-head">
+        <div><h2 id="refusal-title">Полный возврат</h2><p>Система обнаружила несоответствия, не связанные с частичной приемкой веса или количества.</p></div>
+        <button class="modal-close" type="button" data-close-refusal aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="extinguish-grid">
+          <div class="extinguish-field"><div class="extinguish-label">Решение</div><div class="extinguish-value">Полный возврат</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Номер эВСД</div><div class="extinguish-value">RU016:260812-005102</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Отправитель</div><div class="extinguish-value">ИП Усманов И.К.</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Получатель</div><div class="extinguish-value">Лаборатория ВСЭ №1 г. Казань</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Продукция</div><div class="extinguish-value">Говядина охлажденная</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Количество к возврату</div><div class="extinguish-value" id="refusal-quantity">3 туши</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Вес к возврату</div><div class="extinguish-value" id="refusal-weight">486,5 кг</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Специалист</div><div class="extinguish-value">Кузнецова А. М.</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Причина возврата</div><div class="extinguish-value" id="refusal-reason">Несоответствие фактических данных транспортному эВСД</div></div>
+        </div>
+        <div class="modal-note warn">Партия не будет принята. На всю партию потребуется создать возвратный транспортный эВСД.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" type="button" data-close-refusal>Отмена</button>
+        <button class="btn" type="button" data-close-refusal>Вернуться к сверке</button>
+        <button class="btn primary" type="button" id="refusal-confirm">Оформить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="return-evsd-modal" aria-hidden="true">
+    <div class="extinguish-modal" role="dialog" aria-modal="true" aria-labelledby="return-evsd-title">
+      <div class="modal-head">
+        <div><h2 id="return-evsd-title">Создание возвратного транспортного эВСД</h2><p>Документ формируется на непринятую часть партии после частичного гашения.</p></div>
+        <button class="modal-close" type="button" data-close-return aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="extinguish-grid">
+          <div class="extinguish-field"><div class="extinguish-label">Тип документа</div><div class="extinguish-value">Возвратный транспортный эВСД</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Основание</div><div class="extinguish-value" id="return-doc-basis">Частичное гашение входящего эВСД</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Исходный эВСД</div><div class="extinguish-value">RU016:260812-005102</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Дата формирования</div><div class="extinguish-value">12.08.2026 08:31</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Отправитель возврата</div><div class="extinguish-value">Лаборатория ВСЭ №1 г. Казань</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Получатель возврата</div><div class="extinguish-value">ИП Усманов И.К.</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Продукция</div><div class="extinguish-value">Говядина охлажденная</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Количество к возврату</div><div class="extinguish-value" id="return-doc-quantity">0 туш</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Вес к возврату</div><div class="extinguish-value" id="return-doc-weight">0 кг</div></div>
+          <div class="extinguish-field"><div class="extinguish-label">Специалист</div><div class="extinguish-value">Кузнецова А. М.</div></div>
+          <div class="extinguish-field wide"><div class="extinguish-label">Причина возврата</div><div class="extinguish-value" id="return-doc-reason">Часть партии не принята при сверке фактических данных</div></div>
+        </div>
+        <div class="modal-note warn">После создания возвратного эВСД непринятая часть партии будет оформлена к возврату отправителю.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" type="button" data-close-return>Отмена</button>
+        <button class="btn" type="button" id="back-to-extinguish">Вернуться к гашению</button>
+        <button class="btn primary" type="button" id="return-evsd-create">Создать</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.querySelectorAll('.fact-field').forEach(field=>{
+      const actions=document.createElement('div');
+      actions.className='fact-actions';
+      actions.innerHTML='<button class="fact-cancel" type="button">Отмена</button><button class="fact-ok" type="button">Ок</button>';
+      field.appendChild(actions);
+    });
+    document.querySelectorAll('.compare-row').forEach(row=>{
+      const buttons=[...row.querySelectorAll('.check-button')];
+      const value=row.querySelector('.mercury-value');
+      if(value) value.title=row.dataset.quantityLabel||value.textContent.trim();
+      buttons.forEach(button=>button.addEventListener('click',()=>{
+        buttons.forEach(item=>item.classList.remove('active'));
+        button.classList.add('active');
+        row.classList.toggle('match',button.dataset.state==='ok');
+        row.classList.toggle('mismatch',button.dataset.state==='bad');
+        row.classList.toggle('fact-collapsed',false);
+        const input=row.querySelector('.fact-field input,.fact-field textarea,.fact-field select');
+        if(input&&button.dataset.state==='bad') input.focus();
+      }));
+      const factOk=row.querySelector('.fact-ok');
+      const factCancel=row.querySelector('.fact-cancel');
+      factOk?.addEventListener('click',()=>row.classList.add('fact-collapsed'));
+      factCancel?.addEventListener('click',()=>{
+        row.classList.remove('match','mismatch','fact-collapsed');
+        buttons.forEach(item=>item.classList.remove('active'));
+        row.querySelectorAll('.fact-field input,.fact-field textarea,.fact-field select').forEach(input=>input.value='');
+        VseCheck?.setComparisonState(row,'');
+      });
+    });
+    document.getElementById('mark-all-ok').addEventListener('click',()=>{
+      document.querySelectorAll('.compare-row:not(.reference)').forEach(row=>{
+        row.classList.add('match','fact-collapsed');
+        row.classList.remove('mismatch');
+        row.querySelectorAll('.check-button').forEach(button=>button.classList.toggle('active',button.dataset.state==='ok'));
+        VseCheck?.setComparisonState(row,'ok');
+      });
+    });
+    const evsdCompleteUrl='evsd-check-usmanov-complete.html';
+    const vseCreateUrl='electronic-vse-journal.html';
+    const storagePrefix='evsdCheck:usmanov';
+    const successUrl=()=>localStorage.getItem(storagePrefix+':receiptDecision')!=='return-all'&&localStorage.getItem(storagePrefix+':repeatVseDecision')==='required'?vseCreateUrl:evsdCompleteUrl;
+    const invoiceWaiver=document.getElementById('invoice-waiver-usmanov');
+    const invoiceTotal=document.querySelector('.invoice-total strong');
+    const originalInvoiceTotal=invoiceTotal.textContent;
+    invoiceWaiver.addEventListener('change',()=>{
+      invoiceTotal.textContent=invoiceWaiver.checked?'0 ₽':originalInvoiceTotal;
+      localStorage.setItem(storagePrefix+':fairMarket',String(invoiceWaiver.checked));
+      
+    });
+    ['cargo-condition','combined-cargo'].forEach(id=>{
+      const select=document.getElementById(id);
+      select.value='';
+      const sync=()=>select.closest('.transport-observation').classList.toggle('selected',Boolean(select.value));
+      select.addEventListener('change',sync);
+      sync();
+    });
+    const extinguishModal=document.getElementById('extinguish-modal');
+    const returnEvsdModal=document.getElementById('return-evsd-modal');
+    const refusalModal=document.getElementById('refusal-modal');
+    let currentReturnMode='partial';
+    let currentExtinguishMode='full';
+    function openExtinguishModal(){extinguishModal.classList.add('open');extinguishModal.setAttribute('aria-hidden','false')}
+    function closeExtinguishModal(){extinguishModal.classList.remove('open');extinguishModal.setAttribute('aria-hidden','true')}
+    function openReturnEvsdModal(){returnEvsdModal.classList.add('open');returnEvsdModal.setAttribute('aria-hidden','false')}
+    function openRefusalModal(){refusalModal.classList.add('open');refusalModal.setAttribute('aria-hidden','false')}
+    function closeRefusalModal(){refusalModal.classList.remove('open');refusalModal.setAttribute('aria-hidden','true')}
+    function closeReturnEvsdModal(){returnEvsdModal.classList.remove('open');returnEvsdModal.setAttribute('aria-hidden','true')}
+    document.querySelectorAll('[data-close-extinguish]').forEach(button=>button.addEventListener('click',closeExtinguishModal));
+    document.querySelectorAll('[data-close-return]').forEach(button=>button.addEventListener('click',closeReturnEvsdModal));
+    document.querySelectorAll('[data-close-refusal]').forEach(button=>button.addEventListener('click',closeRefusalModal));
+    extinguishModal.addEventListener('click',event=>{if(event.target===extinguishModal) closeExtinguishModal()});
+    returnEvsdModal.addEventListener('click',event=>{if(event.target===returnEvsdModal) closeReturnEvsdModal()});
+    refusalModal.addEventListener('click',event=>{if(event.target===refusalModal) closeRefusalModal()});
+    function rowByName(name){return [...document.querySelectorAll('.compare-row')].find(row=>row.querySelector('.field-name')?.textContent.trim()===name)}
+    function clearCompletionState(){localStorage.removeItem(storagePrefix+':scenario');localStorage.removeItem(storagePrefix+':mismatches')}
+    function mismatchRowsData(){return [...document.querySelectorAll('.compare-row:not(.reference).mismatch')].map(row=>{
+      const field=row.querySelector('.field-name')?.textContent.trim()||'';
+      const mercury=row.dataset.quantityLabel||row.querySelector('.mercury-value')?.textContent.trim()||'';
+      const fact=row.querySelector('.fact-field input,.fact-field textarea,.fact-field select')?.value.trim()||'';
+      const reason=row.querySelector('.mismatch-reason-input')?.value.trim()||'';
+      return {field,mercury,fact,reason};
+    }).filter(item=>item.field)}
+    function saveCompletionResult(scenario){localStorage.setItem(storagePrefix+':scenario',scenario);localStorage.setItem(storagePrefix+':mismatches',JSON.stringify(mismatchRowsData()))}
+    function saveRefusalResult(){saveCompletionResult('refusal')}
+    function firstNumber(text){const match=String(text||'').replace(',', '.').match(/\d+(?:\.\d+)?/);return match?Number(match[0]):NaN}
+    function formatWeight(value){return value.toLocaleString('ru-RU',{minimumFractionDigits:value%1?1:0,maximumFractionDigits:1})+' кг'}
+    function formatQuantity(value){const rounded=Math.max(0,Math.round(value));return rounded+' '+(rounded===1?'туша':'туши')}
+    function factNumber(row){return firstNumber(row?.querySelector('.fact-field input,.fact-field textarea,.fact-field select')?.value)}
+    function originalNumber(row){return row?.dataset.quantity?Number(row.dataset.quantity):firstNumber(row?.querySelector('.mercury-value')?.textContent)}
+    function partialData(){
+      const quantityRow=rowByName('Количество, шт.');
+      const weightRow=rowByName('Вес');
+      const originalQuantity=originalNumber(quantityRow);
+      const originalWeight=originalNumber(weightRow);
+      const quantityIsPartial=quantityRow?.classList.contains('mismatch')&&!Number.isNaN(factNumber(quantityRow))&&factNumber(quantityRow)<originalQuantity&&factNumber(quantityRow)>=0;
+      const weightIsPartial=weightRow?.classList.contains('mismatch')&&!Number.isNaN(factNumber(weightRow))&&factNumber(weightRow)<originalWeight&&factNumber(weightRow)>=0;
+      if(!quantityIsPartial&&!weightIsPartial) return null;
+      const acceptedQuantity=quantityIsPartial?factNumber(quantityRow):originalQuantity;
+      const acceptedWeight=weightIsPartial?factNumber(weightRow):originalWeight;
+      return {acceptedQuantity,acceptedWeight,returnQuantity:Math.max(0,originalQuantity-acceptedQuantity),returnWeight:Math.max(0,originalWeight-acceptedWeight)};
+    }
+    function nonVolumeRowsValidForPartial(){return [...document.querySelectorAll('.compare-row:not(.reference)')].every(row=>{
+      const name=row.querySelector('.field-name')?.textContent.trim();
+      if(name==='Количество, шт.'||name==='Вес') return !row.classList.contains('mismatch')||row.classList.contains('fact-collapsed')||row.querySelector('.fact-field input,.fact-field textarea,.fact-field select')?.value.trim();
+      return row.classList.contains('match')&&!row.classList.contains('mismatch');
+    })}
+    function allRowsMatch(){return [...document.querySelectorAll('.compare-row:not(.reference)')].every(row=>row.classList.contains('match')&&!row.classList.contains('mismatch'))}
+
+    function rejectionData(){
+      const mismatchRows=[...document.querySelectorAll('.compare-row:not(.reference).mismatch')];
+      const critical=mismatchRows.filter(row=>{const name=row.querySelector('.field-name')?.textContent.trim();return name!=='Количество, шт.'&&name!=='Вес'});
+      if(!critical.length) return null;
+      const first=critical[0].querySelector('.field-name')?.textContent.trim()||'данные партии';
+      const fact=critical[0].querySelector('.fact-field input,.fact-field textarea,.fact-field select')?.value.trim();
+      const reason=critical[0].querySelector('.mismatch-reason-input')?.value.trim();
+      return {reason:'Несоответствие поля «'+first+'»'+(fact?': '+fact:'')+(reason?'. Причина: '+reason:'')};
+    }
+    function transportRejectionData(){
+      const cargo=document.getElementById('cargo-condition')?.value.trim();
+      const combined=document.getElementById('combined-cargo')?.value.trim();
+      if(cargo==='Есть загрязнения или повреждения') return {reason:'Несоответствие поля «Состояние грузового отделения»: '+cargo};
+      if(combined==='Да, разделение не обеспечено') return {reason:'Несоответствие поля «Совместная перевозка с другими грузами»: '+combined};
+      return null;
+    }
+    function fillRefusalModal(data){
+      currentReturnMode='refusal';
+      document.getElementById('refusal-reason').textContent=data.reason;
+      document.getElementById('return-doc-basis').textContent='Полный возврат';
+      document.getElementById('return-doc-quantity').textContent='3 туши';
+      document.getElementById('return-doc-weight').textContent='486,5 кг';
+      document.getElementById('return-doc-reason').textContent=data.reason;
+    }
+    function fillExtinguishModal(mode,data){
+      currentExtinguishMode=mode;
+      document.getElementById('extinguish-method-value').textContent=mode==='partial'?'Частичное гашение':'Полное гашение';
+      document.getElementById('accepted-quantity').textContent=mode==='partial'?formatQuantity(data.acceptedQuantity):'3 туши';
+      document.getElementById('accepted-weight').textContent=mode==='partial'?formatWeight(data.acceptedWeight):'486,5 кг';
+      document.getElementById('return-quantity').textContent=mode==='partial'?formatQuantity(data.returnQuantity):'0 туш';
+      document.getElementById('return-weight').textContent=mode==='partial'?formatWeight(data.returnWeight):'0 кг';
+      document.getElementById('return-doc-quantity').textContent=document.getElementById('return-quantity').textContent;
+      document.getElementById('return-doc-weight').textContent=document.getElementById('return-weight').textContent;
+      document.getElementById('return-doc-basis').textContent='Частичное гашение входящего эВСД';
+      document.getElementById('return-doc-reason').textContent='Часть партии не принята при сверке фактических данных';
+      document.getElementById('extinguish-note').textContent=mode==='partial'?'После гашения будет принята только фактическая часть партии. На непринятую часть потребуется создать возвратный транспортный эВСД.':'После гашения эВСД партия будет принята полностью. Возвратный эВСД не формируется.';
+      document.getElementById('extinguish-note').classList.toggle('warn',mode==='partial');
+    }
+    document.getElementById('extinguish-confirm').addEventListener('click',()=>{
+      currentReturnMode='partial';
+      if(currentExtinguishMode==='partial'){closeExtinguishModal();openReturnEvsdModal();return}
+      localStorage.removeItem('evsdCheck:usmanov:acceptedQuantity');
+      localStorage.removeItem('evsdCheck:usmanov:acceptedWeight');
+      saveCompletionResult('full');
+      window.location.href=successUrl();
+    });
+    document.getElementById('back-to-extinguish').addEventListener('click',()=>{closeReturnEvsdModal();openExtinguishModal()});
+    document.getElementById('refusal-confirm').addEventListener('click',()=>{
+      localStorage.removeItem('evsdCheck:usmanov:acceptedQuantity');
+      localStorage.removeItem('evsdCheck:usmanov:acceptedWeight');
+      saveRefusalResult();
+      window.location.href=evsdCompleteUrl;
+    });
+    document.getElementById('return-evsd-create').addEventListener('click',()=>{
+      if(currentReturnMode==='partial'){
+        localStorage.setItem('evsdCheck:usmanov:acceptedQuantity',document.getElementById('accepted-quantity').textContent.trim());
+        localStorage.setItem('evsdCheck:usmanov:acceptedWeight',document.getElementById('accepted-weight').textContent.trim());
+        saveCompletionResult('partial');
+      }
+      window.location.href=successUrl();
+    });
+    document.getElementById('check-form').addEventListener('submit',event=>{
+      event.preventDefault();
+      const form=document.getElementById('check-form');
+      if(!VseCheck?.validateMismatchDetails(form)||!VseCheck?.validateReceiptDecision(form)) return;
+      const transactionGroup=document.querySelector('.check-transaction-group');
+      const transactionError=VseCheck?.validateTransactionDecision(transactionGroup);
+      if(transactionError){transactionError.select.focus();return;}
+      localStorage.setItem('evsdCheck:usmanov:transaction',transactionGroup.querySelector('[name="transactionDecision"]').value);
+      localStorage.setItem('evsdCheck:usmanov:transactionType',transactionGroup.querySelector('[name="transactionType"]')?.value||'');
+      const repeatVseDecision=document.querySelector('[name="repeatVseDecision"]');
+      if(repeatVseDecision&&!repeatVseDecision.value){
+        VseCheck?.setDecisionFieldError(repeatVseDecision,'Укажите необходимость повторного ВСЭ.');
+        repeatVseDecision.focus();
+        return;
+      }
+      if(repeatVseDecision)localStorage.setItem(storagePrefix+':repeatVseDecision',repeatVseDecision.value);
+      const repeatVseGroup=document.querySelector('.check-repeat-vse-group');
+      const repeatVseError=VseCheck?.validateRepeatVseDetails(repeatVseGroup);
+      if(repeatVseError){repeatVseError.input.focus();return;}
+      if(repeatVseDecision&&repeatVseDecision.value==='required'){
+        localStorage.setItem(storagePrefix+':repeatVseBasis',repeatVseGroup.querySelector('[name="repeatVseBasis"]').value.trim());
+        localStorage.setItem(storagePrefix+':repeatVseAct',repeatVseGroup.querySelector('[name="repeatVseAct"]').value.trim());
+      } else {
+        localStorage.removeItem(storagePrefix+':repeatVseBasis');
+        localStorage.removeItem(storagePrefix+':repeatVseAct');
+      }
+      [['cargo-condition','cargoCondition'],['combined-cargo','combinedCargo']].forEach(([id,key])=>{const value=document.getElementById(id).value.trim();if(value)localStorage.setItem(storagePrefix+':'+key,value);else localStorage.removeItem(storagePrefix+':'+key)});
+      const receipt=VseCheck.getReceiptDecisionPayload(form);
+      localStorage.setItem(storagePrefix+':receiptDecision',receipt.decision);
+      localStorage.setItem(storagePrefix+':returnReason',receipt.otherReason||receipt.returnReason||'');
+      localStorage.setItem(storagePrefix+':actRequired',String(VseCheck.evaluateReceiptDecisions(form).actRequiredRows.length>0));
+      if(receipt.decision==='return-all'){
+        fillRefusalModal({reason:receipt.otherReason||receipt.returnReason});
+        openRefusalModal();
+        return;
+      }
+      const receiptEvaluation=VseCheck.evaluateReceiptDecisions(form);
+      if(receipt.decision==='partial'){
+        const total=Number(document.querySelector('.quantity-simple-row')?.dataset.quantity||0);
+        const returnedParts=receipt.returnedParts.length;
+        fillExtinguishModal('partial',{acceptedQuantity:Math.max(0,total-returnedParts),acceptedWeight:receipt.accepted,returnQuantity:returnedParts,returnWeight:receipt.returned});
+        if(receiptEvaluation.actRequiredRows.length) document.getElementById('extinguish-note').textContent+=' Будет сформирован акт несоответствия.';
+        openExtinguishModal();
+        return;
+      }
+      fillExtinguishModal('full');
+      if(receiptEvaluation.actRequiredRows.length){
+        document.getElementById('extinguish-note').textContent='Партия будет принята полностью. Будет сформирован акт несоответствия.';
+      }
+      openExtinguishModal();
+    });
+    document.getElementById('logout').addEventListener('click',()=>{window.location.href='login.html'});
+  </script>
+</body>
+</html>
+
+
+
+

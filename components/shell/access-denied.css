@@ -1,0 +1,29 @@
+/* Общий экран состояния «Нет доступа / доступ отозван». Ограничен областью .vse-access-denied. */
+.vse-access-denied {
+  box-sizing: border-box;
+  display: grid;
+  place-items: start center;
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 64px 0 84px;
+  min-height: calc(100vh - 76px);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.vse-access-denied * { box-sizing: border-box; }
+.vse-access-card { width: min(560px, 100%); padding: 28px 30px 26px; border: 1px solid var(--app-line, #dfe9e9); border-radius: 17px; background: #fff; box-shadow: 0 8px 26px #17323a08; }
+.vse-access-title { margin: 0; color: var(--app-ink, #17323a); font-size: 22px; line-height: 1.25; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.vse-access-text { margin: 10px 0 0; color: var(--app-muted-readable, #5f787f); overflow-wrap: anywhere; }
+.vse-access-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.vse-access-actions .app-button { text-decoration: none; }
+.vse-access-saved-link { display: inline-block; margin-top: 18px; color: var(--app-teal, #146c73); font-size: 13px; font-weight: 720; text-decoration: none; }
+.vse-access-saved-link:hover { color: var(--app-teal-dark, #0d5358); text-decoration: underline; text-underline-offset: 3px; }
+.vse-access-note { margin: 18px 0 0; color: var(--app-muted-readable, #5f787f); font-size: 12.5px; }
+.vse-access-denied[data-access-state="checking"] .vse-access-title { color: var(--app-muted-readable, #5f787f); font-weight: 680; }
+@media (max-width: 720px) {
+  .vse-access-denied { width: min(100% - 32px, 1180px); padding: 34px 0 72px; }
+  .vse-access-card { padding: 22px 20px; border-radius: 14px; }
+}
+@media (max-width: 420px) {
+  .vse-access-denied { width: min(100% - 24px, 1180px); }
+  .vse-access-actions .app-button { width: 100%; }
+}

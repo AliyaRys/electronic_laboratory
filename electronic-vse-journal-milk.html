@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Создание ВСЭ молока</title>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="node_modules/choices.js/public/assets/styles/choices.min.css">
+  <link rel="stylesheet" href="milk-vse-create.css?v=20261018-2">
+  <link rel="stylesheet" href="meat-primary-research.css?v=20261016-2">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="stylesheet" href="evsd-invoice.css?v=20261018-1">
+  <link rel="stylesheet" href="vse-part-outcomes.css?v=20261031-2">
+  <link rel="stylesheet" href="components/app/vse-library-select.css?v=20261018-1">
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="app-shell.js" defer></script>
+  <script src="node_modules/choices.js/public/assets/scripts/choices.min.js" defer></script>
+  <script src="milk-vse-selects.js?v=20261018-1" defer></script>
+  <script src="vse-invoice.js" defer></script>
+  <script src="vse-part-outcomes.js?v=20261031-2" defer></script>
+  <script src="milk-section-research.js?v=20261018-1" defer></script>
+  <script src="milk-vse-create.js?v=20261031-1" defer></script>
+</head>
+<body class="milk-page">
+  <header class="topbar">
+    <a class="brand" href="journal-milk.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink active" href="arrivals-milk.html" id="arrivals-link" aria-current="page"><span class="icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"></path><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"></path><path d="M12 12.4V20"></path></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink" href="journal-milk.html" id="journal-home"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink" href="directories.html" id="directories"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Молоко и молочная продукция" data-short-label="Молоко"><span class="navtext" data-product-label>Молоко и молочная продукция</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции"><button type="button" role="option" aria-selected="false" data-product-option="meat">Мясо и продукты убоя</button><button class="active" type="button" role="option" aria-selected="true" data-product-option="milk">Молоко и молочная продукция</button></div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link" href="profile.html" id="profile"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <main>
+    <div class="title-row"><div><p class="eyebrow">Новая запись</p><h1>Создание ВСЭ</h1></div><div class="legend"><span class="req">*</span> обязательные поля</div></div>
+    <form id="vse-form" novalidate>
+      <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l4 4v14H4V3h4z"/><path d="M16 3v5h5"/><path d="M8 12h8"/><path d="M8 16h6"/></svg></span><div><h2>Сведения об экспертизе</h2><p>Регистрационные данные и ветеринарный сопроводительный документ.</p></div></div></div><div class="grid">
+        <div class="field wide"><label for="decision-number">Номер решения о назначении ВСЭ <span class="req">*</span></label><input id="decision-number" name="decisionNumbers[]" inputmode="numeric" pattern="[0-9]+" placeholder="Например, 1" title="Введите номер решения" required></div>
+        <div class="field wide"><label for="arrival-time">Дата и время обращения <span class="req">*</span></label><input id="arrival-time" type="datetime-local" required></div>
+        <div class="field wide"><label for="vsd-number">Номер ВСД</label><input id="vsd-number" readonly></div>
+        <div class="field wide"><label for="vsd-date">Дата создания ВСД</label><input id="vsd-date" readonly></div>
+      </div></section>
+      <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20h12"/><path d="M12 4v16"/><path d="M5 8h14"/><path d="M7 8l-3 6h6L7 8z"/><path d="M17 8l-3 6h6l-3-6z"/></svg></span><div><h2>Владелец и продукция</h2><p>Данные владельца, происхождение и характеристики молочной продукции.</p></div></div></div><div class="grid">
+        <div class="field wide"><label for="owner">Наименование хозяйства / ФИО <span class="req">*</span></label><input id="owner" required></div><div class="field wide"><label for="address">Адрес владельца <span class="req">*</span></label><input id="address" value="Республика Татарстан, Высокогорский район, с. Высокая Гора" placeholder="Начните вводить регион, район, населённый пункт…" required></div>
+        <div class="field wide"><label for="product">Вид продукции</label><input id="product"></div><div class="field wide"><label for="amount">Объём партии</label><input id="amount"></div>
+        <div class="field wide composition-field"><label>Количество <span class="req">*</span></label><div class="composition" aria-label="Состав партии"><div class="composition-head"><div>Секция</div><div>Объём</div></div><div id="composition-rows"></div></div></div>
+      </div></section>
+      <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><div><h2>Исследования ВСЭ</h2><p>Результаты основных и дополнительных исследований ветеринарно-санитарной экспертизы.</p></div></div></div><div class="research-grid" id="milk-research-grid"></div></section>
+      <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span><div><h2>Итог экспертизы</h2><p>Заключение, стоимость и специалист, проводивший ВСЭ.</p></div></div></div><div class="grid"><div class="field wide"><label for="sample-date">Дата отбора проб</label><input id="sample-date" type="date"></div><div class="field"><label for="specialist">Специалист Госветслужбы <span class="req">*</span></label><select id="specialist" data-library-select required><option disabled>Выберите специалиста</option><option selected>Кузнецова Анна Сергеевна</option><option>Сафин Ильдар Ринатович</option></select></div><div class="vse-outcomes"><p class="vse-outcomes-title">Результат ВСЭ по каждой исследуемой части <span class="req">*</span></p><div class="vse-outcome-list" id="vse-outcome-list"></div><p class="vse-outcome-error" role="alert">Выберите результат и направление для каждой части партии.</p></div></div></section>
+      <section class="section invoice-section" aria-labelledby="vse-invoice-title"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><div><h2 id="vse-invoice-title">Расчёт стоимости услуг</h2><p>Заполненные исследования, их количество, тарифы и итоговая сумма.</p></div></div></div><div class="invoice-table-wrap"><table class="invoice-table standardized-columns"><colgroup><col class="invoice-service-column"><col class="invoice-quantity-column"><col class="invoice-rate-column"><col class="invoice-sum-column"></colgroup><thead><tr><th scope="col">Услуга</th><th scope="col">Количество</th><th scope="col">Тариф</th><th scope="col">Сумма</th></tr></thead><tbody id="vse-invoice-lines"></tbody></table></div><div class="invoice-total"><span>Итого к оплате</span><strong id="vse-invoice-total">0 ₽</strong></div></section>
+      <div class="actions"><span class="form-status" id="form-status" role="status"></span><button class="btn ghost" type="button" id="cancel">Отменить</button><button class="btn secondary" type="button" id="save-draft">Сохранить как черновик</button><button class="btn primary" type="submit">Сохранить ВСЭ</button></div>
+    </form>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

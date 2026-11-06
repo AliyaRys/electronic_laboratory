@@ -1,0 +1,12 @@
+/* Shared filter layout for completed meat and milk arrivals. */
+.filters-row {
+  grid-template-columns: minmax(220px, 1.2fr) minmax(260px, 1fr) minmax(170px, .7fr) minmax(170px, .7fr);
+}
+
+@media (max-width: 1120px) {
+  .filters-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 800px) {
+  .filters-row { grid-template-columns: minmax(0, 1fr); }
+}

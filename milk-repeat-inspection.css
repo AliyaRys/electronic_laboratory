@@ -1,0 +1,8 @@
+.inspection-test-toggle { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 14px; font-weight: 700; }
+.inspection-test-toggle input { width: 16px; min-height: 16px; height: 16px; padding: 0; accent-color: var(--teal); }
+.inspection-cost { text-align: right; margin: 22px 0 10px; color: var(--muted); }
+.inspection-cost strong { color: var(--ink); }
+.inspection-error { padding: 12px; border: 1px solid #edd0d2; border-radius: 9px; background: #fff4f4; color: var(--danger); }
+.field [aria-invalid="true"], .result [aria-invalid="true"] { border-color: var(--danger); }
+textarea { resize: none; }
+.research :disabled { color: var(--muted); background: #f3f6f6; }

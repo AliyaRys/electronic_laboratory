@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — повторный ветосмотр №1</title>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="stylesheet" href="vse-view.css?v=20261018-4">
+  <link rel="stylesheet" href="meat-primary-research.css?v=20261016-2">
+  <link rel="stylesheet" href="evsd-invoice.css">
+  <link rel="stylesheet" href="vse-view-actions.css">
+  <style>
+    .single-inspection-research .research.full-card{grid-column:auto}
+    .single-inspection-research .research.compact-primary{display:block}
+    .single-inspection-research .research.compact-primary .part-research{grid-template-columns:minmax(0,1fr)}
+    .single-inspection-research .research:last-child{grid-column:1/-1}
+    .repeat-inspection-result{grid-column:1/-1}
+    .repeat-inspection-result select{width:100%;min-height:43px;border:1px solid #d8e5e5;border-radius:9px;padding:0 42px 0 12px;background:#f7fbfb;color:#3f5c62;font-weight:600}
+  </style>
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="app-shell.js?v=20261019-2" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="journal.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43" loading="eager" decoding="sync" fetchpriority="high"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink active" href="arrivals.html" id="arrivals-link" aria-current="page"><span class="icon"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"></path><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"></path><path d="M12 12.4V20"></path></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink" href="journal.html" id="journal-home"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink" href="directories.html" id="directories"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Мясо и продукты убоя" data-short-label="Мясо"><span class="product-icon" aria-hidden="true" data-product-icon="meat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.7 3.3c4.8-.5 8.1 2.5 8.1 6.8 0 5.5-4.4 10.5-9.8 10.5-4.4 0-7.8-2.7-7.8-6.7 0-3.1 1.9-5.7 4.7-7.1 1.7-.9 2.5-3.2 4.8-3.5Z"></path><path d="M12.6 7.3c2.7-.4 4.6 1.2 4.6 3.4 0 2.7-2.5 5-5.2 5-2.2 0-3.8-1.4-3.8-3.5 0-1.8 1.7-3.3 4.4-4.9Z"></path></svg></span><span class="navtext" data-product-label>Мясо и продукты убоя</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
+          <button type="button" role="option" aria-selected="true" data-product-option="meat" class="active"><span class="product-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.7 3.3c4.8-.5 8.1 2.5 8.1 6.8 0 5.5-4.4 10.5-9.8 10.5-4.4 0-7.8-2.7-7.8-6.7 0-3.1 1.9-5.7 4.7-7.1 1.7-.9 2.5-3.2 4.8-3.5Z"></path><path d="M12.6 7.3c2.7-.4 4.6 1.2 4.6 3.4 0 2.7-2.5 5-5.2 5-2.2 0-3.8-1.4-3.8-3.5 0-1.8 1.7-3.3 4.4-4.9Z"></path></svg></span>Мясо и продукты убоя</button>
+          <button type="button" role="option" aria-selected="false" data-product-option="milk"><span class="product-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v3l1.5 2.5V19a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2V8.5L9 6V3Z"></path><path d="M9 6h6M7.5 11h9M7.5 16h9"></path></svg></span>Молоко и молочная продукция</button>
+        </div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link" href="profile.html" id="profile"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <main>
+    <div class="title-row"><div><p class="eyebrow">Повторный ветеринарный осмотр</p><h1>Ветосмотр №1</h1></div></div>
+    <form class="view-form" aria-label="Заполненная карточка повторного ветосмотра">
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l4 4v14H4V3h4z"></path><path d="M16 3v5h5"></path><path d="M8 12h8"></path><path d="M8 16h6"></path></svg></span><div><h2>Сведения о повторном ветосмотре</h2><p>Регистрационные данные осмотра и связанная партия продукции.</p></div></div></div>
+        <div class="grid"><div class="field wide"><label for="decision-number">Номер ветосмотра <span class="req">*</span></label><input id="decision-number" value="1" readonly></div><div class="field wide"><label for="arrival">Дата и время обращения <span class="req">*</span></label><input id="arrival" value="14.08.2026 11:30" readonly></div></div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20h12"></path><path d="M12 4v16"></path><path d="M5 8h14"></path><path d="M7 8l-3 6h6L7 8z"></path><path d="M17 8l-3 6h6l-3-6z"></path></svg></span><div><h2>Владелец и продукция</h2><p>Данные владельца, происхождение и характеристики туш.</p></div></div></div>
+        <div class="grid product-grid">
+          <div class="field wide"><label for="owner">Наименование хозяйства / ФИО <span class="req">*</span></label><input id="owner" value="АО «Челны-Мясо»" readonly></div><div class="field wide"><label for="address">Адрес владельца <span class="req">*</span></label><input id="address" value="Республика Татарстан, г. Набережные Челны, Промышленная зона" readonly></div>
+          <div class="field"><label for="meat">Вид мяса <span class="req">*</span></label><input id="meat" value="Говядина" readonly></div><div class="field"><label for="weight">Общий вес туш, кг <span class="req">*</span></label><input id="weight" value="438,0" readonly></div>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5 21 21"></path></svg></span><div><h2>Исследования</h2><p>Результаты исследований остатка партии.</p></div></div></div>
+        <div class="research-grid single-inspection-research">
+          <article class="research primary full-card compact-primary"><header><h3>Органолептика <span class="req">*</span></h3></header><div class="batch-apply"><span>Вся партия</span><div class="batch-actions"><button class="batch-action active ok" type="button" data-value="ok" aria-pressed="true" aria-disabled="true">Соответствует</button><button class="batch-action" type="button" data-value="bad" aria-pressed="false" aria-disabled="true">Не соответствует</button></div></div><div class="part-research"><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-01 · туша</strong></div><div class="radio-group"><label class="radio"><input type="radio" name="organoleptic-1" value="ok" checked disabled><span>Соответствует</span></label><label class="radio"><input type="radio" name="organoleptic-1" value="bad" disabled><span>Не соответствует</span></label></div></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-02 · туша</strong></div><div class="radio-group"><label class="radio"><input type="radio" name="organoleptic-2" value="ok" checked disabled><span>Соответствует</span></label><label class="radio"><input type="radio" name="organoleptic-2" value="bad" disabled><span>Не соответствует</span></label></div></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-03 · туша</strong></div><div class="radio-group"><label class="radio"><input type="radio" name="organoleptic-3" value="ok" checked disabled><span>Соответствует</span></label><label class="radio"><input type="radio" name="organoleptic-3" value="bad" disabled><span>Не соответствует</span></label></div></div></div></article>
+          <article class="research primary full-card compact-primary"><header><h3>Идентификация <span class="req">*</span></h3></header><div class="batch-apply"><span>Вся партия</span><div class="batch-actions"><button class="batch-action active ok" type="button" data-value="ok" aria-pressed="true" aria-disabled="true">Соответствует</button><button class="batch-action" type="button" data-value="bad" aria-pressed="false" aria-disabled="true">Не соответствует</button></div></div><div class="part-research"><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-01 · туша</strong></div><div class="radio-group"><label class="radio"><input type="radio" name="identification-1" value="ok" checked disabled><span>Соответствует</span></label><label class="radio"><input type="radio" name="identification-1" value="bad" disabled><span>Не соответствует</span></label></div></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-02 · туша</strong></div><div class="radio-group"><label class="radio"><input type="radio" name="identification-2" value="ok" checked disabled><span>Соответствует</span></label><label class="radio"><input type="radio" name="identification-2" value="bad" disabled><span>Не соответствует</span></label></div></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-03 · туша</strong></div><div class="radio-group"><label class="radio"><input type="radio" name="identification-3" value="ok" checked disabled><span>Соответствует</span></label><label class="radio"><input type="radio" name="identification-3" value="bad" disabled><span>Не соответствует</span></label></div></div></div></article>
+          <article class="research primary full-card"><header><h3>Температура в толще мышц, °C <span class="req">*</span></h3></header><div class="part-research"><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-01 · туша</strong></div><input aria-label="Температура, туша 1" value="3,0" readonly></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-02 · туша</strong></div><input aria-label="Температура, туша 2" value="3,0" readonly></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-03 · туша</strong></div><input aria-label="Температура, туша 3" value="3,0" readonly></div></div></article>
+          <article class="research full-card"><header><h3>pH</h3></header><div class="part-research"><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-01 · туша</strong></div><input aria-label="pH, туша 1" value="5,88" readonly></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-02 · туша</strong></div><input aria-label="pH, туша 2" value="5,88" readonly></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-03 · туша</strong></div><input aria-label="pH, туша 3" value="5,88" readonly></div></div></article>
+          <article class="research full-card"><header><h3>Дозометрическое исследование</h3></header><div class="part-research"><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-01 · туша</strong></div><div class="dose-grid"><div><label for="dose-1">Мощность дозы от части, мкЗв/ч</label><input id="dose-1" value="0,12" readonly></div><div><label for="gamma-1">Гамма-фон в помещении, мкЗв/ч</label><input id="gamma-1" value="0,10" readonly></div></div></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-02 · туша</strong></div><div class="dose-grid"><div><label for="dose-2">Мощность дозы от части, мкЗв/ч</label><input id="dose-2" value="0,12" readonly></div><div><label for="gamma-2">Гамма-фон в помещении, мкЗв/ч</label><input id="gamma-2" value="0,10" readonly></div></div></div><div class="part-row"><div class="part-label"><strong>ЧМ-26-ГВ-0812-03 · туша</strong></div><div class="dose-grid"><div><label for="dose-3">Мощность дозы от части, мкЗв/ч</label><input id="dose-3" value="0,12" readonly></div><div><label for="gamma-3">Гамма-фон в помещении, мкЗв/ч</label><input id="gamma-3" value="0,10" readonly></div></div></div></div></article>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon">✓</span><div><h2>Итог повторного ветосмотра</h2><p>Заключение и специалист, проводивший повторный осмотр.</p></div></div></div>
+        <div class="grid"><div class="field wide"><label for="sample-date">Дата проведения осмотра</label><input id="sample-date" value="14.08.2026 11:30" readonly></div><div class="field wide"><label for="specialist">Специалист Госветслужбы <span class="req">*</span></label><input id="specialist" value="Кузнецова Анна Сергеевна" readonly></div>
+          <div class="field full repeat-inspection-result"><label for="repeat-inspection-result">Результат повторного ветосмотра <span class="req">*</span></label><select id="repeat-inspection-result"><option selected>Условия хранения соблюдены, показатели партии соответствуют требованиям</option><option>Условия хранения не соблюдены, показатели партии не соответствуют требованиям</option></select></div>
+        </div>
+      </section>
+      <section class="section invoice-section" aria-labelledby="invoice-title">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3Z"></path><path d="M8 8h8M8 12h8M8 16h5"></path></svg></span><div><h2 id="invoice-title">Расчёт стоимости услуг</h2><p>Проведённые исследования, их количество, тарифы и итоговая сумма.</p></div></div></div>
+        <div class="invoice-table-wrap"><table class="invoice-table standardized-columns"><colgroup><col class="invoice-service-column"><col class="invoice-quantity-column"><col class="invoice-rate-column"><col class="invoice-sum-column"></colgroup><thead><tr><th scope="col">Услуга</th><th scope="col">Количество</th><th scope="col">Тариф</th><th scope="col">Сумма</th></tr></thead><tbody><tr><td>Повторный ветеринарный осмотр</td><td>1</td><td>400 ₽</td><td>400 ₽</td></tr></tbody></table></div><div class="invoice-total"><span>Итого к оплате</span><strong>400 ₽</strong></div>
+      </section>
+    </form>
+  </main>
+  <script>
+    (() => {
+      document.querySelectorAll('.research').forEach(card => {
+        card.classList.add('single-part');
+        card.querySelector('.batch-apply')?.remove();
+        const group = card.querySelector('.part-research');
+        [...group.children].slice(1).forEach(row => row.remove());
+        group.querySelector('.part-label strong').textContent = 'Остаток партии · 438,0 кг';
+      });
+    })();
+  </script></body>
+</html>
+
+

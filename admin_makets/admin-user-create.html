@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Создание пользователя</title>
+  <link rel="preload" as="image" href="../vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="../components/app/app.css">
+  <link rel="stylesheet" href="../app-shell.css">
+  <link rel="stylesheet" href="../components/admin/admin.css">
+  <link rel="stylesheet" href="../components/admin/admin-forms.css">
+  <link rel="stylesheet" href="admin-user-create-page.css">
+  <script src="../components/icons/VseIcon.js" defer></script>
+  <script src="../components/app/Icon.js" defer></script>
+  <script src="../components/app/Button.js" defer></script>
+  <script src="../components/app/InfoField.js" defer></script>
+  <script src="../components/auth/TextField.js" defer></script>
+  <script src="../components/shell/AppHeader.js" defer></script>
+  <script src="../app-shell.js" defer></script>
+  <script src="../components/admin/AdminData.js" defer></script>
+  <script src="../components/admin/AdminDemoStore.js" defer></script>
+  <script src="../components/admin/AdminTextField.js" defer></script>
+  <script src="../components/admin/AccessEditor.js" defer></script>
+  <script src="../components/admin/CreateUserForm.js" defer></script>
+  <script src="admin-user-create-page.js" defer></script>
+</head>
+<body class="vse-app admin-page">
+  <header class="topbar"
+    data-app-header-mode="admin"
+    data-logo-src="../vse-lab-icon-transparent.png"
+    data-brand-href="admin-users.html"
+    data-admin-users-href="admin-users.html"
+    data-profile-href="admin-profile.html">
+    <a class="brand" href="admin-users.html"><img src="../vse-lab-icon-transparent.png" alt=""><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav"><a class="navlink active" id="admin-users-link" href="admin-users.html">Управление пользователями</a></nav>
+    <div class="user-area"><a class="user-link" href="admin-profile.html"><span class="avatar">ЕМ</span><span>Елена Морозова</span></a><button class="logout" id="logout" type="button">Выйти</button></div>
+  </header>
+
+  <main class="admin-create-main">
+    <a class="admin-back-link" href="admin-users.html" id="back-to-users">
+      <span data-back-icon aria-hidden="true"></span>
+      <span>К списку пользователей</span>
+    </a>
+    <div class="admin-create-heading">
+      <h1>Создание пользователя</h1>
+      <p>Новая учётная запись для Лаборатории ВСЭ №1 г. Казань</p>
+    </div>
+    <div id="admin-create-root"></div>
+  </main>
+
+  <dialog class="admin-unsaved-dialog" id="unsaved-dialog" aria-labelledby="unsaved-title">
+    <div class="admin-unsaved-dialog-box">
+      <h2 id="unsaved-title">Изменения не сохранены</h2>
+      <p>Введённые данные и выбранный доступ будут потеряны.</p>
+      <div class="admin-unsaved-actions">
+        <button class="vse-app app-button secondary" type="button" id="stay-editing">Продолжить редактирование</button>
+        <button class="vse-app app-button secondary danger" type="button" id="leave-without-save">Выйти без сохранения</button>
+      </div>
+    </div>
+  </dialog>
+</body>
+</html>

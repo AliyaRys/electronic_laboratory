@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Просмотр отчёта — Электронная лаборатория ВСЭ</title>
+  <link rel="preload" as="image" href="../vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="../components/app/app.css">
+  <link rel="stylesheet" href="../app-shell.css">
+  <link rel="stylesheet" href="../components/admin/admin.css">
+  <link rel="stylesheet" href="../components/admin/reports/reports.css">
+  <script src="../components/icons/VseIcon.js" defer></script>
+  <script src="../components/app/Icon.js" defer></script>
+  <script src="../components/app/Button.js" defer></script>
+  <script src="../components/app/InfoField.js" defer></script>
+  <script src="../components/shell/AppHeader.js" defer></script>
+  <script src="../app-shell.js" defer></script>
+  <script src="../components/admin/reports/ReportData.js" defer></script>
+  <script src="../components/admin/reports/XlsxExport.js" defer></script>
+  <script src="../components/admin/reports/Reports.js" defer></script>
+  <script src="admin-report-view-page.js" defer></script>
+</head>
+<body class="vse-app admin-page">
+  <header class="topbar" data-app-header-mode="admin" data-logo-src="../vse-lab-icon-transparent.png" data-brand-href="admin-users.html" data-admin-users-href="admin-users.html" data-admin-reports-href="admin-reports.html" data-profile-href="admin-profile.html">
+    <a class="brand" href="admin-users.html"><img src="../vse-lab-icon-transparent.png" alt=""><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav"><a class="navlink" id="admin-users-link" href="admin-users.html">Управление пользователями</a><a class="navlink active" id="admin-reports-link" href="admin-reports.html">Отчёты</a></nav>
+    <div class="user-area"><a class="user-link" href="admin-profile.html"><span class="avatar">ЕМ</span><span>Елена Морозова</span></a><button class="logout" id="logout" type="button">Выйти</button></div>
+  </header>
+  <main class="admin-reports-main">
+    <a class="admin-report-back" href="admin-reports.html"><span data-back-icon aria-hidden="true"></span><span>К списку отчётов</span></a>
+    <div class="admin-reports-title-row"><div><h1 id="report-view-title">Отчёт по форме 5-вет</h1><p id="report-view-subtitle">Раздел III</p></div></div>
+    <div id="admin-report-view-root"></div>
+  </main>
+</body>
+</html>

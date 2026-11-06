@@ -1,0 +1,15 @@
+.admin-page { min-width: 320px; }
+.admin-create-main { width: min(960px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 90px; }
+.admin-back-link { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; margin-bottom: 18px; color: var(--app-teal); font-size: 13px; font-weight: 720; text-decoration: none; }
+.admin-back-link:hover { color: var(--app-teal-dark); text-decoration: underline; text-underline-offset: 3px; }
+.admin-back-link .admin-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.admin-create-heading { margin-bottom: 25px; }
+.admin-create-heading h1 { margin: 0; color: var(--app-ink); font-size: clamp(27px, 3vw, 32px); line-height: 1.15; letter-spacing: -.035em; }
+.admin-create-heading p { margin: 7px 0 0; color: var(--app-muted); }
+
+@media (max-width: 720px) {
+  .admin-create-main { width: min(100% - 32px, 960px); padding-top: 22px; }
+}
+@media (max-width: 420px) {
+  .admin-create-main { width: min(100% - 24px, 960px); }
+}

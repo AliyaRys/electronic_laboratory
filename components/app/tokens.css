@@ -1,0 +1,31 @@
+/* Runtime tokens for working screens. DESIGN.md mirrors these accepted values. */
+.vse-app {
+  --app-ink: #17323a;
+  --app-muted: #668087;
+  --app-muted-readable: #566e75;
+  --app-line: #dfe9e9;
+  --app-page: #f5f9f8;
+  --app-panel: #fff;
+  --app-teal: #146c73;
+  --app-teal-dark: #0d5358;
+  --app-tint: #eaf6f4;
+  --app-danger: #a33943;
+  --app-focus: #75bfc2;
+  --app-input-line: #cbdadb;
+
+  /* Mandatory research cards: calm blue tone. Green is reserved for «Соответствует» results. */
+  --app-mandatory-line: #c9d6ec;
+  --app-mandatory-tint: #f1f4fa;
+  --app-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Compatibility aliases used by the established app shell. */
+  --ink: var(--app-ink);
+  --muted: var(--app-muted);
+  --line: var(--app-line);
+  --page: var(--app-page);
+  --panel: var(--app-panel);
+  --teal: var(--app-teal);
+  --teal-dark: var(--app-teal-dark);
+  --tint: var(--app-tint);
+  --danger: var(--app-danger);
+}

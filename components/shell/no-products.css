@@ -1,0 +1,8 @@
+/* Экран «Типы продукции не назначены». Общие стили карточки — access-denied.css. */
+.vse-no-products .vse-access-card { box-shadow: none; }
+.vse-no-products-rights { margin: 14px 0 0; padding-left: 11px; border-left: 3px solid #a9d4cf; color: var(--app-ink, #17323a); font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.vse-no-products-check-message { min-height: 0; margin: 14px 0 0; color: var(--app-muted-readable, #5f787f); font-size: 12.5px; line-height: 1.5; }
+.vse-no-products-check-message:not(:empty) { padding-left: 11px; border-left: 3px solid var(--app-line, #dfe9e9); }
+.vse-no-products-check-message.error { border-left-color: #e8c6ca; color: #93353f; }
+.vse-no-products-unimplemented { margin: 14px 0 0; padding-left: 11px; border-left: 3px solid var(--app-teal, #146c73); color: var(--app-ink, #17323a); font-size: 13.5px; line-height: 1.5; }
+.vse-no-products-unimplemented strong { font-weight: 700; overflow-wrap: anywhere; }

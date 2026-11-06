@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Профиль аналитика</title>
+  <link rel="preload" as="image" href="../vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="../components/app/app.css">
+  <link rel="stylesheet" href="../components/profile/profile.css">
+  <link rel="stylesheet" href="../app-shell.css">
+  <link rel="stylesheet" href="analyst.css">
+  <script src="../components/icons/VseIcon.js" defer></script>
+  <script src="../components/app/Icon.js" defer></script>
+  <script src="../components/app/Button.js" defer></script>
+  <script src="../components/app/InfoField.js" defer></script>
+  <script src="../components/profile/ProfileSummary.js" defer></script>
+  <script src="../components/profile/PasswordChangeForm.js" defer></script>
+  <script src="../components/profile/ProfileScreen.js" defer></script>
+  <script src="../components/shell/AppHeader.js" defer></script>
+  <script src="../app-shell.js" defer></script>
+  <script src="analyst-profile-page.js" defer></script>
+</head>
+<body class="vse-app analyst-page">
+  <header class="topbar"
+    data-app-header-mode="analyst"
+    data-logo-src="../vse-lab-icon-transparent.png"
+    data-brand-href="analyst-reports.html"
+    data-arrivals-href="analyst-arrivals.html"
+    data-journal-href="analyst-journal.html"
+    data-directories-href="analyst-directories.html"
+    data-reports-href="analyst-reports.html"
+    data-profile-href="analyst-profile.html">
+    <a class="brand" href="analyst-reports.html"><img src="../vse-lab-icon-transparent.png" alt=""><div><strong>Электронная лаборатория ВСЭ</strong><span>Республика Татарстан</span></div></a>
+    <nav class="topnav">
+      <a class="navlink" id="arrivals-link" href="analyst-arrivals.html">Поступления</a>
+      <a class="navlink" id="journal-home" href="analyst-journal.html">Журнал ВСЭ</a>
+      <a class="navlink" id="directories" href="analyst-directories.html">Справочники</a>
+      <a class="navlink" id="analyst-reports-link" href="analyst-reports.html">Отчёты</a>
+    </nav>
+    <div class="user-area"><a class="user-link" href="analyst-profile.html"><span class="avatar">МХ</span><span>Марат Хусаинов</span></a><button class="logout" id="logout" type="button">Выйти</button></div>
+  </header>
+  <div id="profile-root"></div>
+  <noscript>Для работы макета включите JavaScript в браузере.</noscript>
+</body>
+</html>

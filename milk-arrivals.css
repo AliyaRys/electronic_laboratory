@@ -1,0 +1,29 @@
+/* Dairy variants inherit the layout of the corresponding arrivals screen. */
+.milk-page .clean-facts strong,
+.milk-page .clean-status small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.milk-page .clean-facts { grid-template-columns: minmax(170px, 1.15fr) minmax(105px, .65fr) minmax(190px, 1.2fr) minmax(70px, .5fr) minmax(140px, .8fr); }
+.milk-page .batch-composition { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 550; }
+.milk-page .clean-facts .milk-result.good { color: #176346; }
+.milk-page .clean-facts .milk-result.bad { color: #9b3440; }
+.milk-page .clean-actions > .milk-eye { display: grid; place-items: center; flex: 0 0 auto; width: 34px; height: 34px; border: 1px solid #cbdadb; border-radius: 10px; padding: 0; color: #587077; background: #fff; }
+.milk-page .clean-actions > .milk-eye:hover { border-color: #9cc4c2; background: var(--tint); color: var(--teal-dark); }
+.milk-page .clean-actions > .milk-eye svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.9; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.milk-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: #fff; color: var(--ink); box-shadow: 0 20px 60px #17323a33; }
+.milk-dialog::backdrop { background: #17323a66; }
+.milk-dialog-box { padding: 22px; }
+.milk-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; margin-bottom: 21px; }
+.milk-dialog-head h2 { margin: 0; font-size: 21px; line-height: 1.25; }
+.milk-dialog-close { display: grid; place-items: center; flex: 0 0 auto; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0; background: #fff; color: var(--muted); font-size: 22px; line-height: 1; }
+.milk-dialog-close:hover { background: var(--tint); color: var(--teal-dark); }
+.milk-dialog-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin: 0; }
+.milk-dialog-fields .wide { grid-column: 1 / -1; }
+.milk-dialog-fields dt { margin-bottom: 3px; font-size: 11px; font-weight: 550; color: var(--muted); }
+.milk-dialog-fields dd { margin: 0; font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+.milk-dialog-footer { display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: wrap; margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
+.milk-dialog-link { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; border: 1px solid var(--teal); border-radius: 9px; padding: 0 13px; background: var(--teal); color: #fff; text-decoration: none; font-weight: 650; }
+.milk-dialog-link:hover { background: var(--teal-dark); color: #fff; }
+.milk-dialog-dismiss { min-height: 38px; border: 1px solid #cbdadb; border-radius: 9px; padding: 0 13px; background: #fff; color: #4d676d; }
+.milk-dialog-dismiss:hover { background: #f3f8f6; }
+@media(max-width:1120px) { .milk-page .clean-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media(max-width:800px) { .milk-page .clean-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media(max-width:450px) { .milk-page .clean-facts, .milk-dialog-fields { grid-template-columns: minmax(0, 1fr); } .milk-dialog-fields .wide { grid-column: auto; } .milk-dialog-box { padding: 18px; } }

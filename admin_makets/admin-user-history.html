@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — История изменений</title>
+  <link rel="preload" as="image" href="../vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="../components/app/app.css">
+  <link rel="stylesheet" href="../app-shell.css">
+  <link rel="stylesheet" href="../components/admin/admin.css">
+  <link rel="stylesheet" href="../components/admin/admin-history.css">
+  <link rel="stylesheet" href="admin-user-history-page.css">
+  <script src="../components/icons/VseIcon.js" defer></script>
+  <script src="../components/app/Icon.js" defer></script>
+  <script src="../components/app/Button.js" defer></script>
+  <script src="../components/app/InfoField.js" defer></script>
+  <script src="../components/shell/AppHeader.js" defer></script>
+  <script src="../app-shell.js" defer></script>
+  <script src="../components/admin/AdminData.js" defer></script>
+  <script src="../components/admin/AdminDemoStore.js" defer></script>
+  <script src="../components/admin/UserHistory.js" defer></script>
+  <script src="admin-user-history-page.js" defer></script>
+</head>
+<body class="vse-app admin-page">
+  <header class="topbar"
+    data-app-header-mode="admin"
+    data-logo-src="../vse-lab-icon-transparent.png"
+    data-brand-href="admin-users.html"
+    data-admin-users-href="admin-users.html"
+    data-profile-href="admin-profile.html">
+    <a class="brand" href="admin-users.html"><img src="../vse-lab-icon-transparent.png" alt=""><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav"><a class="navlink active" id="admin-users-link" href="admin-users.html">Управление пользователями</a></nav>
+    <div class="user-area"><a class="user-link" href="admin-profile.html"><span class="avatar">ЕМ</span><span>Елена Морозова</span></a><button class="logout" id="logout" type="button">Выйти</button></div>
+  </header>
+
+  <main class="admin-history-main">
+    <nav class="admin-history-backlinks" aria-label="Возврат из истории">
+      <a class="admin-back-link" href="admin-users.html" id="back-to-users"><span data-back-list-icon aria-hidden="true"></span><span>К списку пользователей</span></a>
+      <a class="admin-back-link" href="admin-user-edit.html" id="back-to-user" hidden><span data-back-card-icon aria-hidden="true"></span><span>К карточке пользователя</span></a>
+    </nav>
+    <div class="admin-history-heading">
+      <span class="admin-history-heading-icon" data-history-icon aria-hidden="true"></span>
+      <div><h1>История изменений</h1><p>Сохранённые административные действия с учётной записью.</p></div>
+    </div>
+    <div id="admin-history-root"></div>
+  </main>
+</body>
+</html>

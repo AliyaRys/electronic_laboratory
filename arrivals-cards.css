@@ -1,0 +1,128 @@
+/* One geometry for expected meat and dairy arrivals. */
+.arrivals-list .evsd-card > div {
+  min-width: 0;
+}
+
+.arrivals-list .evsd-card .card-label {
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arrivals-list .evsd-card .card-value {
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 1121px) {
+  .arrivals-list .evsd-card {
+    grid-template-columns: 152px minmax(0, .95fr) minmax(0, .87fr) 92px 92px 142px 112px 96px;
+    height: 80px;
+  }
+}
+
+/* One work-card rhythm for meat and dairy, including the action position. */
+.work-list .work-card {
+  min-height: 166px;
+  align-items: stretch;
+}
+
+.work-list .work-info {
+  align-self: stretch;
+  grid-template-rows: 28px 1fr;
+}
+
+.work-list .check-head {
+  margin-bottom: 0;
+}
+
+.work-list .work-card .card-grid {
+  align-self: end;
+  grid-template-columns: 170px 168px 178px 64px 82px 138px 92px;
+  gap: 8px 10px;
+  transform: none;
+}
+
+.work-list .work-card .card-label {
+  height: 28px;
+  margin-bottom: 2px;
+  line-height: 14px;
+}
+
+.work-list .work-card .card-grid .card-value {
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
+
+@media (min-width: 1121px) {
+  .work-list .work-card {
+    height: 166px;
+  }
+}
+
+.work-list .vse-action-button {
+  align-self: end;
+  justify-self: center;
+  transform: none;
+}
+
+.work-list .vse-action-button.disabled-action,
+.work-list .vse-action-button.disabled-action:hover {
+  border-color: #d9e4e4;
+  background: #e9eeee;
+  color: #91a2a6;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+@media (max-width: 1120px) {
+  .work-list .work-card .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .work-list .vse-action-button {
+    justify-self: end;
+  }
+}
+
+@media (max-width: 800px) {
+  .work-list .work-card .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 450px) {
+  .work-list .work-card .card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* VSE numbers remain intact even when the conclusion needs another line. */
+@media (min-width: 1121px) {
+  .accepted-list .clean-facts {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, .7fr) minmax(250px, 1fr) minmax(0, .7fr) minmax(0, .9fr);
+  }
+}
+
+.accepted-list .clean-facts .vse-fact strong {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: normal;
+}
+
+.accepted-list .clean-facts .vse-number {
+  display: inline-block;
+  color: inherit;
+  font: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+}

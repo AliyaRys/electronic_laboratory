@@ -1,0 +1,25 @@
+.disease-research-card{grid-column:1/-1}
+.disease-research-card:not(.visible){display:none}
+.disease-research-card>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.disease-research-card>header h3{margin:0;font-size:14px}
+.disease-research-card>header .remove-test{display:inline-grid;place-items:center;width:28px;height:28px;min-width:28px;border:1px solid #cbdadb;border-radius:8px;background:#fff;color:#587077;font-size:18px;font-weight:760;line-height:1;padding:0}
+.disease-research-card>header .remove-test:hover{background:#fff2f3;border-color:#e0aeb4;color:var(--danger,#a33943)}
+.disease-research-list{display:grid;gap:10px}
+.disease-research-row{display:grid;grid-template-columns:minmax(0,1fr) 43px;gap:10px;align-items:end;border:1px solid #dbeaea;border-radius:12px;background:#fbfdfd;padding:12px}
+.disease-research-row.has-other{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 43px}
+.disease-research-field{min-width:0}
+.disease-research-field label{display:block;margin:0 0 7px;font-size:13px;font-weight:690}
+.disease-research-other[hidden]{display:none}
+.disease-row-remove{display:inline-grid;place-items:center;width:43px;height:43px;border:1px solid #cbdadb;border-radius:9px;background:#fff;color:#587077;font-size:20px;font-weight:760;line-height:1;padding:0}
+.disease-row-remove:hover{background:#fff2f3;border-color:#e0aeb4;color:var(--danger,#a33943)}
+.disease-row-remove[hidden]{visibility:hidden;display:inline-grid}
+.disease-research-footer{display:flex;align-items:center;gap:12px;min-height:39px;margin-top:10px}
+.disease-row-add{min-height:39px;padding:0 12px;border:1px dashed #9cc4c2;border-radius:9px;background:#fbfefe;color:var(--teal-dark,#0d5358);font-weight:650}
+.disease-row-add:hover:not(:disabled){background:var(--tint,#eaf6f4);border-style:solid}
+.disease-row-add:disabled{cursor:not-allowed;opacity:.55}
+.disease-research-footer span{color:var(--muted,#668087);font-size:12px}
+.disease-research-card .choices{margin:0}
+.disease-research-actions{display:flex;flex-wrap:wrap;gap:9px;padding-top:18px;margin-top:18px;border-top:1px dashed #cbdada}
+.disease-research-actions .add-test{min-height:39px;padding:0 12px;border:1px dashed #9cc4c2;border-radius:9px;background:#fbfefe;color:var(--teal-dark,#0d5358);font-weight:650}
+.disease-research-actions .add-test:hover{background:var(--tint,#eaf6f4);border-style:solid}
+@media(max-width:800px){.disease-research-row{grid-template-columns:1fr}.disease-research-other[hidden]{display:none}.disease-row-remove{width:100%}.disease-research-footer{align-items:flex-start;flex-direction:column}}

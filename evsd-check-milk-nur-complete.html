@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Сверка молочной партии завершена</title>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="milk-evsd-check.css">
+  <link rel="stylesheet" href="milk-evsd-check-complete.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="stylesheet" href="evsd-invoice.css">
+  <link rel="stylesheet" href="components/app/evsd-check-values.css">
+  <script src="components/app/CompletedCheckStatus.js"></script>
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="app-shell.js" defer></script>
+</head>
+<body data-party="nur">
+  <header class="topbar">
+    <a class="brand" href="journal-milk.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43" loading="eager" decoding="sync" fetchpriority="high"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink active" href="arrivals-milk.html" id="arrivals-link" aria-current="page"><span class="icon"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"></path><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"></path><path d="M12 12.4V20"></path></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink" href="journal-milk.html" id="journal-home"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink" href="directories.html" id="directories"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Молоко и молочная продукция" data-short-label="Молоко"><span class="navtext" data-product-label>Молоко и молочная продукция</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"></path></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции"><button type="button" role="option" aria-selected="false" data-product-option="meat">Мясо и продукты убоя</button><button class="active" type="button" role="option" aria-selected="true" data-product-option="milk">Молоко и молочная продукция</button></div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link" href="profile.html" id="profile"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <main>
+    <div class="title-row"><div><h1>Сверка данных транспортного эВСД завершена</h1></div><span class="status-pill" id="check-status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><span>Все данные соответствуют</span></span></div>
+
+    <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path></svg></span><div><h2>Документ</h2><p>Реквизиты погашенного транспортного эВСД.</p></div></div></div><div class="check-grid">
+      <div class="check-card info-card"><div class="field-name">Номер эВСД</div><div class="mercury-value">RU016:260812-007118</div></div>
+      <div class="check-card info-card" data-check="date"><div class="field-name">Дата создания ВСД</div><div class="mercury-value">12.08.2026 10:15</div></div>
+      <div class="check-card info-card"><div class="field-name">Статус эВСД</div><div class="mercury-value">Погашен</div></div>
+      <div class="check-card info-card"><div class="field-name">Способ гашения</div><div class="mercury-value" id="completed-method">Полное гашение</div></div>
+    </div></section>
+
+    <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14"></path><path d="M9 21v-7h6v7"></path></svg></span><div><h2>Участники перевозки</h2><p>Отправитель и место поступления молочной партии.</p></div></div></div><div class="check-grid">
+      <div class="check-card" data-check="sender"><div class="field-name">Отправитель</div><div class="mercury-value">КФХ «Нур»</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="sender-address"><div class="field-name">Адрес отправителя</div><div class="mercury-value">Республика Татарстан, Пестречинский район, с. Пестрецы, ул. Молодёжная, 12</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="recipient"><div class="field-name">Получатель</div><div class="mercury-value">Лаборатория ВСЭ №1 г. Казань</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="recipient-address"><div class="field-name">Адрес получателя</div><div class="mercury-value">г. Казань, ул. Аграрная, д. 2</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+    </div></section>
+
+    <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><circle cx="12" cy="12" r="1"></circle><path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0"></path></svg></span><div><h2>Идентификация продукции по наименованию и визуальным осмотром</h2><p>Состав и объём принятой молочной партии.</p></div></div></div><div class="check-grid">
+      <div class="check-card" data-check="product"><div class="field-name">Продукция</div><div class="mercury-value">Молоко коровье сырое</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="producer"><div class="field-name">Производитель</div><div class="mercury-value">КФХ «Нур»</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="quantity"><div class="field-name">Количество принято</div><div class="mercury-value" id="completed-quantity">1 секция</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="weight"><div class="field-name">Объём принят</div><div class="mercury-value" id="completed-volume">80 л</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="production-date"><div class="field-name">Дата выработки</div><div class="mercury-value">12.08.2026</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="expiry-date"><div class="field-name">Срок годности</div><div class="mercury-value">до 13.08.2026</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card full info-card"><div class="field-name">Состав партии</div><div class="completed-parts" aria-label="Состав принятой партии"><div class="completed-part head"><span>Секция</span><span>Объём</span></div><div class="completed-part"><span>Секция 1</span><span>80 л</span></div></div></div>
+    </div></section>
+
+    <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16h13V6H3z"></path><path d="M16 10h3l2 3v3h-5z"></path><circle cx="7" cy="18" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg></span><div><h2>Ветеринарно-санитарная оценка и идентификация транспорта</h2><p>Транспортное средство и состояние перевозки при поступлении.</p></div></div></div><div class="check-grid">
+      <div class="check-card" data-check="transport-type"><div class="field-name">Вид транспорта</div><div class="mercury-value">Автомобильный</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="vehicle"><div class="field-name">Номер ТС</div><div class="mercury-value">Н831ОР 116</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="trailer"><div class="field-name">Номер прицепа</div><div class="mercury-value">Прицеп отсутствует</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="storage"><div class="field-name">Способ хранения продукции при перевозке</div><div class="mercury-value">Охлажденное</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card info-card" data-completed-status="cargo"><div class="field-name">Состояние грузового отделения</div><div class="mercury-value" id="completed-cargo">Соответствует требованиям</div></div>
+      <div class="check-card info-card" data-completed-status="combined"><div class="field-name">Совместная перевозка с другими грузами</div><div class="mercury-value" id="completed-combined">Нет</div></div>
+    </div></section>
+
+    <section class="section"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8"></path><path d="M8 11h8"></path><path d="M8 15h5"></path><path d="M5 3h14v18H5z"></path></svg></span><div><h2>Сопроводительные документы</h2><p>Документы, указанные в транспортном эВСД.</p></div></div></div><div class="check-grid">
+      <div class="check-card" data-check="ttn"><div class="field-name">ТТН</div><div class="mercury-value">№ ТТН-231 от 12.08.2026</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+      <div class="check-card" data-check="related-documents"><div class="field-name">Связанные документы</div><div class="mercury-value">Ветеринарная справка № 231/26, декларация соответствия ЕАЭС N RU Д-RU.РА04</div><span class="ok-mark"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg></span></div>
+    </div></section>
+
+    <section class="section invoice-section" aria-labelledby="invoice-title"><div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3Z"></path><path d="M8 8h8M8 12h8M8 16h5"></path></svg></span><div><h2 id="invoice-title">Расчёт стоимости услуг</h2><p>Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма.</p></div></div></div><div class="invoice-table-wrap"><table class="invoice-table"><thead><tr><th scope="col">Услуга</th><th scope="col">Количество</th><th scope="col">Тариф</th><th scope="col">Сумма</th></tr></thead><tbody><tr><td>Идентификация продукции по наименованию и визуальным осмотром</td><td>1 секция</td><td>94 ₽</td><td>94 ₽</td></tr><tr><td>Ветеринарно-санитарная оценка и идентификация транспорта</td><td>1 ТС</td><td>94 ₽</td><td>94 ₽</td></tr></tbody></table></div><div class="invoice-total"><span>Итого к оплате</span><strong>188 ₽</strong></div></section>
+
+    <div class="conclusion-panel" aria-label="Действия после сверки"><a class="create-vse-btn" href="electronic-vse-journal-milk.html?party=nur" aria-label="Создать ВСЭ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>Создать ВСЭ</a></div>
+  </main>
+  <script>
+    const checkIcon='<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></svg>';
+    const badIcon='<svg viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>';
+    let result={};
+    try{result=JSON.parse(localStorage.getItem('evsdCheck:milk:nur')||'{}')}catch(error){result={}}
+    const formatQuantity=value=>{const number=Math.max(0,Math.round(Number(value)||0));const lastTwo=number%100;const last=number%10;const unit=lastTwo>=11&&lastTwo<=14?'секций':last===1?'секция':last>=2&&last<=4?'секции':'секций';return number+' '+unit};
+    const formatVolume=value=>(Number(value)||0).toLocaleString('ru-RU',{maximumFractionDigits:1})+' л';
+    if(Number.isFinite(Number(result.acceptedQuantity)))document.getElementById('completed-quantity').textContent=formatQuantity(result.acceptedQuantity);
+    if(Number.isFinite(Number(result.acceptedVolume)))document.getElementById('completed-volume').textContent=formatVolume(result.acceptedVolume);
+    if(result.cargoCondition)document.getElementById('completed-cargo').textContent=result.cargoCondition;
+    if(result.combinedCargo)document.getElementById('completed-combined').textContent=result.combinedCargo;
+    if(result.scenario==='partial'){
+      const status=document.getElementById('check-status');status.classList.add('partial');status.querySelector('span').textContent='Партия принята частично';
+      document.getElementById('completed-method').textContent='Частичное гашение';
+    }
+    if(result.scenario==='refusal'){
+      const status=document.getElementById('check-status');status.classList.add('refusal');status.innerHTML=badIcon+'<span>Партия не принята</span>';
+      document.getElementById('completed-method').textContent='Отказ от партии';
+      document.querySelector('.conclusion-panel').classList.add('hidden');
+    }
+    (result.checks||[]).filter(item=>item.state==='bad').forEach(item=>{
+      const card=document.querySelector('.check-card[data-check="'+CSS.escape(item.field)+'"]');
+      if(!card)return;
+      card.classList.add('mismatch-card');
+      const mark=card.querySelector('.ok-mark');if(mark){mark.className='bad-mark';mark.innerHTML=badIcon}
+      if(item.fact){const fact=document.createElement('div');fact.className='fact-value';const label=document.createElement('span');label.textContent='Фактическое значение';const value=document.createElement('strong');value.textContent=item.fact;fact.append(label,value);card.append(fact)}
+    });
+    globalThis.VseApp?.applyCompletedTransportStatuses(document);
+    document.querySelectorAll('.mercury-value').forEach(value=>{value.title=value.textContent.trim()});
+    document.getElementById('logout').addEventListener('click',()=>{location.href='login.html'});
+  </script>
+</body>
+</html>

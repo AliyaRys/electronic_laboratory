@@ -1,0 +1,49 @@
+.prior-conclusion {
+  grid-column: 1 / -1;
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line, #dfe9e9);
+  border-radius: 15px;
+  background: #fbfdfd;
+}
+
+.prior-conclusion summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 11px 16px;
+  color: #29474d;
+  cursor: pointer;
+  list-style: none;
+}
+
+.prior-conclusion summary::-webkit-details-marker { display: none; }
+.prior-conclusion summary:focus-visible { outline: 3px solid #75bfc2; outline-offset: -3px; }
+.prior-conclusion-label { font-size: 13px; font-weight: 780; }
+.prior-conclusion-preview { min-width: 0; overflow: hidden; color: #668087; text-overflow: ellipsis; white-space: nowrap; }
+.prior-conclusion[open] .prior-conclusion-preview { visibility: hidden; }
+
+.prior-conclusion-chevron {
+  width: 9px;
+  height: 9px;
+  justify-self: end;
+  border-right: 2px solid #7a9297;
+  border-bottom: 2px solid #7a9297;
+  transform: rotate(45deg);
+  transition: transform .16s ease;
+}
+
+.prior-conclusion[open] .prior-conclusion-chevron { margin-top: 6px; transform: rotate(225deg); }
+.prior-conclusion-body { border-top: 1px solid #e7efef; padding: 13px 16px 15px; color: #405e64; line-height: 1.55; }
+
+@media (max-width: 640px) {
+  .prior-conclusion summary { grid-template-columns: minmax(0, 1fr) 18px; gap: 10px; }
+  .prior-conclusion-preview { grid-column: 1 / -1; grid-row: 2; padding-right: 28px; }
+  .prior-conclusion-chevron { grid-column: 2; grid-row: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prior-conclusion-chevron { transition: none; }
+}

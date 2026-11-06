@@ -1,0 +1,36 @@
+.product-compare-grid{align-items:start}
+.quantity-row .field-name{grid-column:1;grid-row:1;align-self:center}
+.quantity-row .check-button.ok{grid-column:2;grid-row:1}
+.quantity-row .check-button.bad{grid-column:3;grid-row:1}
+.quantity-row .mercury-value{grid-column:1/-1;grid-row:2;height:auto;min-height:40px;margin-top:5px;overflow:visible;white-space:normal;border:0;background:transparent;padding:0}
+.compare-row.quantity-row.match .mercury-value,.compare-row.quantity-row.mismatch .mercury-value{border:0;background:transparent}
+.parts-table{width:100%;border:1px solid #d8e5e5;border-radius:10px;overflow:hidden;background:#fff}
+.parts-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.9fr) 72px}
+.parts-row>div{min-width:0;display:flex;align-items:center;padding:6px 9px}
+.parts-row>div+div{border-left:1px solid #d8e5e5}
+.parts-row:not(:first-child)>div{border-top:1px solid #d8e5e5}
+.parts-head{background:#eef7f5;color:var(--muted);font-size:10px;font-weight:780;text-transform:uppercase;letter-spacing:.04em}
+.parts-head>div{white-space:nowrap}
+.parts-row:not(.parts-head){color:#29474d;font-size:12px;font-weight:650}
+.readonly-badge{display:block;max-width:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent;color:#405e64;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(min-width:1021px){.product-compare-grid:has(.quantity-row){grid-auto-flow:row dense}.product-compare-grid:has(.quantity-row) .producer-row{grid-column:1;grid-row:2}.product-compare-grid:has(.quantity-row) .weight-row{grid-column:1;grid-row:3}.product-compare-grid:has(.quantity-row) .quantity-row{grid-column:2;grid-row:2 / span 2;align-self:stretch}.product-compare-grid .quantity-row .parts-row>div{padding-top:3px;padding-bottom:3px}}
+.transport-observations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+.transport-observation{min-width:0;display:flex;flex-direction:column;gap:8px;border:1px solid #edf3f3;border-radius:14px;background:#fbfdfd;padding:13px}
+.transport-observation.selected{border-color:#8cc7ad;background:#e4f4ed;box-shadow:inset 0 0 0 1px #c8e6d8}
+.transport-observation label{min-height:34px;color:#29474d;font-size:13px;font-weight:780;line-height:1.2}
+.transport-observation select{width:100%;height:40px;margin-top:auto;border:1px solid #d8e5e5;border-radius:10px;background:#fff;color:#405e64;appearance:none;padding:0 40px 0 10px;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='m5 7 5 5 5-5' fill='none' stroke='%23668087' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:16px 16px;background-position:calc(100% - 16px) center}
+.transport-observation.selected select{border-color:#a8d4c1;background-color:#f7fffb}
+.transport-observation select:invalid{color:#7a9297}
+.transport-observation select:focus{outline:3px solid #75bfc2;outline-offset:2px}
+.research-results{margin-top:14px;border:1px solid var(--line);border-radius:15px;background:#fbfdfd;overflow:hidden}
+.research-results summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;color:#29474d;font-size:14px;font-weight:780}
+.research-results summary::-webkit-details-marker{display:none}
+.research-results summary::after{content:"";width:9px;height:9px;border-right:2px solid #7a9297;border-bottom:2px solid #7a9297;transform:rotate(45deg);transition:.16s}
+.research-results[open] summary::after{transform:rotate(225deg);margin-top:6px}
+.research-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0 14px 14px}
+.research-item{border:1px solid #edf3f3;border-radius:12px;background:#fff;padding:11px 12px;min-width:0}
+.research-name{font-size:12px;font-weight:780;color:#7a9297;text-transform:uppercase;letter-spacing:.045em}
+.research-value{margin-top:5px;color:#29474d;font-size:14px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prior-vse-empty{border:1px dashed #cbdadb;border-radius:12px;background:#fbfdfd;color:var(--muted);padding:18px;font-size:13px}
+@media(max-width:1020px){.transport-observations{grid-template-columns:1fr}.transport-observation label{min-height:0}}
+@media(max-width:650px){.research-list{grid-template-columns:1fr}}

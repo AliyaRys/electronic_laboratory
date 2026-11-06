@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Справочники</title>
+  <link rel="preload" as="image" href="../vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="../components/app/app.css">
+  <link rel="stylesheet" href="../app-shell.css">
+  <link rel="stylesheet" href="analyst.css">
+  <script src="../components/icons/VseIcon.js" defer></script>
+  <script src="../components/shell/AppHeader.js" defer></script>
+  <script src="../app-shell.js" defer></script>
+</head>
+<body class="vse-app analyst-page">
+  <header class="topbar"
+    data-app-header-mode="analyst"
+    data-logo-src="../vse-lab-icon-transparent.png"
+    data-brand-href="analyst-reports.html"
+    data-arrivals-href="analyst-arrivals.html"
+    data-journal-href="analyst-journal.html"
+    data-directories-href="analyst-directories.html"
+    data-reports-href="analyst-reports.html"
+    data-profile-href="analyst-profile.html">
+    <a class="brand" href="analyst-reports.html"><img src="../vse-lab-icon-transparent.png" alt=""><div><strong>Электронная лаборатория ВСЭ</strong><span>Республика Татарстан</span></div></a>
+    <nav class="topnav">
+      <a class="navlink" id="arrivals-link" href="analyst-arrivals.html">Поступления</a>
+      <a class="navlink" id="journal-home" href="analyst-journal.html">Журнал ВСЭ</a>
+      <a class="navlink active" id="directories" href="analyst-directories.html">Справочники</a>
+      <a class="navlink" id="analyst-reports-link" href="analyst-reports.html">Отчёты</a>
+    </nav>
+    <div class="user-area"><a class="user-link" href="analyst-profile.html"><span class="avatar">МХ</span><span>Марат Хусаинов</span></a><button class="logout" id="logout" type="button">Выйти</button></div>
+  </header>
+
+  <main class="analyst-main">
+    <div class="analyst-title-row">
+      <div>
+        <h1>Справочники</h1>
+        <p>Настройки, которые используются при заполнении журнала и расчёте услуг.</p>
+      </div>
+    </div>
+    <p class="analyst-note">Аналитик редактирует справочники в назначенной области доступа.</p>
+    <section class="analyst-card" aria-label="Список справочников">
+      <div class="analyst-list">
+        <article class="analyst-item">
+          <div>
+            <div class="analyst-item-name">Стоимость исследований ВСЭ</div>
+            <div class="analyst-item-meta">Используется для автоматического расчёта стоимости услуг</div>
+          </div>
+          <div class="analyst-item-actions"><a class="vse-app app-button secondary" href="#">Редактировать</a></div>
+        </article>
+        <article class="analyst-item">
+          <div>
+            <div class="analyst-item-name">Платные услуги</div>
+            <div class="analyst-item-meta">Стоимость услуг сверки данных</div>
+          </div>
+          <div class="analyst-item-actions"><a class="vse-app app-button secondary" href="#">Редактировать</a></div>
+        </article>
+        <article class="analyst-item">
+          <div>
+            <div class="analyst-item-name">Нормы исследований</div>
+            <div class="analyst-item-meta">Автоматическая отметка «норма» и отклонений в результатах ВСЭ</div>
+          </div>
+          <div class="analyst-item-actions"><a class="vse-app app-button secondary" href="#">Редактировать</a></div>
+        </article>
+      </div>
+    </section>
+  </main>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('logout')?.addEventListener('click', () => { window.location.href = '../login.html'; });
+    });
+  </script>
+</body>
+</html>

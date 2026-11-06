@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — повторный ветосмотр №1</title>
+  <style>
+    :root{--ink:#17323a;--muted:#668087;--line:#dfe9e9;--page:#f5f9f8;--panel:#fff;--teal:#146c73;--teal-dark:#0d5358;--tint:#eaf6f4;--good:#176346}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button,input,select,textarea{font:inherit}
+    button{cursor:pointer}
+    button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #75bfc2;outline-offset:2px}
+    .topbar{height:76px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 max(24px,calc((100vw - 1440px)/2));gap:26px;position:sticky;top:0;z-index:10}
+    .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink);min-width:275px}.brand strong{display:block;font-size:15px;letter-spacing:-.01em}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+    .topnav{display:flex;align-items:center;gap:6px;flex:1}.nav-item{position:relative;width:340px}.nav-item>.navlink{width:100%;justify-content:flex-start}.nav-item .navtext{margin-right:auto}.navlink,.user-link{border:0;background:transparent;color:#4c6870;min-height:42px;border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;gap:9px;padding:0 12px;font-weight:600}.navlink:hover,.user-link:hover,.navlink.active,.nav-item:hover>.navlink,.nav-item:focus-within>.navlink{background:var(--tint);color:var(--teal-dark)}.navlink{border:1px solid var(--line);background:#fff}.navlink.active{border-color:#c9e6e2;box-shadow:inset 0 0 0 1px #c9e6e2}.nav-caret{width:14px;height:14px;margin-left:auto;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.journal-menu{position:absolute;left:0;top:calc(100% - 1px);z-index:30;display:none;width:100%;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 18px 42px #17323a22}.nav-item:hover .journal-menu,.nav-item:focus-within .journal-menu,.nav-item.open .journal-menu{display:grid}.icon{width:19px;height:19px;display:inline-grid;place-items:center;font-size:18px;line-height:1}.user-area{display:flex;align-items:center;gap:5px}.avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#d7efec;color:var(--teal-dark);font-weight:750;font-size:12px}.logout{border:1px solid var(--line);background:#fff;color:#587077;border-radius:9px;min-height:38px;padding:0 12px;font-weight:650}.logout:hover{border-color:#e7b7bc;color:#a33943;background:#fff8f8}
+    main{max-width:1180px;margin:0 auto;padding:37px 24px 96px}
+    .title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:28px}.eyebrow{color:var(--teal);font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;margin:0 0 6px}.title-row h1{font-size:30px;line-height:1.15;letter-spacing:-.035em;margin:0}
+    .record{display:grid;gap:18px}
+    .section{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:25px;box-shadow:0 8px 24px #1f5a5b08}
+    .section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:21px}.section-title{display:flex;gap:12px;align-items:center}.section-icon{display:inline-flex;align-items:center;justify-content:center;width:37px;height:37px;min-width:37px;border-radius:11px;background:var(--tint);color:var(--teal);font-size:18px;line-height:1}.section-icon svg{display:block;width:20px;height:20px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}.section h2{margin:0;font-size:17px;letter-spacing:-.015em}.section-head p{margin:3px 0 0;color:var(--muted);font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:17px 18px}.field{grid-column:span 4;min-width:0}.field.wide{grid-column:span 6}.field.full{grid-column:1/-1}.field label{display:block;font-weight:690;font-size:13px;margin:0 0 7px}.req{color:#bd3d48;font-weight:800}
+    input{width:100%;min-height:43px;border:1px solid #d8e5e5;border-radius:9px;padding:0 12px;background:#f7fbfb;color:#3f5c62;font-weight:600}
+    .repeat-inspection-result{grid-column:1/-1}.repeat-inspection-result select{width:100%;min-height:43px;border:1px solid #d8e5e5;border-radius:9px;padding:0 42px 0 12px;background:#f7fbfb;color:#3f5c62;font-weight:600}
+    .quantity-field{max-width:520px}.parts-table{width:100%;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f8fbfb}.parts-row{display:grid;grid-template-columns:minmax(160px,.9fr) minmax(140px,1.1fr);align-items:stretch}.parts-row>div{min-width:0;padding:9px 12px;border-top:1px solid var(--line);display:flex;align-items:center}.parts-row:first-child>div{border-top:0}.parts-row>div+div{border-left:1px solid var(--line)}.parts-head{background:#eef7f5;color:var(--muted);font-size:10px;font-weight:780;text-transform:uppercase;letter-spacing:.055em}.parts-row:not(.parts-head) div{color:#29474d;font-size:13px;font-weight:650}
+    .lab-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+    .lab-field,.study-card{min-width:0;border:1px solid var(--line);border-radius:13px;padding:15px;background:#fff}
+    .lab-field label,.lab-label{display:block;margin:0 0 8px;font-size:13px;font-weight:690}
+    .lab-field input,.study-card input{width:100%;min-height:43px;border:1px solid #d8e5e5;border-radius:9px;padding:0 12px;background:#f7fbfb;color:#3f5c62;font-weight:600}
+    .radio-group{display:flex;gap:8px;flex-wrap:wrap;min-height:43px;align-items:center}
+    .radio{display:inline-flex;align-items:center;min-height:43px;padding:0 13px;border:1px solid #cbdadb;border-radius:9px;color:#4c646a;font-weight:600;background:#fff}
+    .radio.active{border-color:var(--teal);color:var(--teal-dark);background:var(--tint);box-shadow:inset 0 0 0 1px var(--teal)}
+    .study-card h4{font-size:14px;margin:0 0 8px}.study-card .lab-field{padding:0;border:0}.study-card .lab-grid{grid-template-columns:1fr;gap:10px}.danger-card{grid-column:1/-1}.danger-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+    .saved-research-card{grid-column:1/-1;min-width:0;border:1px solid var(--line);border-radius:13px;padding:15px;background:#fff}.saved-research-card header{margin-bottom:12px}.saved-research-card h3{margin:0;font-size:14px;letter-spacing:-.01em}.part-research{display:grid;gap:8px}.part-row{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(0,1.2fr);gap:12px;align-items:center;border:1px solid #e5eeee;border-radius:12px;background:#fbfdfd;padding:10px 12px}.part-label{min-width:0}.part-label strong{display:block;color:#29474d;font-size:13px}.saved-research-value{min-height:43px;display:flex;align-items:center;border:1px solid #d8e5e5;border-radius:9px;padding:0 12px;background:#f7fbfb;color:#3f5c62;font-weight:600}
+    .saved-research-card.compact-primary{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;padding:13px 14px}.saved-research-card.compact-primary header{min-height:34px;margin:0;display:flex;align-items:center}.saved-research-card.compact-primary .part-research{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.saved-research-card.compact-primary .part-row{grid-template-columns:minmax(0,1fr) auto;gap:7px;min-height:46px;min-width:0;padding:6px 8px;border-color:#dfeaea;border-radius:9px;background:#fff}.saved-research-card.compact-primary .part-label strong{overflow:hidden;font-size:11.5px;font-weight:650;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}.saved-research-card.compact-primary .saved-research-value{min-height:32px;border:0;padding:0 4px;background:transparent;font-size:11.5px;white-space:nowrap}
+    .saved-research-card.single-part{grid-column:auto;padding:12px 14px}.saved-research-card.single-part header{min-height:28px;margin-bottom:7px;display:flex;align-items:center}.saved-research-card.single-part .part-research{grid-template-columns:minmax(0,1fr)}.saved-research-card.single-part .part-row{grid-template-columns:minmax(180px,.8fr) minmax(0,1.2fr);width:100%;min-height:42px;padding:5px 10px;border-radius:9px;background:#fff}.saved-research-card.single-part .saved-research-value{min-height:38px}.saved-research-card.single-part.compact-primary{display:block}.saved-research-card.single-part.compact-primary .part-row{grid-template-columns:minmax(150px,.72fr) minmax(0,1.28fr)}.saved-research-card.single-part.compact-primary .part-label strong{font-size:12px}.saved-research-card.single-part.compact-primary .saved-research-value{display:flex;justify-content:flex-end;min-height:32px;padding:0 4px;border:0;background:transparent;font-size:11.5px}
+    .saved-choice-group{display:flex;justify-content:flex-end;align-items:center;gap:4px;min-height:32px}.saved-choice{display:inline-grid;place-items:center;width:32px;min-width:32px;height:32px;color:#587077}.saved-choice::before{content:"";width:18px;height:18px;background:currentColor;-webkit-mask:center/contain no-repeat;mask:center/contain no-repeat}.saved-choice.ok::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m20 6-11 11-5-5'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m20 6-11 11-5-5'/%3E%3C/svg%3E")}.saved-choice.bad::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E")}.saved-choice.ok.active{color:var(--teal-dark);filter:drop-shadow(0 0 2px #32d4aa) drop-shadow(0 0 6px #32d4aacc) drop-shadow(0 0 12px #32d4aa80);transform:scale(1.1)}.saved-choice.bad.active{color:var(--danger);filter:drop-shadow(0 0 2px #ff5f76) drop-shadow(0 0 6px #ff5f76cc) drop-shadow(0 0 12px #ff5f7680);transform:scale(1.1)}
+    @media(max-width:920px){.saved-research-card.compact-primary .part-research{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:800px){.topbar{padding:0 15px;gap:8px}.brand{min-width:0}.brand span,.topnav .navtext,.user-link{display:none}.nav-item{width:52px}.nav-item>.navlink{justify-content:center}.nav-caret{display:none}.journal-menu{width:270px}.logout{padding:0 9px}.title-row{align-items:flex-start;flex-direction:column}.field,.field.wide{grid-column:1/-1}.lab-grid{grid-template-columns:1fr}.part-row{grid-template-columns:1fr}.section{padding:18px}}
+    @media(max-width:620px){.saved-research-card.compact-primary .part-research{grid-template-columns:1fr}}
+    @media(max-width:800px){.saved-research-card.single-part .part-row,.saved-research-card.single-part.compact-primary .part-row{grid-template-columns:1fr}.saved-research-card.single-part.compact-primary .saved-research-value,.saved-research-card.single-part .saved-choice-group{justify-content:flex-start}}
+    @media(max-width:520px){.section-head{flex-direction:column;align-items:flex-start}.danger-values{grid-template-columns:1fr}.parts-row{grid-template-columns:1fr}.parts-head{display:none}.parts-row>div+div{border-left:0;border-top:1px solid var(--line)}.parts-row:not(.parts-head)>div:first-child::before{content:"Номер секции";display:block;width:112px;color:var(--muted);font-size:10px;text-transform:uppercase}.parts-row:not(.parts-head)>div:last-child::before{content:"Объём";display:block;width:112px;color:var(--muted);font-size:10px;text-transform:uppercase}}
+  </style>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="app-shell.css">
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="app-shell.js?v=20261019-2" defer></script>
+  <link rel="stylesheet" href="vse-view-actions.css">
+  <link rel="stylesheet" href="vse-part-outcomes.css">
+  <link rel="stylesheet" href="vse-transport-vsd.css">
+  <script src="vse-part-outcomes.js"></script>
+  <script src="milk-section-research.js?v=20261016-6"></script>
+  <script src="vse-transport-vsd.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="journal.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43" loading="eager" decoding="sync" fetchpriority="high"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink" href="arrivals.html" id="arrivals-link"><span class="icon"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"/><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"/><path d="M12 12.4V20"/></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink active" href="journal.html" id="journal-home" aria-current="page"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink" href="directories.html" id="directories"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Молоко и молочная продукция" data-short-label="Молоко"><span class="navtext" data-product-label>Молоко и молочная продукция</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
+          <button type="button" role="option" aria-selected="false" data-product-option="meat">Мясо и продукты убоя</button>
+          <button class="active" type="button" role="option" aria-selected="true" data-product-option="milk">Молоко и молочная продукция</button>
+        </div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link" href="profile.html" id="profile"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <main>
+    <div class="title-row"><div><p class="eyebrow">Повторный ветеринарный осмотр</p><h1>Ветосмотр №1</h1></div></div>
+    <div class="record">
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l4 4v14H4V3h4z"/><path d="M16 3v5h5"/><path d="M8 12h8"/><path d="M8 16h6"/></svg></span><div><h2>Сведения о повторном ветосмотре</h2><p>Регистрационные данные осмотра и связанная партия продукции.</p></div></div></div>
+        <div class="grid">
+          <div class="field wide"><label>Номер ветосмотра</label><input value="1" readonly></div>
+          <div class="field wide"><label>Дата и время обращения</label><input value="14.08.2026 10:20" readonly></div>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20h12"/><path d="M12 4v16"/><path d="M5 8h14"/><path d="M7 8l-3 6h6L7 8z"/><path d="M17 8l-3 6h6l-3-6z"/></svg></span><div><h2>Владелец и продукция</h2><p>Данные владельца и остатка партии продукции.</p></div></div></div>
+        <div class="grid">
+          <div class="field wide"><label>Наименование хозяйства / ФИО</label><input id="view-owner" value="КФХ «Нур»" readonly></div>
+          <div class="field full"><label>Адрес владельца</label><input value="Республика Татарстан, Лаишевский район, с. Столбище" readonly></div>
+          <div class="field wide"><label>Вид продукции</label><input id="view-product" value="Молоко коровье сырое" readonly></div>
+          <div class="field wide"><label>Общий объём продукции</label><input id="view-amount" value="120 л" readonly></div>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></span><div><h2>Исследования</h2><p>Результаты исследований остатка партии.</p></div></div></div>
+        <div class="lab-grid" id="milk-main-tests" aria-label="Результаты исследований остатка партии"></div>
+      </section>
+      <section class="section">
+        <div class="section-head"><div class="section-title"><span class="section-icon">✓</span><div><h2>Итог повторного ветосмотра</h2><p>Заключение и специалист, проводивший повторный осмотр.</p></div></div></div>
+        <div class="grid">
+          <div class="field wide"><label>Дата проведения осмотра</label><input value="14.08.2026 10:20" readonly></div>
+          <div class="field wide"><label>Связанная ВСЭ</label><input value="ВСЭ №204" readonly></div>
+          <div class="field full repeat-inspection-result"><label for="repeat-inspection-result">Результат повторного ветосмотра <span class="req">*</span></label><select id="repeat-inspection-result"><option selected>Условия хранения соблюдены, показатели партии соответствуют требованиям</option><option>Условия хранения не соблюдены, показатели партии не соответствуют требованиям</option></select></div>
+          <div class="field"><label>Стоимость осмотра, ₽</label><input value="300,00" readonly></div>
+          <div class="field wide"><label>Специалист Госветслужбы <span class="req">*</span></label><input value="Кузнецова Анна Сергеевна" readonly></div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const milkViewParties={'ak-bars':{key:'ak-bars',owner:'КФХ «Ак Барс»',product:'Молоко коровье сырое',amount:'120 л',partLabel:'Остаток партии',amountLabel:'Объём',parts:['120 л'],sourceVsd:'RU016:260812-007214',journalEntry:'Запись складского журнала № 9851204',vehicleNumber:'А245КМ 116',productionDate:'12.08.2026 06:30',storageMethod:'Охлаждаемые',packaging:'Секция молочной автоцистерны'}};
+    const milkViewParams=new URLSearchParams(location.search);const milkViewParty=milkViewParties['ak-bars'];document.getElementById('view-owner').value=milkViewParty.owner;document.getElementById('view-product').value=milkViewParty.product;document.getElementById('view-amount').value=milkViewParty.amount;
+    const savedMilkResearch=MilkSectionResearch.fromParams(milkViewParams);MilkSectionResearch.renderSaved(document.getElementById('milk-main-tests'),milkViewParty,savedMilkResearch);document.querySelectorAll('#milk-main-tests .part-label strong').forEach(label=>label.textContent='Остаток партии · 120 л');
+    document.getElementById('logout').addEventListener('click',()=>{window.location.href='login.html'});
+  </script>
+</body>
+</html>
+
+

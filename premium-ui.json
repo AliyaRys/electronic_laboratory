@@ -1,0 +1,14 @@
+{
+  "profile": "product-admin",
+  "scope": "Мигрированные вертикальные срезы: авторизация, восстановление пароля и профиль. Остальные старые экраны не объявлены проверенными.",
+  "sourceRoots": ["components/auth", "components/app", "components/profile"],
+  "locale": "ru-RU",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Form"],
+  "requiredCommands": ["build", "e2e"],
+  "commands": {
+    "build": "npm.cmd run build-storybook",
+    "e2e": "npm.cmd run test:ui"
+  },
+  "evidence": { "failurePaths": "tests/profile.spec.js" }
+}

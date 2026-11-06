@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Справочники</title>
+  <style>
+    :root { --ink:#17323a; --muted:#668087; --line:#dfe9e9; --page:#f5f9f8; --panel:#fff; --teal:#146c73; --teal-dark:#0d5358; --tint:#eaf6f4; --danger:#a33943; }
+    *{box-sizing:border-box} body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button,input,select,textarea{font:inherit} button{cursor:pointer} button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #75bfc2;outline-offset:2px}
+    .topbar{height:76px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 max(24px,calc((100vw - 1440px)/2));gap:26px;position:sticky;top:0;z-index:10}
+    .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink);min-width:275px}.brand strong{display:block;font-size:15px;letter-spacing:-.01em}.brand span{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+    .topnav{display:flex;align-items:center;gap:6px;flex:1}.navlink,.user-link{border:0;background:transparent;color:#4c6870;min-height:42px;border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;gap:9px;padding:0 12px;font-weight:600}.navlink:hover,.user-link:hover,.navlink.active{background:var(--tint);color:var(--teal-dark)}.navlink{border:1px solid var(--line);background:#fff}.navlink.active{border-color:#c9e6e2;box-shadow:inset 0 0 0 1px #c9e6e2}.icon{width:19px;height:19px;display:inline-grid;place-items:center;font-size:18px;line-height:1}.user-area{display:flex;align-items:center;gap:5px}.avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#d7efec;color:var(--teal-dark);font-weight:750;font-size:12px}.logout{border:1px solid var(--line);background:white;color:#587077;border-radius:9px;min-height:38px;padding:0 12px;font-weight:650}.logout:hover{border-color:#e7b7bc;color:var(--danger);background:#fff8f8}
+    .nav-item{position:relative;width:340px}.nav-item>.navlink{width:100%;justify-content:flex-start}.nav-item .navtext{margin-right:auto}.nav-item:hover>.navlink,.nav-item:focus-within>.navlink{background:var(--tint);color:var(--teal-dark)}.nav-caret{width:14px;height:14px;margin-left:auto;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}.journal-menu{position:absolute;left:0;top:calc(100% - 1px);z-index:30;display:none;width:100%;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 18px 42px #17323a22}.nav-item:hover .journal-menu,.nav-item:focus-within .journal-menu,.nav-item.open .journal-menu{display:grid}.journal-menu a{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;border-radius:10px;padding:0 10px;text-decoration:none;color:#4d676d;font-weight:620;line-height:1.2}.journal-menu a:hover{background:#f5f9f8;color:var(--teal-dark)}.journal-menu a.active{background:var(--tint);color:var(--teal-dark);font-weight:720;box-shadow:inset 0 0 0 1px #c9e6e2}.journal-menu a.active::after{content:"✓";font-weight:900;color:var(--teal)}
+    main{max-width:1180px;margin:0 auto;padding:37px 24px 96px}.breadcrumbs{color:var(--muted);font-size:13px;margin-bottom:20px}.breadcrumbs a{color:var(--teal);text-decoration:none}.title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:28px}.eyebrow{color:var(--teal);font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;margin:0 0 6px}.title-row h1{font-size:30px;line-height:1.15;letter-spacing:-.035em;margin:0}
+    .section{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:25px;box-shadow:0 8px 24px #1f5a5b08}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:21px}.section-title{display:flex;gap:12px;align-items:center}.section-icon{display:inline-flex;align-items:center;justify-content:center;width:37px;height:37px;min-width:37px;border-radius:11px;background:var(--tint);color:var(--teal);font-size:18px;line-height:1}.section-icon svg{display:block;width:20px;height:20px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}.section h2{margin:0;font-size:17px;letter-spacing:-.015em}.section-head p{margin:3px 0 0;color:var(--muted);font-size:13px}
+    .directory-list{display:grid;gap:12px}.directory-item{display:flex;align-items:center;justify-content:space-between;gap:18px;border:1px solid var(--line);border-radius:13px;background:#fff;padding:17px 18px}.directory-main{display:flex;align-items:center;gap:13px;min-width:0}.directory-icon{display:inline-grid;place-items:center;width:41px;height:41px;border-radius:11px;background:var(--tint);color:var(--teal);font-size:19px}.directory-icon svg{display:block;width:20px;height:20px;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}.directory-name{font-weight:760;font-size:15px}.directory-meta{color:var(--muted);font-size:12px;margin-top:2px}.directory-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.btn{border:1px solid transparent;border-radius:10px;min-height:43px;padding:0 16px;font-weight:720;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.btn.secondary{border-color:#cbdadb;background:#fff;color:#4d676d}.btn.secondary:hover{background:#f5f8f8}.btn.primary{background:var(--teal);color:#fff;box-shadow:0 5px 12px #146c7330}.btn.primary:hover{background:var(--teal-dark)}.btn.danger{border-color:#e5b8bd;background:#fffafa;color:var(--danger)}.btn.danger:hover{background:#fff2f3}.toast{position:fixed;right:24px;bottom:24px;background:#173f43;color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 12px 28px #16333735;transform:translateY(12px);opacity:0;pointer-events:none;transition:.2s}.toast.show{transform:none;opacity:1}
+    @media(max-width:800px){.topbar{padding:0 15px;gap:8px}.brand{min-width:0}.brand span,.topnav .navtext,.user-link{display:none}.nav-item{width:52px}.nav-item>.navlink{justify-content:center}.nav-caret{display:none}.journal-menu{width:270px}.title-row{align-items:flex-start;flex-direction:column}.section{padding:18px}.directory-item{align-items:flex-start;flex-direction:column}.directory-actions{width:100%;justify-content:flex-start}.logout{padding:0 9px}}
+  </style>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="app-shell.css">
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="components/icons/VseIcon.js?v=20261030-3" defer></script>
+  <script src="app-shell.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="journal.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43" loading="eager" decoding="sync" fetchpriority="high"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink" href="arrivals.html" id="arrivals-link"><span class="icon"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"/><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"/><path d="M12 12.4V20"/></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink" href="journal.html" id="journal-home"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink active" href="directories.html" id="directories" aria-current="page"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Мясо и продукты убоя" data-short-label="Мясо"><span class="navtext" data-product-label>Мясо и продукты убоя</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
+          <button class="active" type="button" role="option" aria-selected="true" data-product-option="meat">Мясо и продукты убоя</button>
+          <button type="button" role="option" aria-selected="false" data-product-option="milk">Молоко и молочная продукция</button>
+        </div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link" href="profile.html" id="profile"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <main>
+    <div class="title-row"><div><p class="eyebrow">Справочники</p><h1>Управление справочниками</h1></div></div>
+    <section class="section">
+      <div class="section-head"><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/><path d="M8 3v4"/><path d="M16 10v4"/><path d="M11 17v4"/></svg></span><div><h2>Список справочников</h2><p>Настройки, которые используются при заполнении электронного журнала.</p></div></div></div>
+      <div class="directory-list">
+        <article class="directory-item">
+          <div class="directory-main"><span class="directory-icon">₽</span><div><div class="directory-name">Стоимость исследований ВСЭ</div><div class="directory-meta">Используется для автоматического расчёта стоимости услуг</div></div></div>
+          <div class="directory-actions"><a class="btn secondary" href="directory-price-edit.html" id="edit-price-directory">Редактировать</a><button class="btn danger" type="button" id="delete-price-directory">Удалить</button></div>
+        </article>
+        <article class="directory-item">
+          <div class="directory-main"><span class="directory-icon" data-vse-icon="directory-paid-services" aria-hidden="true"></span><div><div class="directory-name">Платные услуги</div><div class="directory-meta">Стоимость услуг сверки данных для мясной и молочной продукции</div></div></div>
+          <div class="directory-actions"><a class="btn secondary" href="directory-paid-services-edit.html" id="edit-paid-services-directory">Редактировать</a><button class="btn danger" type="button" id="delete-paid-services-directory">Удалить</button></div>
+        </article>
+        
+        <article class="directory-item">
+          <div class="directory-main"><span class="directory-icon">≋</span><div><div class="directory-name">Нормы исследований</div><div class="directory-meta">Используется для автоматической отметки «норма» и отклонений в результатах ВСЭ</div></div></div>
+          <div class="directory-actions"><a class="btn secondary" href="directory-norms-edit.html" id="edit-norms-directory">Редактировать</a><button class="btn danger" type="button" id="delete-norms-directory">Удалить</button></div>
+        </article>
+      </div>
+    </section>
+  </main>
+  <div class="toast" role="status" aria-live="polite" id="toast"></div>
+  <script>
+    const toast=document.getElementById('toast');function notice(message){toast.textContent=message;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2600)}
+    document.getElementById('delete-price-directory').addEventListener('click',()=>notice('Удаление справочника — демонстрация'));
+    document.getElementById('delete-norms-directory').addEventListener('click',()=>notice('Удаление справочника — демонстрация'));
+    document.getElementById('delete-paid-services-directory').addEventListener('click',()=>notice('Удаление справочника — демонстрация'));
+    document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('[data-vse-icon]').forEach(slot=>slot.append(VseIcons.create(slot.dataset.vseIcon))));
+    
+    document.getElementById('logout').addEventListener('click',()=>{window.location.href='login.html'});
+  </script>
+</body>
+</html>

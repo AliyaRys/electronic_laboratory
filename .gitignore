@@ -1,0 +1,36 @@
+# Dependencies and generated output
+node_modules/
+/storybook-static/
+/dist/
+/build/
+/coverage/
+/.cache/
+/.vite/
+*.tsbuildinfo
+
+# Local experiments and test reports
+/tmp/
+/test-results/
+/playwright-report/
+/blob-report/
+*.log
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+/.idea/
+/.vscode/
+*.swp
+*.swo
+~$*

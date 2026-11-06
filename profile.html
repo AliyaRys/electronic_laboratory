@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Электронная лаборатория ВСЭ — Профиль пользователя</title>
+  <link rel="preload" as="image" href="vse-lab-icon-transparent.png" fetchpriority="high">
+  <link rel="stylesheet" href="components/app/app.css">
+  <link rel="stylesheet" href="components/profile/profile.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <script src="components/app/Icon.js" defer></script>
+  <script src="components/app/Button.js" defer></script>
+  <script src="components/app/InfoField.js" defer></script>
+  <script src="components/profile/ProfileSummary.js" defer></script>
+  <script src="components/profile/PasswordChangeForm.js" defer></script>
+  <script src="components/profile/ProfileScreen.js" defer></script>
+  <script src="components/shell/AppHeader.js?v=20261020-1" defer></script>
+  <script src="app-shell.js" defer></script>
+  <script src="components/profile/profile-page.js" defer></script>
+</head>
+<body class="vse-app vse-profile-document">
+  <header class="topbar">
+    <a class="brand" href="journal.html" id="brand-home" aria-label="Электронная лаборатория ВСЭ — главная"><img src="vse-lab-icon-transparent.png" alt="" width="43" height="43" loading="eager" decoding="sync" fetchpriority="high"><div><strong>Электронная лаборатория ВСЭ</strong><span>Лаборатория ВСЭ №1 г. Казань</span></div></a>
+    <nav class="topnav" aria-label="Основная навигация">
+      <a class="navlink" href="arrivals.html" id="arrivals-link" aria-label="Поступления"><span class="icon"><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.2 12 4l7.5 4.2-7.5 4.2-7.5-4.2Z"/><path d="M4.5 8.2v7.9L12 20l7.5-3.9V8.2"/><path d="M12 12.4V20"/></svg></span><span class="navtext">Поступления</span></a>
+      <a class="navlink" href="journal.html" id="journal-home" aria-label="Журнал ВСЭ"><span class="icon" aria-hidden="true">▦</span><span class="navtext">Журнал ВСЭ</span></a>
+      <a class="navlink" href="directories.html" id="directories" aria-label="Справочники"><span class="icon" aria-hidden="true">⚙</span><span class="navtext">Справочники</span></a>
+      <div class="nav-item product-switcher">
+        <button class="navlink product-trigger" id="product-switcher" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Тип продукции: Мясо и продукты убоя" data-short-label="Мясо"><span class="navtext" data-product-label>Мясо и продукты убоя</span><svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+        <div class="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
+          <button class="active" type="button" role="option" aria-selected="true" data-product-option="meat">Мясо и продукты убоя</button>
+          <button type="button" role="option" aria-selected="false" data-product-option="milk">Молоко и молочная продукция</button>
+        </div>
+      </div>
+    </nav>
+    <div class="user-area"><a class="user-link active" href="profile.html" id="profile" aria-current="page"><span class="avatar">АК</span><span>Анна Кузнецова</span></a><button class="logout" type="button" id="logout">Выйти</button></div>
+  </header>
+  <div id="profile-root"></div>
+  <noscript>Для работы макета включите JavaScript в браузере.</noscript>
+</body>
+</html>

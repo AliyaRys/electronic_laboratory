@@ -1,0 +1,10 @@
+.vse-icon-catalog { width:auto; max-width:min(980px,calc(100vw - 48px)); padding:24px; border-radius:18px; background:var(--page,#f5f9f8); color:var(--ink,#17323a); font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+.vse-icon-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+.vse-icon-card { display:grid; grid-template-columns:42px minmax(0,1fr); gap:12px; align-items:center; min-width:0; padding:14px; border:1px solid var(--line,#dfe9e9); border-radius:14px; background:#fff; }
+.vse-icon-card .section-icon { width:42px; height:42px; border-radius:12px; background:var(--tint,#eaf6f4); color:var(--teal-dark,#0d5358); display:grid; place-items:center; }
+.vse-icon-card svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.vse-icon-card strong { display:block; color:#29474d; font-size:14px; line-height:1.25; }
+.vse-icon-card code { display:block; margin-top:4px; overflow:hidden; color:var(--app-muted-readable,#566e75); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.vse-icon-usage { margin:0 0 16px; color:var(--app-muted-readable,#566e75); font-size:13px; line-height:1.45; }
+.vse-icon-catalog h2 { margin:22px 0 12px; color:#29474d; font-size:16px; }
+@media (max-width:560px) { .vse-icon-catalog { padding:12px; } .vse-icon-grid { grid-template-columns:1fr; } }

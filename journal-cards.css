@@ -1,0 +1,97 @@
+/* Shared journal geometry: product changes do not change the card columns. */
+.journal-list .vse-card {
+  position: relative;
+  grid-template-columns: 166px minmax(0, .92fr) minmax(0, .95fr) minmax(0, .82fr) 154px 54px;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  height: 80px;
+}
+
+.journal-list .vse-card > div {
+  min-width: 0;
+}
+
+.journal-list .vse-card > div:nth-child(2) {
+  padding-left: 22px;
+}
+
+.journal-list .card-label {
+  line-height: 16px;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.journal-list .card-value {
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.journal-list .status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.journal-list .status {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.journal-list .card-actions {
+  position: relative;
+  z-index: 2;
+  width: 54px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.journal-list .card-actions .btn.icon-only {
+  flex: 0 0 43px;
+  width: 43px;
+  height: 43px;
+  padding: 0;
+}
+
+@media (max-width: 1120px) {
+  .journal-list .vse-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    height: auto;
+  }
+
+  .journal-list .vse-card > div:nth-child(2) {
+    padding-left: 0;
+  }
+
+  .journal-list .status-cell {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-height: 43px;
+    padding-right: 66px;
+  }
+
+  .journal-list .card-actions {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 800px) {
+  .journal-list .vse-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .journal-list .status-cell,
+  .journal-list .card-actions {
+    grid-row: 5;
+  }
+}

@@ -1,0 +1,22 @@
+.admin-status-main { width: min(920px, calc(100% - 40px)); margin: 0 auto; padding: 31px 0 70px; }
+.admin-status-back { display: inline-block; margin-bottom: 22px; color: var(--app-teal); font-weight: 700; text-decoration: none; }
+.admin-status-back:hover { text-decoration: underline; text-underline-offset: 3px; }
+.admin-status-heading h1 { margin: 0; font-size: 28px; line-height: 1.2; }
+.admin-status-heading p { margin: 7px 0 22px; color: var(--app-muted-readable); }
+.admin-status-feedback { margin-bottom: 14px; padding: 12px 15px; border: 1px solid #b9dcd5; border-radius: 11px; background: #eef9f6; color: #155d55; font-weight: 650; }
+.admin-status-card { display: grid; gap: 22px; padding: 24px; border: 1px solid var(--app-line); border-radius: 15px; background: #fff; box-shadow: 0 8px 26px #17323a0a; }
+.admin-status-card > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.admin-status-card h2 { margin: 0; font-size: 20px; }
+.admin-status-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; }
+.admin-status-card dl div { padding: 13px 15px; border: 1px solid var(--app-line); border-radius: 12px; background: #f7faf9; }
+.admin-status-card dt { color: var(--app-muted-readable); font-size: 11px; font-weight: 760; letter-spacing: .05em; text-transform: uppercase; }
+.admin-status-card dd { margin: 5px 0 0; font-weight: 720; overflow-wrap: anywhere; }
+.admin-status-card > .app-button { justify-self: end; }
+.admin-status-card > .app-button .admin-icon { flex: 0 0 18px; width: 18px; height: 18px; }
+@media (max-width: 560px) {
+  .admin-status-main { width: min(100% - 28px, 920px); padding-top: 24px; }
+  .admin-status-card { padding: 18px; }
+  .admin-status-card > div:first-child { align-items: flex-start; flex-direction: column; }
+  .admin-status-card dl { grid-template-columns: 1fr; }
+  .admin-status-card > .app-button { width: 100%; }
+}

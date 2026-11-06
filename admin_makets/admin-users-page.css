@@ -1,0 +1,18 @@
+.admin-page { min-width: 320px; }
+.admin-main { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: 36px 0 84px; }
+.admin-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 27px; }
+.admin-title-row h1 { margin: 0; color: var(--app-ink); font-size: clamp(27px, 2.5vw, 32px); line-height: 1.15; letter-spacing: -.035em; }
+.admin-title-row p { margin: 7px 0 0; color: var(--app-muted); font-size: 14px; }
+.admin-create-user { flex: 0 0 auto; }
+.admin-create-user [data-admin-create-icon] { display: contents; }
+.admin-create-user .admin-icon { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 720px) {
+  .admin-main { width: min(100% - 32px, 1180px); padding-top: 26px; }
+  .admin-title-row { align-items: stretch; flex-direction: column; gap: 17px; }
+  .admin-create-user { align-self: flex-start; }
+}
+@media (max-width: 420px) {
+  .admin-main { width: min(100% - 24px, 1180px); }
+  .admin-create-user { width: 100%; }
+}

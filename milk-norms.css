@@ -1,0 +1,34 @@
+/* Молочный справочник: общая компоновка всех страниц видов продукции. */
+html{scrollbar-gutter:stable}
+.norms-layout{display:grid;grid-template-columns:258px minmax(0,1fr);align-items:start;gap:20px}
+.catalog-rail{position:sticky;top:96px;width:258px;max-height:calc(100vh - 116px);min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-gutter:stable;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 8px 24px #1f5a5b08}
+.catalog-heading{padding:17px 17px 13px;border-bottom:1px solid var(--line);font-size:13px;font-weight:600;letter-spacing:0;color:#526b70}
+.catalog-toggle{display:none}
+.catalog-links{display:grid;gap:5px;padding:10px}
+.catalog-links>a{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:39px;padding:9px 11px;border:1px solid transparent;border-radius:10px;color:#446067;text-decoration:none;font-size:12px;line-height:1.25;font-weight:650;overflow-wrap:anywhere}
+.catalog-links>a::after{content:"";display:block;width:14px;height:14px;flex:0 0 14px;line-height:14px;text-align:center}
+.catalog-links>a:hover{border-color:#d6e7e5;background:#f5faf9;color:var(--teal-dark)}
+.catalog-links>a.active{border-color:#9bc8c4;background:#fff;color:var(--teal-dark);box-shadow:0 4px 12px #1f5a5b12}
+.catalog-links>a.active::after{content:"✓";color:var(--teal);font-size:14px;font-weight:850}
+.catalog-content{min-width:0}
+.catalog-content .title-row{min-height:33px;margin-bottom:19px}
+.catalog-content .title-row h1{font-size:28px;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.catalog-content form{gap:13px}
+.catalog-content .section{padding:19px 20px}
+.catalog-content .section-head{margin-bottom:14px}
+.catalog-content .section h2{font-size:16px}
+.catalog-content .norm-list{gap:8px}
+.catalog-content .norm-row{grid-template-columns:minmax(260px,1fr) 180px 180px;gap:12px;align-items:end;padding:16px;border-radius:13px}
+.catalog-content .norm-row.choice-row{grid-template-columns:minmax(260px,1fr) 372px}
+.catalog-content .norm-name{font-size:15px;line-height:1.3}
+.catalog-content .field{gap:7px}
+.catalog-content .field label{font-size:11px;letter-spacing:.06em}
+.catalog-content .field input,.catalog-content .field select{min-height:43px;padding:0 12px;font-size:14px;font-variant-numeric:tabular-nums}
+.catalog-content .field input:disabled{background:#f0f4f4;border-color:#e3ebeb;color:#87999d;opacity:1}
+.catalog-content .field input[aria-invalid="true"]{border-color:var(--danger);box-shadow:0 0 0 2px #a3394325}
+.catalog-content .actions{z-index:2}
+.norms-error{margin:0;color:var(--danger);font-size:12px;font-weight:650}
+.norms-error:empty{display:none}
+@media(max-width:1060px){.norms-layout{grid-template-columns:215px minmax(0,1fr);gap:14px}.catalog-rail{width:215px}.catalog-content .norm-row{grid-template-columns:minmax(150px,1fr) minmax(110px,1fr) minmax(110px,1fr)}.catalog-content .norm-row.choice-row{grid-template-columns:minmax(150px,1fr) minmax(220px,2fr)}}
+@media(max-width:800px){.norms-layout{display:block}.catalog-rail{position:relative;top:auto;width:100%;max-height:none;overflow:visible;margin-bottom:17px;scrollbar-gutter:auto}.catalog-heading{display:none}.catalog-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:48px;min-height:48px;border:0;background:#fff;color:var(--teal-dark);padding:10px 15px;text-align:left;font-weight:720;border-radius:16px}.catalog-toggle span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.catalog-toggle::after{content:"";width:8px;height:8px;flex:0 0 8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .15s}.catalog-rail.open .catalog-toggle::after{transform:rotate(225deg)}.catalog-links{display:none;max-height:55vh;overflow:auto;border-top:1px solid var(--line)}.catalog-rail.open .catalog-links{display:block}.catalog-content .title-row{min-height:30px}.catalog-content .title-row h1{font-size:25px}}
+@media(max-width:570px){.catalog-content .norm-row,.catalog-content .norm-row.choice-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.catalog-content .norm-info{grid-column:1/-1}.catalog-content .norm-row.choice-row .field{grid-column:1/-1}.catalog-content .section{padding:15px}.catalog-content .actions{position:static;justify-content:stretch}.catalog-content .actions>*{flex:1}}

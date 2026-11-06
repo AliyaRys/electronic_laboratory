@@ -55,8 +55,8 @@
 
 **Interfaces:** API-02 users/me/history/change/reset/block/delete; UserView/UserWrite; текущий пользователь не меняется при просмотре другого.
 
-- [ ] Написать `test_parallel_duplicate_login` assert один 201/один 409; `test_cannot_delegate_republic_analyst` assert403 и нет записи; `test_parallel_last_admin_delete` assert остался ≥1; `test_linked_user_delete_blocked` assert409, после block автор ВСЭ прежний; `test_history_redacts_passwords` assert нет пароля/hash, no-op update не создаёт события.
-- [ ] Запустить `uv run --frozen pytest backend/tests/identity/test_users.py -v`, убедиться в FAIL до изменений.
-- [ ] Реализовать CRUD и историю в одной транзакции с реальными changed_fields, блокировкой области при критических admin-операциях; выдача четырёх ролей только в delegation scope, self-escalation запрещён. Reset не меняет active/scopes, смена/reset отзывают все сеансы. DELETE linked/self/last-admin отказ, несвязанного — физически. Внешний initiator — отдельная защищённая связь без выдачи локальной ролью; credentials не в UserView.
-- [ ] Выполнить тесты I03 и все identity/platform; проверить PostgreSQL concurrency и чужие UUID. Адресная приёмка FT-ACC-01–11, FT-ADM-01/02, AT-20/24; UI проверяется в ТЗ-02.
-- [ ] Зафиксировать: `feat: add scoped user administration and profile`.
+- [x] Написать `test_parallel_duplicate_login` assert один 201/один 409; `test_cannot_delegate_republic_analyst` assert403 и нет записи; `test_parallel_last_admin_delete` assert остался ≥1; `test_linked_user_delete_blocked` assert409, после block автор ВСЭ прежний; `test_history_redacts_passwords` assert нет пароля/hash, no-op update не создаёт события.
+- [x] Запустить `uv run --frozen pytest backend/tests/identity/test_users.py -v`, убедиться в FAIL до изменений.
+- [x] Реализовать CRUD и историю в одной транзакции с реальными changed_fields, блокировкой области при критических admin-операциях; выдача четырёх ролей только в delegation scope, self-escalation запрещён. Reset не меняет active/scopes, смена/reset отзывают все сеансы. DELETE linked/self/last-admin отказ, несвязанного — физически. Внешний initiator — отдельная защищённая связь без выдачи локальной ролью; credentials не в UserView.
+- [x] Выполнить тесты I03 и все identity/platform; проверить PostgreSQL concurrency и чужие UUID. Адресная приёмка FT-ACC-01–11, FT-ADM-01/02, AT-20/24; UI проверяется в ТЗ-02.
+- [x] Зафиксировать: `feat: add scoped user administration and profile`.

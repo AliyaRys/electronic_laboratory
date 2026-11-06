@@ -92,7 +92,7 @@ class User(Base):
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    login: Mapped[str] = mapped_column(String(255), unique=True)
+    login: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(255))
     position: Mapped[str | None] = mapped_column(String(255), nullable=True)

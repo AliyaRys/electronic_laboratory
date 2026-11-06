@@ -7,25 +7,42 @@ closed CLI. User administration arrives in Task I03.
 from __future__ import annotations
 
 import secrets
-from typing import Annotated
+import uuid
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.core.commands import (
+    IdempotencyRecorder,
+    UnitOfWork,
+    canonical_request_hash,
+    ensure_revision,
+    format_etag,
+    resolve_if_match,
+)
+from backend.src.core.contracts import Page
 from backend.src.core.database import async_session
-from backend.src.core.problems import ProblemError, ProblemItem, dependency_unavailable, validation_error
+from backend.src.core.problems import (
+    ProblemError,
+    ProblemItem,
+    dependency_unavailable,
+    idempotency_key_required,
+    not_found,
+    validation_error,
+)
 from backend.src.infrastructure.config.settings import Settings, get_settings
-from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
-from backend.src.modules.identity.models import DelegationGrant, User, UserRole, UserScope
+from backend.src.modules.identity import commands, queries
+from backend.src.modules.identity.authz import AccessSnapshot, Authorizer, ScopeTarget, get_authorizer
+from backend.src.modules.identity.models import CommandStatus, User, UserRole
 from backend.src.modules.identity.passwords import (
     DUMMY_PASSWORD_HASH,
     hash_password,
     validate_password,
     verify_password,
 )
-from backend.src.modules.identity.policies import PERMISSION_MATRIX
 from backend.src.modules.identity.schemas import (
     ChangePasswordRequest,
     CsrfResponse,
@@ -33,8 +50,11 @@ from backend.src.modules.identity.schemas import (
     LoginRequest,
     LoginResponse,
     ReadyResponse,
+    ResetPasswordRequest,
     ScopeView,
+    UserEventView,
     UserView,
+    UserWrite,
 )
 from backend.src.modules.identity.session import (
     SessionIdentity,
@@ -46,12 +66,13 @@ from backend.src.modules.identity.session import (
 
 # The Alembic head revision this build expects. Guarded by a test so it cannot
 # drift from the migration file.
-CURRENT_SCHEMA_REVISION = "0002_auth_policy_adapter"
+CURRENT_SCHEMA_REVISION = "0003_user_admin_constraints"
 
 __all__ = ["router", "CURRENT_SCHEMA_REVISION"]
 
 router = APIRouter(tags=["System"])
 auth_router = APIRouter(prefix="/auth", tags=["Access"])
+users_router = APIRouter(prefix="/users", tags=["Access"])
 
 
 def _problem(status: int, code: str, detail: str, *, headers: dict[str, str] | None = None) -> ProblemError:
@@ -97,32 +118,12 @@ async def require_session(
     return identity, user
 
 
-def _capabilities(user: User) -> list[str]:
-    role = UserRole(user.role)
-    return sorted(action for action, roles in PERMISSION_MATRIX.items() if role in roles)
-
-
 async def _contexts(db: AsyncSession, user: User) -> list[ScopeView]:
-    if UserRole(user.role) == UserRole.ADMIN:
-        grants = (await db.execute(select(DelegationGrant).where(DelegationGrant.target_id == user.id))).scalars().all()
-        return [ScopeView(territory_id=item.territory_id) for item in grants]
-    scopes = (await db.execute(select(UserScope).where(UserScope.user_id == user.id))).scalars().all()
-    return [ScopeView(laboratory_id=item.laboratory_id, product_scope_id=item.product_scope_id) for item in scopes]
+    return await queries.user_contexts(db, user)
 
 
 async def _user_view(db: AsyncSession, user: User) -> UserView:
-    return UserView(
-        id=user.id,
-        full_name=user.full_name,
-        login=user.login,
-        email=user.email,
-        position=user.position,
-        role=UserRole(user.role),
-        active=user.active,
-        scopes=await _contexts(db, user),
-        capabilities=_capabilities(user),
-        revision=user.rev,
-    )
+    return await queries.build_user_view(db, user)
 
 
 @router.get("/health/live", response_model=LiveResponse)
@@ -292,4 +293,239 @@ async def change_password(
     await db.commit()
 
 
+# --- User administration (API-02) ----------------------------------------------
+
+
+async def _scoped_target(
+    db: AsyncSession,
+    authorizer: Authorizer,
+    actor: User,
+    action: str,
+    user_id: uuid.UUID,
+) -> tuple[AccessSnapshot, User]:
+    """Authorize the ADMIN action and resolve the target inside the delegation."""
+    snapshot = await authorizer.authorize(db, actor.id, action, None)
+    target = await commands.load_target(db, user_id)
+    if target is None:
+        raise not_found()
+    territories = await commands.user_territories(db, target.id)
+    # A user inside the delegation is visible; a user without any territory is
+    # unassigned staff, carries no territory data and stays manageable.
+    if territories and not territories & commands.allowed_territories(snapshot):
+        # A foreign user UUID answers 404 without revealing its attributes.
+        raise not_found()
+    return snapshot, target
+
+
+def _idempotency_key(request: Request) -> str:
+    key = request.headers.get("idempotency-key", "").strip()
+    if not key:
+        raise idempotency_key_required()
+    return key
+
+
+@users_router.post("/register", status_code=404, include_in_schema=False, response_model=None)
+async def no_public_signup() -> None:
+    """There is deliberately no public signup: bootstrap stays a closed CLI."""
+    raise not_found("Публичная регистрация отсутствует.")
+
+
+@users_router.get("", response_model=Page[UserView])
+async def list_users(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    role: UserRole | None = None,
+    status: Literal["active", "inactive"] | None = None,
+    laboratory_id: uuid.UUID | None = None,
+    product_scope_id: uuid.UUID | None = None,
+    q: str | None = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> Page[UserView]:
+    identity, actor = principal
+    snapshot = await authorizer.authorize(db, identity.actor_id, "users:list", None)
+    items, total = await queries.user_page(
+        db,
+        allowed=commands.allowed_territories(snapshot),
+        role=role,
+        status=status,
+        laboratory_id=laboratory_id,
+        product_scope_id=product_scope_id,
+        query=q,
+        page=page,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return Page[UserView](
+        items=[await queries.build_user_view(db, item) for item in items],
+        total=total,
+        page=page,
+        page_size=queries.PAGE_SIZE,
+    )
+
+
+@users_router.post("", status_code=201, response_model=UserView)
+async def create_user(
+    payload: UserWrite,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> UserView:
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    key = _idempotency_key(request)
+    snapshot = await authorizer.authorize(db, actor.id, "users:create", None)
+    request_hash = canonical_request_hash(payload.model_dump(mode="json"), None)
+    recorder = IdempotencyRecorder()
+    uow = UnitOfWork(db)
+    record = await recorder.claim(
+        uow, actor_id=actor.id, action="users.create", context_id=actor.id, key=key, request_hash=request_hash
+    )
+    if record.status == CommandStatus.SUCCESS and record.result_id is not None:
+        replayed = await commands.load_target(db, record.result_id)
+        if replayed is not None:
+            response.headers["Location"] = f"/api/v1/users/{replayed.id}"
+            return await queries.build_user_view(db, replayed)
+    user = await commands.create_user(db, actor_id=actor.id, snapshot=snapshot, payload=payload, record=record)
+    response.headers["Location"] = f"/api/v1/users/{user.id}"
+    response.headers["ETag"] = format_etag(user.rev)
+    return await queries.build_user_view(db, user)
+
+
+@users_router.get("/{user_id}", response_model=UserView)
+async def get_user(
+    user_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> UserView:
+    identity, actor = principal
+    _, target = await _scoped_target(db, authorizer, actor, "users:read", user_id)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["ETag"] = format_etag(target.rev)
+    return await queries.build_user_view(db, target)
+
+
+@users_router.put("/{user_id}", response_model=UserView)
+async def update_user(
+    user_id: uuid.UUID,
+    payload: UserWrite,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> UserView:
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    expected = resolve_if_match(request.headers.get("if-match"))
+    snapshot, target = await _scoped_target(db, authorizer, actor, "users:update", user_id)
+    ensure_revision(expected, target.rev)
+    updated = await commands.update_user(db, actor_id=actor.id, snapshot=snapshot, target=target, payload=payload)
+    response.headers["ETag"] = format_etag(updated.rev)
+    return await queries.build_user_view(db, updated)
+
+
+@users_router.post("/{user_id}/block", response_model=UserView)
+async def block_user(
+    user_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    transport: Annotated[SessionTransport, Depends(get_session_transport)],
+) -> UserView:
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    expected = resolve_if_match(request.headers.get("if-match"))
+    _, target = await _scoped_target(db, authorizer, actor, "users:block", user_id)
+    ensure_revision(expected, target.rev)
+    updated = await commands.set_active(db, actor_id=actor.id, target=target, active=False)
+    await transport.revoke_all(updated.id)  # outside the SQL transaction (SPEC-04)
+    response.headers["ETag"] = format_etag(updated.rev)
+    return await queries.build_user_view(db, updated)
+
+
+@users_router.post("/{user_id}/unblock", response_model=UserView)
+async def unblock_user(
+    user_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> UserView:
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    expected = resolve_if_match(request.headers.get("if-match"))
+    _, target = await _scoped_target(db, authorizer, actor, "users:unblock", user_id)
+    ensure_revision(expected, target.rev)
+    updated = await commands.set_active(db, actor_id=actor.id, target=target, active=True)
+    response.headers["ETag"] = format_etag(updated.rev)
+    return await queries.build_user_view(db, updated)
+
+
+@users_router.post("/{user_id}/reset-password", status_code=204)
+async def reset_user_password(
+    user_id: uuid.UUID,
+    payload: ResetPasswordRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    transport: Annotated[SessionTransport, Depends(get_session_transport)],
+) -> None:
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    expected = resolve_if_match(request.headers.get("if-match"))
+    _, target = await _scoped_target(db, authorizer, actor, "users:reset-password", user_id)
+    ensure_revision(expected, target.rev)
+    await commands.reset_password(
+        db, actor_id=actor.id, target=target, password=payload.new_password, confirmation=payload.confirmation
+    )
+    await transport.revoke_all(target.id)  # outside the SQL transaction (SPEC-04)
+
+
+@users_router.get("/{user_id}/history", response_model=Page[UserEventView])
+async def user_history(
+    user_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> Page[UserEventView]:
+    identity, actor = principal
+    _, target = await _scoped_target(db, authorizer, actor, "users:history", user_id)
+    items, total = await queries.history_page(db, target.id, page)
+    response.headers["Cache-Control"] = "no-store"
+    return Page[UserEventView](items=items, total=total, page=page, page_size=queries.PAGE_SIZE)
+
+
+@users_router.delete("/{user_id}", status_code=204)
+async def delete_user(
+    user_id: uuid.UUID,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> None:
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    key = _idempotency_key(request)
+    await _scoped_target(db, authorizer, actor, "users:delete", user_id)
+    request_hash = canonical_request_hash(None, None)
+    record = await IdempotencyRecorder().claim(
+        UnitOfWork(db), actor_id=actor.id, action="users.delete", context_id=user_id, key=key, request_hash=request_hash
+    )
+    if record.status == CommandStatus.SUCCESS:
+        return  # idempotent replay of the same delete
+    await commands.delete_user(db, actor_id=actor.id, target_id=user_id, record=record)
+
+
 router.include_router(auth_router)
+router.include_router(users_router)

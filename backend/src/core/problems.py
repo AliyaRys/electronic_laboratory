@@ -217,3 +217,23 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=problem.model_dump(mode="json"),
             headers={"Content-Type": PROBLEM_CONTENT_TYPE, **(exc.headers or {})},
         )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        # Ledgered minor (I01 review): an unhandled error must never leak its
+        # internals; the caller gets a stable Problem with a correlation id.
+        problem = Problem(
+            type=PROBLEM_TYPE,
+            title="Internal error",
+            status=500,
+            detail="Внутренняя ошибка сервера.",
+            instance=str(request.url.path),
+            code="INTERNAL_ERROR",
+            trace_id=_request_trace_id(request),
+            errors=[],
+        )
+        return JSONResponse(
+            status_code=500,
+            content=problem.model_dump(mode="json"),
+            headers={"Content-Type": PROBLEM_CONTENT_TYPE},
+        )

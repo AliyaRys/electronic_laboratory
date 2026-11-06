@@ -33,6 +33,7 @@ from backend.src.core.commands import (
 )
 from backend.src.core.problems import register_exception_handlers
 from backend.src.modules.identity.models import CommandRecord, CommandStatus, TechnicalEvent
+from backend.src.modules.identity.router import CURRENT_SCHEMA_REVISION
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -61,7 +62,7 @@ async def test_ready_rejects_wrong_schema(client: AsyncClient, db_session: Async
         assert body["code"] == "DEPENDENCY_UNAVAILABLE"
         assert body["trace_id"]
     finally:
-        await db_session.execute(text("UPDATE alembic_version SET version_num = '0002_auth_policy_adapter'"))
+        await db_session.execute(text(f"UPDATE alembic_version SET version_num = '{CURRENT_SCHEMA_REVISION}'"))
         await db_session.commit()
 
 

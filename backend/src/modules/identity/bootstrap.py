@@ -16,18 +16,13 @@ import asyncio
 import getpass
 import sys
 
-from argon2 import PasswordHasher
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.database import dispose_engine, get_session_factory
 from backend.src.modules.identity.models import User, UserRole
-
-# Argon2id, memory 64 MiB / iterations 3 / parallelism 1 (ADR-004).
-ARGON2 = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=1)
-
-MIN_PASSWORD_LENGTH = 12
-MAX_PASSWORD_LENGTH = 128
+from backend.src.modules.identity.passwords import hash_password, validate_password, verify_password
+from backend.src.modules.identity.policies import install_default_policies
 
 __all__ = [
     "main",
@@ -44,26 +39,6 @@ __all__ = [
 
 class BootstrapError(Exception):
     """Bootstrap cannot proceed (non-empty registry, mismatched passwords, ...)."""
-
-
-def validate_password(password: str) -> None:
-    """Password length contract (ADR-004): 12..128 Unicode characters."""
-    if not (MIN_PASSWORD_LENGTH <= len(password) <= MAX_PASSWORD_LENGTH):
-        raise ValueError(f"Пароль должен содержать от {MIN_PASSWORD_LENGTH} до {MAX_PASSWORD_LENGTH} символов.")
-
-
-def hash_password(password: str) -> str:
-    """Hash a password with Argon2id (64 MiB / 3 / 1)."""
-    validate_password(password)
-    return ARGON2.hash(password)
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    """Constant-time verification of an Argon2id hash."""
-    try:
-        return ARGON2.verify(password_hash, password)
-    except Exception:
-        return False
 
 
 async def user_count(session: AsyncSession) -> int:
@@ -101,6 +76,7 @@ async def run_bootstrap(
         raise BootstrapError("пароли не совпадают")
     validate_password(password)
     user = await create_admin(session, login=login, full_name=full_name, email=email, password=password)
+    await install_default_policies(session)
     await session.commit()
     return user
 

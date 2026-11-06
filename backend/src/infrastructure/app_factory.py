@@ -10,6 +10,8 @@ from fastapi import APIRouter, FastAPI
 from backend.src.core.problems import register_exception_handlers
 from backend.src.infrastructure.config.settings import Settings, get_settings
 from backend.src.infrastructure.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from backend.src.modules.identity.authz import close_authorizer
+from backend.src.modules.identity.session import close_session_transport
 
 __all__ = ["create_application", "lifespan_factory"]
 
@@ -20,7 +22,11 @@ def lifespan_factory(settings: Settings) -> Callable[[FastAPI], AbstractAsyncCon
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         del app
-        yield
+        try:
+            yield
+        finally:
+            await close_session_transport()
+            close_authorizer()
 
     return lifespan
 

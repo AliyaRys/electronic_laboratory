@@ -45,6 +45,7 @@ class Settings(BaseSettings):
 
     # Redis (sessions / rate limit / queue transport; ADR-005)
     redis_url: str = "redis://localhost:6379/0"
+    session_cookie_secure: bool = True
 
     # API
     api_prefix: str = "/api/v1"
@@ -56,6 +57,14 @@ class Settings(BaseSettings):
             return self.database_url
         password = quote(self.db_password, safe="")
         return f"postgresql+asyncpg://{self.db_user}:{password}@{self.db_host}:{self.db_port}/{self.db_name}"
+
+    @property
+    def sync_database_url(self) -> str:
+        """A psycopg URL used only by the limited Casbin adapter thread pool."""
+        async_url = self.async_database_url
+        if async_url.startswith("postgresql+asyncpg://"):
+            return "postgresql+psycopg://" + async_url.removeprefix("postgresql+asyncpg://")
+        return async_url
 
     @property
     def is_production(self) -> bool:

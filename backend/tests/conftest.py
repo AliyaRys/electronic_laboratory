@@ -13,6 +13,7 @@ from pathlib import Path
 # Configure the environment BEFORE importing anything from ``backend.src``:
 # settings are read at import time.
 os.environ.setdefault("ENVIRONMENT", "pytest")
+os.environ.setdefault("SESSION_COOKIE_SECURE", "false")
 
 import pytest
 import pytest_asyncio

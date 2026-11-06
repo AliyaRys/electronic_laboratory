@@ -25,6 +25,7 @@ __all__ = [
     "UserScope",
     "DelegationGrant",
     "UserEvent",
+    "CasbinRule",
     "CommandRecord",
     "TechnicalEvent",
     "OutboxEntry",
@@ -143,6 +144,21 @@ class UserEvent(Base):
     )
     action: Mapped[str] = mapped_column(String(64))
     changed_fields: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+
+
+class CasbinRule(Base):
+    """Official sqlalchemy-adapter policy row; authorization reads this table."""
+
+    __tablename__ = "casbin_rule"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    ptype: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    v0: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    v1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    v2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    v3: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    v4: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    v5: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class CommandRecord(Base):

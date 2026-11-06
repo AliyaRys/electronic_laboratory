@@ -43,5 +43,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
+coverage.json
 .coverage.*
 htmlcov/

@@ -10,8 +10,13 @@ These tests verify the four acceptance criteria of the platform task:
    ``trace_id`` in every error body).
 """
 
+import os
+import subprocess
+import sys
 import uuid
+from pathlib import Path
 
+import psycopg
 import pytest
 from fastapi import FastAPI, Request, Response
 from httpx import ASGITransport, AsyncClient
@@ -28,6 +33,8 @@ from backend.src.core.commands import (
 )
 from backend.src.core.problems import register_exception_handlers
 from backend.src.modules.identity.models import CommandRecord, CommandStatus, TechnicalEvent
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 async def test_no_public_signup(client: AsyncClient) -> None:
@@ -54,7 +61,7 @@ async def test_ready_rejects_wrong_schema(client: AsyncClient, db_session: Async
         assert body["code"] == "DEPENDENCY_UNAVAILABLE"
         assert body["trace_id"]
     finally:
-        await db_session.execute(text("UPDATE alembic_version SET version_num = '0001_identity'"))
+        await db_session.execute(text("UPDATE alembic_version SET version_num = '0002_auth_policy_adapter'"))
         await db_session.commit()
 
 
@@ -147,6 +154,27 @@ async def test_if_match_unusable_answers_problem_422() -> None:
             body = resp.json()
             assert body["code"] == "REVISION_REQUIRED"
             assert body["trace_id"]
+
+
+def test_migration_from_i01_to_i02(test_db_url: str) -> None:
+    """The released I01 schema upgrades to the I02 adapter schema on real PostgreSQL."""
+    env = dict(os.environ)
+    env["DATABASE_URL"] = test_db_url
+    base = [sys.executable, "-m", "alembic", "-c", str(REPO_ROOT / "backend" / "alembic.ini")]
+    downgrade = subprocess.run(
+        [*base, "downgrade", "0001_identity"], cwd=REPO_ROOT, env=env, capture_output=True, text=True
+    )
+    assert downgrade.returncode == 0, downgrade.stdout + downgrade.stderr
+    try:
+        upgrade = subprocess.run([*base, "upgrade", "head"], cwd=REPO_ROOT, env=env, capture_output=True, text=True)
+        assert upgrade.returncode == 0, upgrade.stdout + upgrade.stderr
+        sync_url = test_db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        with psycopg.connect(sync_url) as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM casbin_rule")
+            assert cursor.fetchone()[0] > 0
+    finally:
+        # Keep the shared test database at head even when the assertion fails.
+        subprocess.run([*base, "upgrade", "head"], cwd=REPO_ROOT, env=env, capture_output=True, text=True)
 
 
 # --------------------------------------------------------------------------- #

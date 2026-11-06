@@ -1,0 +1,50 @@
+# Workspace root.
+#
+# This file exists so `uv` recognizes the repository as a workspace and resolves
+# the `backend/` deployable application from a single virtual environment. It is
+# NOT a deployable package itself — nothing here ships to production.
+#
+# Pinned platform foundation (Task I01). Derived from the FastAPI boilerplate
+# fork at commit 4deb9c45f4298d4a84f005126f6ee8ccd823acf8 (MIT, see LICENSE.md).
+# The `cli/` developer tool from the fork is intentionally not part of this
+# product (SPEC-02); `backend/` is the single workspace member.
+
+[tool.uv.workspace]
+members = ["backend"]
+
+# --- pytest -----------------------------------------------------------------
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["backend/tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+python_classes = ["Test*"]
+asyncio_mode = "auto"
+addopts = ["--strict-markers", "--tb=short", "--disable-warnings"]
+markers = [
+    "integration: tests that require a real PostgreSQL (testcontainers)",
+]
+
+# --- mypy -------------------------------------------------------------------
+# ADR-011: strict typing for the new backend. No global ignore_missing_imports
+# or ignore_errors; SQLAlchemy is not excluded.
+[tool.mypy]
+python_version = "3.15"
+strict = true
+namespace_packages = true
+explicit_package_bases = true
+show_error_codes = true
+warn_unused_ignores = true
+
+# --- ruff -------------------------------------------------------------------
+[tool.ruff]
+line-length = 120
+target-version = "py315"
+src = ["backend/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]

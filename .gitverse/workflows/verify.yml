@@ -1,0 +1,58 @@
+name: Verify
+
+on: [push, pull_request]
+
+jobs:
+  verify:
+    name: Lint, type-check, test, migrate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.15"
+
+      - name: Install uv
+        run: pip install uv==0.13.7
+
+      - name: Sync workspace (frozen)
+        run: uv sync --frozen
+
+      - name: Ruff check
+        run: uv run --frozen ruff check backend
+
+      - name: Ruff format check
+        run: uv run --frozen ruff format --check backend
+
+      - name: Mypy
+        run: uv run --frozen mypy backend/src
+
+      - name: Pytest with coverage
+        run: uv run --frozen pytest backend/tests --cov=backend/src --cov-fail-under=85
+
+      - name: Migrate from zero
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/vse
+        run: uv run --frozen alembic -c backend/alembic.ini upgrade head
+
+      - name: Migrate again (repeat head)
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/vse
+        run: uv run --frozen alembic -c backend/alembic.ini upgrade head

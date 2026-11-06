@@ -43,11 +43,11 @@
 
 **Interfaces:** AppShell получает UserView/current scope/capabilities из API; Header не выводит специалиста открытой ВСЭ как текущего пользователя. Icon адаптирует существующий реестр; CheckSection keys строго из README. Таблица и меню не конфликтуют с row link.
 
-- [ ] Написать `test_dialog_focus_and_escape` assert safe cancel initial focus и возврат trigger; `test_row_menu_does_not_navigate`; `test_legacy_url_without_identity` assert понятный выход без подставной записи; `test_long_values_keyboard` assert полное значение доступно без hover.
-- [ ] Запустить адресные Vitest/Playwright и получить FAIL до компонентов.
-- [ ] Реализовать по ui-mapping и токенам: рабочая кнопка/поле отличаются от auth, Header canonical styles, диалоги на Radix, ошибки aria-describedby, фокус visible, disabled/loading/error/empty/no matches/not found/no scope. Добавить stories значимых состояний, длинных данных/390px; не копировать код в stories. Compatibility route resolver только реальный UUID, старые demo-specific ссылки не открывают demo в production.
-- [ ] Собрать новый Storybook, проверить компоненты на реальных страницах и 4 ширинах. При изменении старой библиотеки выполнить корневой build-storybook; для auth также test:ui. Не объявлять каталог доказательством рабочего сценария.
-- [ ] Зафиксировать: `feat: establish shared accessible application components`.
+- [x] Написать `test_dialog_focus_and_escape` assert safe cancel initial focus и возврат trigger; `test_row_menu_does_not_navigate`; `test_legacy_url_without_identity` assert понятный выход без подставной записи; `test_long_values_keyboard` assert полное значение доступно без hover.
+- [x] Запустить адресные Vitest/Playwright и получить FAIL до компонентов.
+- [x] Реализовать по ui-mapping и токенам: рабочая кнопка/поле отличаются от auth, Header canonical styles, диалоги на Radix, ошибки aria-describedby, фокус visible, disabled/loading/error/empty/no matches/not found/no scope. Добавить stories значимых состояний, длинных данных/390px; не копировать код в stories. Compatibility route resolver только реальный UUID, старые demo-specific ссылки не открывают demo в production.
+- [x] Собрать новый Storybook, проверить компоненты на реальных страницах и 4 ширинах. При изменении старой библиотеки выполнить корневой build-storybook; для auth также test:ui. Не объявлять каталог доказательством рабочего сценария.
+- [x] Зафиксировать: `feat: establish shared accessible application components`.
 
 ### Task F03: Вход, профиль и администрирование
 

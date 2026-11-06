@@ -43,11 +43,11 @@
 
 **Interfaces:** `authorize(actor_id,action,scope,attributes) -> None`, API-02 auth/me/contexts; `require_session` получает server-side session identity, roles читает SQL.
 
-- [ ] Написать parametrized `test_four_roles_scope_matrix` по inputs.md; `test_revocation_next_worker_request` assert GET=404 и mutation denied после смены назначения; `test_redis_failure_closed` assert503; `test_login_limit` assert шестая попытка в 15 мин=429, после 15 минут разрешена; `test_logout_and_password_revoke` assert старые сеансы=401.
-- [ ] Запустить `uv run --frozen pytest backend/tests/identity/test_sessions.py backend/tests/identity/test_permissions.py -v`, зафиксировать исходный FAIL.
-- [ ] Реализовать cookie SessionTransport Redis, CSRF/Origin, лимит login/IP 5 ошибок/15 мин с блоком 15 мин; Argon2id 64MiB/3/1, 12..128 символов, без смеси классов/периодической смены. Casbin sync adapter отдельным ограниченным пулом через threadpool, snapshot политик на каждый запрос; фильтрация области **до** поиска/count/pagination. Нет Redis →503, а не fallback.
-- [ ] Проверить все роли на read/search/count/export/mutation; CSRF без токена/с чужим Origin даёт отказ, cookie не доступна JS; max8h/idle30m управляемыми часами. Запустить тесты и quality gates SPEC-06.
-- [ ] Зафиксировать: `feat: enforce sessions and current scoped authorization`.
+- [x] Написать parametrized `test_four_roles_scope_matrix` по inputs.md; `test_revocation_next_worker_request` assert GET=404 и mutation denied после смены назначения; `test_redis_failure_closed` assert503; `test_login_limit` assert шестая попытка в 15 мин=429, после 15 минут разрешена; `test_logout_and_password_revoke` assert старые сеансы=401.
+- [x] Запустить `uv run --frozen pytest backend/tests/identity/test_sessions.py backend/tests/identity/test_permissions.py -v`, зафиксировать исходный FAIL.
+- [x] Реализовать cookie SessionTransport Redis, CSRF/Origin, лимит login/IP 5 ошибок/15 мин с блоком 15 мин; Argon2id 64MiB/3/1, 12..128 символов, без смеси классов/периодической смены. Casbin sync adapter отдельным ограниченным пулом через threadpool, snapshot политик на каждый запрос; фильтрация области **до** поиска/count/pagination. Нет Redis →503, а не fallback.
+- [x] Проверить все роли на read/search/count/export/mutation; CSRF без токена/с чужим Origin даёт отказ, cookie не доступна JS; max8h/idle30m управляемыми часами. Запустить тесты и quality gates SPEC-06.
+- [x] Зафиксировать: `feat: enforce sessions and current scoped authorization`.
 
 ### Task I03: Пользователи, делегирование, профиль
 

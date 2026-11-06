@@ -31,11 +31,11 @@
 
 **Interfaces:** API types генерируются; `apiClient` с empty baseUrl; `useCommand()` возвращает submit/status/error и удерживает key до однозначного результата; Query key `[userId,labId,productId,resource,params]`; формы не помещаются в Zustand.
 
-- [ ] Написать `test_api_prefix_once` assert URL=/api/v1/arrivals; `test_stale_context_response_ignored`; `test_conflict_keeps_input` assert введённая причина прежняя при 409; `test_mutation_not_auto_retried` assert вызов=1 при timeout; `test_logout_clears_cache` assert закрытых данных нет.
-- [ ] Запустить `npm.cmd --prefix frontend run test -- --run` после минимальной test-конфигурации; ожидаемый FAIL — отсутствие поведения, не пропуск тестов.
-- [ ] Реализовать middleware CSRF/If-Match/key/Problem, AbortSignal, URL filters/page, контекст и router blockers. Strict decimal parser принимает 0/запятую/точку, отвергает abc/NaN/пустое/-массу; номера не преобразует в number. Генерировать schema.d.ts из OpenAPI, CI regeneration+diff. 401 очищает cache/forms, 403 не перезагружает запретные данные, 409 предлагает актуальное состояние без слияния. Никаких fetch вручную по страницам.
-- [ ] Выполнить frontend scripts SPEC-06; MSW должен доказать поздний ответ А→Б, навигацию назад на page2, from>to422, отмену dirty switch. Production deep-link refresh проходит nginx fallback, API error не возвращает index.html.
-- [ ] Зафиксировать: `feat: add generated API client and scoped SPA routing`.
+- [x] Написать `test_api_prefix_once` assert URL=/api/v1/arrivals; `test_stale_context_response_ignored`; `test_conflict_keeps_input` assert введённая причина прежняя при 409; `test_mutation_not_auto_retried` assert вызов=1 при timeout; `test_logout_clears_cache` assert закрытых данных нет.
+- [x] Запустить `npm.cmd --prefix frontend run test -- --run` после минимальной test-конфигурации; ожидаемый FAIL — отсутствие поведения, не пропуск тестов.
+- [x] Реализовать middleware CSRF/If-Match/key/Problem, AbortSignal, URL filters/page, контекст и router blockers. Strict decimal parser принимает 0/запятую/точку, отвергает abc/NaN/пустое/-массу; номера не преобразует в number. Генерировать schema.d.ts из OpenAPI, CI regeneration+diff. 401 очищает cache/forms, 403 не перезагружает запретные данные, 409 предлагает актуальное состояние без слияния. Никаких fetch вручную по страницам.
+- [x] Выполнить frontend scripts SPEC-06; MSW должен доказать поздний ответ А→Б, навигацию назад на page2, from>to422, отмену dirty switch. Production deep-link refresh проходит nginx fallback, API error не возвращает index.html.
+- [x] Зафиксировать: `feat: add generated API client and scoped SPA routing`.
 
 ### Task F02: Канонические компоненты и доступные состояния
 

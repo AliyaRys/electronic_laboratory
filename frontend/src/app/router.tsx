@@ -8,7 +8,7 @@ import { createBrowserRouter, type RouteObject } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "../shared/ui/AppShell";
 import { PlaceholderPage } from "../shared/ui/PlaceholderPage";
-import { DirtyLeaveDialog, performLogout } from "../features/context/SwitchContext";
+import { DirtyLeaveDialog, performLogout, switchContext } from "../features/context/SwitchContext";
 
 /** Placeholder until the owning task delivers the real page. */
 function Stub({ title, note }: { title: string; note: string }): React.ReactElement {
@@ -81,7 +81,15 @@ export function createAppRouter(): ReturnType<typeof createBrowserRouter> {
 function AppShellLayout(): React.ReactElement {
   const queryClient = useQueryClient();
   return (
-    <AppShell onLogout={() => void performLogout(queryClient)}>
+    <AppShell
+      onLogout={() => void performLogout(queryClient)}
+      onProductChange={(product) => {
+        // Switching the product context cancels in-flight reads (stale
+        // answers of the previous context are ignored) and publishes the new
+        // product type into the scope store.
+        void switchContext(queryClient, { productType: product });
+      }}
+    >
       <DirtyLeaveDialog />
     </AppShell>
   );

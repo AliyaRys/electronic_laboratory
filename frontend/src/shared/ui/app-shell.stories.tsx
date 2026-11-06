@@ -16,6 +16,8 @@ const routes = [
     element: (
       <AppShell
         user={{ fullName: "Анна Кузнецова", initials: "АК" }}
+        role="VET"
+        hasScopes
         session={{ status: "ready" }}
         onLogout={() => undefined}
       />

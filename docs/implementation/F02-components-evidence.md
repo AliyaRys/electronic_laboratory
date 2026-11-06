@@ -53,3 +53,41 @@ RED зафиксирован до реализации: 8 файлов пада�
 5. **Story ids латиницей** («F02/Button — Primary»), чтобы id были детерминированными для e2e (toId калечил бы кириллицу до дефисов); русский текст — в args/UI.
 6. Vitest exclude дополнен `tests/e2e/**` (иначе vitest подхватывал playwright-спеку).
 7. `test:ui` (корневой) и корневой `build-storybook` старой библиотеки не запускались: старая библиотека `components/` не изменялась (только чтение) — условие запуска из brief не наступило.
+
+-
+
+---
+
+# Fix round 1 (по итогам ревью контроллера)
+
+Дата: 2026-11-07 · Коммит: `fix: derive header mode and product switcher state from UserView scope`. Исправлены оба Important-замечания; 8 Minor не тронуты.
+
+## Finding 1 (Important) — режим заголовка из UserView, а не зашитый
+
+- `shared/ui/AppShell.tsx`: режим шапки выводится `headerMode(user, role, hasScopes)` по API-02 семантике: ADMIN → admin (навигация «Управление пользователями»/«Отчёты», без рабочих ссылок и переключателя продукции); ANALYST → analyst; VET/HEAD → work при наличии scopes; пустой scopes или отсутствие пользователя → no-products. Роль и scopes — из реального UserView (GET /me); для инъекций (stories/тесты) добавлены пропсы `role`/`hasScopes`.
+- Продуктовый контекст шапки берётся из scope-стора (`productType`); зашитый DEFAULT_PRODUCT="meat" удалён; canonical URL стадий остаются за страницами (ui-mapping).
+
+## Finding 2 (Important) — переключатель продукции оперативный
+
+- `entities/session/context.ts`: в scope-стор добавлен `productType: "meat"|"milk"` + `setProductType` (не персистится; reset возвращает meat). aria-label триггера и подпись автоматически следуют фактическому продукту.
+- `features/context/SwitchContext.tsx`: `ScopeUpdate` расширен `productType`; `switchContext` публикует его после штатной семантики F01 — cancelQueries() (stale in-flight ответы предыдущего контекста игнорируются) + удаление чужих scope-ключей.
+- `app/router.tsx`: AppShellLayout передаёт `onProductChange={(product) => switchContext(queryClient, { productType: product })}` — переключение реально меняет контекст; заглушка `() => {}` удалена. Переключатель скрыт в no-products/admin/analyst режимах (нет product scope → нет переключателя).
+- Ограничение: доступные пользователю типы продукции из /contexts появятся с задачей F03 — пока допустимы оба варианта.
+
+## Новые тесты (через реальные компоненты)
+
+- AppShell.test: «an ADMIN user gets the administration header without working navigation»; «a user without assigned scopes lands in no-products mode»; «a milk-scoped VET defaults to the milk product context»; «switching the product updates the scope store and the trigger label» (клик по опции → useContextStore.productType === "meat" и новый aria-label). `server.resetHandlers()` в beforeEach.
+- SwitchContext.test: «switchContext publishes the product type and ignores stale in-flight reads» — вечно висящий prefetch, switchContext(milk) → productType === "milk", отмена in-flight, устаревший ответ не попадает в кеш.
+- app-shell.stories: инъекция `role="VET" hasScopes`.
+
+## Команды и результаты (все exit 0)
+
+| Команда | Результат |
+| --- | --- |
+| `npm run test -- --run` | 13 files / 60 passed / 0 failed (было 55) |
+| `npm run typecheck` (TS 7.0.2 strict) | 0 |
+| `npm run lint` | 0 |
+| `npm run format:check` | 0 |
+| `npm run build` | 0 |
+| `npm run build-storybook` | 0 |
+| `npm run test:e2e -- shell.spec.ts` | 5 passed / 0 failed (скриншоты 1440/1024/768/390 перегенерированы в frontend/test-results/) |

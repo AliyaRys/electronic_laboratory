@@ -444,3 +444,29 @@ describe("app shell routing", () => {
     });
   });
 });
+
+describe("product context switch", () => {
+  it("switchContext publishes the product type and ignores stale in-flight reads", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let settle: (value: string) => void = () => undefined;
+    const stale = queryClient.prefetchQuery({
+      queryKey: ["meat-context", "read"],
+      queryFn: () => new Promise<string>((resolve) => (settle = resolve)),
+    });
+
+    await act(async () => {
+      await switchContext(queryClient, { productType: "milk" });
+    });
+
+    // The in-flight read of the previous context is cancelled — it can never
+    // land in the new product context.
+    expect(useContextStore.getState().productType).toBe("milk");
+    await act(async () => {
+      settle("stale-answer");
+    });
+    // A cancelled prefetch resolves with no data; the stale answer is dropped.
+    await expect(stale).resolves.toBeUndefined();
+    expect(queryClient.getQueryData(["meat-context", "read"])).toBeUndefined();
+    useContextStore.getState().reset();
+  });
+});

@@ -44,7 +44,7 @@ export interface AppHeaderProps {
   product?: ProductType;
   active?: HeaderActive;
   links?: HeaderLinks;
-  onProductChange?: (product: ProductType) => void;
+  onProductChange?: ((product: ProductType) => void) | undefined;
   onLogout: () => void;
 }
 

@@ -32,6 +32,8 @@ export interface ScopeUpdate {
   userId?: string;
   labId?: string;
   productId?: string | null;
+  /** Working product context (meat/milk) of the shell header. */
+  productType?: "meat" | "milk";
 }
 
 /**
@@ -56,6 +58,9 @@ export async function switchContext(queryClient: QueryClient, next: ScopeUpdate)
     },
   });
   useContextStore.getState().setScope(next);
+  if (next.productType !== undefined) {
+    useContextStore.getState().setProductType(next.productType);
+  }
 }
 
 /**

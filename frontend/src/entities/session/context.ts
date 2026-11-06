@@ -10,11 +10,16 @@ import { create } from "zustand";
 import type { QueryClient } from "@tanstack/react-query";
 import { clearCsrfToken } from "../../shared/api/csrf";
 
+export type ProductType = "meat" | "milk";
+
 export interface ContextState {
   userId: string | null;
   labId: string | null;
   productId: string | null;
+  /** Working product context of the header (meat/milk); not persisted. */
+  productType: ProductType;
   setScope: (next: Partial<Pick<ContextState, "userId" | "labId" | "productId">>) => void;
+  setProductType: (product: ProductType) => void;
   reset: () => void;
 }
 
@@ -22,8 +27,10 @@ export const useContextStore = create<ContextState>((set) => ({
   userId: null,
   labId: null,
   productId: null,
+  productType: "meat",
   setScope: (next) => set(next),
-  reset: () => set({ userId: null, labId: null, productId: null }),
+  setProductType: (product) => set({ productType: product }),
+  reset: () => set({ userId: null, labId: null, productId: null, productType: "meat" }),
 }));
 
 /** Current scope outside React (tests, event handlers). */

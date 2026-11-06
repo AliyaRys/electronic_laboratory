@@ -291,9 +291,6 @@ async def test_parallel_last_admin_delete(admin_env: SimpleNamespace) -> None:
             ),
         )
     statuses = sorted(item.status_code for item in responses)
-    print("STATUS BODIES:", [item.text for item in responses])
-    remaining_logins = (await db.execute(select(User.login).where(User.role == UserRole.ADMIN))).scalars().all()
-    print("REMAINING ADMINS:", sorted(remaining_logins))
     assert statuses == [204, 409], [item.text for item in responses]
     conflict = next(item for item in responses if item.status_code == 409)
     assert conflict.json()["code"] == "LAST_ADMIN"
@@ -312,6 +309,66 @@ async def test_parallel_last_admin_delete(admin_env: SimpleNamespace) -> None:
         await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.ADMIN))
     ).scalar_one()
     assert admins_total == 3, "удалён ровно один из последних администраторов района (chief+supervisor остаются)"
+
+    # A territory-scoped guard: an administrator of two territories is refused
+    # while ANY of them holds no other empowered administrator.
+    shared = Territory(name="Общий район", parent_id=admin_env.root.id)
+    lonely = Territory(name="Одинокий район", parent_id=admin_env.root.id)
+    db.add_all([shared, lonely])
+    await db.flush()
+    admin_c = User(
+        login="admin_c",
+        full_name="Администратор В",
+        email="c@example.test",
+        password_hash=hash_password(ADMIN_PASSWORD),
+        role=UserRole.ADMIN,
+        active=True,
+    )
+    admin_d = User(
+        login="admin_d",
+        full_name="Администратор Г",
+        email="d@example.test",
+        password_hash=hash_password(ADMIN_PASSWORD),
+        role=UserRole.ADMIN,
+        active=True,
+    )
+    db.add_all([admin_c, admin_d])
+    await db.flush()
+    db.add_all(
+        [
+            DelegationGrant(
+                grantor_id=supervisor.id,
+                target_id=admin_c.id,
+                role=UserRole.ADMIN,
+                territory_id=shared.id,
+            ),
+            DelegationGrant(
+                grantor_id=supervisor.id,
+                target_id=admin_d.id,
+                role=UserRole.ADMIN,
+                territory_id=shared.id,
+            ),
+            DelegationGrant(
+                grantor_id=supervisor.id,
+                target_id=admin_c.id,
+                role=UserRole.ADMIN,
+                territory_id=lonely.id,
+            ),
+        ]
+    )
+    await db.commit()
+    target_c = admin_c.id
+
+    async with _client_for(admin_env) as http:
+        await _login(http, "supervisor")
+        refused = await http.delete(
+            f"/api/v1/users/{target_c}",
+            headers={**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": "del-3"},
+        )
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["code"] == "LAST_ADMIN"
+    await db.refresh(admin_c)
+    assert admin_c.active is True, "администратор двух территорий остаётся, пока одна без второго администратора"
 
 
 # --- AT-24: linked user cannot be deleted, can be blocked ----------------------
@@ -396,6 +453,49 @@ async def test_history_redacts_passwords(admin_env: SimpleNamespace) -> None:
         assert noop.json()["revision"] == 2
         history_after = (await http.get(f"/api/v1/users/{admin_env.vet.id}/history")).json()
         assert len(history_after["items"]) == len(items)
+
+
+# --- Lost-update race: same If-Match on two concurrent updates -----------------
+
+
+async def test_parallel_update_revision_conflict(admin_env: SimpleNamespace) -> None:
+    """Two concurrent PUTs with the same If-Match: exactly one 200, one 409."""
+    created = None
+    async with _client_for(admin_env) as http:
+        await _login(http)
+        auth = _csrf(http.cookies.get("vse_csrf", ""))
+        created = await http.post(
+            "/api/v1/users",
+            json=_write("race-edit", lab=admin_env.own_lab.id, product=admin_env.product),
+            headers={**auth, "Idempotency-Key": "race-create"},
+        )
+        assert created.status_code == 201, created.text
+    target_id = str(created.json()["id"])
+    update_payload = _write(
+        "race-edit", lab=admin_env.own_lab.id, product=admin_env.product, password=None, position="Первый"
+    )
+
+    async with _client_for(admin_env) as first, _client_for(admin_env) as second:
+        await _login(first)
+        await _login(second)
+        responses = await asyncio.gather(
+            first.put(
+                f"/api/v1/users/{target_id}",
+                json=update_payload,
+                headers={**_csrf(first.cookies.get("vse_csrf", "")), "If-Match": '"1"'},
+            ),
+            second.put(
+                f"/api/v1/users/{target_id}",
+                json=update_payload,
+                headers={**_csrf(second.cookies.get("vse_csrf", "")), "If-Match": '"1"'},
+            ),
+        )
+    statuses = sorted(item.status_code for item in responses)
+    assert statuses == [200, 409], [item.text for item in responses]
+    conflict = next(item for item in responses if item.status_code == 409)
+    assert conflict.json()["code"] == "REVISION_CONFLICT"
+    winner = next(item for item in responses if item.status_code == 200)
+    assert winner.json()["revision"] == 2
 
 
 # --- CRUD, ETag, scope listing and foreign UUID hiding -------------------------

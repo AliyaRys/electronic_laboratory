@@ -380,8 +380,14 @@ async def delete_user(
         for peer_id in sorted({peer for peer, _ in grants} | {target.id}):
             peer = (await db.execute(select(User).where(User.id == peer_id).with_for_update())).scalar_one_or_none()
             peer_state[peer_id] = peer is not None and peer.active and peer.role == UserRole.ADMIN
-        for _territory, _ in grants:
-            others = [peer for peer, empowered in peer_state.items() if empowered and peer != target.id]
+        # DATA-01: EVERY territory the target administers must keep at least one
+        # other empowered administrator; colleagues pooled across territories do
+        # not protect a territory whose only administrator is being deleted.
+        grants_by_territory: dict[uuid.UUID, set[uuid.UUID]] = {}
+        for peer_id, territory_id in grants:
+            grants_by_territory.setdefault(territory_id, set()).add(peer_id)
+        for peers in grants_by_territory.values():
+            others = [peer for peer in peers if peer_state.get(peer) and peer != target.id]
             if not others:
                 raise last_admin()
         # The deleted administrator loses their own empowerment with the account.

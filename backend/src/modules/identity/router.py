@@ -302,12 +302,19 @@ async def _scoped_target(
     actor: User,
     action: str,
     user_id: uuid.UUID,
+    *,
+    lock: bool = False,
 ) -> tuple[AccessSnapshot, User]:
-    """Authorize the ADMIN action and resolve the target inside the delegation."""
-    snapshot = await authorizer.authorize(db, actor.id, action, None)
-    target = await commands.load_target(db, user_id)
+    """Authorize the ADMIN action and resolve the target inside the delegation.
+
+    With ``lock=True`` the target row is re-read ``FOR UPDATE`` before the
+    caller's revision check, so concurrent If-Match mutations serialize (SPEC-04:
+    locks before the remaining command work).
+    """
+    target = await commands.load_target(db, user_id, lock=lock)
     if target is None:
         raise not_found()
+    snapshot = await authorizer.authorize(db, actor.id, action, None)
     territories = await commands.user_territories(db, target.id)
     # A user inside the delegation is visible; a user without any territory is
     # unassigned staff, carries no territory data and stays manageable.
@@ -422,7 +429,7 @@ async def update_user(
     identity, actor = principal
     _require_csrf(request, identity.csrf_token)
     expected = resolve_if_match(request.headers.get("if-match"))
-    snapshot, target = await _scoped_target(db, authorizer, actor, "users:update", user_id)
+    snapshot, target = await _scoped_target(db, authorizer, actor, "users:update", user_id, lock=True)
     ensure_revision(expected, target.rev)
     updated = await commands.update_user(db, actor_id=actor.id, snapshot=snapshot, target=target, payload=payload)
     response.headers["ETag"] = format_etag(updated.rev)
@@ -442,7 +449,7 @@ async def block_user(
     identity, actor = principal
     _require_csrf(request, identity.csrf_token)
     expected = resolve_if_match(request.headers.get("if-match"))
-    _, target = await _scoped_target(db, authorizer, actor, "users:block", user_id)
+    _, target = await _scoped_target(db, authorizer, actor, "users:block", user_id, lock=True)
     ensure_revision(expected, target.rev)
     updated = await commands.set_active(db, actor_id=actor.id, target=target, active=False)
     await transport.revoke_all(updated.id)  # outside the SQL transaction (SPEC-04)
@@ -462,7 +469,7 @@ async def unblock_user(
     identity, actor = principal
     _require_csrf(request, identity.csrf_token)
     expected = resolve_if_match(request.headers.get("if-match"))
-    _, target = await _scoped_target(db, authorizer, actor, "users:unblock", user_id)
+    _, target = await _scoped_target(db, authorizer, actor, "users:unblock", user_id, lock=True)
     ensure_revision(expected, target.rev)
     updated = await commands.set_active(db, actor_id=actor.id, target=target, active=True)
     response.headers["ETag"] = format_etag(updated.rev)
@@ -482,7 +489,7 @@ async def reset_user_password(
     identity, actor = principal
     _require_csrf(request, identity.csrf_token)
     expected = resolve_if_match(request.headers.get("if-match"))
-    _, target = await _scoped_target(db, authorizer, actor, "users:reset-password", user_id)
+    _, target = await _scoped_target(db, authorizer, actor, "users:reset-password", user_id, lock=True)
     ensure_revision(expected, target.rev)
     await commands.reset_password(
         db, actor_id=actor.id, target=target, password=payload.new_password, confirmation=payload.confirmation

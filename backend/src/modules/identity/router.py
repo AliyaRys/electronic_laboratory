@@ -160,7 +160,7 @@ async def csrf(response: Response, settings: Annotated[Settings, Depends(get_set
         httponly=False,
         samesite="lax",
         max_age=900,
-        path="/api/v1",
+        path="/",
     )
     response.headers["Cache-Control"] = "no-store"
     return CsrfResponse(csrf_token=token)
@@ -213,7 +213,7 @@ async def login(
         httponly=False,
         samesite="lax",
         max_age=8 * 60 * 60,
-        path="/api/v1",
+        path="/",
     )
     response.headers["Cache-Control"] = "no-store"
     return LoginResponse(
@@ -232,7 +232,7 @@ async def logout(
     _require_csrf(request, identity.csrf_token)
     await transport.revoke(identity.session_id, identity.actor_id)
     response.delete_cookie(SessionTransport.COOKIE_NAME, path="/")
-    response.delete_cookie(SessionTransport.CSRF_COOKIE_NAME, path="/api/v1")
+    response.delete_cookie(SessionTransport.CSRF_COOKIE_NAME, path="/")
     response.headers["Cache-Control"] = "no-store"
 
 

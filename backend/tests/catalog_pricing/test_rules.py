@@ -149,10 +149,13 @@ def test_mandatory_registry_is_fail_loud(monkeypatch: pytest.MonkeyPatch) -> Non
     from backend.src.modules.catalog_pricing import mandatory
     from backend.src.modules.catalog_pricing.mandatory import (
         MANDATORY_INDICATOR_IDS,
+        TRICHINELLA_INDICATOR_ID,
         ensure_mandatory_registry_configured,
     )
 
     assert MANDATORY_INDICATOR_IDS, "the meat-MVP mandatory set must ship populated"
+    assert len(MANDATORY_INDICATOR_IDS) == 3
+    assert TRICHINELLA_INDICATOR_ID not in MANDATORY_INDICATOR_IDS
     monkeypatch.setattr(mandatory, "MANDATORY_INDICATOR_IDS", frozenset())
     with pytest.raises(RuntimeError):
         ensure_mandatory_registry_configured()

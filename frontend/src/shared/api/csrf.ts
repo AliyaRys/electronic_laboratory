@@ -4,9 +4,9 @@
  * The token is issued by ``GET /api/v1/auth/csrf`` (bootstrap) and refreshed by
  * the login response. It is held in memory only — persisting session material
  * to localStorage/sessionStorage is forbidden by ТЗ-02. The token is also set
- * by the backend as a non-HttpOnly cookie scoped to ``/api/v1``; the cookie is
- * the fallback when the store is empty (for example after a full page load
- * before a new bootstrap fetch).
+ * by the backend as a non-HttpOnly cookie scoped to ``/``; the cookie is the
+ * fallback when the in-memory store is empty after a full page reload. The
+ * session cookie remains HttpOnly; only the per-session CSRF value is readable.
  */
 
 let token: string | null = null;

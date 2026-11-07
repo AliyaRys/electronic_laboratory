@@ -158,6 +158,8 @@ async def _csrf(client: AsyncClient) -> str:
     response = await client.get("/api/v1/auth/csrf")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
+    csrf_cookie = next(item for item in response.headers.get_list("set-cookie") if item.startswith("vse_csrf="))
+    assert "Path=/;" in csrf_cookie
     return str(response.json()["csrf_token"])
 
 
@@ -185,8 +187,10 @@ async def test_login_csrf_cookie_and_origin(identity_api) -> None:
     assert success.status_code == 200, success.text
     cookies = success.headers.get_list("set-cookie")
     session_cookie = next(item for item in cookies if item.startswith("vse_session="))
+    csrf_cookie = next(item for item in cookies if item.startswith("vse_csrf="))
     assert "HttpOnly" in session_cookie
     assert "SameSite=lax" in session_cookie
+    assert "Path=/;" in csrf_cookie
     assert success.headers["cache-control"] == "no-store"
 
 

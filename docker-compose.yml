@@ -11,7 +11,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-vse}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18+ stores clusters below a major-version directory.
+      # Mount the parent so startup and future pg_upgrade --link are valid.
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-vse}"]
       interval: 5s

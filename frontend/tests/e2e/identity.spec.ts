@@ -107,9 +107,10 @@ test.describe("identity", () => {
   test("test_password_reset_keeps_blocked", async ({ page }) => {
     await login(page, seed.admin.login, seed.admin.password);
     await expect(page).toHaveURL(/\/users$/);
-    // Same SPA session: a full page reload would drop the in-memory session
-    // CSRF token that the admin mutations require (the backend compares the
-    // header against the login-issued token, not a bootstrap one).
+    // Regression: after F5 the in-memory token is empty, so the mutation must
+    // recover the per-session CSRF value from the root-scoped cookie.
+    await page.reload();
+    await expect(page).toHaveURL(/\/users$/);
     const rowAny = page.locator("tr", { hasText: "Заблокирован Е2Е" });
     await expect(rowAny).toBeVisible();
 

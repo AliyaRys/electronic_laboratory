@@ -44,9 +44,9 @@ export async function settle<TData>(
 
 /** Anonymous bootstrap: fetch the CSRF token into memory before the first login. */
 export async function bootstrapCsrf(): Promise<void> {
-  // The backend also sets the ``vse_csrf`` cookie, but it is path-scoped to
-  // ``/api/v1`` and therefore invisible to ``document.cookie`` on ``/login``;
-  // the token from the response body is the reliable source (ТЗ-02: memory).
+  // The backend also sets the ``vse_csrf`` cookie on ``/`` so a live session
+  // can recover after F5. The response body remains the immediate source for
+  // this anonymous bootstrap request (ТЗ-02: no Web Storage persistence).
   // Concurrent callers share one request: every /auth/csrf response rotates
   // the cookie, and a stale response must never overwrite the fresh token.
   if (inflightBootstrap === null) {

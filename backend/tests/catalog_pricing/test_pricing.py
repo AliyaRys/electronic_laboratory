@@ -404,12 +404,12 @@ async def test_missing_norm_blocks_fair_too(db_session: AsyncSession) -> None:
 
 @pytest.mark.integration
 async def test_unknown_mandatory_blocks(db_session: AsyncSession) -> None:
-    """A ФТ mandatory indicator (the trichinelloscopy registry ids) blocks."""
+    """A universally mandatory FT indicator blocks UNKNOWN or unperformed."""
     env = await _seed(db_session)
     species, state = uuid.uuid4(), uuid.uuid4()
-    from backend.src.modules.catalog_pricing.mandatory import TRICHINELLOSIS_PIG
+    from backend.src.modules.catalog_pricing.mandatory import ORGANOLEPTIC_INDICATOR_ID
 
-    indicator = TRICHINELLOSIS_PIG
+    indicator = ORGANOLEPTIC_INDICATOR_ID
     db_session.add(_rule(env.lab.id, species, state, indicator))
     db_session.add(_tariff(env.lab.id, species, str(indicator), "100.00"))
     await db_session.commit()
@@ -780,28 +780,35 @@ async def test_tariff_and_check_service_and_classification_endpoints(api_env: Si
 @pytest.mark.integration
 async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace) -> None:
     """Readiness applies the ФТ mandatory registry and the pricing tariff match."""
-    from backend.src.modules.catalog_pricing.mandatory import (
-        TRICHINELLOSIS_HORSE,
-        TRICHINELLOSIS_PIG,
-    )
+    from backend.src.modules.catalog_pricing.mandatory import MANDATORY_INDICATOR_IDS
 
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
         species = str(uuid.uuid4())
         state = str(uuid.uuid4())
-        indicator = str(TRICHINELLOSIS_PIG)
-        payload = {
-            "laboratory_id": lab_id,
-            "product_species_id": species,
-            "product_state_id": state,
-            "indicator_id": indicator,
-            "result_schema": "DECIMAL",
-            "unit_id": "kg",
-            "rule": {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True},
-            "source": {"name": "методика"},
-            "version": 1,
-        }
-        await http.post("/api/v1/catalogs/methods", json=payload, headers=_csrf_headers(api_env))
+        indicators = sorted(MANDATORY_INDICATOR_IDS, key=str)
+
+        def method_payload(indicator: str) -> dict[str, object]:
+            return {
+                "laboratory_id": lab_id,
+                "product_species_id": species,
+                "product_state_id": state,
+                "indicator_id": indicator,
+                "result_schema": "DECIMAL",
+                "unit_id": "kg",
+                "rule": {
+                    "type": "interval",
+                    "lower": "0",
+                    "upper": "14",
+                    "lower_inclusive": True,
+                    "upper_inclusive": True,
+                },
+                "source": {"name": "методика"},
+                "version": 1,
+            }
+
+        first = str(indicators[0])
+        await http.post("/api/v1/catalogs/methods", json=method_payload(first), headers=_csrf_headers(api_env))
         ready = (
             await http.get(
                 "/api/v1/catalogs/readiness", params={"laboratory_id": lab_id, "product_species_id": species}
@@ -809,14 +816,14 @@ async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace) -
         ).json()
         assert ready["ready"] is False
         assert ready["missing"], "a method without a price must be reported"
-        assert any(item["input_id"] == f"tariff:{indicator}" for item in ready["missing"])
+        assert any(item["input_id"] == f"tariff:{first}" for item in ready["missing"])
 
         await http.post(
             "/api/v1/catalogs/tariffs",
             json={
                 "laboratory_id": lab_id,
                 "product_species_id": species,
-                "service_code": indicator,
+                "service_code": first,
                 "unit_id": "kg",
                 "price": "10.00",
                 "version": 1,
@@ -829,23 +836,24 @@ async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace) -
                 "/api/v1/catalogs/readiness", params={"laboratory_id": lab_id, "product_species_id": species}
             )
         ).json()
-        assert ready["ready"] is False  # the second mandatory indicator is still unconfigured
+        assert ready["ready"] is False  # the remaining mandatory indicators are unconfigured
 
-        horse_payload = {**payload, "indicator_id": str(TRICHINELLOSIS_HORSE), "product_state_id": str(uuid.uuid4())}
-        await http.post("/api/v1/catalogs/methods", json=horse_payload, headers=_csrf_headers(api_env))
-        await http.post(
-            "/api/v1/catalogs/tariffs",
-            json={
-                "laboratory_id": lab_id,
-                "product_species_id": species,
-                "service_code": str(TRICHINELLOSIS_HORSE),
-                "unit_id": "kg",
-                "price": "12.00",
-                "version": 1,
-                "source": {"name": "прейскурант"},
-            },
-            headers=_csrf_headers(api_env),
-        )
+        for indicator in indicators[1:]:
+            code = str(indicator)
+            await http.post("/api/v1/catalogs/methods", json=method_payload(code), headers=_csrf_headers(api_env))
+            await http.post(
+                "/api/v1/catalogs/tariffs",
+                json={
+                    "laboratory_id": lab_id,
+                    "product_species_id": species,
+                    "service_code": code,
+                    "unit_id": "kg",
+                    "price": "12.00",
+                    "version": 1,
+                    "source": {"name": "прейскурант"},
+                },
+                headers=_csrf_headers(api_env),
+            )
         ready = (
             await http.get(
                 "/api/v1/catalogs/readiness", params={"laboratory_id": lab_id, "product_species_id": species}
@@ -858,10 +866,7 @@ async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace) -
 @pytest.mark.integration
 async def test_readiness_tariff_unit_must_match_pricing(api_env: SimpleNamespace) -> None:
     """A tariff in the wrong unit must not let readiness claim ready (finding 4)."""
-    from backend.src.modules.catalog_pricing.mandatory import (
-        TRICHINELLOSIS_HORSE,
-        TRICHINELLOSIS_PIG,
-    )
+    from backend.src.modules.catalog_pricing.mandatory import MANDATORY_INDICATOR_IDS
 
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
@@ -898,30 +903,25 @@ async def test_readiness_tariff_unit_must_match_pricing(api_env: SimpleNamespace
                 "source": {"name": "прейскурант"},
             }
 
-        await http.post(
-            "/api/v1/catalogs/methods", json=method_payload(str(TRICHINELLOSIS_PIG)), headers=_csrf_headers(api_env)
-        )
-        await http.post(
-            "/api/v1/catalogs/methods", json=method_payload(str(TRICHINELLOSIS_HORSE)), headers=_csrf_headers(api_env)
-        )
-        await http.post(
-            "/api/v1/catalogs/tariffs",
-            json=tariff_payload(str(TRICHINELLOSIS_PIG), "piece"),
-            headers=_csrf_headers(api_env),
-        )
-        await http.post(
-            "/api/v1/catalogs/tariffs",
-            json=tariff_payload(str(TRICHINELLOSIS_HORSE), "kg"),
-            headers=_csrf_headers(api_env),
-        )
+        indicators = sorted(MANDATORY_INDICATOR_IDS, key=str)
+        wrong_unit = indicators[0]
+        for indicator in indicators:
+            code = str(indicator)
+            await http.post("/api/v1/catalogs/methods", json=method_payload(code), headers=_csrf_headers(api_env))
+            await http.post(
+                "/api/v1/catalogs/tariffs",
+                json=tariff_payload(code, "piece" if indicator == wrong_unit else "kg"),
+                headers=_csrf_headers(api_env),
+            )
         ready = (
             await http.get(
                 "/api/v1/catalogs/readiness", params={"laboratory_id": lab_id, "product_species_id": species}
             )
         ).json()
         assert ready["ready"] is False
-        assert any(item["input_id"] == f"tariff:{TRICHINELLOSIS_PIG}" for item in ready["missing"])
-        assert not any(item["input_id"] == f"tariff:{TRICHINELLOSIS_HORSE}" for item in ready["missing"])
+        assert any(item["input_id"] == f"tariff:{wrong_unit}" for item in ready["missing"])
+        for indicator in indicators[1:]:
+            assert not any(item["input_id"] == f"tariff:{indicator}" for item in ready["missing"])
 
 
 @pytest.mark.integration

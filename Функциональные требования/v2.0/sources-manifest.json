@@ -1,0 +1,334 @@
+{
+  "version": "2.0",
+  "foundation": "1.9",
+  "date": "2026-11-05",
+  "archive": {
+    "file": "../../vse-product-foundation-v1.9.zip",
+    "sha256": "58288a49c6e4b5b198087a232000af2b96e45948053e5ba0560d6b6e99ceb947"
+  },
+  "sources": [
+    {
+      "file": "sources/foundation-v1.9/00-start-here.md",
+      "bytes": 9216,
+      "sha256": "fd49daee26d35e0a860af22d7c929746fc695c0e06acefbd8d18779ad87512bb"
+    },
+    {
+      "file": "sources/foundation-v1.9/01-product-audit.md",
+      "bytes": 37131,
+      "sha256": "87fa246e6637ec835ffeaee9465da0ee7b8de099f2d530d5bfb5029d6a8cc6cd"
+    },
+    {
+      "file": "sources/foundation-v1.9/02-product-design-records.md",
+      "bytes": 36620,
+      "sha256": "ac59f13ce7b787b2f6d6e47b88d291a3c3cd06a124f699f325377720b6e69bd0"
+    },
+    {
+      "file": "sources/foundation-v1.9/03-interview-and-validation.md",
+      "bytes": 27046,
+      "sha256": "fe3157c43a24653b9066c173384841f47aec48f9d34d84bab5a3327af6505dec"
+    },
+    {
+      "file": "sources/foundation-v1.9/04-mercury-receipt-proposal.md",
+      "bytes": 14751,
+      "sha256": "f158df530400c28bfd18e6c4b9118580111ece6d064a3cce9d2bf71012e76ed0"
+    },
+    {
+      "file": "sources/foundation-v1.9/05-evidence-and-coverage.md",
+      "bytes": 50990,
+      "sha256": "881faea6882b588a7c653706cdc7cfa3da48eed9421bdc6f9f12a0459e4ca8c7"
+    },
+    {
+      "file": "sources/foundation-v1.9/06-changes-2026-10-30.md",
+      "bytes": 12354,
+      "sha256": "55e54c6205d5b4a7aafdf87f446e6fdd658557292d0eee4c6b044474098bd0d1"
+    },
+    {
+      "file": "sources/foundation-v1.9/07-verification.md",
+      "bytes": 3902,
+      "sha256": "6bc56c6c21b50d524979f50a3c5deed2e9b73bd52e47d8a0f9993d48989db031"
+    },
+    {
+      "file": "sources/foundation-v1.9/08-field-catalog.md",
+      "bytes": 24761,
+      "sha256": "3a5a6f0baa8c38f06df449440e3b9350e7fed30a95200573d9150314dfbd9238"
+    },
+    {
+      "file": "sources/foundation-v1.9/09-checklist-reconciliation.md",
+      "bytes": 4391,
+      "sha256": "edf109e4dfd764b57b1e0752110c373541b1283577a9c0583ab057a2335fce62"
+    },
+    {
+      "file": "sources/foundation-v1.9/10-two-disease-fields.md",
+      "bytes": 1074,
+      "sha256": "3b97da83b3caa21c1d6de3711997ff97779a97ee7c65e24a025c1a334ac6c44a"
+    },
+    {
+      "file": "sources/foundation-v1.9/11-treatment-reasons.md",
+      "bytes": 1165,
+      "sha256": "14a38d26bf1380030d353316cf5c80d7699b162ea6341b52aa88e341012a66eb"
+    },
+    {
+      "file": "sources/foundation-v1.9/12-receipt-weight.md",
+      "bytes": 3445,
+      "sha256": "0badfb7fd14ab93b6e07821cc381d7d0a332cdf936472e271d9b0a4252c53572"
+    },
+    {
+      "file": "sources/foundation-v1.9/13-receipt-decision-and-paid-services.md",
+      "bytes": 10246,
+      "sha256": "6b340b57194ad0407ef62844b2eb1dc0fb238d9d17b43068d309620968e0b1c6"
+    },
+    {
+      "file": "sources/foundation-v1.9/14-vse-product-and-participants.md",
+      "bytes": 3331,
+      "sha256": "f7c735d687d80c3476a7b4cb1b3a58e86b85a2b0af870c4836809575b9173d24"
+    },
+    {
+      "file": "sources/foundation-v1.9/15-party-level-vse-research.md",
+      "bytes": 3092,
+      "sha256": "503ae11e5f315568f6b2169502f68081a504f24f88830ece9cc3a2eb02fa942a"
+    },
+    {
+      "file": "sources/foundation-v1.9/16-veterinary-expert-meeting-2026-11-04.md",
+      "bytes": 10096,
+      "sha256": "4d4bce674e645c7ccac9650431c5a748c821f96a637c43a45255c321a47eadd0"
+    },
+    {
+      "file": "sources/foundation-v1.9/source-meeting-veterinarians.txt",
+      "bytes": 17617,
+      "sha256": "b15594c2365ecf0685d4ffbfc7a690d4251ff69a54aba4d93c4b05d107788189"
+    },
+    {
+      "file": "sources/foundation-v1.9/sources/Пример заполнение полей по продукции.docx",
+      "bytes": 8273,
+      "sha256": "586cacceccea47f643be66406454bd5b285c46c6794853e275e5c36b3685e026"
+    },
+    {
+      "file": "sources/foundation-v1.9/sources/чек-лист всэ.docx",
+      "bytes": 10337,
+      "sha256": "86421ab605427dfeaec9d96696859c26e74be7b44dbd6770209e3c6f3dc699a5"
+    },
+    {
+      "file": "sources/foundation-v1.9/sources/чек-лист сверка данных.docx",
+      "bytes": 9367,
+      "sha256": "a631585af66afa64377b62ced433e04d957027410bf9a022a4d152a9db772d6d"
+    },
+    {
+      "file": "sources/previous-v1.0/00-specification.md",
+      "bytes": 16790,
+      "sha256": "8fc6f629efcd02996a5f007179888ea84e5a1d320877dc64a43ee74930f37495"
+    },
+    {
+      "file": "sources/previous-v1.0/01-access-and-users.md",
+      "bytes": 23082,
+      "sha256": "7f5e56437864c2afae3e4fd35c37c64cc7b5ea6384f8403858d1cf0e358810a4"
+    },
+    {
+      "file": "sources/previous-v1.0/02-arrivals-and-receipt.md",
+      "bytes": 28282,
+      "sha256": "8ff2418e3d82037fcfeb788e8b4d1d93c82e2f3a0664da55b6a48076804fef8f"
+    },
+    {
+      "file": "sources/previous-v1.0/03-examination.md",
+      "bytes": 24631,
+      "sha256": "b6b74e68ec89930f63193087d3a864e7e97fed828ab47e7c05dd1bfa260c7310"
+    },
+    {
+      "file": "sources/previous-v1.0/04-outcomes-and-documents.md",
+      "bytes": 18755,
+      "sha256": "54dace8e262264fdb158d5bfdf9f46ceefa688dfa1cc3d0c1b38d6a94ff847b8"
+    },
+    {
+      "file": "sources/previous-v1.0/05-repeat-inspections.md",
+      "bytes": 12626,
+      "sha256": "0f9c0d94d8e23e3613b5e3b0b6e35fae2f0cf7fa33178adc3acfdc8d232551b6"
+    },
+    {
+      "file": "sources/previous-v1.0/06-pricing-and-directories.md",
+      "bytes": 18531,
+      "sha256": "7a5ce9a53ea4e1d19e032d9d28b875ea71ae4293bd04017a5fe23d2ac8ba6b9a"
+    },
+    {
+      "file": "sources/previous-v1.0/07-common-behavior.md",
+      "bytes": 15876,
+      "sha256": "32951937ba538c99a8282fdd784bf6f6b43ddb8fb72e78c32818bc2a39b06b52"
+    },
+    {
+      "file": "sources/previous-v1.0/08-inputs-and-adr-handoff.md",
+      "bytes": 24467,
+      "sha256": "f9a670c662585a5aaa9839c43cbaa5636b3a44c8645e1370fd0b34981623cf49"
+    },
+    {
+      "file": "sources/previous-v1.0/09-traceability-and-acceptance.md",
+      "bytes": 27613,
+      "sha256": "731c12bf74fdb90010b72e647cade7368aee14ab4556592428ae710d421fe4fe"
+    },
+    {
+      "file": "sources/previous-v1.0/README.md",
+      "bytes": 7967,
+      "sha256": "8be1a573e53f6ba885384da6cb117b06c66c4ac2fe264e029e30266777466be9"
+    },
+    {
+      "file": "sources/previous-v1.0/requirements-index.md",
+      "bytes": 11617,
+      "sha256": "8d7816165351e2dcee4db07092c294780bec54d243d1e11d2efe8923b8f9a0e7"
+    },
+    {
+      "file": "sources/previous-v1.0/sources/.gitattributes",
+      "bytes": 146,
+      "sha256": "55c248bce0fff6113ccfe42f185e5d7ae13f271001dc7a1eb0e926f0a84cbda5"
+    },
+    {
+      "file": "sources/previous-v1.0/sources/00-start-here.md",
+      "bytes": 10820,
+      "sha256": "c4679679897499f13003ce0f55e8ee81c9596c617d2ffd6ada0341f9df138f72"
+    },
+    {
+      "file": "sources/previous-v1.0/sources/01-product-audit.md",
+      "bytes": 34700,
+      "sha256": "eb36a970dac125c50ccec8b88af6348e6601e54add58e4d9622dc5111d7c8c6f"
+    },
+    {
+      "file": "sources/previous-v1.0/sources/02-product-design-records.md",
+      "bytes": 47194,
+      "sha256": "bc1b77e3cfb55bcbd094a4070952e6eeb03b40abc0dfa8289e9e4e22cf3a8b8e"
+    },
+    {
+      "file": "sources/previous-v1.0/sources/03-interview-and-validation.md",
+      "bytes": 70043,
+      "sha256": "ba1343436ea4abc4b152d32626930ced9363e965cbce9fc1ebccb478fcd41e73"
+    },
+    {
+      "file": "sources/previous-v1.0/sources/04-mercury-receipt-proposal.md",
+      "bytes": 12908,
+      "sha256": "18759c9e2f282e73d2b2340e4323927d9e6bb425057d6ab4b4b74c1b38a66904"
+    },
+    {
+      "file": "sources/previous-v1.0/sources/05-evidence-and-coverage.md",
+      "bytes": 41410,
+      "sha256": "b6905b4af6da451c92dfb2f5ac32706c87f128b20fe8d608c22f5a55f449aee7"
+    },
+    {
+      "file": "sources/previous-v1.0/verification.md",
+      "bytes": 7495,
+      "sha256": "7d02685b676a799321fb47ef7353589265637657f167c18df19d10c8ec1f2bb4"
+    }
+  ],
+  "repository": [
+    {
+      "file": "DESIGN.md",
+      "sha256": "e4da284ed40a2b8b021870c64358140bb603dd35b4752ca12ae825bfb047a39a"
+    },
+    {
+      "file": "UX-CONTRACT.md",
+      "sha256": "f1cc77b9168645a54d93fb2d5c9e52f7b5b2e7a4865ddc4bf1f35c8d59ee5c21"
+    },
+    {
+      "file": "STORYBOOK.md",
+      "sha256": "cb7e1ea14070365fc29b1460864cec6a5b3ba984d9d3170ff2efa04bbf149119"
+    },
+    {
+      "file": "vse-part-outcomes.js",
+      "sha256": "4be3a908f97e6d97c7efca4d67842efa9bd625ecdf617560ca216caefdcd8566"
+    },
+    {
+      "file": "docs/admin-mockups/12-reports-form-5-vet-section-iii.md",
+      "sha256": "531edf44f291c3e5e9ff67f4851bd697f72ad0b755145406d4973b3608002c85"
+    },
+    {
+      "file": "arrivals.html",
+      "sha256": "6555f393b2c5fcf4469cd41368c70e80683012f5cfa222c6a8be019b1b1cadb7"
+    },
+    {
+      "file": "arrivals-work.html",
+      "sha256": "16a31488fd52621514e6d3d956643603379084e156c2a6fb24318e50482d09cf"
+    },
+    {
+      "file": "arrivals-accepted.html",
+      "sha256": "cfc00f0cd97c32f2036194583dd1706b6bfc20c00e2d558ecc8260b5daf474a8"
+    },
+    {
+      "file": "evsd-check.html",
+      "sha256": "b63a2c81a245913ff9ad188900ce25341c0237cb956548ef2f0dcad9e1ec8f71"
+    },
+    {
+      "file": "evsd-check-usmanov.html",
+      "sha256": "713be34ee68a376cbdc37940c9f1ff0a30de2e9995ba999aa6335a5fa69d5c5b"
+    },
+    {
+      "file": "evsd-check-usmanov-complete.html",
+      "sha256": "180925af34140448ad26dd9a7fb6f93c8ff3e31a68f9c201f32a0c32694e83da"
+    },
+    {
+      "file": "electronic-vse-journal.html",
+      "sha256": "ef3995210b776fa70e67b5bf78d75d05c71cc1792fd0de53ad8096941408621e"
+    },
+    {
+      "file": "electronic-vse-journal-kazan-bacon.html",
+      "sha256": "38377b5497c1c1013ca216547b204e2b13833c1e92182d6208abdf37a18c3278"
+    },
+    {
+      "file": "vse-view.html",
+      "sha256": "13368094d55dc061d4e050c5c510b29e385614b068537261ff751900cc562443"
+    },
+    {
+      "file": "vse-view-bad.html",
+      "sha256": "fe75461e15ae5831a24da80c87350b7a69f37d6cbfce13449fc4b4305cd2cffe"
+    },
+    {
+      "file": "journal.html",
+      "sha256": "43e1778681464cde0ecfd3ebb6589eca0bddfe8e6850fd996eb800033ef2d5c2"
+    },
+    {
+      "file": "directories.html",
+      "sha256": "54aaa946103186e27e81d088ad3da6b0a1d2774367e0464ec208d2f2707e4408"
+    },
+    {
+      "file": "directory-price-edit.html",
+      "sha256": "63c26af9afaae93fa8cec571cfc430f5fd1cd6ac5d36b9f88845c8ee2aaf2c94"
+    },
+    {
+      "file": "directory-paid-services-edit.html",
+      "sha256": "68d77d4c7eb981e922e080785804585e06a604adf48d85b2e3719f9a9addee59"
+    },
+    {
+      "file": "directory-norms-edit.html",
+      "sha256": "8b100fc07da9d3ab270b9c348e34a5b5ffeef7974cfc5458bf6fd8526d73bf6b"
+    },
+    {
+      "file": "profile.html",
+      "sha256": "186c2066f6cc0095ce9100505913e0bf236d2bf93e488379595b36d5bb05df98"
+    },
+    {
+      "file": "admin_makets/admin-users.html",
+      "sha256": "8712f7e8ac0d5310627c4eca90e5e33d6d2e6b680a5ba4608a8e1cebc5b9b525"
+    },
+    {
+      "file": "admin_makets/admin-user-create.html",
+      "sha256": "b88a186a94d8bb0ecb870a5fd7b694977e8ec6cf52525156d53cb4ffa32bdfa3"
+    },
+    {
+      "file": "admin_makets/admin-access-editor.html",
+      "sha256": "451643e0be8639475c60edf938e51e8bbf9334f4adf40b3c20be27e8ae39b880"
+    },
+    {
+      "file": "admin_makets/admin-reports.html",
+      "sha256": "048ca48726b8fb8c81976795e2d5a88ad21ee83192bd44b5ec7f55a2229afe28"
+    },
+    {
+      "file": "admin_makets/admin-report-create.html",
+      "sha256": "284563143dba29f8096f71b536d89b8246342e7fd32d0a60ade0de6bb673d83d"
+    },
+    {
+      "file": "admin_makets/admin-report-view.html",
+      "sha256": "e09d999b67acfd8caa596c30a9dd10260045c16cef2130bd14503c817e5b1f87"
+    },
+    {
+      "file": "admin_makets/admin-report-print.html",
+      "sha256": "01dc07e708760c8367875a02bdda71cab864d5fa16a0dc7aeb28d90cd39590a1"
+    }
+  ],
+  "observations": {
+    "file": "sources/mockup-observations.json",
+    "sha256": "7f65f6694788f9981d5fbd8e4c58af4784154c350afdaca2459ef755511720ae"
+  }
+}

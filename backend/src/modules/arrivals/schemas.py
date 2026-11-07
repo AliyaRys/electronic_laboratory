@@ -18,6 +18,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from backend.src.core.problems import ProblemItem
 from backend.src.modules.integrations.vetis.models import VetisContour
 
 __all__ = [
@@ -29,6 +30,16 @@ __all__ = [
     "ClassificationEntry",
     "ConfirmationSummary",
     "IncomingView",
+    "Comparison",
+    "Inspection",
+    "ReturnReason",
+    "Repeat",
+    "Transaction",
+    "ServiceItem",
+    "ReconciliationWrite",
+    "ActItem",
+    "ActPreview",
+    "ReconciliationView",
     "DecimalString",
     "parse_decimal",
 ]
@@ -174,3 +185,125 @@ class IncomingView(BaseModel):
     queue: Literal["EXPECTED", "WORK", "ACCEPTED"]
     examination_id: str | None
     revision: int
+
+
+# --- Reconciliation write/read contracts (API-04) -------------------------------
+
+
+class Comparison(StrictModel):
+    """API-04 ``Comparison`` for one CHK field: an explicit mark + facts."""
+
+    matches: bool
+    actual: str | int | None = None
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class Inspection(StrictModel):
+    """CHK-F13/F14: the transport inspection inputs (frozen after confirmation)."""
+
+    compartment: Literal["COMPLIANT", "DIRTY_OR_DAMAGED"] | None = None
+    joint_carriage: Literal["NONE", "SEPARATED", "NOT_SEPARATED"] | None = None
+
+
+class ReturnReason(StrictModel):
+    """CHK-F35: the Mercury return-reason code (OTHER_REASON needs text)."""
+
+    code: str = Field(max_length=64)
+    text: str | None = Field(default=None, max_length=240)
+
+
+class Repeat(StrictModel):
+    """CHK-F36–38: a repeated ВСЭ selection (only possible with a previous one)."""
+
+    required: bool
+    reason: str | None = Field(default=None, max_length=255)
+    act_number: str | None = Field(default=None, max_length=64)
+
+
+class Transaction(StrictModel):
+    """CHK-F39/40: an analytical flag; «Нет» never keeps a type."""
+
+    planned: bool | None = None
+    type: Literal["INTERNAL", "EXTERNAL"] | None = None
+
+
+class ServiceItem(StrictModel):
+    """A performed service fact of the party (costing belongs to C01)."""
+
+    code: str = Field(max_length=64)
+    performed: bool
+
+
+def _chk_key(value: str) -> str:
+    if not re.fullmatch(r"CHK-F\d{2}", value):
+        raise ValueError("Ключ проверки должен быть идентификатором CHK-Fxx.")
+    return value
+
+
+class ReconciliationWrite(StrictModel):
+    """API-04 ``ReconciliationWrite``: facts the doctor entered; the source
+    snapshot fields, act preview, allowed decisions and route are never
+    accepted from the client."""
+
+    checks: Annotated[dict[Annotated[str, AfterValidator(_chk_key)], Comparison], Field(default_factory=dict)]
+    inspection: Inspection = Field(default_factory=Inspection)
+    delivered: QuantitySet
+    accepted: QuantitySet
+    returned: QuantitySet
+    decision: Literal["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"] | None = None
+    return_reason: ReturnReason | None = None
+    repeat: Repeat | None = None
+    transaction: Transaction = Field(default_factory=Transaction)
+    fair: bool = False
+    services: list[ServiceItem] = Field(default_factory=list)
+
+
+class ActItem(BaseModel):
+    """One row of the derived discrepancy act (CHK-F44)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field_id: str
+    source: str | None = None
+    actual: str | int | None = None
+    reason: str
+
+
+class ActPreview(BaseModel):
+    """CHK-F44: derived, never accepted from the client."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    required: bool
+    items: list[ActItem] = Field(default_factory=list)
+
+
+class ReconciliationView(BaseModel):
+    """API-04 ``ReconciliationView`` with the server-calculated projection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    party_id: str
+    revision: int
+    state: Literal["OPEN", "CONFIRMED", "RETURNED"]
+    checks: dict[str, Comparison]
+    inspection: Inspection
+    delivered: QuantitySet
+    accepted: QuantitySet
+    returned: QuantitySet
+    decision: Literal["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"] | None
+    return_reason: ReturnReason | None
+    repeat: Repeat | None
+    transaction: Transaction
+    fair: bool
+    services: list[ServiceItem]
+    actor_id: str
+    saved_at: datetime
+    completed_at: datetime | None
+    # ServerView-derived data (API-04): the client never sets these.
+    allowed_decisions: list[Literal["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"]]
+    act: ActPreview
+    route: Literal["EXAMINATION", "CONCLUSION", "NONE"] | None
+    errors: list[ProblemItem]
+    complete: bool

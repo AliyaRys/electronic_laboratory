@@ -10,13 +10,13 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.core.commands import format_etag, resolve_if_match
+from backend.src.core.commands import CommandContext, format_etag, resolve_if_match
 from backend.src.core.contracts import Page
 from backend.src.core.database import async_session
 from backend.src.core.problems import not_found
-from backend.src.modules.arrivals import commands, queries
+from backend.src.modules.arrivals import commands, queries, reconciliation
 from backend.src.modules.arrivals.models import IncomingDocument, Party
-from backend.src.modules.arrivals.schemas import IncomingView
+from backend.src.modules.arrivals.schemas import IncomingView, ReconciliationView, ReconciliationWrite
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session
@@ -100,6 +100,55 @@ async def get_arrival(
     view = await queries.build_incoming_view(db, party, document)
     response.headers["Cache-Control"] = "no-store"
     response.headers["ETag"] = format_etag(party.rev)
+    return view
+
+
+@router.get("/{party_id}/reconciliation", response_model=ReconciliationView)
+async def get_reconciliation(
+    party_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> ReconciliationView:
+    """The saved reconciliation of one party; before the first save the view
+    is an empty OPEN state carrying the parent (party) ETag (API-04)."""
+    identity, actor = principal
+    party = await _scoped_party(db, authorizer, actor, party_id)
+    document = (
+        await db.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
+    ).scalar_one()
+    row = await reconciliation.load_reconciliation(db, party_id)
+    view = reconciliation.build_reconciliation_view(row, party, document)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["ETag"] = format_etag(view.revision)
+    return view
+
+
+@router.put("/{party_id}/reconciliation", response_model=ReconciliationView)
+async def put_reconciliation(
+    party_id: uuid.UUID,
+    payload: ReconciliationWrite,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> ReconciliationView:
+    """Save the started reconciliation (OPEN state; completion belongs to the
+    external receipt). SPEC-04: Idempotency-Key + If-Match under the party
+    lock; the first save uses the party ETag, later saves the reconciliation
+    ETag. A decision the current grounds forbid is refused, never merged."""
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    key = _idempotency_key(request)
+    expected = resolve_if_match(request.headers.get("if-match"))
+    await _scoped_party(db, authorizer, actor, party_id, "reconciliation:save", lock=True)
+    ctx = CommandContext(actor_id=identity.actor_id, idempotency_key=key, expected_revision=expected)
+    view = await reconciliation.save_reconciliation(ctx, party_id, payload, uow=db)
+    await db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["ETag"] = format_etag(view.revision)
     return view
 
 

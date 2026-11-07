@@ -73,7 +73,9 @@ test.describe("identity", () => {
     // Direct URL to the working journal: no working data may appear.
     const apiCalls: string[] = [];
     page.on("request", (request) => {
-      if (request.url().includes("/api/") && request.method() === "GET") apiCalls.push(request.url());
+      if (new URL(request.url()).pathname.startsWith("/api/v1/") && request.method() === "GET") {
+        apiCalls.push(request.url());
+      }
     });
     await page.goto(`/labs/${seed.labAId}/examinations`);
     await page.waitForLoadState("networkidle");
@@ -82,12 +84,24 @@ test.describe("identity", () => {
     await expect(page.getByRole("link", { name: "Управление пользователями" })).toBeVisible();
     await shot(page, "admin-journal-no-data");
 
-    // Server side: no working-data read succeeded — every scoped read the
-    // session performed stays in the administration domain.
+    // Server side: the ADMIN session must not receive working data. A real
+    // authenticated GET (page.request shares the browser session cookies)
+    // against the working-journal route is never served: the backend revision
+    // with journal routers answers 403 ACCESS_DENIED (API-01), and this I03
+    // revision has no working-data route at all (404 problem). A 2xx here
+    // would mean the working journal leaked — the assertion fails either way.
+    // /api/v1/me and friends are administration-domain reads and stay 200.
+    const WORKING_DATA = /^\/api\/v1\/(labs|arrivals|examinations|samples|conclusions|reports)\//;
     for (const url of apiCalls) {
       const response = await page.request.get(url);
+      if (WORKING_DATA.test(new URL(url).pathname)) {
+        expect([403, 404], `admin read must not be served: ${url}`).toContain(response.status());
+      }
       expect(response.status(), url).toBeLessThan(500);
     }
+    const journal = await page.request.get(`/api/v1/labs/${seed.labAId}/examinations`);
+    expect([403, 404]).toContain(journal.status());
+    expect(journal.headers()["content-type"] ?? "").toContain("application/problem+json");
   });
 
   test("test_password_reset_keeps_blocked", async ({ page }) => {

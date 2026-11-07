@@ -9,14 +9,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router";
 import { RequireSession } from "./RequireSession";
 import {
-  fetchArrivals,
+  fetchArrival,
   fetchReconciliation,
-  type IncomingView,
   type Problem,
   type ReconciliationView,
 } from "../features/arrivals/api";
 import { ReconciliationForm } from "../features/arrivals/ReconciliationForm";
 import { StatusView } from "../shared/ui/StatusView";
+import type { IncomingView } from "../features/arrivals/api";
 
 export function ReconciliationPage(): React.ReactElement {
   return (
@@ -30,10 +30,12 @@ function ReconciliationContent(): React.ReactElement {
   const { labId, partyId } = useParams<{ labId: string; partyId: string }>();
   const queryClient = useQueryClient();
 
-  const arrivals = useQuery({
-    queryKey: [null, labId ?? null, null, "/arrivals", "party", partyId ?? null],
-    queryFn: ({ signal }) =>
-      fetchArrivals({ laboratory_id: labId ?? "", queue: null, result: null, q: partyId ?? null }, signal),
+  // The party is loaded by its REAL route id (API-04 GET /arrivals/:party_id):
+  // a foreign or unknown UUID is a 404, never a queue search — a UUID never
+  // matches the queue `q` projection (issue number/product names).
+  const arrival = useQuery({
+    queryKey: [labId ?? null, partyId ?? null, "arrival"],
+    queryFn: ({ signal }) => fetchArrival(partyId ?? "", signal),
     enabled: labId !== undefined && partyId !== undefined,
   });
   const reconciliation = useQuery({
@@ -51,13 +53,13 @@ function ReconciliationContent(): React.ReactElement {
   }
 
   const arrivalProblem =
-    arrivals.data !== undefined && "code" in arrivals.data ? (arrivals.data as Problem) : null;
+    arrival.data !== undefined && "code" in arrival.data ? (arrival.data as Problem) : null;
   const reconciliationProblem =
     reconciliation.data !== undefined && "code" in reconciliation.data
       ? (reconciliation.data as Problem)
       : null;
-  const page = arrivals.data !== undefined && !("code" in arrivals.data) ? arrivals.data : null;
-  const party: IncomingView | null = page?.items.find((item) => item.party_id === partyId) ?? null;
+  const party: IncomingView | null =
+    arrival.data !== undefined && !("code" in arrival.data) ? arrival.data : null;
   const view =
     reconciliation.data !== undefined && !("code" in reconciliation.data) ? reconciliation.data : null;
 
@@ -68,12 +70,20 @@ function ReconciliationContent(): React.ReactElement {
       </nav>
       <h1>Сверка эВСД</h1>
       {arrivalProblem !== null ? (
-        <StatusView
-          state="network-error"
-          title="Не удалось загрузить поступление."
-          detail={arrivalProblem.detail}
-          onRetry={() => void arrivals.refetch()}
-        />
+        arrivalProblem.status === 404 ? (
+          <StatusView
+            state="not-found"
+            title="Поступление не найдено в доступной области."
+            detail={arrivalProblem.detail}
+          />
+        ) : (
+          <StatusView
+            state="network-error"
+            title="Не удалось загрузить поступление."
+            detail={arrivalProblem.detail}
+            onRetry={() => void arrival.refetch()}
+          />
+        )
       ) : reconciliationProblem !== null ? (
         <StatusView
           state="network-error"
@@ -81,7 +91,7 @@ function ReconciliationContent(): React.ReactElement {
           detail={reconciliationProblem.detail}
           onRetry={() => void reconciliation.refetch()}
         />
-      ) : arrivals.isLoading || reconciliation.isLoading ? (
+      ) : arrival.isLoading || reconciliation.isLoading ? (
         <StatusView state="loading" title="Загрузка сверки…" />
       ) : party === null || view === null ? (
         <StatusView state="not-found" title="Поступление не найдено в доступной очереди." />

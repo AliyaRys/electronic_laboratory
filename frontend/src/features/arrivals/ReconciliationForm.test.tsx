@@ -7,12 +7,15 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 import { ComparisonField, type ComparisonValue } from "./ComparisonField";
 import { ReceiptDecision, type ReceiptDecisionValue } from "./ReceiptDecision";
 import { ActPreview } from "./ActPreview";
 import { ReconciliationForm, type ReconciliationFormProps } from "./ReconciliationForm";
+import { computeAllowedDecisions } from "./api";
 import type { IncomingView, ReconciliationView } from "./api";
 import { useDirtyStore } from "../../entities/session/context";
 
@@ -46,6 +49,22 @@ const party: IncomingView = {
   queue: "WORK",
   examination_id: null,
   revision: 1,
+};
+
+/** The same document with a previous-ВСЭ record in the source projection. */
+const partyWithPrevious: IncomingView = {
+  ...party,
+  external: {
+    ...party.external,
+    fields: {
+      ...party.external.fields,
+      previousNumber: "ПВС-1",
+      previousPerformedOn: "2026-11-01",
+      previousOrganization: "ГБУ Ветснаб",
+      previousResult: "Отрицательно",
+      previousConclusion: "Пригодно",
+    },
+  },
 };
 
 const emptyView: ReconciliationView = {
@@ -219,7 +238,11 @@ function renderForm(props: Partial<ReconciliationFormProps> = {}, onSaved = vi.f
   render(
     <MemoryRouter>
       <QueryClientProvider client={client}>
-        <ReconciliationForm party={party} initial={emptyView} onSaved={onSaved} {...props} />
+        <ReconciliationForm
+          party={props.party ?? party}
+          initial={props.initial ?? emptyView}
+          onSaved={onSaved}
+        />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -262,9 +285,132 @@ describe("ReconciliationForm", () => {
     expect(screen.getAllByLabelText("Вес, кг")[0]).toHaveValue("100");
   });
 
-  it("disables the unavailable decisions from the server projection", () => {
-    renderForm({ initial: { ...emptyView, allowed_decisions: ["RETURN_ALL"] } });
-    expect(screen.getByRole("radio", { name: "Полное гашение" })).toBeDisabled();
+  it("governs enablement by the local recompute, not the stale saved projection", () => {
+    // The stale saved view lists only RETURN_ALL, but with real delivered
+    // quantities and no marked grounds all three decisions are selectable;
+    // the server stays authoritative at save time.
+    renderForm({
+      initial: {
+        ...emptyView,
+        delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" },
+        allowed_decisions: ["RETURN_ALL"],
+      },
+    });
+    expect(screen.getByRole("radio", { name: "Полное гашение" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "Частичное гашение" })).toBeEnabled();
     expect(screen.getByRole("radio", { name: "Полный возврат" })).toBeEnabled();
+  });
+});
+
+describe("first-pass decision enablement (fix round 1)", () => {
+  it("recomputes allowed decisions from the CURRENT input", () => {
+    const comparisons = { "CHK-F05": { matches: true } };
+    expect(computeAllowedDecisions({ mass_kg: "100", quantity: "4" }, comparisons)).toEqual([
+      "ACCEPT_ALL",
+      "PARTIAL",
+      "RETURN_ALL",
+    ]);
+    // An inadmissible ground (receiver) leaves only the full return.
+    expect(
+      computeAllowedDecisions({ mass_kg: "100", quantity: "4" }, { "CHK-F07": { matches: false } }),
+    ).toEqual(["RETURN_ALL"]);
+    // A non-arrival / zero delivery admits no decision at all.
+    expect(computeAllowedDecisions({ mass_kg: "0", quantity: "0" }, comparisons)).toEqual([]);
+  });
+
+  it("makes ACCEPT_ALL selectable once quantities are entered, before any save", async () => {
+    // The stale saved view carries an empty projection — the local recompute
+    // still enables the decision as soon as the facts admit it.
+    renderForm({ initial: { ...emptyView, allowed_decisions: [] } });
+    expect(screen.getByRole("radio", { name: "Полное гашение" })).toBeDisabled();
+    const weight = screen.getAllByLabelText("Вес, кг")[0];
+    await userEvent.clear(weight);
+    await userEvent.type(weight, "100");
+    expect(screen.getByRole("radio", { name: "Полное гашение" })).toBeEnabled();
+  });
+
+  it("disables full/partial acceptance for an inadmissible mismatch", async () => {
+    renderForm({
+      initial: { ...emptyView, delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" } },
+    });
+    const receiver = document.querySelector<HTMLInputElement>(
+      '[data-field-id="CHK-F07"] input[value="mismatch"]',
+    );
+    if (receiver === null) {
+      throw new Error("receiver mark not found");
+    }
+    await userEvent.click(receiver);
+    expect(screen.getByRole("radio", { name: "Полное гашение" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Частичное гашение" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Полный возврат" })).toBeEnabled();
+  });
+});
+
+describe("repeat ВСЭ inputs (fix round 1)", () => {
+  const savedView: ReconciliationView = {
+    ...emptyView,
+    id: "c1e2d3a4-1111-4222-8333-444444444444",
+    revision: 2,
+  };
+  const captured: { repeat: unknown; headers: Headers }[] = [];
+
+  const server = setupServer(
+    http.get("*/api/v1/me", () =>
+      HttpResponse.json({
+        id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+        full_name: "Ветврач",
+        login: "vet",
+        email: "vet@lab.test",
+        position: null,
+        role: "VET",
+        active: true,
+        scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+        capabilities: [],
+        revision: 1,
+      }),
+    ),
+    http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+      const body = (await request.json()) as { repeat: unknown };
+      captured.push({ repeat: body.repeat, headers: request.headers });
+      return HttpResponse.json(savedView, { status: 200 });
+    }),
+  );
+
+  beforeAll(() => server.listen());
+
+  it("renders the previous-ВСЭ facts and sends the real repeat payload", async () => {
+    renderForm({ party: partyWithPrevious });
+    expect(screen.getByText("ПВС-1")).toBeInTheDocument();
+    expect(screen.getByText("Отрицательно")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Требуется" }));
+    await userEvent.type(
+      screen.getByLabelText("Основание для проведения повторной ВСЭ"),
+      "Повторный осмотр партии",
+    );
+    await userEvent.type(screen.getByLabelText("№ акта"), "АКТ-9");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    await waitFor(() => expect(captured.length).toBeGreaterThan(0));
+    expect(captured[captured.length - 1].repeat).toEqual({
+      required: true,
+      reason: "Повторный осмотр партии",
+      actNumber: "АКТ-9",
+    });
+  });
+
+  it("keeps the note and a null repeat without a previous ВСЭ", async () => {
+    renderForm();
+    expect(screen.getByText(/Сведений прежней ВСЭ в эВСД нет/)).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Требуется" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    await waitFor(() => expect(captured.length).toBeGreaterThan(0));
+    expect(captured[captured.length - 1].repeat).toBeNull();
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+  });
+
+  afterAll(() => {
+    server.close();
   });
 });

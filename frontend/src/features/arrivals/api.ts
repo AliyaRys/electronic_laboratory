@@ -184,6 +184,92 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   return fields;
 }
 
+/** GET /arrivals/:party_id — the IncomingView of one party (API-04, party ETag).
+ *
+ * The reconciliation screen loads the party by its REAL route id; a foreign
+ * or unknown UUID is a 404 problem, never a queue search (a UUID never
+ * matches the queue `q` projection). */
+export async function fetchArrival(
+  partyId: string,
+  signal?: AbortSignal | null,
+): Promise<IncomingView | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/arrivals/{party_id}", {
+      params: { path: { party_id: partyId } },
+      signal: signal ?? null,
+    }) as Promise<RawResult<IncomingView>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+// --- Client-side mirror of the server decision rules (FT-ARR-04/09) ---------------
+
+/** CHK fields whose mismatch forbids full/partial acceptance (validate_receipt). */
+const INADMISSIBLE_FIELDS: ReadonlySet<string> = new Set([
+  "CHK-F05",
+  "CHK-F06",
+  "CHK-F07",
+  "CHK-F08",
+  "CHK-F09",
+  "CHK-F12",
+  "CHK-F15",
+  "CHK-F16",
+  "CHK-F17",
+  "CHK-F19",
+  "CHK-F22",
+]);
+
+/**
+ * The allowed receipt decisions recomputed from the CURRENT form input,
+ * mirroring ``validate_receipt`` (FT-ARR-09): the server stays authoritative
+ * at save time and any mismatch surfaces as its own validation errors, but
+ * the doctor must never wait for a first save before the radios become
+ * selectable. A non-arrival / zero delivery admits no decision at all.
+ */
+export function computeAllowedDecisions(
+  delivered: { mass_kg: string; quantity: string },
+  comparisons: Record<string, { matches: boolean | null }>,
+): Decision[] {
+  const positive = Number(delivered.mass_kg) > 0 || Number(delivered.quantity) > 0;
+  if (!positive || Number.isNaN(Number(delivered.mass_kg)) || Number.isNaN(Number(delivered.quantity))) {
+    return [];
+  }
+  const inadmissible = Object.entries(comparisons).some(
+    ([fieldId, mark]) => mark.matches === false && INADMISSIBLE_FIELDS.has(fieldId),
+  );
+  return inadmissible ? ["RETURN_ALL"] : ["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"];
+}
+
+/** The previous-ВСЭ facts of the source projection (CHK-F24/28–32). */
+export interface PreviousVse {
+  number: string;
+  performedOn: string;
+  organization: string;
+  result: string;
+  conclusion: string;
+  stamp: string;
+}
+
+/**
+ * The previous-ВСЭ record when the eVSD source carries one; ``null`` means the
+ * block stays informational («нет сведений») and the local ВСЭ is required
+ * without a fictitious repeat selection (FT-ARR-11).
+ */
+export function previousVse(view: IncomingView): PreviousVse | null {
+  const fields: Record<string, string | null | undefined> = view.external.fields;
+  const value = (key: string): string =>
+    typeof fields[key] === "string" ? (fields[key] as string).trim() : "";
+  const facts = {
+    number: value("previousNumber"),
+    performedOn: value("previousPerformedOn"),
+    organization: value("previousOrganization"),
+    result: value("previousResult"),
+    conclusion: value("previousConclusion"),
+    stamp: value("previousStamp"),
+  };
+  return Object.values(facts).some((entry) => entry !== "") ? facts : null;
+}
+
 /** GET /arrivals/:party_id/reconciliation — an empty OPEN view before the first save. */
 export async function fetchReconciliation(
   partyId: string,

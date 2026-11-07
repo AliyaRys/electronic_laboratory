@@ -183,6 +183,31 @@ export const ФормаНачатая: StoryObj<typeof ReconciliationForm> = {
   args: { party, initial: emptyView, onSaved: () => undefined },
 };
 
+/** The same document with a previous-ВСЭ record: the repeat inputs appear. */
+const partyWithPrevious: IncomingView = {
+  ...party,
+  external: {
+    ...party.external,
+    fields: {
+      ...party.external.fields,
+      previousNumber: "ПВС-1",
+      previousPerformedOn: "2026-11-01",
+      previousOrganization: "ГБУ Ветснаб",
+      previousResult: "Отрицательно",
+      previousConclusion: "Пригодно",
+    },
+  },
+};
+
+export const ФормаСПрежнейВСЭ: StoryObj<typeof ReconciliationForm> = {
+  render: (args) => (
+    <div style={{ maxWidth: 760, padding: 16 }}>
+      <ReconciliationForm {...args} />
+    </div>
+  ),
+  args: { party: partyWithPrevious, initial: emptyView, onSaved: () => undefined },
+};
+
 export const ФормаЗаполненная: StoryObj<typeof ReconciliationForm> = {
   render: (args) => (
     <div style={{ maxWidth: 760, padding: 16 }}>

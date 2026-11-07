@@ -167,6 +167,17 @@
   max-width: 420px;
 }
 
+.vse-repeat {
+  margin-top: 12px;
+  border: none;
+  padding: 0;
+}
+
+.vse-repeat-inputs {
+  margin-top: 8px;
+  max-width: 420px;
+}
+
 .vse-transaction {
   margin-top: 12px;
   border: none;

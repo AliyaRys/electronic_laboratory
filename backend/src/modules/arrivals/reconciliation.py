@@ -42,6 +42,7 @@ from backend.src.modules.arrivals.schemas import (
     SourceSnapshot,
     Transaction,
 )
+from backend.src.modules.arrivals.queries import previous_vse_fields
 from backend.src.modules.arrivals.validation import (
     FIELD_REGISTRY,
     IncomingDocument,
@@ -122,15 +123,10 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
         "unitId": _ref_name(unit),
         "producedOn": None,
         "expiresOn": None,
-        "previousStamp": None,
         "transportDocumentType": None,
         "transportDocumentNumber": None,
         "transportDocumentIssuedOn": None,
-        "previousNumber": None,
-        "previousPerformedOn": None,
-        "previousOrganization": None,
-        "previousResult": None,
-        "previousConclusion": None,
+        **previous_vse_fields(row.source_snapshot),
     }
     return IncomingDocument(
         snapshot=SourceSnapshot.model_validate(row.source_snapshot),

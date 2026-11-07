@@ -30,6 +30,7 @@ PowerShell Get-Content/Set-Content (encoding hazard) — use the edit tool.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -44,6 +45,7 @@ from backend.src.modules.arrivals.schemas import (
     ClassificationEntry,
     ClassificationView,
     Comparison,
+    IncomingDocument as IncomingDocumentInput,
     Inspection,
     QuantitySet,
     ReconciliationWrite,
@@ -801,3 +803,108 @@ async def test_decision_not_allowed_is_refused(vet_env: object) -> None:
         assert refused.status_code == 422
         items = refused.json().get("errors", [])
         assert any(item["field_id"] == "CHK-F34" for item in items) or "недопустимо" in refused.json()["detail"]
+
+
+# --- Fix round 1: real party read + previous-ВСЭ projection ---------------------
+
+
+async def test_api_get_party_view_projects_previous_vse(vet_env: object) -> None:
+    """GET /arrivals/:party_id loads one party by its REAL id (API-04) and the
+    read view/validator projection carry the previous-ВСЭ facts when the eVSD
+    snapshot has them; an unknown UUID is a 404."""
+    env = vet_env  # type: ignore[attr-defined]
+    snap = snapshot().model_copy(
+        update={
+            "vet_documents": [
+                {
+                    "previousStamp": "ОП-77",
+                    "previousNumber": "ПВС-1",
+                    "previousPerformedOn": "2026-11-01",
+                    "previousOrganization": "ГБУ Ветснаб",
+                    "previousResult": "Отрицательно",
+                    "previousConclusion": "Пригодно",
+                }
+            ]
+        }
+    )
+    with_previous = IncomingDocumentInput(
+        contour=VetisContour.PILOT,
+        evsd_uuid=uuid.uuid4(),
+        laboratory_id=env.own.id,
+        external_status="COMPLETED",
+        snapshot=snap,
+        fetched_at=datetime.now(UTC),
+    )
+    party = await commands.upsert_incoming(env.db, with_previous)
+    await env.db.commit()
+    async with _client_for(env) as (http, identity):  # type: ignore[operator]
+        unknown = await http.get(f"/api/v1/arrivals/{uuid.uuid4()}")
+        assert unknown.status_code == 404
+
+        view = await http.get(f"/api/v1/arrivals/{party.id}")
+        assert view.status_code == 200
+        body = view.json()
+        assert body["party_id"] == str(party.id)
+        assert body["external"]["fields"]["previousNumber"] == "ПВС-1"
+        assert body["external"]["fields"]["previousResult"] == "Отрицательно"
+
+        # The repeat selection is now real: with a previous ВСЭ the doctor can
+        # choose «Требуется» and the started reconciliation saves it (OPEN).
+        headers = {
+            "x-csrf-token": identity.csrf_token,
+            "origin": "http://test",
+            "idempotency-key": str(uuid.uuid4()),
+            "if-match": '"1"',
+        }
+        saved = await http.put(
+            f"/api/v1/arrivals/{party.id}/reconciliation",
+            json={
+                "checks": {},
+                "inspection": {"compartment": None, "joint_carriage": None},
+                "delivered": {"mass_kg": "0", "quantity": "0", "unit_id": ""},
+                "accepted": {"mass_kg": "0", "quantity": "0", "unit_id": ""},
+                "returned": {"mass_kg": "0", "quantity": "0", "unit_id": ""},
+                "repeat": {"required": True, "reason": "Требуется повторный осмотр", "act_number": "АКТ-9"},
+                "transaction": {"planned": False, "type": None},
+                "fair": False,
+                "services": [],
+            },
+            headers=headers,
+        )
+        assert saved.status_code == 200, saved.text
+        repeat = saved.json()["repeat"]
+        assert repeat["required"] is True
+        assert repeat["reason"] == "Требуется повторный осмотр"
+        assert repeat["actNumber"] == "АКТ-9"
+
+    # Without a previous ВСЭ in the source a fictitious repeat selection is
+    # refused by the save command (blocking, FT-ARR-11).
+    env2 = vet_env  # type: ignore[attr-defined]
+    party2 = await commands.upsert_incoming(env2.db, document(uuid.uuid4(), env2.own.id))  # type: ignore[attr-defined]
+    await env2.db.commit()
+    async with _client_for(env2) as (http, identity):  # type: ignore[operator]
+        bare = await http.get(f"/api/v1/arrivals/{party2.id}")
+        assert bare.status_code == 200
+        assert bare.json()["external"]["fields"]["previousNumber"] is None
+        refused = await http.put(
+            f"/api/v1/arrivals/{party2.id}/reconciliation",
+            json={
+                "checks": {},
+                "inspection": {"compartment": None, "joint_carriage": None},
+                "delivered": {"mass_kg": "0", "quantity": "0", "unit_id": ""},
+                "accepted": {"mass_kg": "0", "quantity": "0", "unit_id": ""},
+                "returned": {"mass_kg": "0", "quantity": "0", "unit_id": ""},
+                "repeat": {"required": False},
+                "transaction": {"planned": False, "type": None},
+                "fair": False,
+                "services": [],
+            },
+            headers={
+                "x-csrf-token": identity.csrf_token,
+                "origin": "http://test",
+                "idempotency-key": str(uuid.uuid4()),
+                "if-match": '"1"',
+            },
+        )
+        assert refused.status_code == 422
+        assert refused.json()["code"] == "VALIDATION_ERROR"

@@ -20,7 +20,9 @@ import { Field } from "../../shared/ui/Field";
 import { StatusView } from "../../shared/ui/StatusView";
 import {
   comparedFields,
+  computeAllowedDecisions,
   decisionLabel,
+  previousVse,
   saveReconciliation,
   revisionEtag,
   type Decision,
@@ -53,6 +55,9 @@ const formSchema = z.object({
   decision: z.enum(["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"]).nullable(),
   compartment: z.enum(["COMPLIANT", "DIRTY_OR_DAMAGED"]).nullable(),
   joint_carriage: z.enum(["NONE", "SEPARATED", "NOT_SEPARATED"]).nullable(),
+  repeat_required: z.boolean().nullable(),
+  repeat_reason: z.string(),
+  repeat_act_number: z.string(),
   delivered: z.object({
     mass_kg: z.string().regex(DECIMAL, "Вес — неотрицательное десятичное число."),
     quantity: z.string().regex(DECIMAL, "Количество — неотрицательное десятичное число."),
@@ -105,6 +110,9 @@ export function initialValues(party: IncomingView, initial: ReconciliationView):
     returned: { ...initial.returned },
     return_reason_code: initial.return_reason?.code ?? "",
     return_reason_text: initial.return_reason?.text ?? "",
+    repeat_required: initial.repeat?.required ?? null,
+    repeat_reason: initial.repeat?.reason ?? "",
+    repeat_act_number: initial.repeat?.actNumber ?? "",
     transaction_planned: initial.transaction.planned ?? null,
     transaction_type: initial.transaction.type ?? null,
     fair: initial.fair,
@@ -125,6 +133,22 @@ function toPayload(values: FormValues, party: IncomingView): ReconciliationWrite
       ...(saved.reason !== "" ? { reason: saved.reason } : {}),
     };
   }
+  // CHK-F36–38: the repeat selection exists only when the source carries a
+  // previous ВСЭ; without one the answer is a new local ВСЭ (no fictitious
+  // selection is ever sent, FT-ARR-11).
+  const previous = previousVse(party);
+  const repeat: ReconciliationWrite["repeat"] =
+    previous !== null
+      ? {
+          required: values.repeat_required === true,
+          ...(values.repeat_required === true
+            ? {
+                reason: values.repeat_reason === "" ? null : values.repeat_reason,
+                actNumber: values.repeat_act_number === "" ? null : values.repeat_act_number,
+              }
+            : {}),
+        }
+      : null;
   return {
     checks,
     inspection: { compartment: values.compartment, jointCarriage: values.joint_carriage },
@@ -143,7 +167,7 @@ function toPayload(values: FormValues, party: IncomingView): ReconciliationWrite
                 : {}),
             }
         : null,
-    repeat: null,
+    repeat,
     transaction: {
       planned: values.transaction_planned,
       type: values.transaction_planned === true ? values.transaction_type : null,
@@ -155,6 +179,7 @@ function toPayload(values: FormValues, party: IncomingView): ReconciliationWrite
 
 export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFormProps): React.ReactElement {
   const compared = useMemo(() => comparedFields(party), [party]);
+  const previous = useMemo(() => previousVse(party), [party]);
   const form = useForm<FormValues>({ defaultValues: initialValues(party, initial) });
   const values = useWatch({ control: form.control }) as FormValues;
   useDirtyGuard(form.formState.isDirty, "Сверка");
@@ -199,7 +224,10 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       }
     }
   }
-  const allowed: Decision[] = (initial.allowed_decisions ?? []) as Decision[];
+  // The allowed decisions are recomputed from the CURRENT input (the same
+  // rules the server applies); the server stays authoritative at save time
+  // and any mismatch surfaces as its validation errors (FT-ARR-09).
+  const allowed: Decision[] = computeAllowedDecisions(values.delivered, values.comparisons);
   const decision = values.decision;
   const actErrors: ReceiptProblemItem[] = problemItemsOf(problem);
   const comparisonValue = (fieldId: string): ComparisonValue =>
@@ -322,9 +350,82 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
 
       <section className="vse-check-block" aria-label="Прежняя ВСЭ">
         <h3>Прежняя ВСЭ</h3>
-        <p className="vse-check-note">
-          Блок показывается только при сведениях прежней ВСЭ в эВСД; в этом документе их нет.
-        </p>
+        {previous === null ? (
+          <p className="vse-check-note">
+            Сведений прежней ВСЭ в эВСД нет: по этой партии обязательна местная ВСЭ (без фиктивного выбора
+            повторной).
+          </p>
+        ) : (
+          <>
+            <dl className="vse-check-info">
+              {previous.stamp !== "" ? (
+                <div>
+                  <dt>Клеймо убойного пункта</dt>
+                  <dd>{previous.stamp}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>Номер экспертизы</dt>
+                <dd>{previous.number || "—"}</dd>
+              </div>
+              <div>
+                <dt>Дата проведения</dt>
+                <dd>{previous.performedOn || "—"}</dd>
+              </div>
+              <div>
+                <dt>Организация-оператор</dt>
+                <dd>{previous.organization || "—"}</dd>
+              </div>
+              <div>
+                <dt>Результат осмотра</dt>
+                <dd>{previous.result || "—"}</dd>
+              </div>
+              {previous.conclusion !== "" ? (
+                <div>
+                  <dt>Заключение</dt>
+                  <dd>{previous.conclusion}</dd>
+                </div>
+              ) : null}
+            </dl>
+            <fieldset className="vse-repeat">
+              <legend>Необходимость повторного ВСЭ</legend>
+              <label className="vse-comparison-mark">
+                <input
+                  type="radio"
+                  name="repeat.required"
+                  checked={values.repeat_required === true}
+                  onChange={() => form.setValue("repeat_required", true, { shouldDirty: true })}
+                />
+                Требуется
+              </label>
+              <label className="vse-comparison-mark">
+                <input
+                  type="radio"
+                  name="repeat.required"
+                  checked={values.repeat_required === false}
+                  onChange={() => form.setValue("repeat_required", false, { shouldDirty: true })}
+                />
+                Не требуется
+              </label>
+              {values.repeat_required === true ? (
+                <div className="vse-repeat-inputs">
+                  <Field
+                    id="repeat-reason"
+                    label="Основание для проведения повторной ВСЭ"
+                    value={values.repeat_reason}
+                    onChange={(next) => form.setValue("repeat_reason", next, { shouldDirty: true })}
+                  />
+                  <Field
+                    id="repeat-act-number"
+                    label="№ акта"
+                    value={values.repeat_act_number}
+                    onChange={(next) => form.setValue("repeat_act_number", next, { shouldDirty: true })}
+                  />
+                </div>
+              ) : null}
+            </fieldset>
+          </>
+        )}
       </section>
 
       <section className="vse-check-block" aria-label="Результаты">

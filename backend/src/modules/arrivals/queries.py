@@ -32,7 +32,45 @@ from backend.src.modules.arrivals.schemas import (
     QuantitySet,
 )
 
-__all__ = ["PAGE_SIZE", "arrival_page", "build_incoming_view", "party_view", "queue_of"]
+__all__ = [
+    "PAGE_SIZE",
+    "arrival_page",
+    "build_incoming_view",
+    "party_view",
+    "previous_vse_fields",
+    "queue_of",
+]
+
+# CHK source keys of the previous-ВСЭ block (CHK-F24/28–32, field-mapping).
+PREVIOUS_VSE_KEYS: tuple[str, ...] = (
+    "previousStamp",
+    "previousNumber",
+    "previousPerformedOn",
+    "previousOrganization",
+    "previousResult",
+    "previousConclusion",
+)
+
+
+def previous_vse_fields(snapshot: object) -> dict[str, str | None]:
+    """The previous-ВСЭ source projection of one normalized snapshot.
+
+    The normalized external document carries the linked veterinary documents
+    (``vet_documents``); an entry with a nonblank ``previousNumber`` is the
+    previous-ВСЭ record of the eVSD (CHK-F28). V01 binds the real XML paths;
+    here the projection only surfaces the facts the source carries — an absent
+    record stays absent (informational absence never demands a fictitious
+    mark, FT-ARR-03/11).
+    """
+    root = snapshot.get("vetDocuments") if isinstance(snapshot, dict) else None
+    entries = root if isinstance(root, list) else []
+    record: dict[str, object] = {}
+    for entry in entries:
+        if isinstance(entry, dict) and str(entry.get("previousNumber") or "").strip() != "":
+            record = entry
+            break
+    return {key: (str(record.get(key)) if record.get(key) not in (None, "") else None) for key in PREVIOUS_VSE_KEYS}
+
 
 PAGE_SIZE = 20
 
@@ -274,6 +312,7 @@ def _external_fields(document: IncomingDocument) -> ExternalFields:
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),
         "productItem": str(product_item.get("name") or "") if product_item is not None else None,
+        **previous_vse_fields(document.source_snapshot),
     }
     return ExternalFields(
         contour=document.contour,

@@ -22,6 +22,14 @@ __all__ = [
     "IDENTIFICATION_INDICATOR_ID",
     "TEMPERATURE_INDICATOR_ID",
     "TRICHINELLA_INDICATOR_ID",
+    "LUMINESCENT_INDICATOR_ID",
+    "BACTERIOSCOPY_INDICATOR_ID",
+    "MICROSCOPY_INDICATOR_ID",
+    "PH_INDICATOR_ID",
+    "COOKING_INDICATOR_ID",
+    "COPPER_INDICATOR_ID",
+    "PEROXIDASE_INDICATOR_ID",
+    "DOSIMETRY_INDICATOR_ID",
     "MANDATORY_INDICATOR_IDS",
     "ensure_mandatory_registry_configured",
 ]
@@ -39,6 +47,18 @@ ORGANOLEPTIC_INDICATOR_ID = _ft_id("VSE-F18")
 IDENTIFICATION_INDICATOR_ID = _ft_id("VSE-F19")
 TEMPERATURE_INDICATOR_ID = _ft_id("VSE-F20")
 TRICHINELLA_INDICATOR_ID = _ft_id("VSE-F21")
+
+# Optional FT researches (VSE-F22..F29). They are not mandatory, but their
+# local ids are still owned by the functional requirements; the 5-вет report
+# rows 167–171 are keyed by exactly these stable ids (ФТ 09).
+LUMINESCENT_INDICATOR_ID = _ft_id("VSE-F22")
+BACTERIOSCOPY_INDICATOR_ID = _ft_id("VSE-F23")
+MICROSCOPY_INDICATOR_ID = _ft_id("VSE-F24")
+PH_INDICATOR_ID = _ft_id("VSE-F25")
+COOKING_INDICATOR_ID = _ft_id("VSE-F26")
+COPPER_INDICATOR_ID = _ft_id("VSE-F27")
+PEROXIDASE_INDICATOR_ID = _ft_id("VSE-F28")
+DOSIMETRY_INDICATOR_ID = _ft_id("VSE-F29")
 
 # Universally mandatory for every local meat examination. Conditional
 # trichinelloscopy is enforced by E01 after resolving exact product species.

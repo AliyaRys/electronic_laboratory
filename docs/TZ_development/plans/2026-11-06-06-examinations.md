@@ -44,11 +44,11 @@
 
 **Interfaces:** `update_examination(ctx,id,payload)->ExaminationView`; `complete_waiting(ctx,id,outcome:OutcomeWrite)->ExaminationView`. OutcomeWrite только outcome/direction/reason, extra forbid.
 
-- [ ] Написать `test_waiting_day_rules` с созданием 05.11: full edit05 разрешено,06 температура 422/409 DAY_CLOSED,08 итог разрешён и first_completed_at=08; после complete обычная поздняя правка запрещена. `test_lock_crosses_midnight` assert save открытого 23:59 блокирован после 00. `test_original_author_and_completion` assert создательА и first_completed_at прежние при правкеБ. `test_outcome_matrix` FIT→SALE/reason null; UNFIT→DISPOSAL|DESTRUCTION/nonblank; conditional-fit rejected; completed→waiting rejected.
-- [ ] Запустить `uv run --frozen pytest backend/tests/examinations/test_lifecycle.py -v`, получить FAIL.
-- [ ] Реализовать state/time/revision/auth под locks SPEC-04, без transaction-start now. Полная разрешённая правка не меняет автора/первое завершение; существующий indicator использует старый price/norm snapshot, новый — текущий с явным сообщением. WAITING completion не перезаписывает sample/research/cost/stamp/sent_to_lab. Ответ спецлаборатории подтверждается явным действием завершения, без введения нового протокола/вложений. FIT очищает reason; UNFIT свободный текст, медицинский итог всегда врача.
-- [ ] Проверить поздний запрос с лишними полями extra=forbid, старый If-Match409 без слияния, отзыв назначения после открытия формы; AT-07/08. Запустить E01/E02.
-- [ ] Зафиксировать: `feat: enforce examination day boundaries and late outcomes`.
+- [x] Написать `test_waiting_day_rules` с созданием 05.11: full edit05 разрешено,06 температура 422/409 DAY_CLOSED,08 итог разрешён и first_completed_at=08; после complete обычная поздняя правка запрещена. `test_lock_crosses_midnight` assert save открытого 23:59 блокирован после 00. `test_original_author_and_completion` assert создательА и first_completed_at прежние при правкеБ. `test_outcome_matrix` FIT→SALE/reason null; UNFIT→DISPOSAL|DESTRUCTION/nonblank; conditional-fit rejected; completed→waiting rejected.
+- [x] Запустить `uv run --frozen pytest backend/tests/examinations/test_lifecycle.py -v`, получить FAIL.
+- [x] Реализовать state/time/revision/auth под locks SPEC-04, без transaction-start now. Полная разрешённая правка не меняет автора/первое завершение; существующий indicator использует старый price/norm snapshot, новый — текущий с явным сообщением. WAITING completion не перезаписывает sample/research/cost/stamp/sent_to_lab. Ответ спецлаборатории подтверждается явным действием завершения, без введения нового протокола/вложений. FIT очищает reason; UNFIT свободный текст, медицинский итог всегда врача.
+- [x] Проверить поздний запрос с лишними полями extra=forbid, старый If-Match409 без слияния, отзыв назначения после открытия формы; AT-07/08. Запустить E01/E02.
+- [x] Зафиксировать: `feat: enforce examination day boundaries and late outcomes`.
 
 ### Task E03: Удаление без потери самостоятельных фактов
 

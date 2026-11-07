@@ -28,6 +28,7 @@ from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError
@@ -62,6 +63,19 @@ def _incompatible() -> ProblemError:
         code="STATE_CONFLICT",
         title="State conflict",
         detail="Поступление уже подтверждено другим внешним результатом; перезапись подтверждения недопустима.",
+    )
+
+
+def _foreign_operation() -> ProblemError:
+    """409 STATE_CONFLICT: one external operation proves one receipt (DATA-06)."""
+    return ProblemError(
+        status=409,
+        code="STATE_CONFLICT",
+        title="State conflict",
+        detail=(
+            "Эта внешняя операция гашения уже подтверждена для другого поступления; "
+            "повторное использование недопустимо."
+        ),
     )
 
 
@@ -219,6 +233,33 @@ async def confirm_receipt(uow: AsyncSession, evidence: ReceiptEvidence | None) -
             return existing  # idempotent replay: the same fact, nothing written
         raise _incompatible()
 
+    # Cross-party dedup (DATA-06 operation identity): one external operation
+    # proves one receipt. An operation_id already frozen for ANOTHER party is
+    # refused with an honest problem before any insert — the DB UNIQUE
+    # constraint stays the race backstop, never the user-visible answer.
+    same_operation = (
+        await uow.execute(
+            select(ReceiptConfirmation).where(ReceiptConfirmation.operation_id == operation_uuid).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if same_operation is not None and same_operation.party_id != party.id:
+        raise _foreign_operation()
+
+    # The reconciliation is loaded under lock BEFORE any insert: its saved
+    # decision must match the external fact, and its repeat choice is frozen
+    # into the confirmation (FT-ARR-12), so the route survives row deletion.
+    reconciliation = (
+        await uow.execute(select(Reconciliation).where(Reconciliation.party_id == party.id).with_for_update())
+    ).scalar_one_or_none()
+    if reconciliation is not None:
+        mapped_decision = {"ACCEPT_ALL": "ACCEPT_ALL", "PARTIALLY": "PARTIAL", "RETURN_ALL": "RETURN_ALL"}[
+            evidence.decision
+        ]
+        if reconciliation.decision is not None and reconciliation.decision != mapped_decision:
+            raise _incompatible()
+    previous = any(value is not None for value in previous_vse_fields(document.source_snapshot).values())
+    previous_sufficient = previous and reconciliation is not None and reconciliation.repeated_required is False
+
     accepted_mass = evidence.accepted_mass_kg if evidence.accepted_mass_kg is not None else Decimal("0")
     accepted_quantity = evidence.accepted_quantity if evidence.accepted_quantity is not None else Decimal("0")
     returned_mass = evidence.returned_mass_kg if evidence.returned_mass_kg is not None else Decimal("0")
@@ -236,20 +277,13 @@ async def confirm_receipt(uow: AsyncSession, evidence: ReceiptEvidence | None) -
         returned_quantity=returned_quantity,
         returned_unit_id=evidence.unit_id,
         classification_snapshot=dict(party.classification_snapshot),
+        previous_sufficient=previous_sufficient,
     )
     uow.add(confirmation)
 
     # Freeze the reconciliation atomically with the confirmation (FT-ARR-15):
     # the external fact owns the completed state and the accepted composition.
-    reconciliation = (
-        await uow.execute(select(Reconciliation).where(Reconciliation.party_id == party.id).with_for_update())
-    ).scalar_one_or_none()
     if reconciliation is not None:
-        mapped_decision = {"ACCEPT_ALL": "ACCEPT_ALL", "PARTIALLY": "PARTIAL", "RETURN_ALL": "RETURN_ALL"}[
-            evidence.decision
-        ]
-        if reconciliation.decision is not None and reconciliation.decision != mapped_decision:
-            raise _incompatible()
         reconciliation.state = _DECISION_TO_STATE[evidence.decision]
         reconciliation.completed_at = datetime.now(UTC)
         reconciliation.accepted_mass_kg = float(accepted_mass)
@@ -262,7 +296,12 @@ async def confirm_receipt(uow: AsyncSession, evidence: ReceiptEvidence | None) -
 
     # The party view now carries the confirmation — its ETag must move.
     party.rev = (party.rev or 1) + 1
-    await uow.flush()
+    try:
+        await uow.flush()
+    except IntegrityError as exc:
+        # A lost race against the UNIQUE constraints surfaces honestly, never
+        # as a raw 500 (the caller rolls back the aborted transaction).
+        raise _incompatible() from exc
     return confirmation
 
 
@@ -282,24 +321,18 @@ async def ensure_confirmed(db: AsyncSession, party_id: UUID) -> ReceiptConfirmat
 
 
 async def downstream_route(db: AsyncSession, party_id: UUID) -> Literal["EXAMINATION", "CONCLUSION", "NONE"]:
-    """The downstream route after a confirmed receipt, recalculated from live state.
+    """The downstream route after a confirmed receipt, read from the frozen fact.
 
     FT-ARR-12: a positive confirmation opens the local ВСЭ when it is required;
     with a sufficient previous ВСЭ (repeat explicitly not required) the saved
     reconciliation and the conclusion are available; a full return never
-    creates a ВСЭ. The route is never stored — it follows the live state.
+    creates a ВСЭ. The route-relevant decision is frozen into the confirmation
+    at confirm time, so deleting the reconciliation row (or a ВСЭ) never
+    degrades the route of a live party.
     """
     confirmation = await ensure_confirmed(db, party_id)
     if Decimal(confirmation.accepted_quantity) == 0 and Decimal(confirmation.returned_quantity) > 0:
         return "NONE"
-    party = (await db.execute(select(Party).where(Party.id == party_id))).scalar_one()
-    document = (
-        await db.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
-    ).scalar_one()
-    previous = any(value is not None for value in previous_vse_fields(document.source_snapshot).values())
-    reconciliation = (
-        await db.execute(select(Reconciliation).where(Reconciliation.party_id == party_id))
-    ).scalar_one_or_none()
-    if previous and reconciliation is not None and reconciliation.repeated_required is False:
+    if confirmation.previous_sufficient:
         return "CONCLUSION"
     return "EXAMINATION"

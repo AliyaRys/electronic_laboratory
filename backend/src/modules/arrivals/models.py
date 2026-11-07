@@ -133,6 +133,10 @@ class ReceiptConfirmation(Base):
     returned_quantity: Mapped[float] = mapped_column(Numeric(20, 6), default=0, server_default=text("0"))
     returned_unit_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     classification_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
+    # Frozen at confirm time (FT-ARR-12): previous ВСЭ present AND the saved
+    # reconciliation chose repeat-not-required. ``downstream_route`` reads this
+    # frozen flag, so deleting the reconciliation row never changes the route.
+    previous_sufficient: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 

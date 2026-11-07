@@ -377,11 +377,14 @@ async def test_routes(db_session: AsyncSession, lab, actor) -> None:  # noqa: F8
 
 
 async def test_confirmation_survives_deletion(db_session: AsyncSession, lab, actor) -> None:  # noqa: F811 - pytest fixtures
-    """Deleting the reconciliation (or a later ВСЭ) never erases the frozen fact."""
+    """Deleting the reconciliation (or a later ВСЭ) never erases the frozen fact
+    nor the frozen route decision (DATA-02 / FT-ARR-12)."""
+    reader = FixtureReceiptEvidenceReader()
+
+    # 1. A local-ВСЭ party keeps its EXAMINATION route after deletion.
     evsd = uuid.uuid4()
     party = await _import(db_session, evsd, lab.id)
     await _save_reconciliation(db_session, actor, party.id, real_payload(), party.rev)
-    reader = FixtureReceiptEvidenceReader()
     reader.plant(party.id, receipt_evidence(evsd))
     confirmation = await confirm_via_reader(db_session, reader, party.id)
     await db_session.commit()
@@ -395,9 +398,72 @@ async def test_confirmation_survives_deletion(db_session: AsyncSession, lab, act
         await db_session.execute(select(ReceiptConfirmation).where(ReceiptConfirmation.party_id == party.id))
     ).scalar_one()
     assert stored.id == confirmation.id
-    # The downstream route is recalculated from the live state; the frozen
-    # fact does not disappear (DATA-02).
     assert await downstream_route(db_session, party.id) == "EXAMINATION"
+
+    # 2. A previous-sufficient party keeps its CONCLUSION route: the decision
+    # is frozen into the confirmation, an audit-row deletion never degrades it.
+    evsd_prev = uuid.uuid4()
+    party_prev = await _import_with_previous(db_session, evsd_prev, lab.id)
+    await _save_reconciliation(
+        db_session, actor, party_prev.id, real_payload(repeat=Repeat(required=False)), party_prev.rev
+    )
+    reader.plant(party_prev.id, receipt_evidence(evsd_prev))
+    confirmed_prev = await confirm_via_reader(db_session, reader, party_prev.id)
+    await db_session.commit()
+    assert confirmed_prev is not None and confirmed_prev.previous_sufficient is True
+    assert await downstream_route(db_session, party_prev.id) == "CONCLUSION"
+
+    row_prev = (
+        await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == party_prev.id))
+    ).scalar_one()
+    await db_session.delete(row_prev)
+    await db_session.commit()
+    assert (
+        await db_session.execute(select(ReceiptConfirmation).where(ReceiptConfirmation.party_id == party_prev.id))
+    ).scalar_one() is not None
+    assert await downstream_route(db_session, party_prev.id) == "CONCLUSION"
+
+
+# --- cross-party operation dedup (DATA-06 operation identity) ----------------------
+
+
+async def test_cross_party_operation_dedup(db_session: AsyncSession, lab, actor) -> None:  # noqa: F811 - pytest fixtures
+    """One external operation proves one receipt: reuse on another party is an
+    honest 409 problem before any insert — never a raw IntegrityError."""
+    operation = uuid.uuid4()
+    reader = FixtureReceiptEvidenceReader()
+
+    evsd_a = uuid.uuid4()
+    party_a = await _import(db_session, evsd_a, lab.id)
+    pid_a, pid_b = party_a.id, None
+    evidence_a = receipt_evidence(evsd_a, operation_id=operation)
+    reader.plant(pid_a, evidence_a)
+    confirmed_a = await confirm_via_reader(db_session, reader, pid_a)
+    await db_session.commit()
+    assert confirmed_a is not None
+    confirmed_a_id = confirmed_a.id
+
+    # A second party (a re-imported arrival with its own party PK) replays the
+    # same external operation: refused with the stable problem, no row written.
+    evsd_b = uuid.uuid4()
+    party_b = await _import(db_session, evsd_b, lab.id)
+    pid_b = party_b.id
+    reader.plant(pid_b, receipt_evidence(evsd_b, operation_id=operation))
+    with pytest.raises(ProblemError) as raised:
+        await confirm_via_reader(db_session, reader, pid_b)
+    assert raised.value.status == 409
+    assert raised.value.code == "STATE_CONFLICT"
+    assert "другого поступления" in raised.value.detail
+    await db_session.rollback()
+    assert await _confirmation_count(db_session, pid_b) == 0
+    assert await _confirmation_count(db_session, pid_a) == 1
+
+    # The idempotent same-party repeat still answers the one fact.
+    reader.plant(pid_a, evidence_a)
+    replay = await confirm_via_reader(db_session, reader, pid_a)
+    await db_session.commit()
+    assert replay is not None and replay.id == confirmed_a_id
+    assert await _confirmation_count(db_session, pid_a) == 1
 
 
 # --- port closure: no HTTP force-success (API-04 / DATA-06) ------------------------

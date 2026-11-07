@@ -269,8 +269,14 @@ async def test_queue_after_examination_delete(db_session: AsyncSession, lab: Lab
     assert view.confirmation is not None
 
     await db_session.execute(
-        text("INSERT INTO examinations (party_id, laboratory_id, status) VALUES (:p, :l, 'COMPLETED')"),
-        {"p": party.id, "l": lab.id},
+        text(
+            "INSERT INTO examinations "
+            "(party_id, laboratory_id, number, stamp, status, sent_to_lab, research_snapshot, "
+            "findings_snapshot, pricing_snapshot, created_by, created_at, first_completed_at) "
+            "SELECT :p, :l, :n, 'Клеймо', 'COMPLETED', false, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, "
+            "users.id, now(), now() FROM users ORDER BY users.created_at LIMIT 1"
+        ),
+        {"p": party.id, "l": lab.id, "n": f"QUEUE-{party.id}"},
     )
     await db_session.commit()
     view = await queries.build_incoming_view(db_session, party_view[0], party_view[1])

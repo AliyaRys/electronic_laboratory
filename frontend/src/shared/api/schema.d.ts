@@ -678,6 +678,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/examinations/parties/{party_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Examination */
+        post: operations["create_examination_api_v1_examinations_parties__party_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/examinations/{examination_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Examination */
+        get: operations["read_examination_api_v1_examinations__examination_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -718,6 +752,21 @@ export interface components {
             mass_kg: string;
             /** Revision */
             revision: number;
+        };
+        /** BooleanResearch */
+        BooleanResearch: {
+            /**
+             * Indicatorid
+             * Format: uuid
+             */
+            indicatorId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "BOOLEAN";
+            /** Value */
+            value: boolean;
         };
         /**
          * BulkAccepted
@@ -1004,6 +1053,21 @@ export interface components {
             /** Csrf Token */
             csrf_token: string;
         };
+        /** DecimalResearch */
+        DecimalResearch: {
+            /**
+             * Indicatorid
+             * Format: uuid
+             */
+            indicatorId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "DECIMAL";
+            /** Value */
+            value: string;
+        };
         /**
          * DisposalView
          * @description API-06 ``DisposalView``: the immutable full-disposal fact.
@@ -1072,6 +1136,141 @@ export interface components {
             /** Last */
             last: string;
         };
+        /** DosimetryResearch */
+        DosimetryResearch: {
+            /**
+             * Indicatorid
+             * Format: uuid
+             */
+            indicatorId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "DOSIMETRY";
+            value: components["schemas"]["DosimetryPair"];
+        };
+        /**
+         * EditSample
+         * @description A correction of the same not-disposed fact through an allowed card
+         *     edit: the balance changes only by the difference (FT-SMP-04). The
+         *     ``expected_revision`` is the If-Match of the collection itself.
+         */
+        EditSample: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "EDIT";
+            /**
+             * Collectionid
+             * Format: uuid
+             */
+            collectionId: string;
+            /** Expectedrevision */
+            expectedRevision: number;
+            /**
+             * Collectedon
+             * Format: date
+             */
+            collectedOn: string;
+            /** Masskg */
+            massKg: string;
+        };
+        /** EnumResearch */
+        EnumResearch: {
+            /**
+             * Indicatorid
+             * Format: uuid
+             */
+            indicatorId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ENUM";
+            /** Value */
+            value: string;
+            /** Othertext */
+            otherText?: string | null;
+        };
+        /** ExaminationView */
+        ExaminationView: {
+            /** Id */
+            id: string;
+            /** Party Id */
+            party_id: string;
+            /** Laboratory Id */
+            laboratory_id: string;
+            /** Number */
+            number: string;
+            /** Stamp */
+            stamp: string;
+            /** Status */
+            status: string;
+            /** Sent To Lab */
+            sent_to_lab: boolean;
+            /** Researches */
+            researches: unknown[];
+            /** Invasive Findings */
+            invasive_findings: unknown[];
+            /** Noncontagious Findings */
+            noncontagious_findings: unknown[];
+            /** Pricing */
+            pricing: {
+                [key: string]: unknown;
+            };
+            /** Sample Collection Id */
+            sample_collection_id: string;
+            /** Outcome */
+            outcome: string | null;
+            /** Direction */
+            direction: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** First Completed At */
+            first_completed_at: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /** ExaminationWrite */
+        ExaminationWrite: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "WAITING" | "COMPLETED";
+            /** Number */
+            number: string;
+            /** Stamp */
+            stamp: string;
+            /** Researches */
+            researches: (components["schemas"]["BooleanResearch"] | components["schemas"]["IntegerResearch"] | components["schemas"]["DecimalResearch"] | components["schemas"]["EnumResearch"] | components["schemas"]["TextResearch"] | components["schemas"]["DosimetryResearch"])[];
+            /** Invasivefindings */
+            invasiveFindings?: components["schemas"]["InvasiveFinding"][];
+            /** Noncontagiousfindings */
+            noncontagiousFindings?: components["schemas"]["NoncontagiousFinding"][];
+            /**
+             * Senttolab
+             * @default false
+             */
+            sentToLab: boolean;
+            /** Sample */
+            sample: components["schemas"]["NewSample"] | components["schemas"]["ReuseSample"] | components["schemas"]["EditSample"];
+            /** Outcome */
+            outcome?: ("FIT" | "UNFIT") | null;
+            /** Direction */
+            direction?: ("SALE" | "DISPOSAL" | "DESTRUCTION") | null;
+            /** Reason */
+            reason?: string | null;
+        };
         /** ExternalFields */
         ExternalFields: {
             /** Contour */
@@ -1125,6 +1324,21 @@ export interface components {
             /** Jointcarriage */
             jointCarriage?: ("NONE" | "SEPARATED" | "NOT_SEPARATED") | null;
         };
+        /** IntegerResearch */
+        IntegerResearch: {
+            /**
+             * Indicatorid
+             * Format: uuid
+             */
+            indicatorId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "INTEGER";
+            /** Value */
+            value: number;
+        };
         /**
          * IntervalRule
          * @description A numeric interval with explicit inclusivity of both borders.
@@ -1149,6 +1363,15 @@ export interface components {
              * @default true
              */
             upper_inclusive: boolean;
+        };
+        /** InvasiveFinding */
+        InvasiveFinding: {
+            /** Disease */
+            disease: string;
+            /** Location */
+            location: string;
+            /** Othertext */
+            otherText?: string | null;
         };
         /**
          * LiveResponse
@@ -1256,6 +1479,33 @@ export interface components {
             source: components["schemas"]["SourceRef"];
             /** Effective From */
             effective_from?: string | null;
+        };
+        /**
+         * NewSample
+         * @description An explicit, actually performed physical selection with its own date
+         *     and a positive weight (FT-SMP-01/03). It never deletes or replaces earlier
+         *     collections.
+         */
+        NewSample: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "NEW";
+            /**
+             * Collectedon
+             * Format: date
+             */
+            collectedOn: string;
+            /** Masskg */
+            massKg: string;
+        };
+        /** NoncontagiousFinding */
+        NoncontagiousFinding: {
+            /** Disease */
+            disease: string;
+            /** Othertext */
+            otherText?: string | null;
         };
         /** Page[CheckServiceRuleView] */
         Page_CheckServiceRuleView_: {
@@ -1650,6 +1900,24 @@ export interface components {
             text?: string | null;
         };
         /**
+         * ReuseSample
+         * @description The card links an existing physical fact of the same party without any
+         *     new weight (FT-SMP-03). Only a not-disposed collection of the same party is
+         *     reusable.
+         */
+        ReuseSample: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "REUSE";
+            /**
+             * Collectionid
+             * Format: uuid
+             */
+            collectionId: string;
+        };
+        /**
          * ScopeInput
          * @description One laboratory assignment; a missing product means the whole laboratory.
          */
@@ -1757,6 +2025,21 @@ export interface components {
             /** Version */
             version: number;
             source: components["schemas"]["SourceRef"];
+        };
+        /** TextResearch */
+        TextResearch: {
+            /**
+             * Indicatorid
+             * Format: uuid
+             */
+            indicatorId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "TEXT";
+            /** Value */
+            value: string;
         };
         /**
          * Transaction
@@ -3425,6 +3708,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DisposalView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_examination_api_v1_examinations_parties__party_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExaminationWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_examination_api_v1_examinations__examination_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                examination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationView"];
                 };
             };
             /** @description Validation Error */

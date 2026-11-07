@@ -52,6 +52,8 @@ _IDENTITY_TABLES = (
     "sample_collections",
     "sample_disposals",
     "sample_baskets",
+    "examination_samples",
+    "examinations",
     "receipt_confirmations",
     "reconciliations",
     "parties",

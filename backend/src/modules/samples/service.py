@@ -29,7 +29,8 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import Column, MetaData, Table, delete, select
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +42,13 @@ from backend.src.modules.samples.models import SampleBasket, SampleCollection
 from backend.src.modules.samples.schemas import NewSample, ReuseSample, SampleSelection
 
 __all__ = ["apply_sample", "detach_examination_samples"]
+
+_EXAMINATION_SAMPLES = Table(
+    "examination_samples",
+    MetaData(),
+    Column("examination_id", PgUUID(as_uuid=True)),
+    Column("collection_id", PgUUID(as_uuid=True)),
+)
 
 _MAX_MASS_SCALE = 6  # Numeric(20,6): weights carry at most six decimal places
 
@@ -207,8 +215,9 @@ async def detach_examination_samples(uow: AsyncSession, examination_id: UUID) ->
 
     FT-SMP-02: deleting a ВСЭ detaches only the link rows — never the
     collections, which stay in the balance or in the disposal history. The
-    ``examination_samples`` table itself is created in E01; until then there
-    is nothing to detach and the hook is an explicit no-op returning 0.
+    The E01 table exists now; this hook deliberately deletes only links.
     """
-    del uow, examination_id
-    return 0
+    result = await uow.execute(
+        delete(_EXAMINATION_SAMPLES).where(_EXAMINATION_SAMPLES.c.examination_id == examination_id)
+    )
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]

@@ -60,3 +60,29 @@ API-тесты (`test_api.py`): scope до count/поиска (403 чужая л
 ## Коммит
 
 - `feat: add incoming identity and scoped arrival queues` (backend + frontend, ветка `feature/A01-queues`).
+
+## Fix round 1 (по ревью контроллера, 2 Important)
+
+**Finding 1 — If-Match не сравнивался с ревизией партии в hide.**
+- `commands.hide_incoming` теперь принимает `expected_revision: int | None` и после блокировки строки партии (`with_for_update`, зеркало паттерна `_scoped_target(lock=True)` из identity) вызывает `ensure_revision`: отсутствующий If-Match → 422 `REVISION_REQUIRED`, несовпадающий → 409 `REVISION_CONFLICT`. `router.hide_arrival` парсит If-Match и передаёт результат в команду (формат-проверка больше не единственная проверка заголовка).
+- Новые тесты (`backend/tests/arrivals/test_api.py::test_hide_requires_current_if_match`): hide без If-Match → 422 REVISION_REQUIRED; stale `"9"` → 409 REVISION_CONFLICT, строка остаётся в очереди; корректный `"1"` → 204; повторный DELETE с тем же Idempotency-Key и корректным If-Match → 204 (API-01 idempotent replay), очередь пустая.
+- Существующий `test_at_23_...` обновлён под новую сигнатуру (`party.rev`), существующие If-Match `"1"` в старых тестах остаются корректными.
+
+**Finding 2 — внешнее существенное изменение не переразрешало классификацию.**
+- В ветке `content_hash != hash` команды `upsert_incoming` классификация теперь переразрешается ДО любых обновлений: `_classification_snapshot` повторно проверяет lvl2 GUID по `mercury_product_guid_lvl_2` (неизвестный GUID → 422 `MERCURY_PRODUCT_DICTIONARY_MISS` и никакого мутационного следа — ни снимок документа, ни партия не меняются), затем обновляются `Party.classification_snapshot` (+`Party.rev+1`, ETag меняется) и снимок документа; факты сверок (actual/marks) по-прежнему не затрагиваются.
+- Новый тест `test_import_and_queues.py::test_external_update_reresolves_classification`: импорт «говядина» + сохранённая сверка; внешнее обновление с GUID «свинины» → classification re-resolved в `{"id": pork, "name": "свинина"}`, checks прежние; обновление с неизвестным GUID → 422 `MERCURY_PRODUCT_DICTIONARY_MISS`, имя остаётся «свинина», hash документа не изменился.
+
+**Гейты после фиксов (на закоммиченном дереве):**
+- `uv run --frozen pytest backend/tests/arrivals -q` → **11 passed**;
+- `uv run --frozen pytest backend/tests --cov=backend/src --cov-fail-under=85` → **212 passed, coverage 94.10%** (arrivals: commands 93%, queries 89%, router 89%, schemas 98%, models 100%);
+- `ruff check` → All checks passed; `ruff format` переложил 2 файла → после него `compileall` 0 + импорт-проверка OK; `ruff format --check` → 75 files formatted; `mypy backend/src` → Success, 50 files.
+
+**Коммит фикса:** `869d94c` — `fix: enforce if-match on hide and re-resolve classification on external update` (pushed). Миноры из ревью не трогались.
+
+---
+
+# A01 — отчёт исходного раунда (до Fix round 1); остальная часть документа ниже описывает реализацию до адресных фиксов.
+
+## Коммит
+
+- `feat: add incoming identity and scoped arrival queues` (backend + frontend, ветка `feature/A01-queues`).

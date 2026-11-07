@@ -28,8 +28,10 @@ from backend.src.core.commands import (
 from backend.src.core.contracts import Page
 from backend.src.core.database import async_session
 from backend.src.core.problems import ProblemError, idempotency_key_required, not_found
+from backend.src.modules.catalog_pricing import bulk as bulk_module
 from backend.src.modules.catalog_pricing import commands, queries
 from backend.src.modules.catalog_pricing import schemas as backend_schemas
+from backend.src.modules.catalog_pricing.models import BulkPriceTarget
 from backend.src.modules.catalog_pricing.schemas import (
     CheckServiceRuleView,
     ClassificationItemView,
@@ -41,7 +43,7 @@ from backend.src.modules.catalog_pricing.schemas import (
 )
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
-from backend.src.modules.identity.models import CommandStatus, User
+from backend.src.modules.identity.models import CommandRecord, CommandStatus, User
 from backend.src.modules.identity.session import SessionIdentity, SessionTransport, get_session_transport
 
 __all__ = ["router"]
@@ -624,5 +626,220 @@ async def preview_pricing(
     return await evaluate_and_price(UnitOfWork(db), payload, None)
 
 
+# --- bulk price jobs (Task C02, API-03) ----------------------------------------------
+
+_bulk = APIRouter(prefix="/catalogs/bulk-prices", tags=["Catalogs"])
+_operations = APIRouter(prefix="/operations", tags=["Catalogs"])
+
+
+async def _job_targets(db: AsyncSession, job_id: uuid.UUID) -> list[BulkPriceTarget]:
+    return list(
+        (
+            await db.execute(
+                select(BulkPriceTarget).where(BulkPriceTarget.job_id == job_id).order_by(BulkPriceTarget.laboratory_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def _load_command_record(db: AsyncSession, operation_id: uuid.UUID) -> CommandRecord:
+    record = (await db.execute(select(CommandRecord).where(CommandRecord.id == operation_id))).scalar_one_or_none()
+    if record is None:
+        raise not_found()
+    return record
+
+
+async def _authorize_job_read(
+    db: AsyncSession,
+    authorizer: Authorizer,
+    identity: SessionIdentity,
+    actor_id: uuid.UUID,
+) -> None:
+    """Catalog operations are readable by their actor only (permissions.md)."""
+    snapshot = await authorizer.authorize(
+        db,
+        identity.actor_id,
+        "operation:read",
+        None,
+        {"operation_kind": "catalog", "created_by": actor_id},
+    )
+    if snapshot.actor_id != actor_id:
+        raise _problem(403, "ACCESS_DENIED", "Доступ к чужой массовой операции запрещён.")
+
+
+@_bulk.post("", status_code=202, response_model=bulk_module.BulkAccepted)
+async def create_bulk_prices(
+    payload: bulk_module.BulkPriceWrite,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> bulk_module.BulkAccepted:
+    """Whole-set intent (API-03): no ETag; the ENTIRE scope validates first."""
+    identity, actor = principal
+    _require_csrf(request, identity)
+    key = _idempotency_key(request)
+    # Prevalidation BEFORE any write: one foreign laboratory fails the whole
+    # command with zero rows changed (controller decision, test_scope_prevalidation).
+    for laboratory_id in payload.laboratory_ids:
+        await authorizer.authorize(
+            db,
+            identity.actor_id,
+            "catalog:bulk-price",
+            ScopeTarget(laboratory_id=laboratory_id, product_scope_id=payload.product_species_id),
+        )
+    uow = UnitOfWork(db)
+    request_hash = canonical_request_hash(payload.intent(), None)
+    record = await IdempotencyRecorder().claim(
+        uow,
+        actor_id=actor.id,
+        action="catalogs.bulk-prices",
+        context_id=actor.id,
+        key=key,
+        request_hash=request_hash,
+    )
+    if record.status == CommandStatus.SUCCESS and record.result_id is not None:
+        loaded = await bulk_module.load_job(db, record.result_id)
+        if loaded is not None:
+            job, targets = loaded
+            # operation_id == job id: GET /catalogs/bulk-prices/:id and
+            # GET /operations/:id resolve the same accepted operation.
+            return bulk_module.BulkAccepted(
+                operation_id=job.id,
+                state=bulk_module.job_state(targets),
+                status_url=f"/api/v1/operations/{job.id}",
+            )
+    job = await bulk_module.create_job(db, actor.id, payload)
+    bulk_module.technical_event(db, actor.id, job.id, "ACCEPTED")
+    await uow.commit()
+    # Identity captured before run_failed_targets: a target rollback expires
+    # these ORM attributes and a sync refresh is illegal in asyncio.
+    job_id, record_id = job.id, record.id
+    state = await bulk_module.run_failed_targets(
+        uow, authorizer, actor.id, job, await _job_targets(db, job_id), payload
+    )
+    record = await _load_command_record(db, record_id)
+    await IdempotencyRecorder().complete(uow, record, job_id)
+    await uow.commit()
+    return bulk_module.BulkAccepted(operation_id=job_id, state=state, status_url=f"/api/v1/operations/{job_id}")
+
+
+@_bulk.get("/{job_id}", response_model=bulk_module.BulkPriceJobView)
+async def get_bulk_prices(
+    job_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> bulk_module.BulkPriceJobView:
+    identity, _ = principal
+    loaded = await bulk_module.load_job(db, job_id)
+    if loaded is None:
+        raise not_found()
+    job, targets = loaded
+    await _authorize_job_read(db, authorizer, identity, job.actor_id)
+    response.headers["Cache-Control"] = "no-store"
+    return bulk_module.job_view(job, targets)
+
+
+@_bulk.post("/{job_id}/retry", status_code=202, response_model=bulk_module.BulkAccepted)
+async def retry_bulk_prices(
+    job_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> bulk_module.BulkAccepted:
+    """Retry ONLY the failed targets with the original intent and a NEW key."""
+    identity, actor = principal
+    _require_csrf(request, identity)
+    key = _idempotency_key(request)
+    loaded = await bulk_module.load_job(db, job_id)
+    if loaded is None:
+        raise not_found()
+    job, targets = loaded
+    failed = [target for target in targets if target.state == "FAILED"]
+    # The remaining coverage (failed targets only) is re-checked before writing.
+    for target in failed:
+        await authorizer.authorize(
+            db,
+            identity.actor_id,
+            "catalog:retry",
+            ScopeTarget(laboratory_id=target.laboratory_id, product_scope_id=job.product_species_id),
+        )
+    uow = UnitOfWork(db)
+    intent = bulk_module.BulkPriceWrite(
+        laboratory_ids=[target.laboratory_id for target in targets],
+        product_species_id=job.product_species_id,
+        service_code=job.service_code,
+        unit_id=job.unit_id,
+        price=str(job.price),
+    )
+    request_hash = canonical_request_hash(intent.intent(), None)
+    record = await IdempotencyRecorder().claim(
+        uow,
+        actor_id=actor.id,
+        action="catalogs.bulk-prices.retry",
+        context_id=job.id,
+        key=key,
+        request_hash=request_hash,
+    )
+    if record.status == CommandStatus.SUCCESS and record.result_id == job.id:
+        refreshed = await _job_targets(db, job.id)
+        return bulk_module.BulkAccepted(
+            operation_id=job.id,
+            state=bulk_module.job_state(refreshed),
+            status_url=f"/api/v1/operations/{job.id}",
+        )
+    for target in failed:
+        target.state = "PENDING"
+        target.problem_code = None
+    await uow.commit()
+    job_id, record_id = job.id, record.id
+    state = await bulk_module.run_failed_targets(
+        uow, authorizer, actor.id, job, targets, intent, only={target.laboratory_id for target in failed}
+    )
+    bulk_module.technical_event(db, actor.id, job_id, "RETRY")
+    record = await _load_command_record(db, record_id)
+    await IdempotencyRecorder().complete(uow, record, job_id)
+    await uow.commit()
+    return bulk_module.BulkAccepted(operation_id=job_id, state=state, status_url=f"/api/v1/operations/{job_id}")
+
+
+@_operations.get("/{operation_id}", response_model=bulk_module.CommandStateView)
+async def get_operation_state(
+    operation_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> bulk_module.CommandStateView:
+    """GET /operations/:id → CommandState (API-01), catalog kind.
+
+    The operation id of a bulk command IS the job id: the record is resolved
+    through its stored ``result_id`` (DATA-05).
+    """
+    identity, _ = principal
+    record = (
+        await db.execute(
+            select(CommandRecord).where(
+                CommandRecord.result_id == operation_id,
+                CommandRecord.action.in_(["catalogs.bulk-prices", "catalogs.bulk-prices.retry"]),
+            )
+        )
+    ).scalar_one_or_none()
+    if record is None:
+        raise not_found()
+    await _authorize_job_read(db, authorizer, identity, record.actor_id)
+    response.headers["Cache-Control"] = "no-store"
+    return bulk_module.command_state_view(record)
+
+
 router.include_router(_catalogs)
 router.include_router(_pricing)
+router.include_router(_bulk)
+router.include_router(_operations)

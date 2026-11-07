@@ -250,6 +250,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/arrivals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Arrivals
+         * @description A scoped page of arrivals (queue/result filters, search, stable order).
+         */
+        get: operations["list_arrivals_api_v1_arrivals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/arrivals/{party_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Arrival */
+        get: operations["get_arrival_api_v1_arrivals__party_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Hide Arrival
+         * @description Hide an expected arrival (204). The eVSD itself is never annulled.
+         */
+        delete: operations["hide_arrival_api_v1_arrivals__party_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/arrivals/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Arrivals
+         * @description ТЗ-10 owns the real sync run; until it ships the answer is honest 503.
+         */
+        post: operations["sync_arrivals_api_v1_arrivals_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalogs/methods": {
         parameters: {
             query?: never;
@@ -503,6 +564,12 @@ export interface paths {
          *
          *     The operation id of a bulk command IS the job id: the record is resolved
          *     through its stored ``result_id`` (DATA-05).
+         *
+         *     A job can have TWO command records with the same ``result_id`` (the create
+         *     record and the retry record), so the resolution must be deterministic:
+         *     the LATEST finished record wins — the retry record when one exists,
+         *     otherwise the create record — because the status URL must reflect the
+         *     job's actual current outcome, not the first accepted command.
          */
         get: operations["get_operation_state_api_v1_operations__operation_id__get"];
         put?: never;
@@ -634,6 +701,13 @@ export interface components {
             version: number;
             source: components["schemas"]["SourceRef"];
         };
+        /** ClassificationEntry */
+        ClassificationEntry: {
+            /** Id */
+            id: string | null;
+            /** Name */
+            name: string | null;
+        };
         /** ClassificationItemView */
         ClassificationItemView: {
             /**
@@ -682,6 +756,15 @@ export interface components {
              */
             material_kind: "MEAT" | "OFFAL";
         };
+        /** ClassificationView */
+        ClassificationView: {
+            product: components["schemas"]["ClassificationEntry"];
+            subProduct?: components["schemas"]["ClassificationEntry"] | null;
+            productItem?: components["schemas"]["ClassificationEntry"] | null;
+            unit?: components["schemas"]["ClassificationEntry"] | null;
+            /** Producttype */
+            productType?: number | null;
+        };
         /**
          * ClassificationWrite
          * @description A whole classification map version written atomically.
@@ -713,6 +796,26 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /** ConfirmationSummary */
+        ConfirmationSummary: {
+            /** Id */
+            id: string;
+            /** Accepted Mass Kg */
+            accepted_mass_kg: string;
+            /** Accepted Quantity */
+            accepted_quantity: string;
+            /** Accepted Unit Id */
+            accepted_unit_id: string;
+            /** Returned Mass Kg */
+            returned_mass_kg: string;
+            /** Returned Quantity */
+            returned_quantity: string;
+            /**
+             * Confirmed At
+             * Format: date-time
+             */
+            confirmed_at: string;
+        };
         /** CsrfResponse */
         CsrfResponse: {
             /** Csrf Token */
@@ -728,10 +831,48 @@ export interface components {
             /** Last */
             last: string;
         };
+        /** ExternalFields */
+        ExternalFields: {
+            /** Contour */
+            contour: string;
+            /** Evsd Uuid */
+            evsd_uuid: string;
+            /** Status */
+            status: string;
+            /** Fields */
+            fields: {
+                [key: string]: string | null;
+            };
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * IncomingView
+         * @description API-04 ``IncomingView``.
+         */
+        IncomingView: {
+            /** Id */
+            id: string;
+            /** Party Id */
+            party_id: string;
+            /** Laboratory Id */
+            laboratory_id: string;
+            external: components["schemas"]["ExternalFields"];
+            classification: components["schemas"]["ClassificationView"];
+            documentary: components["schemas"]["QuantitySet"];
+            confirmation: components["schemas"]["ConfirmationSummary"] | null;
+            /**
+             * Queue
+             * @enum {string}
+             */
+            queue: "EXPECTED" | "WORK" | "ACCEPTED";
+            /** Examination Id */
+            examination_id: string | null;
+            /** Revision */
+            revision: number;
         };
         /**
          * IntervalRule
@@ -887,6 +1028,17 @@ export interface components {
             /** Page Size */
             page_size: number;
         };
+        /** Page[IncomingView] */
+        Page_IncomingView_: {
+            /** Items */
+            items: components["schemas"]["IncomingView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
         /** Page[MethodRuleView] */
         Page_MethodRuleView_: {
             /** Items */
@@ -1035,6 +1187,18 @@ export interface components {
             /** Accepted Values */
             accepted_values: string[];
         };
+        /**
+         * QuantitySet
+         * @description API-04 ``QuantitySet``: finite decimal strings, one unit identity.
+         */
+        QuantitySet: {
+            /** Mass Kg */
+            mass_kg: string;
+            /** Quantity */
+            quantity: string;
+            /** Unit Id */
+            unit_id: string;
+        };
         /** Readiness */
         Readiness: {
             /** Ready */
@@ -1131,6 +1295,14 @@ export interface components {
             edition?: string | null;
             /** Reference */
             reference?: string | null;
+        };
+        /** SyncRequest */
+        SyncRequest: {
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
         };
         /** TariffView */
         TariffView: {
@@ -1756,6 +1928,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_UserEventView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_arrivals_api_v1_arrivals_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                queue?: ("EXPECTED" | "WORK" | "ACCEPTED") | null;
+                result?: ("WAITING" | "RETURNED" | "COMPLETED") | null;
+                q?: string | null;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_IncomingView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_arrival_api_v1_arrivals__party_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncomingView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hide_arrival_api_v1_arrivals__party_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_arrivals_api_v1_arrivals_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

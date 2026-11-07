@@ -1,0 +1,47 @@
+/* Arrivals page layout (A01): queue tabs + honest sync state. The working
+   shell owns the header; these rules only arrange the list controls. */
+
+.vse-queue-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.vse-queue-tab {
+  border: 1px solid var(--app-border, #c9cdd4);
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.vse-queue-tab[aria-selected="true"] {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.vse-queue-tab[aria-disabled="true"] {
+  cursor: default;
+}
+
+.vse-arrival-hint {
+  margin: 8px 0 0;
+}
+
+.vse-arrival-controls {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 420px) {
+  .vse-arrival-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

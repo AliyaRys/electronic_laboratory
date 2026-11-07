@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from backend.src.modules.arrivals.router import router as arrivals_router
 from backend.src.modules.catalog_pricing.mandatory import ensure_mandatory_registry_configured
 from backend.src.modules.catalog_pricing.router import router as catalog_router
 from backend.src.modules.identity.router import router as identity_router
@@ -14,4 +15,5 @@ ensure_mandatory_registry_configured()
 
 router = APIRouter(prefix="/v1")
 router.include_router(identity_router)
+router.include_router(arrivals_router)
 router.include_router(catalog_router)

@@ -46,6 +46,12 @@ _IDENTITY_TABLES = (
     "check_service_rules",
     "tariffs",
     "method_rules",
+    # arrivals (Task A01)
+    "hidden_incoming",
+    "receipt_confirmations",
+    "reconciliations",
+    "parties",
+    "incoming_documents",
 )
 
 

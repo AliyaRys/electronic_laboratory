@@ -1,0 +1,327 @@
+"""Arrival read models (API-04): queues as query-time classification.
+
+The scope filter (``laboratory_id``) is applied to the same WHERE as count and
+search and is built first — no foreign row can ever be counted. Queue labels
+are derived per request from actual table state (started reconciliation,
+receipt confirmation, completed examination), never stored.
+"""
+
+from __future__ import annotations
+
+import re
+import uuid
+from typing import Any, Literal, cast
+
+from sqlalchemy import Column, MetaData, String, Table, func, select
+from sqlalchemy import false as sql_false
+from sqlalchemy.dialects.postgresql import UUID as SqlUUID
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.src.modules.arrivals.models import (
+    HiddenIncoming,
+    IncomingDocument,
+    Party,
+    ReceiptConfirmation,
+    Reconciliation,
+)
+from backend.src.modules.arrivals.schemas import (
+    ClassificationView,
+    ConfirmationSummary,
+    ExternalFields,
+    IncomingView,
+    QuantitySet,
+)
+
+__all__ = ["PAGE_SIZE", "arrival_page", "build_incoming_view", "party_view", "queue_of"]
+
+PAGE_SIZE = 20
+
+# Core projection of the ТЗ-06 examination table; the queue read model already
+# accounts for the examination separately from the confirmation (DATA-02) and
+# works before that table ships.
+_EXAMINATIONS = Table(
+    "examinations",
+    MetaData(),
+    Column("id", SqlUUID(as_uuid=True)),
+    Column("party_id", SqlUUID(as_uuid=True)),
+    Column("status", String(20)),
+)
+
+# Raw probe helper kept minimal: only to_regclass probes are used.
+
+
+def _escape_like(query: str) -> str:
+    return re.sub(r"([\\%_])", r"\\\1", query.strip())
+
+
+def _rec_exists() -> Any:
+    return select(Reconciliation.id).where(Reconciliation.party_id == Party.id).exists()
+
+
+def _conf_exists() -> Any:
+    return select(ReceiptConfirmation.id).where(ReceiptConfirmation.party_id == Party.id).exists()
+
+
+def _conf_positive_exists() -> Any:
+    return (
+        select(ReceiptConfirmation.id)
+        .where(ReceiptConfirmation.party_id == Party.id, ReceiptConfirmation.accepted_quantity > 0)
+        .exists()
+    )
+
+
+def _exam_done_exists() -> Any:
+    return (
+        select(_EXAMINATIONS.c.id)
+        .where(_EXAMINATIONS.c.party_id == Party.id, _EXAMINATIONS.c.status == "COMPLETED")
+        .exists()
+    )
+
+
+def _hidden_not_exists() -> Any:
+    return (
+        ~select(HiddenIncoming.contour)
+        .where(
+            HiddenIncoming.contour == IncomingDocument.contour,
+            HiddenIncoming.evsd_uuid == IncomingDocument.evsd_uuid,
+            HiddenIncoming.content_hash == IncomingDocument.content_hash,
+        )
+        .exists()
+    )
+
+
+async def _examinations_available(db: AsyncSession) -> bool:
+    return (await db.execute(select(func.to_regclass("examinations")))).scalar() is not None
+
+
+def _queue_condition(queue: str, exams_available: bool) -> Any:
+    rec = _rec_exists()
+    conf = _conf_exists()
+    accepted = _conf_positive_exists()
+    exam_done = _exam_done_exists() if exams_available else select(Party.id).where(sql_false()).exists()
+    if queue == "EXPECTED":
+        return ~rec & ~conf
+    if queue == "WORK":
+        return (rec | conf) & ~(accepted & exam_done)
+    if queue == "ACCEPTED":
+        return accepted & exam_done
+    raise ValueError(f"Unknown queue {queue}")
+
+
+def _result_condition(result: str, exams_available: bool) -> Any:
+    if result == "WAITING":
+        return _queue_condition("EXPECTED", exams_available)
+    if result == "COMPLETED":
+        return _queue_condition("ACCEPTED", exams_available)
+    if result == "RETURNED":
+        return (
+            _conf_exists() & (ReceiptConfirmation.accepted_quantity == 0) & (ReceiptConfirmation.returned_quantity > 0)
+        )
+    raise ValueError(f"Unknown result {result}")
+
+
+def _search_condition(query: str) -> Any:
+    pattern = f"%{_escape_like(query)}%"
+    snapshot = IncomingDocument.source_snapshot
+    classification = Party.classification_snapshot
+    issue_number = snapshot["vdDocument"]["issueNumber"].astext
+    product_item = snapshot["vdDocument"]["batch"]["productItem"]["name"].astext
+    product_name = classification["product"]["name"].astext
+    from sqlalchemy import or_
+
+    return or_(
+        issue_number.ilike(pattern, escape="\\"),
+        product_item.ilike(pattern, escape="\\"),
+        product_name.ilike(pattern, escape="\\"),
+    )
+
+
+async def arrival_page(
+    db: AsyncSession,
+    *,
+    laboratory_id: uuid.UUID,
+    queue: str | None,
+    result: str | None,
+    query: str | None,
+    page: int,
+) -> tuple[list[Party], list[IncomingDocument], int]:
+    """A page of arrivals for one laboratory (API-01 paging semantics)."""
+    exams_available = await _examinations_available(db)
+    conditions: list[Any] = [
+        Party.laboratory_id == laboratory_id,  # scope first — before count/search
+        _hidden_not_exists(),
+    ]
+    label = queue.upper() if queue else None
+    if label is not None:
+        conditions.append(_queue_condition(label, exams_available))
+    elif result is not None:
+        conditions.append(_result_condition(result.upper(), exams_available))
+    if query and query.strip():
+        conditions.append(_search_condition(query))
+    where = conditions[0]
+    for condition in conditions[1:]:
+        where = where & condition
+
+    total = int(
+        (await db.execute(select(func.count()).select_from(Party).join(IncomingDocument).where(where))).scalar_one()
+    )
+    current = max(page, 1)
+    rows = await db.execute(
+        select(Party, IncomingDocument)
+        .join(IncomingDocument, IncomingDocument.id == Party.incoming_document_id)
+        .where(where)
+        .order_by(Party.created_at.desc(), Party.id.desc())
+        .offset((current - 1) * PAGE_SIZE)
+        .limit(PAGE_SIZE)
+    )
+    parties: list[Party] = []
+    documents: list[IncomingDocument] = []
+    for party, document in rows.all():
+        parties.append(party)
+        documents.append(document)
+    return parties, documents, total
+
+
+async def party_view(db: AsyncSession, party_id: uuid.UUID) -> tuple[Party, IncomingDocument] | None:
+    """Resolve one party inside its document for the single-read endpoint."""
+    row = (
+        await db.execute(
+            select(Party, IncomingDocument)
+            .join(IncomingDocument, IncomingDocument.id == Party.incoming_document_id)
+            .where(Party.id == party_id)
+        )
+    ).first()
+    if row is None:
+        return None
+    party, document = row
+    return party, document
+
+
+async def queue_of(
+    db: AsyncSession,
+    party: Party,
+    has_reconciliation: bool,
+    has_confirmation: bool,
+) -> Literal["EXPECTED", "WORK", "ACCEPTED"]:
+    """The query-time queue label of one party (DATA-02)."""
+    exams_available = await _examinations_available(db)
+    if not has_reconciliation and not has_confirmation:
+        return "EXPECTED"
+    if has_confirmation:
+        positive = await _scalar(
+            db, select(ReceiptConfirmation.accepted_quantity).where(ReceiptConfirmation.party_id == party.id)
+        )
+        if positive is not None and positive > 0:
+            if exams_available and await _exam_done(db, party.id):
+                return "ACCEPTED"
+            return "WORK"
+    return "WORK"
+
+
+async def _scalar(db: AsyncSession, statement: Any) -> Any:
+    return (await db.execute(statement)).scalar()
+
+
+async def _exam_done(db: AsyncSession, party_id: uuid.UUID) -> bool:
+    statement = (
+        select(_EXAMINATIONS.c.id)
+        .where(_EXAMINATIONS.c.party_id == party_id, _EXAMINATIONS.c.status == "COMPLETED")
+        .limit(1)
+    )
+    return (await db.execute(statement)).scalar() is not None
+
+
+async def started_flags(db: AsyncSession, party_id: uuid.UUID) -> tuple[bool, ReceiptConfirmation | None]:
+    """(reconciliation started, confirmation row) for one party."""
+    has_reconciliation = (
+        await db.execute(select(func.count()).select_from(Reconciliation).where(Reconciliation.party_id == party_id))
+    ).scalar()
+    confirmation = (
+        await db.execute(select(ReceiptConfirmation).where(ReceiptConfirmation.party_id == party_id))
+    ).scalar_one_or_none()
+    return bool(has_reconciliation), confirmation
+
+
+def _classification_view(snapshot: dict[str, object]) -> ClassificationView:
+    return ClassificationView.model_validate(snapshot, by_alias=True)
+
+
+def _quantity_set(batch: dict[str, object]) -> QuantitySet:
+    unit_raw = batch.get("unit")
+    unit = unit_raw if isinstance(unit_raw, dict) else None
+    unit_id = str(unit.get("id") or "") if unit is not None else ""
+    return QuantitySet(
+        mass_kg=str(batch.get("volume", "0")),
+        quantity=str(batch.get("quantity") or batch.get("volume") or "0"),
+        unit_id=unit_id,
+    )
+
+
+def _external_fields(document: IncomingDocument) -> ExternalFields:
+    payload = document.source_snapshot["vdDocument"]
+    document_payload = payload if isinstance(payload, dict) else {}
+    consignor_raw = document_payload.get("consignor")
+    consignor = consignor_raw if isinstance(consignor_raw, dict) else {}
+    consignee_raw = document_payload.get("consignee")
+    consignee = consignee_raw if isinstance(consignee_raw, dict) else {}
+    batch_raw = document_payload.get("batch")
+    batch = batch_raw if isinstance(batch_raw, dict) else {}
+    product_item_raw = batch.get("productItem")
+    product_item = product_item_raw if isinstance(product_item_raw, dict) else None
+    fields: dict[str, str | None] = {
+        "documentNumber": str(document_payload.get("issueNumber") or ""),
+        "transportNumber": document_payload.get("transportNumber") or None,
+        "consignor": str(consignor.get("name") or ""),
+        "consignee": str(consignee.get("name") or ""),
+        "productItem": str(product_item.get("name") or "") if product_item is not None else None,
+    }
+    return ExternalFields(
+        contour=document.contour,
+        evsd_uuid=str(document.evsd_uuid),
+        status=document.external_status,
+        fields=fields,
+    )
+
+
+def _confirmation_summary(confirmation: ReceiptConfirmation) -> ConfirmationSummary:
+    return ConfirmationSummary(
+        id=str(confirmation.id),
+        accepted_mass_kg=str(confirmation.accepted_mass_kg),
+        accepted_quantity=str(confirmation.accepted_quantity),
+        accepted_unit_id=confirmation.accepted_unit_id,
+        returned_mass_kg=str(confirmation.returned_mass_kg),
+        returned_quantity=str(confirmation.returned_quantity),
+        confirmed_at=confirmation.confirmed_at,
+    )
+
+
+async def _open_examination_id(db: AsyncSession, party_id: uuid.UUID) -> uuid.UUID | None:
+    if not await _examinations_available(db):
+        return None
+    return (await db.execute(select(_EXAMINATIONS.c.id).where(_EXAMINATIONS.c.party_id == party_id).limit(1))).scalar()
+
+
+async def build_incoming_view(
+    db: AsyncSession,
+    party: Party,
+    document: IncomingDocument,
+) -> IncomingView:
+    """The API-04 ``IncomingView`` of one arrival."""
+    has_reconciliation, confirmation = await started_flags(db, party.id)
+    document_payload = document.source_snapshot["vdDocument"]
+    batch = document_payload["batch"] if isinstance(document_payload, dict) else {}
+    batch = cast(dict[str, object], batch if isinstance(batch, dict) else {})
+    examination_id = await _open_examination_id(db, party.id)
+    queue_label = await queue_of(db, party, has_reconciliation, confirmation is not None)
+    return IncomingView(
+        id=str(document.id),
+        party_id=str(party.id),
+        laboratory_id=str(party.laboratory_id),
+        external=_external_fields(document),
+        classification=_classification_view(dict(party.classification_snapshot)),
+        documentary=_quantity_set(batch),
+        confirmation=_confirmation_summary(confirmation) if confirmation is not None else None,
+        queue=queue_label,
+        examination_id=str(examination_id) if examination_id is not None else None,
+        revision=party.rev,
+    )

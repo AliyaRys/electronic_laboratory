@@ -37,7 +37,26 @@ import { AppProviders } from "../../app/providers";
 import { routes } from "../../app/router";
 import { useContextStore, useDirtyStore, LOGOUT_EVENT } from "../../entities/session/context";
 
-const server = setupServer();
+const USER_ID = "00000000-0000-0000-0000-00000000000a";
+const LAB_A = "11111111-1111-1111-1111-111111111111";
+const LAB_B = "22222222-2222-2222-2222-222222222222";
+
+const server = setupServer(
+  http.get("*/api/v1/me", () =>
+    HttpResponse.json({
+      id: USER_ID,
+      full_name: "Ветеринарный врач",
+      login: "vet",
+      email: "vet@example.test",
+      position: null,
+      role: "VET",
+      active: true,
+      scopes: [{ laboratory_id: LAB_A, product_scope_id: null }],
+      capabilities: [],
+      revision: 1,
+    }),
+  ),
+);
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 afterEach(() => {
   server.resetHandlers();
@@ -45,10 +64,6 @@ afterEach(() => {
   useDirtyStore.getState().setDirty(false);
 });
 afterAll(() => server.close());
-
-const USER_ID = "00000000-0000-0000-0000-00000000000a";
-const LAB_A = "11111111-1111-1111-1111-111111111111";
-const LAB_B = "22222222-2222-2222-2222-222222222222";
 
 interface RawResult {
   data?: unknown;
@@ -413,14 +428,14 @@ describe("logout", () => {
 describe("app shell routing", () => {
   it("a dirty route change in the real router opens the blocker dialog (F01-r1 #2)", async () => {
     const router = createMemoryRouter(routes, {
-      initialEntries: ["/labs/11111111-1111-1111-1111-111111111111/arrivals"],
+      initialEntries: ["/labs/11111111-1111-1111-1111-111111111111/examinations"],
     });
     render(
       <AppProviders>
         <RouterProvider router={router} />
       </AppProviders>,
     );
-    expect(await screen.findByText(/Поступления/)).toBeInTheDocument();
+    expect(await screen.findByText(/Журнал ВСЭ/)).toBeInTheDocument();
 
     // A real dirty form syncs through useDirtyGuard; the flag in the store is
     // what the shell dialog reads.
@@ -429,15 +444,15 @@ describe("app shell routing", () => {
     });
 
     await act(async () => {
-      await router.navigate("/labs/22222222-2222-2222-2222-222222222222/examinations");
+      await router.navigate("/labs/22222222-2222-2222-2222-222222222222/reports/samples");
     });
 
     expect(screen.getByRole("dialog", { name: "Несохранённый ввод" })).toBeInTheDocument();
-    expect(screen.queryByText("Журнал ВСЭ")).not.toBeInTheDocument();
+    expect(screen.queryByText("Учёт проб")).not.toBeInTheDocument();
 
     // Safe cancel first: staying keeps the current page and the dirty flag.
     await userEvent.setup().click(screen.getByRole("button", { name: "Остаться" }));
-    expect(screen.getByText(/Поступления/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Журнал ВСЭ/).length).toBeGreaterThan(0);
 
     await act(async () => {
       useDirtyStore.getState().setDirty(false);

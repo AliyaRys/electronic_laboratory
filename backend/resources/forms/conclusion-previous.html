@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<!--
+  Предварительная форма ВСЭ убойного пункта (conclusion-previous, version 1).
+  Основание — предыдущая ВСЭ из подтверждённого ЧЕК-разреза входящего ЭВСД;
+  клеймо и дата принадлежат убойному пункту, местная ВСЭ не требуется.
+  Официального утверждённого образца пока нет: official=false, метка
+  «Предварительная форма» выводится рендерером. Все значения подставляет
+  рендерер и экранирует; внешние ссылки, скрипты и сетевые стили запрещены.
+-->
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ветеринарное заключение (ВСЭ убойного пункта)</title>
+    <style>
+      @font-face {
+        font-family: "DejaVuSans";
+        src: url("DejaVuSans.ttf");
+      }
+      @page {
+        size: a4 portrait;
+        margin: 20mm 15mm 20mm 15mm;
+      }
+      body {
+        font-family: "DejaVuSans";
+        font-size: 10pt;
+        color: #000000;
+      }
+      .watermark {
+        text-align: right;
+        font-size: 10pt;
+        color: #555555;
+        border: 1px solid #555555;
+        padding: 2mm 3mm;
+        margin-bottom: 6mm;
+      }
+      h1 {
+        font-size: 14pt;
+        text-align: center;
+        margin: 0 0 4mm 0;
+      }
+      .subtitle {
+        text-align: center;
+        margin: 0 0 6mm 0;
+        font-size: 10pt;
+      }
+      table.requisites {
+        width: 100%;
+        table-layout: fixed;
+        -pdf-word-wrap: CJK;
+        border-collapse: collapse;
+      }
+      table.requisites th {
+        width: 38%;
+        text-align: left;
+        vertical-align: top;
+        border: 0.5pt solid #000000;
+        padding: 1.5mm 2mm;
+        font-weight: normal;
+        background-color: #f2f2f2;
+      }
+      table.requisites td {
+        text-align: left;
+        vertical-align: top;
+        border: 0.5pt solid #000000;
+        padding: 1.5mm 2mm;
+      }
+      .signature-space {
+        height: 16mm;
+      }
+      .footer {
+        margin-top: 8mm;
+        font-size: 9pt;
+        color: #444444;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="watermark">{{preliminary}}</div>
+    <h1>ВЕТЕРИНАРНОЕ ЗАКЛЮЧЕНИЕ</h1>
+    <p class="subtitle">по результатам ВСЭ убойного пункта</p>
+    <table class="requisites">
+      <tbody>
+        <tr>
+          <th scope="row">Организация</th>
+          <td>{{organization}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Лаборатория</th>
+          <td>{{laboratory}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Дата ВСЭ убойного пункта</th>
+          <td>{{date}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Основание</th>
+          <td>{{basis}}</td>
+        </tr>
+        <tr>
+          <th scope="row">ЭВСД №</th>
+          <td>{{evsd}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Владелец продукции</th>
+          <td>{{owner}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Продукция</th>
+          <td>{{product}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Принятая масса, кг</th>
+          <td>{{mass}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Принятое количество</th>
+          <td>{{count}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Единица измерения</th>
+          <td>{{unit}}</td>
+        </tr>
+        <tr>
+          <th scope="row">Клеймо убойного пункта</th>
+          <td>{{stamp}}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="signature-space"></div>
+    <table class="requisites">
+      <tbody>
+        <tr>
+          <th scope="row">Подпись (заполняется от руки)</th>
+          <td>{{signature}}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="footer">Форма {{form_id}}, версия {{form_version}}. Печатается с живого состояния партии.</p>
+  </body>
+</html>

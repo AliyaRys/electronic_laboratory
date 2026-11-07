@@ -1,0 +1,104 @@
+{
+  "forms": [
+    {
+      "form_id": "conclusion-local",
+      "version": "1",
+      "date": "2026-11-07",
+      "template": "conclusion-local.html",
+      "template_sha256": "1EEA6CFB64A1042EFF38004DC704849B5DB99CB2B21C322138110C8A63B690BA",
+      "official": false,
+      "title": "Р’РµС‚РµСЂРёРЅР°СЂРЅРѕРµ Р·Р°РєР»СЋС‡РµРЅРёРµ (РјРµСЃС‚РЅР°СЏ Р’РЎР­)",
+      "required_fields": [
+        "organization",
+        "laboratory",
+        "date",
+        "basis",
+        "evsd",
+        "owner",
+        "product",
+        "mass",
+        "count",
+        "unit",
+        "stamp",
+        "signature"
+      ],
+      "paper": "A4",
+      "margins_mm": { "top": 20, "right": 15, "bottom": 20, "left": 15 },
+      "repeat_headers": false,
+      "noncalculated_cells": [],
+      "ton_precision": 6,
+      "fonts": [
+        {
+          "resource": "DejaVuSans.ttf",
+          "sha256": "7DA195A74C55BEF988D0D48F9508BD5D849425C1770DBA5D7BFC6CE9ED848954",
+          "license": "DejaVu (Bitstream Vera + public domain); С‚РµРєСЃС‚ Р»РёС†РµРЅР·РёРё РІ fonts/LICENSE-DejaVuSans.txt"
+        }
+      ]
+    },
+    {
+      "form_id": "conclusion-previous",
+      "version": "1",
+      "date": "2026-11-07",
+      "template": "conclusion-previous.html",
+      "template_sha256": "5ACE908CFC0563578D4B682DB1AF99CF04F52B43292B8809EA2945E1AD4839AF",
+      "official": false,
+      "title": "Р’РµС‚РµСЂРёРЅР°СЂРЅРѕРµ Р·Р°РєР»СЋС‡РµРЅРёРµ (Р’РЎР­ СѓР±РѕР№РЅРѕРіРѕ РїСѓРЅРєС‚Р°)",
+      "required_fields": [
+        "organization",
+        "laboratory",
+        "date",
+        "basis",
+        "evsd",
+        "owner",
+        "product",
+        "mass",
+        "count",
+        "unit",
+        "stamp",
+        "signature"
+      ],
+      "paper": "A4",
+      "margins_mm": { "top": 20, "right": 15, "bottom": 20, "left": 15 },
+      "repeat_headers": false,
+      "noncalculated_cells": [],
+      "ton_precision": 6,
+      "fonts": [
+        {
+          "resource": "DejaVuSans.ttf",
+          "sha256": "7DA195A74C55BEF988D0D48F9508BD5D849425C1770DBA5D7BFC6CE9ED848954",
+          "license": "DejaVu (Bitstream Vera + public domain); С‚РµРєСЃС‚ Р»РёС†РµРЅР·РёРё РІ fonts/LICENSE-DejaVuSans.txt"
+        }
+      ]
+    },
+    {
+      "form_id": "report-5vet",
+      "version": "1",
+      "date": "2026-11-07",
+      "template": "report-5vet.html",
+      "template_sha256": "7C72B49C948116540273ECF3AFB119801686DFDE18F39A4FF175F5DE5DEBB100",
+      "official": false,
+      "title": "Р¤РѕСЂРјР° 5-РІРµС‚, СЂР°Р·РґРµР» III",
+      "required_fields": [
+        "laboratory",
+        "year",
+        "half",
+        "period"
+      ],
+      "paper": "A4",
+      "margins_mm": { "top": 18, "right": 12, "bottom": 18, "left": 12 },
+      "repeat_headers": true,
+      "noncalculated_cells": [
+        "sickness_of_animals",
+        "inspections_of_meat"
+      ],
+      "ton_precision": 6,
+      "fonts": [
+        {
+          "resource": "DejaVuSans.ttf",
+          "sha256": "7DA195A74C55BEF988D0D48F9508BD5D849425C1770DBA5D7BFC6CE9ED848954",
+          "license": "DejaVu (Bitstream Vera + public domain); С‚РµРєСЃС‚ Р»РёС†РµРЅР·РёРё РІ fonts/LICENSE-DejaVuSans.txt"
+        }
+      ]
+    }
+  ]
+}

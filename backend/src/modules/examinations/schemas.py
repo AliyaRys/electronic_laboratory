@@ -18,6 +18,7 @@ __all__ = [
     "NoncontagiousFinding",
     "ExaminationWrite",
     "ExaminationView",
+    "OutcomeWrite",
 ]
 
 
@@ -137,6 +138,23 @@ class ExaminationWrite(StrictModel):
                 raise ValueError("Для непригодной продукции нужны направление и причина.")
         else:
             raise ValueError("Для завершения требуется итог экспертизы.")
+        return self
+
+
+class OutcomeWrite(StrictModel):
+    """The late completion body (API-05): only the outcome block, nothing else."""
+
+    outcome: Literal["FIT", "UNFIT"]
+    direction: Literal["SALE", "DISPOSAL", "DESTRUCTION"]
+    reason: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def outcome_matrix(self) -> OutcomeWrite:
+        if self.outcome == "FIT":
+            if self.direction != "SALE" or self.reason is not None:
+                raise ValueError("Для пригодной продукции требуется направление SALE без причины.")
+        elif self.direction not in {"DISPOSAL", "DESTRUCTION"} or not (self.reason or "").strip():
+            raise ValueError("Для непригодной продукции нужны направление и причина.")
         return self
 
 

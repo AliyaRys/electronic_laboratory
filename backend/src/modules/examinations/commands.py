@@ -25,7 +25,7 @@ from backend.src.modules.examinations.validation import validate_researches
 from backend.src.modules.identity.models import CommandStatus, TechnicalEvent
 from backend.src.modules.samples.service import apply_sample
 
-__all__ = ["save_examination"]
+__all__ = ["save_examination", "pricing_request_for"]
 
 
 def _conflict(detail: str) -> ProblemError:
@@ -43,6 +43,28 @@ def _classification_id(party: Party, key: str) -> uuid.UUID:
             detail="Снимок классификации партии неполон для расчёта ВСЭ.",
         )
     return uuid.UUID(str(value))
+
+
+async def pricing_request_for(
+    uow: AsyncSession | UnitOfWork, party: Party, results: list[ResearchValue]
+) -> PricingRequest:
+    """Assemble the VSE pricing request from the confirmed party's facts."""
+    db = uow.session if isinstance(uow, UnitOfWork) else uow
+    confirmation = await ensure_confirmed(db, party.id)
+    reconciliation = (
+        await db.execute(select(Reconciliation).where(Reconciliation.party_id == party.id))
+    ).scalar_one_or_none()
+    return PricingRequest(
+        party_id=party.id,
+        laboratory_id=party.laboratory_id,
+        context="VSE",
+        results=results,
+        fair=bool(reconciliation.fair) if reconciliation is not None else False,
+        product_species_id=_classification_id(party, "product"),
+        product_state_id=_classification_id(party, "subProduct"),
+        accepted_quantity=str(confirmation.accepted_quantity),
+        accepted_unit_id=confirmation.accepted_unit_id,
+    )
 
 
 async def save_examination(
@@ -91,25 +113,13 @@ async def save_examination(
     if duplicate_number is not None:
         raise _conflict("Номер ВСЭ уже используется в этой лаборатории.")
 
-    confirmation = await ensure_confirmed(uow, party_id)
-    reconciliation = (
-        await uow.execute(select(Reconciliation).where(Reconciliation.party_id == party_id))
-    ).scalar_one_or_none()
-    species_id = _classification_id(party, "product")
-    state_id = _classification_id(party, "subProduct")
-    pricing_request = PricingRequest(
-        party_id=party.id,
-        laboratory_id=party.laboratory_id,
-        context="VSE",
-        results=[
+    pricing_request = await pricing_request_for(
+        uow,
+        party,
+        [
             ResearchValue(indicator_id=result.indicator_id, performed=True, value=result.value)
             for result in payload.researches
         ],
-        fair=bool(reconciliation.fair) if reconciliation is not None else False,
-        product_species_id=species_id,
-        product_state_id=state_id,
-        accepted_quantity=str(confirmation.accepted_quantity),
-        accepted_unit_id=confirmation.accepted_unit_id,
     )
     pricing = await evaluate_and_price(work, pricing_request, None)
 

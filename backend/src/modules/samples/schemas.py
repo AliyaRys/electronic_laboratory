@@ -11,7 +11,15 @@ from pydantic.alias_generators import to_camel
 
 from backend.src.modules.arrivals.schemas import DecimalString
 
-__all__ = ["NewSample", "ReuseSample", "EditSample", "SampleSelection", "CollectionView"]
+__all__ = [
+    "NewSample",
+    "ReuseSample",
+    "EditSample",
+    "SampleSelection",
+    "CollectionView",
+    "DisposalWrite",
+    "DisposalView",
+]
 
 
 class StrictModel(BaseModel):
@@ -70,3 +78,33 @@ class CollectionView(BaseModel):
     created_at: datetime
     disposal_id: str | None
     revision: int
+
+
+class DisposalWrite(StrictModel):
+    """API-06 ``DisposalWrite``: one full disposal of a laboratory/species
+    balance (FT-SMP-06/07). The weight is never editable: ``expected_mass_kg``
+    only guards the shown confirmation dialog — the server always recomputes
+    the actual mass from every active collection. ``external_vsd_number`` is a
+    manually entered fact (the eVSD issued in Mercury); it is never treated as
+    an API-confirmed value."""
+
+    laboratory_id: uuid.UUID
+    product_species_id: uuid.UUID
+    disposed_on: date
+    external_vsd_number: str
+    expected_mass_kg: DecimalString
+
+
+class DisposalView(BaseModel):
+    """API-06 ``DisposalView``: the immutable full-disposal fact."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    laboratory_id: str
+    product_species_id: str
+    disposed_on: date
+    mass_kg: str
+    external_vsd_number: str
+    actor_id: str
+    recorded_at: datetime

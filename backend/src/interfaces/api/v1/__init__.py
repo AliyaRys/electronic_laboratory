@@ -8,6 +8,7 @@ from backend.src.modules.arrivals.router import router as arrivals_router
 from backend.src.modules.catalog_pricing.mandatory import ensure_mandatory_registry_configured
 from backend.src.modules.catalog_pricing.router import router as catalog_router
 from backend.src.modules.identity.router import router as identity_router
+from backend.src.modules.samples.router import router as samples_router
 
 # Fail loud before the app accepts traffic if the ФТ mandatory research set is
 # not configured (finding 2 of the C01 review).
@@ -17,3 +18,4 @@ router = APIRouter(prefix="/v1")
 router.include_router(identity_router)
 router.include_router(arrivals_router)
 router.include_router(catalog_router)
+router.include_router(samples_router)

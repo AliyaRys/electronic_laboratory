@@ -76,7 +76,9 @@ def _to_decimal(value: Any) -> Decimal | None:
         return None
     try:
         return Decimal(str(value)) if not isinstance(value, str) else parse_decimal(value)
-    except ValueError, ArithmeticError:
+    except ValueError:
+        return None
+    except ArithmeticError:
         return None
 
 

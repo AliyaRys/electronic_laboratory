@@ -60,11 +60,11 @@ def _require_csrf(request: Request, identity: SessionIdentity) -> None:
     origin = request.headers.get("origin")
     expected_origin = f"{request.url.scheme}://{request.url.hostname}"
     if origin != expected_origin:
-        raise _problem(403, "CSRF_REJECTED", "РСЃС‚РѕС‡РЅРёРє Р·Р°РїСЂРѕСЃР° РЅРµ СЂР°Р·СЂРµС€С‘РЅ.")
+        raise _problem(403, "CSRF_REJECTED", "Источник запроса не разрешён.")
     if not identity.csrf_token or not secrets.compare_digest(
         request.headers.get("x-csrf-token", ""), identity.csrf_token
     ):
-        raise _problem(403, "CSRF_REJECTED", "РџСЂРѕРІРµСЂРєР° CSRF РЅРµ РїСЂРѕР№РґРµРЅР°.")
+        raise _problem(403, "CSRF_REJECTED", "Проверка CSRF не пройдена.")
 
 
 def _idempotency_key(request: Request) -> str:
@@ -81,13 +81,13 @@ async def _principal(
 ) -> tuple[SessionIdentity, User]:
     session_id = request.cookies.get(SessionTransport.COOKIE_NAME)
     if not session_id:
-        raise _problem(401, "SESSION_REQUIRED", "РўСЂРµР±СѓРµС‚СЃСЏ РІС…РѕРґ РІ СЃРёСЃС‚РµРјСѓ.")
+        raise _problem(401, "SESSION_REQUIRED", "Требуется вход в систему.")
     identity = await transport.read(session_id)
     if identity is None:
-        raise _problem(401, "SESSION_EXPIRED", "РЎРµР°РЅСЃ РёСЃС‚С‘Рє.")
+        raise _problem(401, "SESSION_EXPIRED", "Сеанс истёк.")
     user = (await db.execute(select(User).where(User.id == identity.actor_id))).scalar_one_or_none()
     if user is None or not user.active:
-        raise _problem(403, "ACCOUNT_BLOCKED", "РЈС‡С‘С‚РЅР°СЏ Р·Р°РїРёСЃСЊ РЅРµРґРѕСЃС‚СѓРїРЅР°.")
+        raise _problem(403, "ACCOUNT_BLOCKED", "Учётная запись недоступна.")
     return identity, user
 
 
@@ -611,9 +611,9 @@ async def preview_pricing(
     """Read-only calculation; it never persists anything (API-03)."""
     identity, _ = principal
     if payload.laboratory_id is None:
-        raise _problem(422, "VALIDATION_ERROR", "Р Р°СЃС‡С‘С‚ С‚СЂРµР±СѓРµС‚ Р»Р°Р±РѕСЂР°С‚РѕСЂРёСЋ РїР°СЂС‚РёРё.")
+        raise _problem(422, "VALIDATION_ERROR", "Расчёт требует лабораторию партии.")
     if payload.product_species_id is None:
-        raise _problem(422, "VALIDATION_ERROR", "Р Р°СЃС‡С‘С‚ С‚СЂРµР±СѓРµС‚ РІРёРґ РїСЂРѕРґСѓРєС†РёРё РїР°СЂС‚РёРё.")
+        raise _problem(422, "VALIDATION_ERROR", "Расчёт требует вид продукции партии.")
     await authorizer.authorize(
         db,
         identity.actor_id,

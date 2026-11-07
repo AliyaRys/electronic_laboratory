@@ -116,9 +116,7 @@ async def create_tariff(db: AsyncSession, payload: TariffWrite) -> Tariff:
         )
     ).scalar_one_or_none()
     if existing is not None:
-        raise _already_exists(
-            "РўР°СЂРёС„ РґР»СЏ СЌС‚РѕР№ РѕР±Р»Р°СЃС‚Рё, РєРѕРґР° Рё РµРґРёРЅРёС†С‹ СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚."
-        )
+        raise _already_exists("Тариф для этой области, кода и единицы уже существует.")
     row = Tariff(
         laboratory_id=payload.laboratory_id,
         product_species_id=payload.product_species_id,
@@ -153,9 +151,7 @@ async def update_tariff(db: AsyncSession, row: Tariff, payload: TariffWrite) -> 
         )
     ).scalar_one_or_none()
     if conflict is not None:
-        raise _already_exists(
-            "РўР°СЂРёС„ РґР»СЏ СЌС‚РѕР№ РѕР±Р»Р°СЃС‚Рё, РєРѕРґР° Рё РµРґРёРЅРёС†С‹ СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚."
-        )
+        raise _already_exists("Тариф для этой области, кода и единицы уже существует.")
     row.service_code = payload.service_code
     row.unit_id = payload.unit_id
     row.price = parse_decimal(payload.price)
@@ -176,7 +172,7 @@ async def create_check_service_rule(db: AsyncSession, payload: CheckServiceRuleW
         await db.execute(select(CheckServiceRule).where(CheckServiceRule.service_code == payload.service_code))
     ).scalar_one_or_none()
     if existing is not None:
-        raise _already_exists("РџСЂР°РІРёР»Рѕ РґР»СЏ СЌС‚РѕР№ СѓСЃР»СѓРіРё СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚.")
+        raise _already_exists("Правило для этой услуги уже существует.")
     row = CheckServiceRule(
         service_code=payload.service_code,
         unit_id=payload.unit_id,
@@ -208,7 +204,7 @@ async def update_check_service_rule(
         )
     ).scalar_one_or_none()
     if conflict is not None:
-        raise _already_exists("РџСЂР°РІРёР»Рѕ РґР»СЏ СЌС‚РѕР№ СѓСЃР»СѓРіРё СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚.")
+        raise _already_exists("Правило для этой услуги уже существует.")
     row.service_code = payload.service_code
     row.unit_id = payload.unit_id
     row.multiplier_basis = payload.multiplier_basis

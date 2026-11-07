@@ -18,9 +18,13 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.src.modules.integrations.vetis.models import VetisContour
 
-__all__ = ["ReceiptEvidence", "ReceiptEvidenceReader", "ReceiptDecision"]
+__all__ = ["ReceiptEvidence", "ReceiptEvidenceReader", "ReceiptDecision", "CONFIRMED_EVIDENCE_STATUSES"]
 
 ReceiptDecision = Literal["ACCEPT_ALL", "PARTIALLY", "RETURN_ALL"]
+
+# External statuses that prove the receipt happened (FT-ARR-14): an UNKNOWN,
+# UTILIZED (annulled) or absent status never grants a confirmation.
+CONFIRMED_EVIDENCE_STATUSES = frozenset({"CONFIRMED", "COMPLETED"})
 
 
 class ReceiptEvidence(BaseModel):
@@ -33,6 +37,10 @@ class ReceiptEvidence(BaseModel):
     receiver_enterprise_id: str
     business_member_id: str
     decision: ReceiptDecision
+    # The verified external status of the receipt result (e.g. CONFIRMED);
+    # UNKNOWN/UTILIZED never confirm a receipt (FT-ARR-14). Set by the VetIS
+    # adapter, never by a client.
+    external_status: str | None = None
     documentary_mass_kg: Decimal | None = None
     documentary_quantity: Decimal | None = None
     delivered_mass_kg: Decimal | None = None

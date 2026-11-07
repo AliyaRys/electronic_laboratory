@@ -28,6 +28,7 @@ from backend.src.core.contracts import CommandContext
 from backend.src.core.problems import ProblemError, not_found, validation_error
 from backend.src.modules.arrivals.models import IncomingDocument as IncomingDocumentRow
 from backend.src.modules.arrivals.models import Party, Reconciliation
+from backend.src.modules.arrivals.queries import previous_vse_fields
 from backend.src.modules.arrivals.schemas import (
     ActPreview,
     ClassificationView,
@@ -42,7 +43,6 @@ from backend.src.modules.arrivals.schemas import (
     SourceSnapshot,
     Transaction,
 )
-from backend.src.modules.arrivals.queries import previous_vse_fields
 from backend.src.modules.arrivals.validation import (
     FIELD_REGISTRY,
     IncomingDocument,
@@ -316,6 +316,12 @@ async def save_reconciliation(
     row = (
         await db.execute(select(Reconciliation).where(Reconciliation.party_id == party_id).with_for_update())
     ).scalar_one_or_none()
+    # If-Match is checked before the frozen-state guard: a stale client learns
+    # that the revision moved (409 REVISION_CONFLICT); a client holding the
+    # current revision learns the state is frozen (409 STATE_CONFLICT,
+    # FT-ARR-15). The reconciliation revision moves when the external receipt
+    # confirmation (confirmation.py) freezes the row.
+    ensure_revision(ctx.expected_revision, party.rev if row is None else row.rev)
     if row is not None and row.state != "OPEN":
         # FT-ARR-15: an already confirmed decision is never overwritten by an
         # old open form; the frozen snapshot owns the downstream work.
@@ -325,9 +331,6 @@ async def save_reconciliation(
             title="State conflict",
             detail="Сверка уже подтверждена внешним результатом и не меняется обычным сохранением.",
         )
-    # If-Match: the party revision before the first save, the reconciliation
-    # revision afterwards (API-04).
-    ensure_revision(ctx.expected_revision, party.rev if row is None else row.rev)
 
     recorder = IdempotencyRecorder()
     request_hash = canonical_request_hash(payload.model_dump(mode="json", by_alias=True), ctx.expected_revision)

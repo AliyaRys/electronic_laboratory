@@ -45,7 +45,6 @@ from backend.src.modules.arrivals.schemas import (
     ClassificationEntry,
     ClassificationView,
     Comparison,
-    IncomingDocument as IncomingDocumentInput,
     Inspection,
     QuantitySet,
     ReconciliationWrite,
@@ -53,6 +52,9 @@ from backend.src.modules.arrivals.schemas import (
     ReturnReason,
     ServiceItem,
     Transaction,
+)
+from backend.src.modules.arrivals.schemas import (
+    IncomingDocument as IncomingDocumentInput,
 )
 from backend.src.modules.arrivals.validation import (
     RETURN_REASON_CODES,

@@ -24,6 +24,7 @@ if str(_REPO_ROOT) not in sys.path:
 from backend.src.core.database import Base  # noqa: E402
 from backend.src.infrastructure.config.settings import get_settings  # noqa: E402
 from backend.src.modules import identity  # noqa: E402,F401  (register models)
+from backend.src.modules.integrations.vetis import models as vetis_models  # noqa: E402,F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().async_database_url)

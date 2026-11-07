@@ -181,8 +181,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/03-examination.md",
-      "sha256": "4674f03bbd12bc5c0828fde995182ef9830286d088135e79d64b0130a87ebb28",
-      "bytes": 14349
+      "sha256": "f6d2ca7bdebe349ee942f335e5181e26bbbbf8b0cfb5f85eba52dcbe9a77aebf",
+      "bytes": 14772
     },
     {
       "path": "Функциональные требования/v2.0/04-outcomes-and-documents.md",
@@ -206,8 +206,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/08-inputs-and-adr-handoff.md",
-      "sha256": "52d39cc1f866056760a5110993f219e94fd28621aa3fe1fad709892947afb691",
-      "bytes": 11322
+      "sha256": "8dd39cdaf3939714f7c9ebe083b159befe8d536f15881369f4a6617e8e258b40",
+      "bytes": 12137
     },
     {
       "path": "Функциональные требования/v2.0/09-reports.md",
@@ -216,13 +216,13 @@
     },
     {
       "path": "Функциональные требования/v2.0/10-field-catalog.md",
-      "sha256": "211c9434aa4a7e400fa093aecd3341a5ee73de8ad009dbe1f926abc6f90058b2",
-      "bytes": 30877
+      "sha256": "f5878c089371792f867ee29e627aa001b4f3b9ff2c2b9b5399b25144a62f787b",
+      "bytes": 31022
     },
     {
       "path": "Функциональные требования/v2.0/11-traceability-and-acceptance.md",
-      "sha256": "f3ca9526b562a2ef6c03d29ac269c51109a9d4db376853eb0643d5afe19c58b6",
-      "bytes": 27025
+      "sha256": "650cf6ad07fc5907cc937f7dffafca437e5f13fc11f63c7fda15ef9989e32900",
+      "bytes": 27237
     },
     {
       "path": "Функциональные требования/v2.0/12-changes-and-mockups.md",
@@ -236,8 +236,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/owner-decisions.md",
-      "sha256": "c6896fcadb9785014d7df35adba19c35815ccbb6dfbe61c0e8aed320251c8f6d",
-      "bytes": 4179
+      "sha256": "7f328ab27953d3f5375ddd3a47ad0f89cebe388f9960a567bdbdc03c27d8e93b",
+      "bytes": 5382
     },
     {
       "path": "Функциональные требования/v2.0/README.md",

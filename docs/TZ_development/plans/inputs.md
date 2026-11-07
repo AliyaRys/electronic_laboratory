@@ -12,7 +12,7 @@
 
 ## INPUT-02. Методики и нормы — C01/E01
 
-Владелец значений: ответственный ветметодист. JSON collection `MethodRule{version,laboratory_id,product_species_id,product_state_id,indicator_id,result_schema,unit_id,rule,source:{name,edition,reference},effective_from}`. result_schema — union BOOLEAN_MATCH / INTEGER_NONNEGATIVE / DECIMAL / ENUM / TEXT / DOSIMETRY_PAIR; enum значения и clinical mapping из источника. Rule — `interval{lower?,upper?,lower_inclusive,upper_inclusive}` либо `qualitative{accepted_values}`; обе границы при наличии lower≤upper. Обязательность определяется ФТ, а не редактируемым флажком. Трихинеллоскопия свинины/конины определяется exact IDs; клиническая норма не из названия.
+Владелец значений: ответственный ветметодист. JSON collection `MethodRule{version,laboratory_id,product_species_id,product_state_id,indicator_id,result_schema,unit_id,rule,source:{name,edition,reference},effective_from}`. result_schema — union BOOLEAN_MATCH / INTEGER_NONNEGATIVE / DECIMAL / ENUM / TEXT / DOSIMETRY_PAIR; enum значения и clinical mapping из источника. Rule — `interval{lower?,upper?,lower_inclusive,upper_inclusive}` либо `qualitative{accepted_values}`; обе границы при наличии lower≤upper. Обязательность определяется ФТ, а не редактируемым флажком. Трихинеллоскопия определяется флагом `requires_trichinelloscopy` локального `mercury_product_guid_lvl_2`: true ровно для свинины (`57a674fd-ca2b-c523-6853-72d27b4ae32c`), конины (`64930556-cbb2-13db-bcdc-572eb188e45e`), свиных субпродуктов/жиров (`40dd45d4-75aa-b984-4fdb-291f84afad03`) и конских субпродуктов/жиров (`16d9f824-a5f3-6837-3073-e54c4ed5d74d`). Клиническая норма не выводится из названия.
 
 Массы scale6, деньги scale2, внешний quantity Decimal с source precision. pH0..14 и microscopy int≥0 — ограничения ввода, не clinical normality. Organoleptic/identification/luminescent — enum MATCH/MISMATCH; cooking список ФТ 10; trichinella result type/rule по методике. Отсутствующая mandatory methodology/norm блокирует wait/complete, в том числе ярмарку; UI input остаётся, UNKNOWN не показывать «Норма». Каталог заболеваний и варианты cooking — дословно ФТ 10 с кодами, stable ID, «Другое» text.
 
@@ -31,6 +31,8 @@
 ## INPUT-05. Классификация — C01/R01/V01
 
 Владелец: интегратор+методист. `ClassificationMap{version,items:[{mercury_species_id,product_type_id,product_state_id,supported_mvp,animal_column,material_kind:MEAT|OFFAL}]}`. Ровно одна животная колонка и material kind для каждого поддержанного вида; колонки CATTLE/PIG/SHEEP_GOAT/RABBIT_NUTRIA/CHICKEN/OTHER_BIRDS/FISH/OTHER_ANIMALS по официальной форме. Наличие fish/poultry колонок не расширяет поддержанные процессы MVP. Неизвестный/двойной mapping блокирует **весь** report calculation; не превращается в OTHER_ANIMALS. Проверить контроль 240=241+242. Source classification партии не перезаписывается новым mapping; snapshot отчёта фиксирует версию применённого mapping.
+
+Справочник второго уровня — отдельное локальное зеркало `mercury_product_guid_lvl_2{contour,guid,current_uuid,name,english_name,tnved_codes,product_type,active,is_last,external_status,requires_trichinelloscopy,source,synchronized_at}`. Pilot seed содержит все 28 записей ответа владельца от 07.11.2026. Он разрешает GUID входящего ВСД в название для API/UI без сетевого вызова на каждом чтении; не заменяет mapping третьего уровня для 5-вет. Неизвестный GUID→`MERCURY_PRODUCT_DICTIONARY_MISS`, а не сырой UUID/GUID в пользовательской таблице.
 
 ## OPS-01. Параметры установки — I01/O01–03
 

@@ -31,11 +31,11 @@
 
 **Interfaces:** `evaluate_and_price(uow,request,previous)->PricingSnapshot` из DATA-06/API-03; `readiness(lab_id,product_species_id)->Readiness`; typed rule schema из inputs.
 
-- [ ] Написать тесты assert Decimal('3')*100.10→300.30; 0.005→0.01; 4 единицы×100×2 performed→800.00; fair→все 0.00 и нет ordinary price; missing price→CONFIGURATION_MISSING, явный 0 допустим. `test_previous_snapshot_survives_catalog_delete` assert старый показатель остаётся по 100, новый по 150; отклонение нормы не назначает outcome.
-- [ ] Запустить `uv run --frozen pytest backend/tests/catalog_pricing/test_pricing.py backend/tests/catalog_pricing/test_rules.py -v`, получить FAIL.
-- [ ] Создать типизированные нормы/единицы/границы с включённостью/источником; mandatory набор из FT; internal masses scale6, price scale2. Для существующего результата применять прежнюю норму/цену, нового — текущую; оценка по типу правила, UNKNOWN обязательного блокирует. Две услуги CHECK не смешивать с VSE: отдельный context и performed факт/время. Классификации не угадывать по строке. CRUD editors строго scoped.
-- [ ] Тестировать границы нормы below/on/above, qualitative, pH0/14, microscopy0; no floats; отсутствие нужной нормы блокирует также fair. Пройти coverage≥90% pricing и SQL constraints.
-- [ ] Зафиксировать: `feat: add versioned method rules and decimal pricing`.
+- [x] Написать тесты assert Decimal('3')*100.10→300.30; 0.005→0.01; 4 единицы×100×2 performed→800.00; fair→все 0.00 и нет ordinary price; missing price→CONFIGURATION_MISSING, явный 0 допустим. `test_previous_snapshot_survives_catalog_delete` assert старый показатель остаётся по 100, новый по 150; отклонение нормы не назначает outcome.
+- [x] Запустить `uv run --frozen pytest backend/tests/catalog_pricing/test_pricing.py backend/tests/catalog_pricing/test_rules.py -v`, получить FAIL.
+- [x] Создать типизированные нормы/единицы/границы с включённостью/источником; mandatory набор из FT; internal masses scale6, price scale2. Для существующего результата применять прежнюю норму/цену, нового — текущую; оценка по типу правила, UNKNOWN обязательного блокирует. Две услуги CHECK не смешивать с VSE: отдельный context и performed факт/время. Классификации не угадывать по строке. CRUD editors строго scoped.
+- [x] Тестировать границы нормы below/on/above, qualitative, pH0/14, microscopy0; no floats; отсутствие нужной нормы блокирует также fair. Пройти coverage≥90% pricing и SQL constraints.
+- [x] Зафиксировать: `feat: add versioned method rules and decimal pricing`.
 
 ### Task C02: Редакторы и массовые цены
 

@@ -144,6 +144,20 @@ def test_result_schema_enum_is_typed() -> None:
     assert {s.value for s in ResultSchema} == DECIMAL_SCHEMAS | {"TEXT", "ENUM", "BOOLEAN_MATCH", "DOSIMETRY_PAIR"}
 
 
+def test_mandatory_registry_is_fail_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty ФТ mandatory registry refuses startup instead of silently no-op."""
+    from backend.src.modules.catalog_pricing import mandatory
+    from backend.src.modules.catalog_pricing.mandatory import (
+        MANDATORY_INDICATOR_IDS,
+        ensure_mandatory_registry_configured,
+    )
+
+    assert MANDATORY_INDICATOR_IDS, "the meat-MVP mandatory set must ship populated"
+    monkeypatch.setattr(mandatory, "MANDATORY_INDICATOR_IDS", frozenset())
+    with pytest.raises(RuntimeError):
+        ensure_mandatory_registry_configured()
+
+
 # --- evaluation boundaries --------------------------------------------------------
 
 

@@ -60,11 +60,11 @@ def _require_csrf(request: Request, identity: SessionIdentity) -> None:
     origin = request.headers.get("origin")
     expected_origin = f"{request.url.scheme}://{request.url.hostname}"
     if origin != expected_origin:
-        raise _problem(403, "CSRF_REJECTED", "Источник запроса не разрешён.")
+        raise _problem(403, "CSRF_REJECTED", "РСЃС‚РѕС‡РЅРёРє Р·Р°РїСЂРѕСЃР° РЅРµ СЂР°Р·СЂРµС€С‘РЅ.")
     if not identity.csrf_token or not secrets.compare_digest(
         request.headers.get("x-csrf-token", ""), identity.csrf_token
     ):
-        raise _problem(403, "CSRF_REJECTED", "Проверка CSRF не пройдена.")
+        raise _problem(403, "CSRF_REJECTED", "РџСЂРѕРІРµСЂРєР° CSRF РЅРµ РїСЂРѕР№РґРµРЅР°.")
 
 
 def _idempotency_key(request: Request) -> str:
@@ -81,13 +81,13 @@ async def _principal(
 ) -> tuple[SessionIdentity, User]:
     session_id = request.cookies.get(SessionTransport.COOKIE_NAME)
     if not session_id:
-        raise _problem(401, "SESSION_REQUIRED", "Требуется вход в систему.")
+        raise _problem(401, "SESSION_REQUIRED", "РўСЂРµР±СѓРµС‚СЃСЏ РІС…РѕРґ РІ СЃРёСЃС‚РµРјСѓ.")
     identity = await transport.read(session_id)
     if identity is None:
-        raise _problem(401, "SESSION_EXPIRED", "Сеанс истёк.")
+        raise _problem(401, "SESSION_EXPIRED", "РЎРµР°РЅСЃ РёСЃС‚С‘Рє.")
     user = (await db.execute(select(User).where(User.id == identity.actor_id))).scalar_one_or_none()
     if user is None or not user.active:
-        raise _problem(403, "ACCOUNT_BLOCKED", "Учётная запись недоступна.")
+        raise _problem(403, "ACCOUNT_BLOCKED", "РЈС‡С‘С‚РЅР°СЏ Р·Р°РїРёСЃСЊ РЅРµРґРѕСЃС‚СѓРїРЅР°.")
     return identity, user
 
 
@@ -202,7 +202,7 @@ async def update_method(
     identity, _ = principal
     _require_csrf(request, identity)
     expected = resolve_if_match(request.headers.get("if-match"))
-    row = await commands.load_method_rule(db, rule_id)
+    row = await commands.load_method_rule(db, rule_id, lock=True)
     if row is None:
         raise not_found()
     await authorizer.authorize(
@@ -230,7 +230,7 @@ async def delete_method(
     _require_csrf(request, identity)
     _idempotency_key(request)
     expected = resolve_if_match(request.headers.get("if-match"))
-    row = await commands.load_method_rule(db, rule_id)
+    row = await commands.load_method_rule(db, rule_id, lock=True)
     if row is None:
         return  # idempotent delete of an already removed row
     await authorizer.authorize(
@@ -347,7 +347,7 @@ async def update_tariff(
     identity, _ = principal
     _require_csrf(request, identity)
     expected = resolve_if_match(request.headers.get("if-match"))
-    row = await commands.load_tariff(db, tariff_id)
+    row = await commands.load_tariff(db, tariff_id, lock=True)
     if row is None:
         raise not_found()
     await authorizer.authorize(
@@ -375,7 +375,7 @@ async def delete_tariff(
     _require_csrf(request, identity)
     _idempotency_key(request)
     expected = resolve_if_match(request.headers.get("if-match"))
-    row = await commands.load_tariff(db, tariff_id)
+    row = await commands.load_tariff(db, tariff_id, lock=True)
     if row is None:
         return
     await authorizer.authorize(
@@ -479,7 +479,7 @@ async def update_check_service(
     identity, _ = principal
     _require_csrf(request, identity)
     expected = resolve_if_match(request.headers.get("if-match"))
-    row = await commands.load_check_service_rule(db, rule_id)
+    row = await commands.load_check_service_rule(db, rule_id, lock=True)
     if row is None:
         raise not_found()
     await authorizer.authorize(db, identity.actor_id, "catalog:update", None)
@@ -502,7 +502,7 @@ async def delete_check_service(
     _require_csrf(request, identity)
     _idempotency_key(request)
     expected = resolve_if_match(request.headers.get("if-match"))
-    row = await commands.load_check_service_rule(db, rule_id)
+    row = await commands.load_check_service_rule(db, rule_id, lock=True)
     if row is None:
         return
     await authorizer.authorize(db, identity.actor_id, "catalog:delete", None)
@@ -611,9 +611,9 @@ async def preview_pricing(
     """Read-only calculation; it never persists anything (API-03)."""
     identity, _ = principal
     if payload.laboratory_id is None:
-        raise _problem(422, "VALIDATION_ERROR", "Расчёт требует лабораторию партии.")
+        raise _problem(422, "VALIDATION_ERROR", "Р Р°СЃС‡С‘С‚ С‚СЂРµР±СѓРµС‚ Р»Р°Р±РѕСЂР°С‚РѕСЂРёСЋ РїР°СЂС‚РёРё.")
     if payload.product_species_id is None:
-        raise _problem(422, "VALIDATION_ERROR", "Расчёт требует вид продукции партии.")
+        raise _problem(422, "VALIDATION_ERROR", "Р Р°СЃС‡С‘С‚ С‚СЂРµР±СѓРµС‚ РІРёРґ РїСЂРѕРґСѓРєС†РёРё РїР°СЂС‚РёРё.")
     await authorizer.authorize(
         db,
         identity.actor_id,

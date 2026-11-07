@@ -80,8 +80,11 @@ async def create_method_rule(db: AsyncSession, payload: MethodRuleWrite) -> Meth
     return row
 
 
-async def load_method_rule(db: AsyncSession, rule_id: object) -> MethodRule | None:
-    return (await db.execute(select(MethodRule).where(MethodRule.id == rule_id))).scalar_one_or_none()
+async def load_method_rule(db: AsyncSession, rule_id: object, *, lock: bool = False) -> MethodRule | None:
+    statement = select(MethodRule).where(MethodRule.id == rule_id)
+    if lock:
+        statement = statement.with_for_update()  # SPEC-04: lock before revision check
+    return (await db.execute(statement)).scalar_one_or_none()
 
 
 async def update_method_rule(db: AsyncSession, row: MethodRule, payload: MethodRuleWrite) -> MethodRule:
@@ -130,8 +133,11 @@ async def create_tariff(db: AsyncSession, payload: TariffWrite) -> Tariff:
     return row
 
 
-async def load_tariff(db: AsyncSession, tariff_id: object) -> Tariff | None:
-    return (await db.execute(select(Tariff).where(Tariff.id == tariff_id))).scalar_one_or_none()
+async def load_tariff(db: AsyncSession, tariff_id: object, *, lock: bool = False) -> Tariff | None:
+    statement = select(Tariff).where(Tariff.id == tariff_id)
+    if lock:
+        statement = statement.with_for_update()  # SPEC-04: lock before revision check
+    return (await db.execute(statement)).scalar_one_or_none()
 
 
 async def update_tariff(db: AsyncSession, row: Tariff, payload: TariffWrite) -> Tariff:
@@ -184,8 +190,11 @@ async def create_check_service_rule(db: AsyncSession, payload: CheckServiceRuleW
     return row
 
 
-async def load_check_service_rule(db: AsyncSession, rule_id: object) -> CheckServiceRule | None:
-    return (await db.execute(select(CheckServiceRule).where(CheckServiceRule.id == rule_id))).scalar_one_or_none()
+async def load_check_service_rule(db: AsyncSession, rule_id: object, *, lock: bool = False) -> CheckServiceRule | None:
+    statement = select(CheckServiceRule).where(CheckServiceRule.id == rule_id)
+    if lock:
+        statement = statement.with_for_update()  # SPEC-04: lock before revision check
+    return (await db.execute(statement)).scalar_one_or_none()
 
 
 async def update_check_service_rule(
@@ -217,7 +226,14 @@ async def delete_check_service_rule(db: AsyncSession, row: CheckServiceRule) -> 
 
 
 async def create_classification_version(db: AsyncSession, payload: ClassificationWrite) -> list[ReportClassification]:
-    """Write a whole classification map version atomically (INPUT-05)."""
+    """Write a whole classification map version atomically (INPUT-05).
+
+    Existing rows of the version are locked first, so a concurrent rewrite of
+    the same version serializes instead of silently overwriting (SPEC-04).
+    """
+    await db.execute(
+        select(ReportClassification).where(ReportClassification.version == payload.version).with_for_update()
+    )
     await db.execute(delete(ReportClassification).where(ReportClassification.version == payload.version))
     rows = [
         ReportClassification(

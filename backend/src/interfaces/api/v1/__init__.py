@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from backend.src.modules.catalog_pricing.mandatory import ensure_mandatory_registry_configured
 from backend.src.modules.catalog_pricing.router import router as catalog_router
 from backend.src.modules.identity.router import router as identity_router
+
+# Fail loud before the app accepts traffic if the ФТ mandatory research set is
+# not configured (finding 2 of the C01 review).
+ensure_mandatory_registry_configured()
 
 router = APIRouter(prefix="/v1")
 router.include_router(identity_router)

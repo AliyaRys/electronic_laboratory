@@ -20,6 +20,7 @@ from sqlalchemy import select
 
 from backend.src.core.commands import UnitOfWork
 from backend.src.core.problems import ProblemError, ProblemItem
+from backend.src.modules.catalog_pricing import mandatory as _mandatory
 from backend.src.modules.catalog_pricing.models import CheckServiceRule, MethodRule, Tariff
 from backend.src.modules.catalog_pricing.schemas import (
     DECIMAL_SCHEMAS,
@@ -41,12 +42,11 @@ __all__ = [
     "CENT",
 ]
 
-# The mandatory research set is fixed by the functional requirements (FT VSE-03–
-# 05), not by a catalog flag. The concrete agreed indicator identifiers are
-# supplied by the deployment configuration of the methodist; the engine treats
-# every id in this set as non-optional and non-disableable. Tests register their
-# own agreed ids here.
-MANDATORY_INDICATOR_IDS: frozenset[UUID] = frozenset()
+# The mandatory research set is fixed by the functional requirements (FT
+# VSE-03–05), not by a catalog flag; the concrete deterministic ids and their
+# provenance live in ``mandatory.py``. Reads go through the module attribute so
+# a deployment override stays visible to every call site.
+MANDATORY_INDICATOR_IDS = _mandatory.MANDATORY_INDICATOR_IDS
 
 CENT = Decimal("0.01")
 
@@ -237,7 +237,7 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
     lines: list[PricingLine] = []
     for result in request.results:
         indicator = result.indicator_id
-        mandatory = indicator in MANDATORY_INDICATOR_IDS
+        mandatory = indicator in _mandatory.MANDATORY_INDICATOR_IDS
         if not result.performed:
             if mandatory:
                 raise configuration_missing(

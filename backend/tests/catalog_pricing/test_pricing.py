@@ -30,7 +30,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from backend.src.core.commands import UnitOfWork
 from backend.src.core.database import async_session
 from backend.src.core.problems import ProblemError
-from backend.src.modules.catalog_pricing import service as _pricing_service
 from backend.src.modules.catalog_pricing.models import CheckServiceRule, MethodRule, Tariff
 from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot, ResearchValue
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
@@ -404,16 +403,17 @@ async def test_missing_norm_blocks_fair_too(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.integration
-async def test_unknown_mandatory_blocks(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_unknown_mandatory_blocks(db_session: AsyncSession) -> None:
+    """A ФТ mandatory indicator (the trichinelloscopy registry ids) blocks."""
     env = await _seed(db_session)
-    species, state, indicator = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    species, state = uuid.uuid4(), uuid.uuid4()
+    from backend.src.modules.catalog_pricing.mandatory import TRICHINELLOSIS_PIG
+
+    indicator = TRICHINELLOSIS_PIG
     db_session.add(_rule(env.lab.id, species, state, indicator))
     db_session.add(_tariff(env.lab.id, species, str(indicator), "100.00"))
     await db_session.commit()
 
-    from backend.src.modules.catalog_pricing import service
-
-    monkeypatch.setattr(service, "MANDATORY_INDICATOR_IDS", frozenset({indicator}))
     # An unparseable value is UNKNOWN: for a mandatory indicator this blocks.
     with pytest.raises(ProblemError) as excinfo:
         await evaluate_and_price(
@@ -778,14 +778,18 @@ async def test_tariff_and_check_service_and_classification_endpoints(api_env: Si
 
 
 @pytest.mark.integration
-async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_pricing_service, "MANDATORY_INDICATOR_IDS", frozenset({uuid.uuid4()}))
+async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace) -> None:
+    """Readiness applies the ФТ mandatory registry and the pricing tariff match."""
+    from backend.src.modules.catalog_pricing.mandatory import (
+        TRICHINELLOSIS_HORSE,
+        TRICHINELLOSIS_PIG,
+    )
+
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
         species = str(uuid.uuid4())
         state = str(uuid.uuid4())
-        indicator = str(uuid.uuid4())
-        monkeypatch.setattr(_pricing_service, "MANDATORY_INDICATOR_IDS", frozenset({uuid.UUID(indicator)}))
+        indicator = str(TRICHINELLOSIS_PIG)
         payload = {
             "laboratory_id": lab_id,
             "product_species_id": species,
@@ -825,8 +829,99 @@ async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace, m
                 "/api/v1/catalogs/readiness", params={"laboratory_id": lab_id, "product_species_id": species}
             )
         ).json()
+        assert ready["ready"] is False  # the second mandatory indicator is still unconfigured
+
+        horse_payload = {**payload, "indicator_id": str(TRICHINELLOSIS_HORSE), "product_state_id": str(uuid.uuid4())}
+        await http.post("/api/v1/catalogs/methods", json=horse_payload, headers=_csrf_headers(api_env))
+        await http.post(
+            "/api/v1/catalogs/tariffs",
+            json={
+                "laboratory_id": lab_id,
+                "product_species_id": species,
+                "service_code": str(TRICHINELLOSIS_HORSE),
+                "unit_id": "kg",
+                "price": "12.00",
+                "version": 1,
+                "source": {"name": "прейскурант"},
+            },
+            headers=_csrf_headers(api_env),
+        )
+        ready = (
+            await http.get(
+                "/api/v1/catalogs/readiness", params={"laboratory_id": lab_id, "product_species_id": species}
+            )
+        ).json()
         assert ready["ready"] is True
         assert ready["missing"] == []
+
+
+@pytest.mark.integration
+async def test_readiness_tariff_unit_must_match_pricing(api_env: SimpleNamespace) -> None:
+    """A tariff in the wrong unit must not let readiness claim ready (finding 4)."""
+    from backend.src.modules.catalog_pricing.mandatory import (
+        TRICHINELLOSIS_HORSE,
+        TRICHINELLOSIS_PIG,
+    )
+
+    async with _client_for(api_env) as http:
+        lab_id = str(api_env.lab.id)
+        species = str(uuid.uuid4())
+        state = str(uuid.uuid4())
+
+        def method_payload(indicator: str) -> dict[str, object]:
+            return {
+                "laboratory_id": lab_id,
+                "product_species_id": species,
+                "product_state_id": state,
+                "indicator_id": indicator,
+                "result_schema": "DECIMAL",
+                "unit_id": "kg",
+                "rule": {
+                    "type": "interval",
+                    "lower": "0",
+                    "upper": "14",
+                    "lower_inclusive": True,
+                    "upper_inclusive": True,
+                },
+                "source": {"name": "методика"},
+                "version": 1,
+            }
+
+        def tariff_payload(indicator: str, unit: str) -> dict[str, object]:
+            return {
+                "laboratory_id": lab_id,
+                "product_species_id": species,
+                "service_code": indicator,
+                "unit_id": unit,
+                "price": "10.00",
+                "version": 1,
+                "source": {"name": "прейскурант"},
+            }
+
+        await http.post(
+            "/api/v1/catalogs/methods", json=method_payload(str(TRICHINELLOSIS_PIG)), headers=_csrf_headers(api_env)
+        )
+        await http.post(
+            "/api/v1/catalogs/methods", json=method_payload(str(TRICHINELLOSIS_HORSE)), headers=_csrf_headers(api_env)
+        )
+        await http.post(
+            "/api/v1/catalogs/tariffs",
+            json=tariff_payload(str(TRICHINELLOSIS_PIG), "piece"),
+            headers=_csrf_headers(api_env),
+        )
+        await http.post(
+            "/api/v1/catalogs/tariffs",
+            json=tariff_payload(str(TRICHINELLOSIS_HORSE), "kg"),
+            headers=_csrf_headers(api_env),
+        )
+        ready = (
+            await http.get(
+                "/api/v1/catalogs/readiness", params={"laboratory_id": lab_id, "product_species_id": species}
+            )
+        ).json()
+        assert ready["ready"] is False
+        assert any(item["input_id"] == f"tariff:{TRICHINELLOSIS_PIG}" for item in ready["missing"])
+        assert not any(item["input_id"] == f"tariff:{TRICHINELLOSIS_HORSE}" for item in ready["missing"])
 
 
 @pytest.mark.integration
@@ -1225,6 +1320,51 @@ async def test_check_without_species_blocks(db_session: AsyncSession) -> None:
     with pytest.raises(ProblemError) as excinfo:
         await evaluate_and_price(UnitOfWork(db_session), request, None)
     assert excinfo.value.code == "CONFIGURATION_MISSING"
+
+
+@pytest.mark.integration
+async def test_parallel_puts_same_if_match_conflict(api_env: SimpleNamespace) -> None:
+    """Two concurrent PUTs with the same If-Match: one 200, one 409 (SPEC-04).
+
+    The mutation path re-reads the target row ``FOR UPDATE``, so the second
+    writer serializes behind the first and sees the bumped revision.
+    """
+    import asyncio
+
+    async with _client_for(api_env) as http:
+        lab_id = str(api_env.lab.id)
+        species, state, indicator = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        payload = {
+            "laboratory_id": lab_id,
+            "product_species_id": species,
+            "product_state_id": state,
+            "indicator_id": indicator,
+            "result_schema": "DECIMAL",
+            "unit_id": "kg",
+            "rule": {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True},
+            "source": {"name": "методика"},
+            "version": 1,
+        }
+        created = await http.post("/api/v1/catalogs/methods", json=payload, headers=_csrf_headers(api_env))
+        assert created.status_code == 201
+        rule_id = created.json()["id"]
+
+        results = await asyncio.gather(
+            http.put(
+                f"/api/v1/catalogs/methods/{rule_id}",
+                json={**payload, "unit_id": "piece"},
+                headers={**_csrf_headers(api_env), "If-Match": '"1"'},
+            ),
+            http.put(
+                f"/api/v1/catalogs/methods/{rule_id}",
+                json={**payload, "unit_id": "gram"},
+                headers={**_csrf_headers(api_env), "If-Match": '"1"'},
+            ),
+        )
+        statuses = sorted(response.status_code for response in results)
+        assert statuses == [200, 409]
+        conflict = next(response for response in results if response.status_code == 409)
+        assert conflict.json()["code"] == "REVISION_CONFLICT"
 
 
 @pytest.mark.integration

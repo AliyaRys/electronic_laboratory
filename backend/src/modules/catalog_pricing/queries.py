@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.modules.catalog_pricing import service as _pricing_service
+from backend.src.modules.catalog_pricing import mandatory as _mandatory
 from backend.src.modules.catalog_pricing.models import (
     CheckServiceRule,
     MethodRule,
@@ -28,8 +28,6 @@ from backend.src.modules.catalog_pricing.schemas import (
     ReadinessMissing,
     TariffView,
 )
-
-# The mandatory set is read through the module so tests can register agreed ids.
 
 __all__ = [
     "PAGE_SIZE",
@@ -214,7 +212,7 @@ async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: U
     """
     missing: list[ReadinessMissing] = []
 
-    for indicator in sorted(_pricing_service.MANDATORY_INDICATOR_IDS, key=str):
+    for indicator in sorted(_mandatory.MANDATORY_INDICATOR_IDS, key=str):
         rule = (
             await db.execute(
                 select(MethodRule).where(
@@ -233,15 +231,21 @@ async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: U
                     message="Отсутствует действующая методика и норма обязательного показателя.",
                 )
             )
-        tariff = (
-            await db.execute(
-                select(Tariff).where(
-                    Tariff.laboratory_id == laboratory_id,
-                    Tariff.product_species_id == product_species_id,
-                    Tariff.service_code == str(indicator),
+        # Readiness applies the same tariff matching as pricing: the lookup is
+        # unit-aware (the rule's unit), so a mismatched-unit tariff cannot let
+        # readiness claim ready while pricing would fail on configuration.
+        tariff = None
+        if rule is not None:
+            tariff = (
+                await db.execute(
+                    select(Tariff).where(
+                        Tariff.laboratory_id == laboratory_id,
+                        Tariff.product_species_id == product_species_id,
+                        Tariff.service_code == str(indicator),
+                        Tariff.unit_id == rule.unit_id,
+                    )
                 )
-            )
-        ).scalar_one_or_none()
+            ).scalar_one_or_none()
         if tariff is None:
             missing.append(
                 ReadinessMissing(

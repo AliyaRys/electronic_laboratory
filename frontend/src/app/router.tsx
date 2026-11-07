@@ -18,6 +18,7 @@ import { UserHistoryPage } from "../pages/UserHistoryPage";
 import { AnalystLabsPage } from "../pages/AnalystLabsPage";
 import { CatalogsPage } from "../pages/CatalogsPage";
 import { ArrivalsPage } from "../pages/ArrivalsPage";
+import { ReconciliationPage } from "../pages/ReconciliationPage";
 
 /** Placeholder until the owning task delivers the real page. */
 function Stub({ title, note }: { title: string; note: string }): React.ReactElement {
@@ -53,7 +54,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: "/labs/:labId/arrivals/:partyId/reconciliation",
-        element: <Stub title="Сверка эВСД" note="Задача A02." />,
+        element: <ReconciliationPage />,
       },
       {
         path: "/labs/:labId/arrivals/:partyId/examination/new",

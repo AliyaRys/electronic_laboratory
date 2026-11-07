@@ -291,6 +291,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/arrivals/{party_id}/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Reconciliation
+         * @description The saved reconciliation of one party; before the first save the view
+         *     is an empty OPEN state carrying the parent (party) ETag (API-04).
+         */
+        get: operations["get_reconciliation_api_v1_arrivals__party_id__reconciliation_get"];
+        /**
+         * Put Reconciliation
+         * @description Save the started reconciliation (OPEN state; completion belongs to the
+         *     external receipt). SPEC-04: Idempotency-Key + If-Match under the party
+         *     lock; the first save uses the party ETag, later saves the reconciliation
+         *     ETag. A decision the current grounds forbid is refused, never merged.
+         */
+        put: operations["put_reconciliation_api_v1_arrivals__party_id__reconciliation_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/arrivals/sync": {
         parameters: {
             query?: never;
@@ -585,6 +613,30 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * ActItem
+         * @description One row of the derived discrepancy act (CHK-F44).
+         */
+        ActItem: {
+            /** Field Id */
+            field_id: string;
+            /** Source */
+            source?: string | null;
+            /** Actual */
+            actual?: string | number | null;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * ActPreview
+         * @description CHK-F44: derived, never accepted from the client.
+         */
+        ActPreview: {
+            /** Required */
+            required: boolean;
+            /** Items */
+            items?: components["schemas"]["ActItem"][];
+        };
+        /**
          * BulkAccepted
          * @description The 202 answer of an accepted bulk command (API-01).
          */
@@ -796,6 +848,18 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /**
+         * Comparison
+         * @description API-04 ``Comparison`` for one CHK field: an explicit mark + facts.
+         */
+        Comparison: {
+            /** Matches */
+            matches: boolean;
+            /** Actual */
+            actual?: string | number | null;
+            /** Reason */
+            reason?: string | null;
+        };
         /** ConfirmationSummary */
         ConfirmationSummary: {
             /** Id */
@@ -873,6 +937,16 @@ export interface components {
             examination_id: string | null;
             /** Revision */
             revision: number;
+        };
+        /**
+         * Inspection
+         * @description CHK-F13/F14: the transport inspection inputs (frozen after confirmation).
+         */
+        Inspection: {
+            /** Compartment */
+            compartment?: ("COMPLIANT" | "DIRTY_OR_DAMAGED") | null;
+            /** Jointcarriage */
+            jointCarriage?: ("NONE" | "SEPARATED" | "NOT_SEPARATED") | null;
         };
         /**
          * IntervalRule
@@ -1175,6 +1249,18 @@ export interface components {
             fair: boolean;
         };
         /**
+         * ProblemItem
+         * @description A single field-level error within a Problem ``errors`` list.
+         */
+        ProblemItem: {
+            /** Path */
+            path: string;
+            /** Field Id */
+            field_id?: string | null;
+            /** Message */
+            message: string;
+        };
+        /**
          * QualitativeRule
          * @description An explicit list of accepted textual values (clinical mapping from source).
          */
@@ -1229,6 +1315,98 @@ export interface components {
             schema_revision: string;
         };
         /**
+         * ReconciliationView
+         * @description API-04 ``ReconciliationView`` with the server-calculated projection.
+         */
+        ReconciliationView: {
+            /** Id */
+            id: string;
+            /** Party Id */
+            party_id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "OPEN" | "CONFIRMED" | "RETURNED";
+            /** Checks */
+            checks: {
+                [key: string]: components["schemas"]["Comparison"];
+            };
+            inspection: components["schemas"]["Inspection"];
+            delivered: components["schemas"]["QuantitySet"];
+            accepted: components["schemas"]["QuantitySet"];
+            returned: components["schemas"]["QuantitySet"];
+            /** Decision */
+            decision: ("ACCEPT_ALL" | "PARTIAL" | "RETURN_ALL") | null;
+            return_reason: components["schemas"]["ReturnReason"] | null;
+            repeat: components["schemas"]["Repeat"] | null;
+            transaction: components["schemas"]["Transaction"];
+            /** Fair */
+            fair: boolean;
+            /** Services */
+            services: components["schemas"]["ServiceItem"][];
+            /** Actor Id */
+            actor_id: string;
+            /**
+             * Saved At
+             * Format: date-time
+             */
+            saved_at: string;
+            /** Completed At */
+            completed_at: string | null;
+            /** Allowed Decisions */
+            allowed_decisions: ("ACCEPT_ALL" | "PARTIAL" | "RETURN_ALL")[];
+            act: components["schemas"]["ActPreview"];
+            /** Route */
+            route: ("EXAMINATION" | "CONCLUSION" | "NONE") | null;
+            /** Errors */
+            errors: components["schemas"]["ProblemItem"][];
+            /** Complete */
+            complete: boolean;
+        };
+        /**
+         * ReconciliationWrite
+         * @description API-04 ``ReconciliationWrite``: facts the doctor entered; the source
+         *     snapshot fields, act preview, allowed decisions and route are never
+         *     accepted from the client.
+         */
+        ReconciliationWrite: {
+            /** Checks */
+            checks?: {
+                [key: string]: components["schemas"]["Comparison"];
+            };
+            inspection?: components["schemas"]["Inspection"];
+            delivered: components["schemas"]["QuantitySet"];
+            accepted: components["schemas"]["QuantitySet"];
+            returned: components["schemas"]["QuantitySet"];
+            /** Decision */
+            decision?: ("ACCEPT_ALL" | "PARTIAL" | "RETURN_ALL") | null;
+            returnReason?: components["schemas"]["ReturnReason"] | null;
+            repeat?: components["schemas"]["Repeat"] | null;
+            transaction?: components["schemas"]["Transaction"];
+            /**
+             * Fair
+             * @default false
+             */
+            fair: boolean;
+            /** Services */
+            services?: components["schemas"]["ServiceItem"][];
+        };
+        /**
+         * Repeat
+         * @description CHK-F36–38: a repeated ВСЭ selection (only possible with a previous one).
+         */
+        Repeat: {
+            /** Required */
+            required: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Actnumber */
+            actNumber?: string | null;
+        };
+        /**
          * ResearchValue
          * @description One typed research result (API-05); absence of ``value`` is allowed.
          */
@@ -1263,6 +1441,16 @@ export interface components {
          */
         ResultSchema: "BOOLEAN_MATCH" | "INTEGER_NONNEGATIVE" | "DECIMAL" | "ENUM" | "TEXT" | "DOSIMETRY_PAIR";
         /**
+         * ReturnReason
+         * @description CHK-F35: the Mercury return-reason code (OTHER_REASON needs text).
+         */
+        ReturnReason: {
+            /** Code */
+            code: string;
+            /** Text */
+            text?: string | null;
+        };
+        /**
          * ScopeInput
          * @description One laboratory assignment; a missing product means the whole laboratory.
          */
@@ -1283,6 +1471,16 @@ export interface components {
             product_scope_id?: string | null;
             /** Territory Id */
             territory_id?: string | null;
+        };
+        /**
+         * ServiceItem
+         * @description A performed service fact of the party (costing belongs to C01).
+         */
+        ServiceItem: {
+            /** Code */
+            code: string;
+            /** Performed */
+            performed: boolean;
         };
         /**
          * SourceRef
@@ -1360,6 +1558,16 @@ export interface components {
             /** Version */
             version: number;
             source: components["schemas"]["SourceRef"];
+        };
+        /**
+         * Transaction
+         * @description CHK-F39/40: an analytical flag; «Нет» never keeps a type.
+         */
+        Transaction: {
+            /** Planned */
+            planned?: boolean | null;
+            /** Type */
+            type?: ("INTERNAL" | "EXTERNAL") | null;
         };
         /**
          * UserEventView
@@ -2024,6 +2232,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reconciliation_api_v1_arrivals__party_id__reconciliation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconciliationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_reconciliation_api_v1_arrivals__party_id__reconciliation_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconciliationWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconciliationView"];
+                };
             };
             /** @description Validation Error */
             422: {

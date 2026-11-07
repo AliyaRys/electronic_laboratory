@@ -115,3 +115,100 @@ export async function hideArrival(
 export function revisionEtag(view: IncomingView): string {
   return `"${view.revision}"`;
 }
+
+// --- Reconciliation (A02, API-04) -------------------------------------------------
+
+export type ReconciliationView = components["schemas"]["ReconciliationView"];
+export type ReconciliationWrite = components["schemas"]["ReconciliationWrite"];
+export type Comparison = components["schemas"]["Comparison"];
+export type ActPreview = components["schemas"]["ActPreview"];
+export type Decision = NonNullable<ReconciliationView["decision"]>;
+export type ReceiptProblemItem = components["schemas"]["ProblemItem"];
+
+export const DECISIONS: readonly Decision[] = ["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"];
+
+export const DECISION_LABELS: Readonly<Record<Decision, string>> = Object.freeze({
+  ACCEPT_ALL: "Полное гашение",
+  PARTIAL: "Частичное гашение",
+  RETURN_ALL: "Полный возврат",
+});
+
+/** «Принятие→RETURN_ALL убирает обещание акта, но не местные факты». */
+export function decisionLabel(decision: string | null): string {
+  return decision !== null && decision in DECISION_LABELS ? DECISION_LABELS[decision as Decision] : "";
+}
+
+/** The CHK comparison fields shown on the screen, in the block order of FT-ARR-03. */
+export interface ComparedField {
+  fieldId: string;
+  block: string;
+  label: string;
+  source: string;
+}
+
+export const RETURN_REASON_CODES: readonly { code: string; label: string }[] = Object.freeze([
+  { code: "DEFECTIVE_GOODS", label: "Недоброкачественная продукция" },
+  { code: "PACKAGING_DAMAGE", label: "Повреждение упаковки" },
+  { code: "FOREIGN_MATERIAL_OR_SAFETY_VIOLATION", label: "Посторонние включения / нарушение безопасности" },
+  { code: "LAB_TEST_MISMATCH", label: "Несоответствие лабораторных исследований" },
+  { code: "PRODUCTION_VSD_ERROR", label: "Ошибка производственного ВС" },
+  { code: "CRITICAL_EXPIRY_DATE", label: "Критичный срок годности" },
+  { code: "MARKING_ISSUES", label: "Проблемы маркировки" },
+  { code: "QUANTITY_DISCREPANCY", label: "Расхождение количества" },
+  { code: "PRODUCT_DATE_MISMATCH", label: "Несоответствие дат продукции" },
+  { code: "UNORDERED_PRODUCT", label: "Незаказанная продукция" },
+  { code: "WRONG_SPECIFICATION", label: "Несоответствие спецификации" },
+  { code: "CONSIGNOR_REJECTION", label: "Отказ отправителя" },
+  { code: "CONTRACT_VIOLATION", label: "Нарушение условий договора" },
+  { code: "OTHER_REASON", label: "Иная причина" },
+]);
+
+/** The viewed CHK source projection of one arrival (informational + compared). */
+export function comparedFields(view: IncomingView): ComparedField[] {
+  const fields: ComparedField[] = [];
+  const external = view.external.fields;
+  const classification = view.classification;
+  const push = (fieldId: string, block: string, label: string, source: string | null | undefined): void => {
+    if (source !== null && source !== undefined && source !== "") {
+      fields.push({ fieldId, block, label, source });
+    }
+  };
+  push("CHK-F05", "Участники перевозки", "Отправитель — предприятие", external.consignor);
+  push("CHK-F07", "Участники перевозки", "Получатель — предприятие", external.consignee);
+  push("CHK-F10", "Идентификация транспорта", "Номер ТС", external.transportNumber);
+  push("CHK-F16", "Идентификация продукции", "Продукция", classification.product?.name);
+  push("CHK-F17", "Идентификация продукции", "Вид продукции", classification.subProduct?.name ?? null);
+  push("CHK-F18", "Идентификация продукции", "Название продукции", classification.productItem?.name);
+  push("CHK-F20", "Идентификация продукции", "Количество", view.documentary.quantity);
+  push("CHK-F21", "Идентификация продукции", "Вес, кг", view.documentary.mass_kg);
+  return fields;
+}
+
+/** GET /arrivals/:party_id/reconciliation — an empty OPEN view before the first save. */
+export async function fetchReconciliation(
+  partyId: string,
+  signal?: AbortSignal | null,
+): Promise<ReconciliationView | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/arrivals/{party_id}/reconciliation", {
+      params: { path: { party_id: partyId } },
+      signal: signal ?? null,
+    }) as Promise<RawResult<ReconciliationView>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+/** Raw PUT executor for ``useCommand`` (SPEC-04: If-Match + Idempotency-Key). */
+export function saveReconciliation(
+  partyId: string,
+  payload: ReconciliationWrite,
+  etag: string,
+): (ctx: { idempotencyKey: string; signal: AbortSignal }) => Promise<RawResult<ReconciliationView>> {
+  return ({ idempotencyKey, signal }) =>
+    apiClient.PUT("/api/v1/arrivals/{party_id}/reconciliation", {
+      params: { path: { party_id: partyId } },
+      body: payload,
+      headers: { "if-match": etag, "idempotency-key": idempotencyKey },
+      signal,
+    }) as Promise<RawResult<ReconciliationView>>;
+}

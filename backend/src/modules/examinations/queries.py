@@ -19,16 +19,23 @@ async def get_examination(db: AsyncSession, examination_id: uuid.UUID, *, lock: 
     statement = select(Examination).where(Examination.id == examination_id)
     if lock:
         statement = statement.with_for_update()
-    row = (await db.execute(statement)).scalar_one_or_none()
+    row = (await db.execute(statement.execution_options(populate_existing=True))).scalar_one_or_none()
     if row is None:
         raise not_found("ВСЭ не найдена.")
     return row
 
 
-async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
-    collection_id = (
-        await db.execute(select(ExaminationSample.collection_id).where(ExaminationSample.examination_id == row.id))
+async def current_collection_id(db: AsyncSession, examination_id: uuid.UUID) -> uuid.UUID:
+    """The collection the card currently points to (one link per card)."""
+    return (
+        await db.execute(
+            select(ExaminationSample.collection_id).where(ExaminationSample.examination_id == examination_id)
+        )
     ).scalar_one()
+
+
+async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
+    collection_id = await current_collection_id(db, row.id)
     findings = row.findings_snapshot
     return ExaminationView(
         id=str(row.id),

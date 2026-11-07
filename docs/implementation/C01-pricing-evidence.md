@@ -119,6 +119,46 @@ hiccup, not a code change (no files changed between the two runs).
 
 - `d1ffb88` — `fix: repair pricing import, enforce mandatory registry, lock catalog mutations, unit-aware readiness` (8 files: `api/v1/__init__.py`, `catalog_pricing/{mandatory.py,commands.py,queries.py,router.py,service.py}`, `tests/catalog_pricing/{test_rules,test_pricing}.py`). Pushed to `origin/feature/C01-pricing`.
 
+## Fix round 2 (re-land after round-1 verification failed)
+
+### What actually happened (root cause)
+
+Round 1 was broken twice, and the investigation now explains both:
+
+1. **The local `ruff` binary (0.15.12, via `uv run`) is tampered/misbehaving**: `ruff format` rewrites the valid `except (ValueError, ArithmeticError):` into the invalid `except ValueError, ArithmeticError:`. Reproduced in isolation on a scratch file (`C:\...\Temp\opencode\t_except.py`): `ruff format --diff` shows exactly that semantic-changing transformation (exit 1). Upstream ruff never changes code semantics. Every earlier "the fix vanished / the committed bytes differ from the verified tree" incident is explained by this: whenever `ruff format backend` ran after the fix, it silently re-corrupted `service.py`, and the corrupted bytes were then what the gates/commit saw. Two separate except clauses (`except ValueError:` / `except ArithmeticError:`) are left untouched by it and are semantically identical — the fix now uses that form and survives `ruff format` (verified by `ruff format --diff` → exit 0 and `--check` → "54 files already formatted").
+2. **Round-1 tooling corruption**: a PowerShell `Set-Content`-based regex pass (no `-Encoding utf8`) re-encoded `router.py` and `commands.py` as mojibake (UTF-8 bytes decoded as cp1251). Round 2 repaired every affected string with an explicit-UTF-8 Python transform (`text.encode('cp1251').decode('utf-8')` per string literal, with a raw-byte passthrough for the cp1251-undefined slots like U+0098); `mandatory.py`/`queries.py`/`models.py`/`schemas.py`/tests scanned — clean.
+
+### Changes in round 2 (commit `53276c6`, 3 files)
+
+- `service.py`: the except tuple is now two separate clauses (`except ValueError:` / `except ArithmeticError:`) — valid Python, same semantics, immune to the local ruff corruption; `grep "except [A-Za-z_]+,"` across the module → no other unparenthesized tuples.
+- `router.py`: 7 strings repaired (SESSION_REQUIRED / SESSION_EXPIRED / ACCOUNT_BLOCKED, CSRF messages, the two `/pricing/preview` 422 VALIDATION_ERROR messages, and others) — restored to the b1fc717 wording.
+- `commands.py`: 4 strings repaired (ALREADY_EXISTS messages).
+- Verified expected-string checklist over `service.py` (12 messages), `router.py` (7), `commands.py` (2), `mandatory.py` (2): all OK; whole-module scan for raw-byte-range chars (`\u0080-\u009F`): zero lines.
+
+### Gates on the working tree before commit (real outputs)
+
+```
+uv sync --frozen → 0
+uv run --frozen pytest backend/tests --cov=backend/src --cov-report=json --cov-fail-under=85
+  → 188 passed, total 93.98 %, pricing module weighted 94.54 %
+uv run --frozen ruff check backend → All checks passed! (0)
+uv run --frozen ruff format --check backend → 54 files already formatted (0)
+uv run --frozen mypy backend/src → Success: no issues found in 37 source files (0)
+```
+
+### Committed-tree verification checklist (after commit `53276c6`, clean tree)
+
+- `git status --porcelain` → empty ✔
+- `git stash list` → empty ✔
+- `python -m compileall -q backend/src/modules/catalog_pricing` → exit 0 ✔
+- `uv run --frozen python -c "import ...service, ...router; print('IMPORT OK')"` → `IMPORT OK` ✔ (exit 0)
+- `uv run --frozen python -c "from ...router import *"` → exit 0 ✔
+- `uv run --frozen pytest backend/tests/catalog_pricing -q` → `62 passed` ✔
+- `git show HEAD:backend/src/modules/catalog_pricing/service.py | grep except` → `except ValueError:` / `except ArithmeticError:` (valid) ✔
+- Mojibake grep (`[\u0080-\u009F]`) over all module files → no lines ✔; Cyrillic strings present ✔
+
+Pushed: `b3b88f7..53276c6 origin/feature/C01-pricing`.
+
 ---
 
 # Task C01 report — Правила, расчёт, снимок (catalog_pricing)

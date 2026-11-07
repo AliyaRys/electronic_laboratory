@@ -20,6 +20,9 @@ import { CatalogsPage } from "../pages/CatalogsPage";
 import { ArrivalsPage } from "../pages/ArrivalsPage";
 import { ReconciliationPage } from "../pages/ReconciliationPage";
 import { SampleAccountingPage } from "../pages/SampleAccountingPage";
+import { ExaminationCreatePage } from "../pages/ExaminationCreatePage";
+import { ExaminationViewPage } from "../pages/ExaminationViewPage";
+import { ExaminationJournalPage } from "../pages/ExaminationJournalPage";
 
 /** Placeholder until the owning task delivers the real page. */
 function Stub({ title, note }: { title: string; note: string }): React.ReactElement {
@@ -59,16 +62,16 @@ export const routes: RouteObject[] = [
       },
       {
         path: "/labs/:labId/arrivals/:partyId/examination/new",
-        element: <Stub title="Создание ВСЭ" note="Задача E04." />,
+        element: <ExaminationCreatePage />,
       },
       {
         path: "/labs/:labId/arrivals/:partyId/conclusion",
         element: <Stub title="Заключение" note="Задача D02." />,
       },
-      { path: "/labs/:labId/examinations", element: <Stub title="Журнал ВСЭ" note="Задача E04." /> },
+      { path: "/labs/:labId/examinations", element: <ExaminationJournalPage /> },
       {
         path: "/labs/:labId/examinations/:examinationId",
-        element: <Stub title="Просмотр ВСЭ" note="Задача E04." />,
+        element: <ExaminationViewPage />,
       },
       { path: "/labs/:labId/reports", element: <Stub title="Отчёты" note="Задача R03." /> },
       { path: "/labs/:labId/reports/new", element: <Stub title="Создание отчёта" note="Задача R03." /> },

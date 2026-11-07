@@ -35,7 +35,7 @@ import { scopedKey } from "../../shared/api/queryKeys";
 import { apiClient, SESSION_EXPIRED_EVENT } from "../../shared/api/client";
 import { AppProviders } from "../../app/providers";
 import { routes } from "../../app/router";
-import { useContextStore, useDirtyStore, LOGOUT_EVENT } from "../../entities/session/context";
+import { useContextStore, useDirtyStore, useSessionLost, LOGOUT_EVENT } from "../../entities/session/context";
 
 const USER_ID = "00000000-0000-0000-0000-00000000000a";
 const LAB_A = "11111111-1111-1111-1111-111111111111";
@@ -62,6 +62,9 @@ afterEach(() => {
   server.resetHandlers();
   useContextStore.getState().reset();
   useDirtyStore.getState().setDirty(false);
+  // The real E04 routes mount RequireSession; a lost-session flag left by an
+  // earlier test would push them to /login.
+  useSessionLost.getState().reset();
 });
 afterAll(() => server.close());
 
@@ -427,6 +430,12 @@ describe("logout", () => {
 
 describe("app shell routing", () => {
   it("a dirty route change in the real router opens the blocker dialog (F01-r1 #2)", async () => {
+    // The real journal screen (E04) reads the arrivals projection; stub the
+    // read so the test focuses on the dirty-leave blocker itself.
+    server.use(
+      http.get("*/api/v1/arrivals", () => HttpResponse.json({ items: [], total: 0, page: 1, page_size: 20 })),
+      http.get("*/api/v1/auth/csrf", () => HttpResponse.json({ csrf_token: "test-token" })),
+    );
     const router = createMemoryRouter(routes, {
       initialEntries: ["/labs/11111111-1111-1111-1111-111111111111/examinations"],
     });
@@ -435,7 +444,9 @@ describe("app shell routing", () => {
         <RouterProvider router={router} />
       </AppProviders>,
     );
-    expect(await screen.findByText(/Журнал ВСЭ/)).toBeInTheDocument();
+    // The journal page now renders the real screen (E04); the breadcrumb and
+    // the h1 both carry the name, so match the heading only.
+    expect(await screen.findByRole("heading", { name: /Журнал ВСЭ/ })).toBeInTheDocument();
 
     // A real dirty form syncs through useDirtyGuard; the flag in the store is
     // what the shell dialog reads.

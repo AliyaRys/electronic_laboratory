@@ -105,11 +105,12 @@ export function useDirtyGuard(isDirty: boolean, label = ""): void {
  * the safe first action (UX-03).
  */
 export function DirtyLeaveDialog(): React.ReactElement | null {
-  const dirty = useDirtyStore((state) => state.dirty);
   const label = useDirtyStore((state) => state.label);
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      dirty &&
+      // Read the live store state: a save clears the flag right before its
+      // programmatic navigation, and the hook's closure would still be stale.
+      useDirtyStore.getState().dirty &&
       (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
   );
   if (blocker.state !== "blocked") {

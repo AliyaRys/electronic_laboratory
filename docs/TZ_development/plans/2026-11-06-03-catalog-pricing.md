@@ -43,8 +43,8 @@
 
 **Interfaces:** API-03 CRUD/readiness/bulk; BulkPriceJob targets status PENDING/SUCCEEDED/FAILED. Заведующий редактирует только свои; массовая команда ADMIN/ANALYST.
 
-- [ ] Написать `test_scope_prevalidation` assert целиком 403 при одной чужой цели и 0 изменённых; `test_partial_retry` assert А/Б succeeded не повторяются, В failed→success; `test_independent_lab_prices` assert после bulk А=Б 100, правкаА 150 оставляетБ 100. UI test удаление нормы предупреждает блокировку будущего сохранения, старый snapshot прежний.
-- [ ] Запустить `uv run --frozen pytest backend/tests/catalog_pricing/test_bulk.py -v` и адресные frontend tests, ожидается FAIL.
-- [ ] Реализовать неизменяемый job + независимые SQL-транзакции target, actual results по целям, safe retry; доступ заново на каждую цель. UI показывает охват до подтверждения и частичный результат. Удаление active позиции не трогает Mercury classification/фиксированные роли/snapshots; нет наследования лабораторий. Отсутствующие реальные INPUT показывать в readiness; fixture цены только тесты.
-- [ ] Проверить роли через прямые запросы, AT-14/15/21, SC-093–097, build-storybook и экран 390/1440; полный C01 regression.
-- [ ] Зафиксировать: `feat: add scoped catalogs and independent bulk pricing`.
+- [x] Написать `test_scope_prevalidation` assert целиком 403 при одной чужой цели и 0 изменённых; `test_partial_retry` assert А/Б succeeded не повторяются, В failed→success; `test_independent_lab_prices` assert после bulk А=Б 100, правкаА 150 оставляетБ 100. UI test удаление нормы предупреждает блокировку будущего сохранения, старый snapshot прежний.
+- [x] Запустить `uv run --frozen pytest backend/tests/catalog_pricing/test_bulk.py -v` и адресные frontend tests, ожидается FAIL.
+- [x] Реализовать неизменяемый job + независимые SQL-транзакции target, actual results по целям, safe retry; доступ заново на каждую цель. UI показывает охват до подтверждения и частичный результат. Удаление active позиции не трогает Mercury classification/фиксированные роли/snapshots; нет наследования лабораторий. Отсутствующие реальные INPUT показывать в readiness; fixture цены только тесты.
+- [x] Проверить роли через прямые запросы, AT-14/15/21, SC-093–097, build-storybook и экран 390/1440; полный C01 regression.
+- [x] Зафиксировать: `feat: add scoped catalogs and independent bulk pricing`.

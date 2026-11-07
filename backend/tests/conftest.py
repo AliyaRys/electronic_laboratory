@@ -39,6 +39,13 @@ _IDENTITY_TABLES = (
     "users",
     "laboratories",
     "territories",
+    # catalog_pricing configuration (Task C01)
+    "bulk_price_targets",
+    "bulk_price_jobs",
+    "report_classifications",
+    "check_service_rules",
+    "tariffs",
+    "method_rules",
 )
 
 

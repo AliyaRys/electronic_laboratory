@@ -59,8 +59,14 @@ def _problem(status: int, code: str, detail: str) -> ProblemError:
 
 
 def _require_csrf(request: Request, identity: SessionIdentity) -> None:
+    scheme = request.url.scheme
+    hostname = request.url.hostname
+    port = request.url.port
+    # Same-origin means scheme+host; the port is part of the origin whenever it
+    # is not the scheme default (dev servers, reverse proxies on custom ports).
+    netloc = hostname if port in (None, 80, 443) else f"{hostname}:{port}"
     origin = request.headers.get("origin")
-    expected_origin = f"{request.url.scheme}://{request.url.hostname}"
+    expected_origin = f"{scheme}://{netloc}"
     if origin != expected_origin:
         raise _problem(403, "CSRF_REJECTED", "Источник запроса не разрешён.")
     if not identity.csrf_token or not secrets.compare_digest(

@@ -1,0 +1,65 @@
+/* Catalog screens (Task C02): lists, editor dialogs and the bulk price flow. */
+
+.vse-catalog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.vse-catalog-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.vse-catalog-tabs a {
+  padding: 6px 14px;
+  border: 1px solid var(--app-border, #c8c8c8);
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.vse-catalog-tabs a.active {
+  background: var(--app-accent, #2f5c8f);
+  color: #fff;
+}
+
+.vse-catalog-missing {
+  margin: 8px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #b58900;
+  border-radius: 6px;
+}
+
+.vse-catalog-missing ul {
+  margin: 6px 0 0 18px;
+}
+
+.vse-bulk-coverage {
+  border: 1px solid var(--app-border, #c8c8c8);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.vse-bulk-coverage fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vse-bulk-coverage label {
+  display: block;
+  padding: 3px 0;
+}
+
+.vse-bulk-result td,
+.vse-bulk-result th {
+  text-align: left;
+  padding: 4px 10px;
+}

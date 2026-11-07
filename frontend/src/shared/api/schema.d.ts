@@ -250,10 +250,334 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalogs/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Methods */
+        get: operations["list_methods_api_v1_catalogs_methods_get"];
+        put?: never;
+        /** Create Method */
+        post: operations["create_method_api_v1_catalogs_methods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/methods/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Method */
+        get: operations["get_method_api_v1_catalogs_methods__rule_id__get"];
+        /** Update Method */
+        put: operations["update_method_api_v1_catalogs_methods__rule_id__put"];
+        post?: never;
+        /** Delete Method */
+        delete: operations["delete_method_api_v1_catalogs_methods__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/tariffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tariffs */
+        get: operations["list_tariffs_api_v1_catalogs_tariffs_get"];
+        put?: never;
+        /** Create Tariff */
+        post: operations["create_tariff_api_v1_catalogs_tariffs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/tariffs/{tariff_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Tariff */
+        get: operations["get_tariff_api_v1_catalogs_tariffs__tariff_id__get"];
+        /** Update Tariff */
+        put: operations["update_tariff_api_v1_catalogs_tariffs__tariff_id__put"];
+        post?: never;
+        /** Delete Tariff */
+        delete: operations["delete_tariff_api_v1_catalogs_tariffs__tariff_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/check-services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Check Services */
+        get: operations["list_check_services_api_v1_catalogs_check_services_get"];
+        put?: never;
+        /** Create Check Service */
+        post: operations["create_check_service_api_v1_catalogs_check_services_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/check-services/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Check Service */
+        get: operations["get_check_service_api_v1_catalogs_check_services__rule_id__get"];
+        /** Update Check Service */
+        put: operations["update_check_service_api_v1_catalogs_check_services__rule_id__put"];
+        post?: never;
+        /** Delete Check Service */
+        delete: operations["delete_check_service_api_v1_catalogs_check_services__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/classifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Classifications */
+        get: operations["list_classifications_api_v1_catalogs_classifications_get"];
+        put?: never;
+        /** Create Classification Version */
+        post: operations["create_classification_version_api_v1_catalogs_classifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/classifications/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Classification Version */
+        delete: operations["delete_classification_version_api_v1_catalogs_classifications__version__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Readiness */
+        get: operations["get_readiness_api_v1_catalogs_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pricing/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Pricing
+         * @description Read-only calculation; it never persists anything (API-03).
+         */
+        post: operations["preview_pricing_api_v1_pricing_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/bulk-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Bulk Prices
+         * @description Whole-set intent (API-03): no ETag; the ENTIRE scope validates first.
+         */
+        post: operations["create_bulk_prices_api_v1_catalogs_bulk_prices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/bulk-prices/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Bulk Prices */
+        get: operations["get_bulk_prices_api_v1_catalogs_bulk_prices__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogs/bulk-prices/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Bulk Prices
+         * @description Retry ONLY the failed targets with the original intent and a NEW key.
+         */
+        post: operations["retry_bulk_prices_api_v1_catalogs_bulk_prices__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Operation State
+         * @description GET /operations/:id → CommandState (API-01), catalog kind.
+         *
+         *     The operation id of a bulk command IS the job id: the record is resolved
+         *     through its stored ``result_id`` (DATA-05).
+         */
+        get: operations["get_operation_state_api_v1_operations__operation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * BulkAccepted
+         * @description The 202 answer of an accepted bulk command (API-01).
+         */
+        BulkAccepted: {
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** State */
+            state: string;
+            /** Status Url */
+            status_url: string;
+        };
+        /**
+         * BulkPriceJobView
+         * @description GET /catalogs/bulk-prices/:id — the per-target actual results.
+         */
+        BulkPriceJobView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** State */
+            state: string;
+            /** Targets */
+            targets: components["schemas"]["BulkPriceTargetView"][];
+        };
+        /** BulkPriceTargetView */
+        BulkPriceTargetView: {
+            /**
+             * Lab Id
+             * Format: uuid
+             */
+            lab_id: string;
+            /** State */
+            state: string;
+            /** Problem */
+            problem?: string | null;
+        };
+        /**
+         * BulkPriceWrite
+         * @description The whole-set intent of a bulk price command; no ETag applies to it.
+         */
+        BulkPriceWrite: {
+            /** Laboratory Ids */
+            laboratory_ids: string[];
+            /**
+             * Product Species Id
+             * Format: uuid
+             */
+            product_species_id: string;
+            /** Service Code */
+            service_code: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Price */
+            price: string;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -263,15 +587,176 @@ export interface components {
             /** Confirmation */
             confirmation: string;
         };
+        /** CheckServiceRuleView */
+        CheckServiceRuleView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Service Code */
+            service_code: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Multiplier Basis */
+            multiplier_basis: string;
+            /** Applicable Decisions */
+            applicable_decisions: string[];
+            /** Version */
+            version: number;
+            /** Source */
+            source: {
+                [key: string]: unknown;
+            };
+            /** Revision */
+            revision: number;
+        };
+        /**
+         * CheckServiceRuleWrite
+         * @description The two CHECK services only; the rule arrives with the price list owner.
+         */
+        CheckServiceRuleWrite: {
+            /**
+             * Service Code
+             * @enum {string}
+             */
+            service_code: "PRODUCT_IDENTIFICATION" | "TRANSPORT_INSPECTION";
+            /** Unit Id */
+            unit_id: string;
+            /**
+             * Multiplier Basis
+             * @enum {string}
+             */
+            multiplier_basis: "ACCEPTED_QUANTITY" | "DELIVERED_QUANTITY" | "ONE_SERVICE";
+            /** Applicable Decisions */
+            applicable_decisions: ("ACCEPT_ALL" | "PARTIAL" | "RETURN_ALL")[];
+            /** Version */
+            version: number;
+            source: components["schemas"]["SourceRef"];
+        };
+        /** ClassificationItemView */
+        ClassificationItemView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Version */
+            version: string;
+            /** Mercury Species Id */
+            mercury_species_id: string;
+            /** Product Type Id */
+            product_type_id: string | null;
+            /** Product State Id */
+            product_state_id: string | null;
+            /** Supported */
+            supported: boolean;
+            /** Animal Column */
+            animal_column: string;
+            /** Material Kind */
+            material_kind: string;
+            /** Revision */
+            revision: number;
+        };
+        /**
+         * ClassificationItemWrite
+         * @description One species mapping row (INPUT-05): agreed IDs, never name guessing.
+         */
+        ClassificationItemWrite: {
+            /** Mercury Species Id */
+            mercury_species_id: string;
+            /** Product Type Id */
+            product_type_id?: string | null;
+            /** Product State Id */
+            product_state_id?: string | null;
+            /** Supported */
+            supported: boolean;
+            /**
+             * Animal Column
+             * @enum {string}
+             */
+            animal_column: "CATTLE" | "PIG" | "SHEEP_GOAT" | "RABBIT_NUTRIA" | "CHICKEN" | "OTHER_BIRDS" | "FISH" | "OTHER_ANIMALS";
+            /**
+             * Material Kind
+             * @enum {string}
+             */
+            material_kind: "MEAT" | "OFFAL";
+        };
+        /**
+         * ClassificationWrite
+         * @description A whole classification map version written atomically.
+         */
+        ClassificationWrite: {
+            /** Version */
+            version: string;
+            /** Items */
+            items: components["schemas"]["ClassificationItemWrite"][];
+        };
+        /**
+         * CommandStateView
+         * @description GET /operations/:id (API-01 minimal CommandState for catalog commands).
+         */
+        CommandStateView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** State */
+            state: string;
+            /** Result Id */
+            result_id?: string | null;
+            /** Problem */
+            problem?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** CsrfResponse */
         CsrfResponse: {
             /** Csrf Token */
             csrf_token: string;
         };
+        /**
+         * DosimetryPair
+         * @description The two decimal readings of one performed dosimetry procedure.
+         */
+        DosimetryPair: {
+            /** First */
+            first: string;
+            /** Last */
+            last: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * IntervalRule
+         * @description A numeric interval with explicit inclusivity of both borders.
+         */
+        IntervalRule: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "interval";
+            /** Lower */
+            lower?: string | null;
+            /** Upper */
+            upper?: string | null;
+            /**
+             * Lower Inclusive
+             * @default true
+             */
+            lower_inclusive: boolean;
+            /**
+             * Upper Inclusive
+             * @default true
+             */
+            upper_inclusive: boolean;
         };
         /**
          * LiveResponse
@@ -296,6 +781,134 @@ export interface components {
             /** Csrf Token */
             csrf_token: string;
         };
+        /** MethodRuleView */
+        MethodRuleView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /**
+             * Product Species Id
+             * Format: uuid
+             */
+            product_species_id: string;
+            /**
+             * Product State Id
+             * Format: uuid
+             */
+            product_state_id: string;
+            /**
+             * Indicator Id
+             * Format: uuid
+             */
+            indicator_id: string;
+            /** Version */
+            version: number;
+            /** Result Schema */
+            result_schema: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Rule */
+            rule: {
+                [key: string]: unknown;
+            };
+            /** Source */
+            source: {
+                [key: string]: unknown;
+            };
+            /** Effective From */
+            effective_from?: string | null;
+            /** Active */
+            active: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /**
+         * MethodRuleWrite
+         * @description Create/update payload for a versioned method rule (INPUT-02).
+         */
+        MethodRuleWrite: {
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /**
+             * Product Species Id
+             * Format: uuid
+             */
+            product_species_id: string;
+            /**
+             * Product State Id
+             * Format: uuid
+             */
+            product_state_id: string;
+            /**
+             * Indicator Id
+             * Format: uuid
+             */
+            indicator_id: string;
+            /** Version */
+            version: number;
+            result_schema: components["schemas"]["ResultSchema"];
+            /** Unit Id */
+            unit_id: string;
+            /** Rule */
+            rule: components["schemas"]["IntervalRule"] | components["schemas"]["QualitativeRule"];
+            source: components["schemas"]["SourceRef"];
+            /** Effective From */
+            effective_from?: string | null;
+        };
+        /** Page[CheckServiceRuleView] */
+        Page_CheckServiceRuleView_: {
+            /** Items */
+            items: components["schemas"]["CheckServiceRuleView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[ClassificationItemView] */
+        Page_ClassificationItemView_: {
+            /** Items */
+            items: components["schemas"]["ClassificationItemView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[MethodRuleView] */
+        Page_MethodRuleView_: {
+            /** Items */
+            items: components["schemas"]["MethodRuleView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[TariffView] */
+        Page_TariffView_: {
+            /** Items */
+            items: components["schemas"]["TariffView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
         /** Page[UserEventView] */
         Page_UserEventView_: {
             /** Items */
@@ -319,6 +932,129 @@ export interface components {
             page_size: number;
         };
         /**
+         * PricingLine
+         * @description One priced line of the snapshot; money is a scale-2 decimal string.
+         */
+        PricingLine: {
+            /** Service Code */
+            service_code: string;
+            /** Name */
+            name: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Quantity */
+            quantity: string;
+            /** Unit Price */
+            unit_price: string;
+            /** Amount */
+            amount: string;
+            /** Method Snapshot */
+            method_snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Evaluation */
+            evaluation?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * PricingRequest
+         * @description The pricing input (API-03).
+         *
+         *     ``party_id`` identifies the working record; ``product_species_id`` /
+         *     ``product_state_id`` and the accepted/delivered quantities are resolved
+         *     server-side from the party in later tasks (Task A0x). C01 accepts them as
+         *     request fields because the arrivals module does not exist yet; the boundary
+         *     is recorded in the evidence file.
+         */
+        PricingRequest: {
+            /**
+             * Party Id
+             * Format: uuid
+             */
+            party_id: string;
+            /** Laboratory Id */
+            laboratory_id?: string | null;
+            /**
+             * Context
+             * @enum {string}
+             */
+            context: "CHECK" | "VSE";
+            /** Performed */
+            performed?: string[];
+            /** Results */
+            results?: components["schemas"]["ResearchValue"][];
+            /**
+             * Fair
+             * @default false
+             */
+            fair: boolean;
+            /** Product Species Id */
+            product_species_id?: string | null;
+            /** Product State Id */
+            product_state_id?: string | null;
+            /** Accepted Quantity */
+            accepted_quantity?: string | null;
+            /** Accepted Unit Id */
+            accepted_unit_id?: string | null;
+            /** Delivered Quantity */
+            delivered_quantity?: string | null;
+            /** Delivered Unit Id */
+            delivered_unit_id?: string | null;
+            /** Decision */
+            decision?: ("ACCEPT_ALL" | "PARTIAL" | "RETURN_ALL") | null;
+        };
+        /**
+         * PricingSnapshot
+         * @description The frozen pricing outcome (ADR-020); fair mode stores only zeros.
+         */
+        PricingSnapshot: {
+            /** Lines */
+            lines: components["schemas"]["PricingLine"][];
+            /** Total */
+            total: string;
+            /**
+             * Currency
+             * @default RUB
+             * @constant
+             */
+            currency: "RUB";
+            /** Fair */
+            fair: boolean;
+        };
+        /**
+         * QualitativeRule
+         * @description An explicit list of accepted textual values (clinical mapping from source).
+         */
+        QualitativeRule: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "qualitative";
+            /** Accepted Values */
+            accepted_values: string[];
+        };
+        /** Readiness */
+        Readiness: {
+            /** Ready */
+            ready: boolean;
+            /** Missing */
+            missing: components["schemas"]["ReadinessMissing"][];
+        };
+        /**
+         * ReadinessMissing
+         * @description One missing configuration input for a working scope (API-03).
+         */
+        ReadinessMissing: {
+            /** Input Id */
+            input_id: string;
+            /** Field */
+            field: string;
+            /** Message */
+            message: string;
+        };
+        /**
          * ReadyResponse
          * @description Readiness probe — database connectivity + schema version (API-09).
          */
@@ -327,6 +1063,24 @@ export interface components {
             status: string;
             /** Schema Revision */
             schema_revision: string;
+        };
+        /**
+         * ResearchValue
+         * @description One typed research result (API-05); absence of ``value`` is allowed.
+         */
+        ResearchValue: {
+            /**
+             * Indicator Id
+             * Format: uuid
+             */
+            indicator_id: string;
+            /**
+             * Performed
+             * @default true
+             */
+            performed: boolean;
+            /** Value */
+            value?: boolean | number | string | components["schemas"]["DosimetryPair"] | null;
         };
         /**
          * ResetPasswordRequest
@@ -338,6 +1092,12 @@ export interface components {
             /** Confirmation */
             confirmation: string;
         };
+        /**
+         * ResultSchema
+         * @description Typed result schemas from INPUT-02.
+         * @enum {string}
+         */
+        ResultSchema: "BOOLEAN_MATCH" | "INTEGER_NONNEGATIVE" | "DECIMAL" | "ENUM" | "TEXT" | "DOSIMETRY_PAIR";
         /**
          * ScopeInput
          * @description One laboratory assignment; a missing product means the whole laboratory.
@@ -359,6 +1119,75 @@ export interface components {
             product_scope_id?: string | null;
             /** Territory Id */
             territory_id?: string | null;
+        };
+        /**
+         * SourceRef
+         * @description Provenance of a norm/tariff value (INPUT-02/03): never invented by code.
+         */
+        SourceRef: {
+            /** Name */
+            name: string;
+            /** Edition */
+            edition?: string | null;
+            /** Reference */
+            reference?: string | null;
+        };
+        /** TariffView */
+        TariffView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /**
+             * Product Species Id
+             * Format: uuid
+             */
+            product_species_id: string;
+            /** Service Code */
+            service_code: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Price */
+            price: string;
+            /** Version */
+            version: number;
+            /** Source */
+            source: {
+                [key: string]: unknown;
+            };
+            /** Revision */
+            revision: number;
+        };
+        /**
+         * TariffWrite
+         * @description Create/update payload for a tariff (INPUT-03): price is server-side data.
+         */
+        TariffWrite: {
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /**
+             * Product Species Id
+             * Format: uuid
+             */
+            product_species_id: string;
+            /** Service Code */
+            service_code: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Price */
+            price: string;
+            /** Version */
+            version: number;
+            source: components["schemas"]["SourceRef"];
         };
         /**
          * UserEventView
@@ -927,6 +1756,772 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_UserEventView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_methods_api_v1_catalogs_methods_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                product_species_id: string;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MethodRuleView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_method_api_v1_catalogs_methods_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MethodRuleWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_method_api_v1_catalogs_methods__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_method_api_v1_catalogs_methods__rule_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MethodRuleWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MethodRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_method_api_v1_catalogs_methods__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tariffs_api_v1_catalogs_tariffs_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                product_species_id: string;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_TariffView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_tariff_api_v1_catalogs_tariffs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TariffWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TariffView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tariff_api_v1_catalogs_tariffs__tariff_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tariff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TariffView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_tariff_api_v1_catalogs_tariffs__tariff_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tariff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TariffWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TariffView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tariff_api_v1_catalogs_tariffs__tariff_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tariff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_check_services_api_v1_catalogs_check_services_get: {
+        parameters: {
+            query?: {
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CheckServiceRuleView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_check_service_api_v1_catalogs_check_services_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckServiceRuleWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckServiceRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_check_service_api_v1_catalogs_check_services__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckServiceRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_check_service_api_v1_catalogs_check_services__rule_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckServiceRuleWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckServiceRuleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_check_service_api_v1_catalogs_check_services__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_classifications_api_v1_catalogs_classifications_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ClassificationItemView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_classification_version_api_v1_catalogs_classifications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassificationWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ClassificationItemView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_classification_version_api_v1_catalogs_classifications__version__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_readiness_api_v1_catalogs_readiness_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                product_species_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Readiness"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_pricing_api_v1_pricing_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PricingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_bulk_prices_api_v1_catalogs_bulk_prices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkPriceWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_bulk_prices_api_v1_catalogs_bulk_prices__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkPriceJobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_bulk_prices_api_v1_catalogs_bulk_prices__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_operation_state_api_v1_operations__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandStateView"];
                 };
             };
             /** @description Validation Error */

@@ -16,6 +16,7 @@ import { UsersPage } from "../pages/UsersPage";
 import { UserEditorPage } from "../pages/UserEditorPage";
 import { UserHistoryPage } from "../pages/UserHistoryPage";
 import { AnalystLabsPage } from "../pages/AnalystLabsPage";
+import { CatalogsPage } from "../pages/CatalogsPage";
 
 /** Placeholder until the owning task delivers the real page. */
 function Stub({ title, note }: { title: string; note: string }): React.ReactElement {
@@ -41,9 +42,10 @@ export const routes: RouteObject[] = [
       { path: "/users/:userId/history", element: <UserHistoryPage /> },
       // ANALYST selects one laboratory (API-02 «Начальные маршруты»).
       { path: "/labs", element: <AnalystLabsPage /> },
-      { path: "/catalogs", element: <Stub title="Справочники" note="Задача C02." /> },
-      { path: "/catalogs/methods", element: <Stub title="Нормы исследований" note="Задача C02." /> },
-      { path: "/catalogs/tariffs", element: <Stub title="Стоимость исследований" note="Задача C02." /> },
+      { path: "/catalogs", element: <CatalogsPage /> },
+      // Deep links into a specific tab land on the same page with the query.
+      { path: "/catalogs/methods", element: <CatalogsPage /> },
+      { path: "/catalogs/tariffs", element: <CatalogsPage /> },
       {
         path: "/labs/:labId/arrivals",
         element: <Stub title="Поступления" note="Очереди expected/work/accepted — задача A01." />,

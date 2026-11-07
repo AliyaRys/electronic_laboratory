@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<!--
+  Предварительная форма 5-вет, раздел III (report-5vet, version 1).
+  Официального утверждённого образца пока нет: manifest.json держит
+  official=false, рендерер выводит метку «Предварительная форма». Значения
+  подставляет рендерер и экранирует; шапка таблицы повторяется на каждой
+  странице (thead), неавтоматические ячейки выводятся как
+  «Не рассчитывается». Внешние ссылки, скрипты и сетевые стили запрещены.
+-->
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Форма 5-вет, раздел III</title>
+    <style>
+      @font-face {
+        font-family: "DejaVuSans";
+        src: url("DejaVuSans.ttf");
+      }
+      @page {
+        size: a4 portrait;
+        margin: 18mm 12mm 18mm 12mm;
+      }
+      body {
+        font-family: "DejaVuSans";
+        font-size: 9pt;
+        color: #000000;
+      }
+      .watermark {
+        text-align: right;
+        font-size: 10pt;
+        color: #555555;
+        border: 1px solid #555555;
+        padding: 2mm 3mm;
+        margin-bottom: 5mm;
+      }
+      h1 {
+        font-size: 13pt;
+        text-align: center;
+        margin: 0 0 3mm 0;
+      }
+      .codes {
+        width: 100%;
+        table-layout: fixed;
+        -pdf-word-wrap: CJK;
+        border-collapse: collapse;
+        margin-bottom: 5mm;
+      }
+      .codes th,
+      .codes td {
+        border: 0.5pt solid #000000;
+        padding: 1.2mm 1.5mm;
+        text-align: left;
+        vertical-align: top;
+        font-weight: normal;
+      }
+      .codes th {
+        width: 30%;
+        background-color: #f2f2f2;
+      }
+      table.matrix {
+        width: 100%;
+        table-layout: fixed;
+        -pdf-word-wrap: CJK;
+        border-collapse: collapse;
+      }
+      table.matrix th,
+      table.matrix td {
+        border: 0.5pt solid #000000;
+        padding: 1.2mm 1.5mm;
+        text-align: left;
+        vertical-align: top;
+        font-weight: normal;
+      }
+      table.matrix th {
+        background-color: #f2f2f2;
+      }
+      table.matrix thead th {
+        -pdf-keep-with-next: true;
+      }
+      .row-name {
+        width: 34%;
+      }
+      .footer {
+        margin-top: 6mm;
+        font-size: 8pt;
+        color: #444444;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="watermark">{{preliminary}}</div>
+    <h1>ФОРМА 5-ВЕТ, РАЗДЕЛ III</h1>
+    <p class="footer" style="margin-top: 0; margin-bottom: 4mm">
+      {{laboratory}} — {{period}}
+    </p>
+    <table class="codes">
+      <tbody>
+        {{codes}}
+      </tbody>
+    </table>
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th class="row-name">Наименование показателя</th>
+          {{columns}}
+        </tr>
+      </thead>
+      <tbody>
+        {{rows}}
+      </tbody>
+    </table>
+    <p class="footer">
+      Версия формы {{form_version}}; версии источников: {{versions}}.
+      Неавтоматические ячейки заполняются вручную и выведены как
+      «Не рассчитывается».
+    </p>
+  </body>
+</html>

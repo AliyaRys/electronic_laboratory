@@ -147,6 +147,40 @@ async def test_hide_endpoint_and_honest_sync(vet_env: SimpleNamespace) -> None:
         assert after.json()["total"] == 0
 
 
+async def test_hide_requires_current_if_match(vet_env: SimpleNamespace) -> None:
+    """SPEC-04: missing If-Match → 422 REVISION_REQUIRED, stale → 409 conflict."""
+    env = vet_env
+    party = await commands.upsert_incoming(env.db, document(uuid.uuid4(), env.own.id))
+    await env.db.commit()
+
+    async with _client_for(env) as (http, identity):
+        base_headers = {
+            "x-csrf-token": identity.csrf_token,
+            "origin": "http://test",
+            "idempotency-key": str(uuid.uuid4()),
+        }
+
+        missing = await http.delete(f"/api/v1/arrivals/{party.id}", headers=base_headers)
+        assert missing.status_code == 422
+        assert missing.json()["code"] == "REVISION_REQUIRED"
+
+        stale = await http.delete(f"/api/v1/arrivals/{party.id}", headers={**base_headers, "if-match": '"9"'})
+        assert stale.status_code == 409
+        assert stale.json()["code"] == "REVISION_CONFLICT"
+
+        still_there = await http.get("/api/v1/arrivals", params={"laboratory_id": str(env.own.id), "queue": "EXPECTED"})
+        assert still_there.json()["total"] == 1
+
+        # The correct If-Match hides the arrival; an idempotent repeat with the
+        # same command key still answers 204 (API-01 replay semantics).
+        hidden = await http.delete(f"/api/v1/arrivals/{party.id}", headers={**base_headers, "if-match": '"1"'})
+        assert hidden.status_code == 204
+        repeat = await http.delete(f"/api/v1/arrivals/{party.id}", headers={**base_headers, "if-match": '"1"'})
+        assert repeat.status_code == 204
+        after = await http.get("/api/v1/arrivals", params={"laboratory_id": str(env.own.id), "queue": "EXPECTED"})
+        assert after.json()["total"] == 0
+
+
 async def test_disabled_vetis_adapter_problem() -> None:
     """The disabled adapter raises the stable 503 INTEGRATION_NOT_CONFIGURED."""
     from backend.src.core.problems import ProblemError

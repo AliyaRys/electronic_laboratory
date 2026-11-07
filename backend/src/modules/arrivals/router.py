@@ -115,9 +115,9 @@ async def hide_arrival(
     identity, actor = principal
     _require_csrf(request, identity.csrf_token)
     _idempotency_key(request)
-    resolve_if_match(request.headers.get("if-match"))
+    expected = resolve_if_match(request.headers.get("if-match"))
     await _scoped_party(db, authorizer, actor, party_id, "arrivals:hide", lock=True)
-    await commands.hide_incoming(db, identity.actor_id, party_id)
+    await commands.hide_incoming(db, identity.actor_id, party_id, expected)
     await db.commit()
 
 

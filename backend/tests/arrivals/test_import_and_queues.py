@@ -159,7 +159,7 @@ async def test_upsert_stable_identity(db_session: AsyncSession, lab: Laboratory)
 async def test_hidden_hash(db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID) -> None:
     evsd = uuid.uuid4()
     party = await import_document(db_session, document(evsd, lab.id))
-    await commands.hide_incoming(db_session, actor, party.id)
+    await commands.hide_incoming(db_session, actor, party.id, party.rev)
     await db_session.commit()
 
     hidden = (await db_session.execute(select(HiddenIncoming).where(HiddenIncoming.evsd_uuid == evsd))).scalar_one()
@@ -284,6 +284,50 @@ async def test_queue_after_examination_delete(db_session: AsyncSession, lab: Lab
     assert view.confirmation is not None  # the previous confirmation remains
 
 
+PILOT_PORK = uuid.UUID("57a674fd-ca2b-c523-6853-72d27b4ae32c")  # «свинина» (0005 seed)
+
+
+async def test_external_update_reresolves_classification(
+    db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID
+) -> None:
+    evsd = uuid.uuid4()
+    party = await import_document(db_session, document(evsd, lab.id))
+    checks = {"F04_volume": {"matches": False, "actual": "100.0"}}
+    db_session.add(
+        Reconciliation(
+            party_id=party.id,
+            checks=checks,
+            services=[],
+            actor_id=actor,
+            state="OPEN",
+        )
+    )
+    await db_session.commit()
+
+    # The external update switches the product GUID to pork: the party's
+    # classification is re-resolved through the local dictionary, the saved
+    # actual/marks stay untouched.
+    updated = await import_document(db_session, document(evsd, lab.id, product=PILOT_PORK, volume="110.0"))
+    assert updated.id == party.id
+    refreshed = (await db_session.execute(select(Party).where(Party.id == party.id))).scalar_one()
+    assert refreshed.classification_snapshot["product"] == {"id": str(PILOT_PORK), "name": "свинина"}  # type: ignore[index]
+    after = (await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == party.id))).scalar_one()
+    assert after.checks == checks
+
+    # An update introducing an unknown GUID fails like a first import and
+    # mutates nothing (classification stays pork, document hash unchanged).
+    document_row = (
+        await db_session.execute(select(IncomingDocument).where(IncomingDocument.evsd_uuid == evsd))
+    ).scalar_one()
+    old_hash = document_row.content_hash
+    with pytest.raises(ProblemError) as raised:
+        await import_document(db_session, document(evsd, lab.id, product=UNKNOWN_PRODUCT))
+    assert raised.value.code == "MERCURY_PRODUCT_DICTIONARY_MISS"
+    unchanged = (await db_session.execute(select(Party).where(Party.id == party.id))).scalar_one()
+    assert unchanged.classification_snapshot["product"]["name"] == "свинина"  # type: ignore[index]
+    assert document_row.content_hash == old_hash
+
+
 async def test_product_lvl2_name(db_session: AsyncSession, lab: Laboratory) -> None:
     party = await import_document(db_session, document(uuid.uuid4(), lab.id))
     classification = party.classification_snapshot
@@ -308,7 +352,7 @@ async def test_at_23_hide_expected_does_not_annul_evsd(
 ) -> None:
     evsd = uuid.uuid4()
     party = await import_document(db_session, document(evsd, lab.id))
-    await commands.hide_incoming(db_session, actor, party.id)
+    await commands.hide_incoming(db_session, actor, party.id, party.rev)
     await db_session.commit()
 
     # The external document itself is NOT annulled: the row survives.

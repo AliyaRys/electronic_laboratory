@@ -22,6 +22,7 @@ from sqlalchemy import Table as sqlalchemy_table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.core.commands import ensure_revision
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.models import (
     HiddenIncoming,
@@ -150,8 +151,12 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
         return party
 
     if existing.content_hash != hash_value:
-        # A substantive change overrides the user's hide decision for the old
-        # content: the document reappears in the queues (AT-23 counterpart).
+        # A substantive change: re-resolve the classification FIRST (a new
+        # unknown GUID fails the whole update exactly like a first import),
+        # then refresh the document, the party's classification snapshot and
+        # drop the user's hide decision for the old content (AT-23). Local
+        # facts (reconciliation actual/marks) are never touched.
+        classification = await _classification_snapshot(uow, document)
         await uow.execute(
             update(IncomingDocument)
             .where(IncomingDocument.id == existing.id)
@@ -162,6 +167,11 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
                 fetched_at=document.fetched_at,
                 rev=existing.rev + 1,
             )
+        )
+        await uow.execute(
+            update(Party)
+            .where(Party.incoming_document_id == existing.id)
+            .values(classification_snapshot=classification, rev=Party.rev + 1)
         )
         await uow.execute(
             delete(HiddenIncoming).where(
@@ -178,11 +188,22 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
     return (await uow.execute(select(Party).where(Party.incoming_document_id == existing.id))).scalar_one()
 
 
-async def hide_incoming(uow: AsyncSession, actor_id: uuid.UUID, party_id: uuid.UUID) -> None:
-    """Hide an expected arrival; started work/confirmation/intent block it."""
+async def hide_incoming(
+    uow: AsyncSession,
+    actor_id: uuid.UUID,
+    party_id: uuid.UUID,
+    expected_revision: int | None,
+) -> None:
+    """Hide an expected arrival; started work/confirmation/intent block it.
+
+    ``expected_revision`` is the parsed ``If-Match`` of the shown party
+    revision (SPEC-04): absent → 422 ``REVISION_REQUIRED``, mismatched → 409
+    ``REVISION_CONFLICT``, checked under the party row lock.
+    """
     party = (await uow.execute(select(Party).where(Party.id == party_id).with_for_update())).scalar_one_or_none()
     if party is None:
         raise not_found()
+    ensure_revision(expected_revision, party.rev)
     document = (
         await uow.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
     ).scalar_one()

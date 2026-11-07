@@ -48,6 +48,10 @@ _IDENTITY_TABLES = (
     "method_rules",
     # arrivals (Task A01)
     "hidden_incoming",
+    # samples (Task S01)
+    "sample_collections",
+    "sample_disposals",
+    "sample_baskets",
     "receipt_confirmations",
     "reconciliations",
     "parties",

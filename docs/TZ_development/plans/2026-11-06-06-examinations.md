@@ -68,8 +68,8 @@
 
 **Interfaces:** API-05; header=me, specialist=view.created_by; form only memory, default new sample0.8; REUSE default при наличии доступного.
 
-- [ ] Написать e2e wait→reload→late outcome, delete→create→REUSE, dirty leave,409 preserves values, error no success; assert no draft button/no parts/head/organs/conditional-fit/outgoing dialog, WAITING no conclusion. Keyboard research/Other/disease removal проверяются доступными именами.
-- [ ] Запустить адресные frontend tests/e2e до реализации, получить FAIL.
-- [ ] Реализовать readonly участников/четырёх уровней/accepted volume; номер/клеймо/исследования/проба/итог согласно typed schema; warnings нормы читаемые, no auto outcome; значимые busy/disabled/errors/long/narrow stories. Кнопки wait/complete/update/late outcome строго отдельные API; delete объясняет необратимость, сохранность внешних документов/проб/отчётов, safe cancel initial focus. Журнал WAITING/COMPLETED различим, только реальные IDs.
-- [ ] Сборка Storybook+браузер 4 ширин, полный backend+frontend E regression и AT-07–16/25. Подтверждение приёмки fixture-only явно обозначить в evidence.
-- [ ] Зафиксировать: `feat: connect examination lifecycle and journal screens`.
+- [x] Написать e2e wait→reload→late outcome, delete→create→REUSE, dirty leave,409 preserves values, error no success; assert no draft button/no parts/head/organs/conditional-fit/outgoing dialog, WAITING no conclusion. Keyboard research/Other/disease removal проверяются доступными именами.
+- [x] Запустить адресные frontend tests/e2e до реализации, получить FAIL.
+- [x] Реализовать readonly участников/четырёх уровней/accepted volume; номер/клеймо/исследования/проба/итог согласно typed schema; warnings нормы читаемые, no auto outcome; значимые busy/disabled/errors/long/narrow stories. Кнопки wait/complete/update/late outcome строго отдельные API; delete объясняет необратимость, сохранность внешних документов/проб/отчётов, safe cancel initial focus. Журнал WAITING/COMPLETED различим, только реальные IDs.
+- [x] Сборка Storybook+браузер 4 ширин, полный backend+frontend E regression и AT-07–16/25. Подтверждение приёмки fixture-only явно обозначить в evidence.
+- [x] Зафиксировать: `feat: connect examination lifecycle and journal screens`.

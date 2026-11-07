@@ -704,8 +704,32 @@ export interface paths {
         };
         /** Read Examination */
         get: operations["read_examination_api_v1_examinations__examination_id__get"];
-        put?: never;
+        /**
+         * Update Examination
+         * @description One full edit of the card, allowed only in its creation day (API-05).
+         */
+        put: operations["update_examination_api_v1_examinations__examination_id__put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/examinations/{examination_id}/complete-waiting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Waiting
+         * @description Explicit confirmation of the special-laboratory answer (API-05).
+         */
+        post: operations["complete_waiting_api_v1_examinations__examination_id__complete_waiting_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1506,6 +1530,24 @@ export interface components {
             disease: string;
             /** Othertext */
             otherText?: string | null;
+        };
+        /**
+         * OutcomeWrite
+         * @description The late completion body (API-05): only the outcome block, nothing else.
+         */
+        OutcomeWrite: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "FIT" | "UNFIT";
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "SALE" | "DISPOSAL" | "DESTRUCTION";
+            /** Reason */
+            reason?: string | null;
         };
         /** Page[CheckServiceRuleView] */
         Page_CheckServiceRuleView_: {
@@ -3766,6 +3808,76 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_examination_api_v1_examinations__examination_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                examination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExaminationWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_waiting_api_v1_examinations__examination_id__complete_waiting_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                examination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeWrite"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

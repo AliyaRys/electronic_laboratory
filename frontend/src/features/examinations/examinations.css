@@ -1,0 +1,328 @@
+/* Examination screens (E04): create form, journal, view. */
+
+.vse-exam-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.vse-exam-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 14px;
+  background: var(--app-panel, #fff);
+  min-width: 0;
+}
+
+.vse-exam-block h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.vse-exam-block fieldset {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vse-exam-block legend {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.vse-exam-note {
+  margin: 0;
+  color: #5a5a5a;
+  overflow-wrap: anywhere;
+}
+
+.vse-exam-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vse-exam-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.vse-exam-facts dt {
+  color: #5a5a5a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vse-exam-facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vse-research-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vse-research {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 12px;
+  background: #fbfdfd;
+  min-width: 0;
+}
+
+.vse-research-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vse-research-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.vse-research-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.vse-research input[type="number"],
+.vse-research input[type="text"],
+.vse-research select,
+.vse-research textarea,
+.vse-finding-row input,
+.vse-finding-row select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #cbdadb;
+  border-radius: 9px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.vse-research-add {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px dashed #9cc4c2;
+  border-radius: 9px;
+  background: #fbfefe;
+  color: #0d5358;
+  font-weight: 600;
+}
+
+.vse-research-add:hover:not(:disabled) {
+  background: #eaf6f4;
+  border-style: solid;
+}
+
+.vse-research-remove {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border: 1px solid #cbdadb;
+  border-radius: 8px;
+  background: #fff;
+  color: #4c6870;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.vse-research-remove:hover:not(:disabled) {
+  background: #eaf6f4;
+  color: #0d5358;
+}
+
+.vse-research-notes {
+  margin: 0;
+  padding-left: 18px;
+  color: #5a5a5a;
+}
+
+.vse-research-notes li {
+  margin: 2px 0;
+}
+
+.vse-dose-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vse-dose-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.vse-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.vse-finding-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+.vse-findings .vse-finding-row[hidden] {
+  display: none;
+}
+
+.vse-sample-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.vse-sample-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 560px;
+}
+
+.vse-outcome-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vse-journal-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.vse-journal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vse-journal-row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) minmax(0, 1fr) 150px 110px auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 14px;
+  background: var(--app-panel, #fff);
+  min-width: 0;
+}
+
+.vse-journal-label {
+  color: #5a5a5a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 2px;
+}
+
+.vse-journal-value {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vse-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 99px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.vse-status-badge.waiting {
+  background: #fff7df;
+  color: #8a6415;
+}
+
+/* The neutral completed badge (journal rows / waiting card header): clearly
+   distinct from waiting in color as well as text. */
+.vse-status-badge.completed {
+  background: #e8edf5;
+  color: #2f527a;
+}
+
+.vse-status-badge.completed-fit {
+  background: #e4f4ed;
+  color: #176346;
+}
+
+.vse-status-badge.completed-unfit {
+  background: #fff0f1;
+  color: #9b3440;
+}
+
+.vse-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+@media (max-width: 1024px) {
+  .vse-research-grid,
+  .vse-exam-grid,
+  .vse-sample-inputs,
+  .vse-dose-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vse-journal-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vse-journal-row .vse-journal-value {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  .vse-journal-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vse-exam-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vse-finding-row {
+    grid-template-columns: minmax(0, 1fr) 32px;
+  }
+}

@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { SESSION_EXPIRED_EVENT } from "../shared/api/client";
-import { clearQueryCache } from "../entities/session/context";
+import { clearQueryCache, useSessionLost } from "../entities/session/context";
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -33,6 +33,7 @@ export function AppProviders({
     // handler — clearQueryCache does not emit events (regression F01-r1).
     const clear = (): void => {
       clearQueryCache(queryClient);
+      useSessionLost.getState().markLost();
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, clear);
     return () => {

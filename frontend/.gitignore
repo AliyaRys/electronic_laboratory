@@ -5,3 +5,4 @@ storybook-static
 playwright-report
 test-results
 *.local
+tests/e2e/identity-seed.local.json

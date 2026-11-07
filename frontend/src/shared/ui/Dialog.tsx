@@ -15,15 +15,15 @@ export interface DialogProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   /** Accessible description; render as the visible body text. */
-  description?: string;
-  children?: React.ReactNode;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  danger?: boolean;
-  busy?: boolean;
+  description?: string | undefined;
+  children?: React.ReactNode | undefined;
+  confirmLabel?: string | undefined;
+  cancelLabel?: string | undefined;
+  danger?: boolean | undefined;
+  busy?: boolean | undefined;
   /** Server/validation problem shown inside the dialog (Problem detail). */
-  error?: string;
-  onConfirm?: () => void;
+  error?: string | undefined;
+  onConfirm?: (() => void) | undefined;
 }
 
 export function Dialog({

@@ -56,7 +56,6 @@ function newIdempotencyKey(): string {
  */
 function useQueryClientSafe(): QueryClient | null {
   try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- call order is unconditional; the catch only keeps provider-free tests alive
     return useQueryClient();
   } catch {
     return null;

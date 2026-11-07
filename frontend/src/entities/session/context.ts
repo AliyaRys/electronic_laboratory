@@ -56,6 +56,17 @@ export const useDirtyStore = create<DirtyState>((set) => ({
 export const LOGOUT_EVENT = "vse:logout";
 
 /**
+ * Session-loss flag (FT-ACC-01): a 401 on any closed read marks the session
+ * as lost deterministically — the /me clear→refetch cycle may never expose a
+ * stable error render, so the guard reads this flag instead.
+ */
+export const useSessionLost = create<{ lost: boolean; markLost: () => void; reset: () => void }>((set) => ({
+  lost: false,
+  markLost: () => set({ lost: true }),
+  reset: () => set({ lost: false }),
+}));
+
+/**
  * Shared cleanup used by logout and 401 session expiry (SPEC-05).
  *
  * It never dispatches events itself: the provider reacts to the 401 transport

@@ -40,8 +40,8 @@
   `pytest`: 197 passed, покрытие 94.09%.
 - Frontend на Node 26.13.0 / npm 12.2.2: lint, Prettier, typecheck, 91 unit tests,
   production build и Storybook build — успешно.
-- Identity e2e с реальными PostgreSQL 18.6 и Redis 8.6: 6 passed, включая
-  защищённую мутацию после F5.
+- Полный e2e с реальными PostgreSQL 18.6 и Redis 8.6: 13 passed (catalogs,
+  identity и shell), включая защищённую мутацию после F5.
 - `docker compose config` — успешно.
 - `npm audit --omit=dev`: 0 vulnerabilities. Полный audit показывает 13
   moderate только в инструментах разработки (ESLint/Storybook transitive);

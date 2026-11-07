@@ -109,15 +109,12 @@ test.describe("catalogs", () => {
     await expect(result).toContainText("Применено");
     await shot(page, "bulk-result");
     await page.getByTestId("bulk-result").getByRole("button", { name: "Закрыть" }).click();
-    await expect(page.getByRole("cell", { name: "100.00" })).toBeVisible();
+    const bulkRow = page.locator("tr", { hasText: "bulk-e2e-service" });
+    await expect(bulkRow.getByRole("cell", { name: "100.00" })).toBeVisible();
 
     // Editing lab A to 150 leaves lab B untouched (no inheritance, SC-096):
     // lab B was never in the coverage, so only lab A's row changes below.
-    await page
-      .locator("tr", { hasText: "bulk-e2e-service" })
-      .first()
-      .getByRole("button", { name: "Изменить" })
-      .click();
+    await bulkRow.getByRole("button", { name: "Изменить" }).click();
     await page.getByLabel("Цена, ₽").fill("150.00");
     await page.getByRole("button", { name: "Сохранить" }).click();
     await expect(page.getByRole("cell", { name: "150.00" })).toBeVisible();

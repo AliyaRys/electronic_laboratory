@@ -828,14 +828,23 @@ async def get_operation_state(
 
     The operation id of a bulk command IS the job id: the record is resolved
     through its stored ``result_id`` (DATA-05).
+
+    A job can have TWO command records with the same ``result_id`` (the create
+    record and the retry record), so the resolution must be deterministic:
+    the LATEST finished record wins — the retry record when one exists,
+    otherwise the create record — because the status URL must reflect the
+    job's actual current outcome, not the first accepted command.
     """
     identity, _ = principal
     record = (
         await db.execute(
-            select(CommandRecord).where(
+            select(CommandRecord)
+            .where(
                 CommandRecord.result_id == operation_id,
                 CommandRecord.action.in_(["catalogs.bulk-prices", "catalogs.bulk-prices.retry"]),
             )
+            .order_by(CommandRecord.finished_at.desc().nulls_last(), CommandRecord.created_at.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
     if record is None:

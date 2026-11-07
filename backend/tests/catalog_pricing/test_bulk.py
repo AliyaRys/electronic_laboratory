@@ -26,7 +26,15 @@ import backend.src.modules.catalog_pricing.bulk as bulk
 from backend.src.core.database import async_session
 from backend.src.modules.catalog_pricing.models import BulkPriceJob, BulkPriceTarget, Tariff
 from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine, get_authorizer
-from backend.src.modules.identity.models import DelegationGrant, Laboratory, Territory, User, UserRole, UserScope
+from backend.src.modules.identity.models import (
+    CommandRecord,
+    DelegationGrant,
+    Laboratory,
+    Territory,
+    User,
+    UserRole,
+    UserScope,
+)
 from backend.src.modules.identity.passwords import hash_password
 from backend.src.modules.identity.session import SessionTransport, get_session_transport
 from backend.tests.identity.test_sessions import MemoryRedis, TestClock
@@ -384,6 +392,66 @@ async def test_job_get_and_operations_state(db_session: AsyncSession) -> None:
             assert foreign_job.status_code == 403
             foreign_operation = await stranger_http.get(f"/api/v1/operations/{operation_id}")
             assert foreign_operation.status_code == 403
+
+
+@pytest.mark.integration
+async def test_operations_state_deterministic_after_retry(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GET /operations/:id stays 200 after a retry (no MultipleResultsFound 500).
+
+    The create record and the retry record share the same result_id; the
+    status URL must resolve to the job's current outcome in both phases.
+    """
+    env = await _seed_admin(db_session)
+    async with _client_for(env) as http:
+        lab_a, lab_b = (item.id for item in env.labs[:2])
+        lab_c = env.labs[2].id
+
+        # Phase 1: the create command with one failing target.
+        real_upsert = bulk.upsert_tariff
+
+        async def failing_upsert(db: AsyncSession, intent: bulk.BulkPriceWrite, laboratory_id: uuid.UUID) -> None:
+            if laboratory_id == lab_c:
+                raise RuntimeError("injected laboratory failure")
+            await real_upsert(db, intent, laboratory_id)
+
+        monkeypatch.setattr(bulk, "upsert_tariff", failing_upsert)
+        failed_run = await http.post(
+            "/api/v1/catalogs/bulk-prices",
+            json=_bulk_payload([lab_a, lab_b, lab_c]),
+            headers=_csrf_headers(env),
+        )
+        assert failed_run.status_code == 202, failed_run.text
+        operation_id = failed_run.json()["operation_id"]
+
+        state = await http.get(f"/api/v1/operations/{operation_id}")
+        assert state.status_code == 200, state.text  # one record so far
+        assert state.json()["state"] == "SUCCESS"  # the command itself succeeded (partial job)
+
+        # Phase 2: retry creates a SECOND record with the same result_id.
+        monkeypatch.setattr(bulk, "upsert_tariff", real_upsert)
+        retry = await http.post(f"/api/v1/catalogs/bulk-prices/{operation_id}/retry", headers=_csrf_headers(env))
+        assert retry.status_code == 202, retry.text
+
+        state = await http.get(f"/api/v1/operations/{operation_id}")
+        assert state.status_code == 200, state.text  # was a 500 before the fix
+        command_state = state.json()
+        assert command_state["result_id"] == operation_id
+        detail = await http.get(f"/api/v1/catalogs/bulk-prices/{operation_id}")
+        assert detail.status_code == 200
+        assert detail.json()["state"] == "COMPLETED"  # the retried outcome is reflected
+
+        # The resolution picked the retry record deterministically.
+        records = (
+            (await db_session.execute(select(CommandRecord).where(CommandRecord.result_id == uuid.UUID(operation_id))))
+            .scalars()
+            .all()
+        )
+        assert {record.action for record in records} == {
+            "catalogs.bulk-prices",
+            "catalogs.bulk-prices.retry",
+        }
 
 
 @pytest.mark.integration

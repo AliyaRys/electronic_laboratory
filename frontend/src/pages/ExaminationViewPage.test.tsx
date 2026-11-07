@@ -90,7 +90,9 @@ function card(overrides: Partial<ExaminationView>): ExaminationView {
     direction: null,
     reason: null,
     created_by: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
-    created_at: "2026-11-07T10:00:00Z",
+    // The same-day actions (edit/delete) depend on the card's creation day:
+    // build the stamp from the real clock so the tests stay date-independent.
+    created_at: new Date().toISOString(),
     first_completed_at: null,
     revision: 1,
     ...overrides,

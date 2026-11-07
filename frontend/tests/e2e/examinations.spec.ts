@@ -407,6 +407,51 @@ test.describe("examination lifecycle", () => {
     await shot(page, "delete-409-then-204");
   });
 
+  test("deleting the card makes the party creatable again and REUSE is the default", async ({ page }) => {
+    // The party carries the card until it is deleted; then it is creatable.
+    let partyExamId: string | null = EXAM;
+    let deleted = false;
+    await mockMe(page);
+    await mockCollections(page, [collection]);
+    await page.route("**/api/v1/arrivals?*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+      }),
+    );
+    await page.route(`**/api/v1/arrivals/${PARTY}`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...partyView, examination_id: partyExamId }),
+      }),
+    );
+    await page.route(`**/api/v1/examinations/${EXAM}`, async (route: Route) => {
+      if (route.request().method() !== "DELETE") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(card()) });
+      }
+      deleted = true;
+      partyExamId = null;
+      return route.fulfill({ status: 204, body: "" });
+    });
+    // Step 1: delete the WAITING card through the dialog.
+    await page.goto(`/labs/${LAB}/examinations/${EXAM}`);
+    await expect(page.getByRole("button", { name: "Удалить" })).toBeVisible();
+    await page.getByRole("button", { name: "Удалить" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Удалить" }).click();
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/examinations$`));
+    expect(deleted).toBe(true);
+    // Step 2: the party is creatable again — open the create form.
+    await page.goto(`/labs/${LAB}/arrivals/${PARTY}/examination/new`);
+    await expect(page.getByRole("heading", { name: "Новая запись ВСЭ" })).toBeVisible();
+    // Step 3: REUSE of the available collection is the default sample entry.
+    await expect(page.getByLabel("Использовать имеющуюся пробу")).toBeChecked();
+    await expect(page.getByLabel("Доступная проба")).toHaveValue(COLLECTION);
+    await expect(page.getByLabel("Вес взятой пробы, кг")).toHaveCount(0);
+    await shot(page, "delete-then-reuse-create");
+  });
+
   test("a dirty form asks before leaving and the cancel keeps the work", async ({ page }) => {
     const posts: unknown[] = [];
     await openCreate(page, posts);

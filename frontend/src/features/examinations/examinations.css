@@ -272,6 +272,13 @@
   color: #8a6415;
 }
 
+/* The neutral completed badge (journal rows / waiting card header): clearly
+   distinct from waiting in color as well as text. */
+.vse-status-badge.completed {
+  background: #e8edf5;
+  color: #2f527a;
+}
+
 .vse-status-badge.completed-fit {
   background: #e4f4ed;
   color: #176346;

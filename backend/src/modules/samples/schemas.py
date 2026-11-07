@@ -17,6 +17,7 @@ __all__ = [
     "EditSample",
     "SampleSelection",
     "CollectionView",
+    "BalanceView",
     "DisposalWrite",
     "DisposalView",
 ]
@@ -77,6 +78,17 @@ class CollectionView(BaseModel):
     collected_by: str
     created_at: datetime
     disposal_id: str | None
+    revision: int
+
+
+class BalanceView(BaseModel):
+    """API-06 balance line: the live mass of one laboratory/species basket with
+    its revision (the value the disposal dialog confirms against)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_species_id: str
+    mass_kg: str
     revision: int
 
 

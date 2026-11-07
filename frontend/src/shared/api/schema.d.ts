@@ -608,6 +608,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/samples/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Balances
+         * @description The live balances of one laboratory per species (API-06, sample:read).
+         */
+        get: operations["list_balances_api_v1_samples_balances_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/samples/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collections
+         * @description A page of the available (not disposed) collection facts (sample:read).
+         */
+        get: operations["list_collections_api_v1_samples_collections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/samples/disposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Disposals
+         * @description A page of the immutable disposal history with the period filter; the
+         *     filter never affects the balances read model (API-06).
+         */
+        get: operations["list_disposals_api_v1_samples_disposals_get"];
+        put?: never;
+        /**
+         * Create Disposal
+         * @description Register the atomic full disposal of one laboratory/species balance.
+         *
+         *     SPEC-04: the ``Idempotency-Key`` and the ``If-Match`` of the basket
+         *     revision are both required; the stored mass is always the server-computed
+         *     whole balance, never the value shown in the dialog. VET/HEAD of the own
+         *     scope only (permissions.md: ANALYST/ADMIN refused).
+         */
+        post: operations["create_disposal_api_v1_samples_disposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -635,6 +705,19 @@ export interface components {
             required: boolean;
             /** Items */
             items?: components["schemas"]["ActItem"][];
+        };
+        /**
+         * BalanceView
+         * @description API-06 balance line: the live mass of one laboratory/species basket with
+         *     its revision (the value the disposal dialog confirms against).
+         */
+        BalanceView: {
+            /** Product Species Id */
+            product_species_id: string;
+            /** Mass Kg */
+            mass_kg: string;
+            /** Revision */
+            revision: number;
         };
         /**
          * BulkAccepted
@@ -828,6 +911,42 @@ export interface components {
             items: components["schemas"]["ClassificationItemWrite"][];
         };
         /**
+         * CollectionView
+         * @description API-06 ``CollectionView``: one available physical collection fact.
+         */
+        CollectionView: {
+            /** Id */
+            id: string;
+            /** Party Id */
+            party_id: string;
+            /** Laboratory Id */
+            laboratory_id: string;
+            /** Product Species Id */
+            product_species_id: string;
+            /** Classification Snapshot */
+            classification_snapshot: {
+                [key: string]: unknown;
+            };
+            /**
+             * Collected On
+             * Format: date
+             */
+            collected_on: string;
+            /** Mass Kg */
+            mass_kg: string;
+            /** Collected By */
+            collected_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Disposal Id */
+            disposal_id: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /**
          * CommandStateView
          * @description GET /operations/:id (API-01 minimal CommandState for catalog commands).
          */
@@ -884,6 +1003,64 @@ export interface components {
         CsrfResponse: {
             /** Csrf Token */
             csrf_token: string;
+        };
+        /**
+         * DisposalView
+         * @description API-06 ``DisposalView``: the immutable full-disposal fact.
+         */
+        DisposalView: {
+            /** Id */
+            id: string;
+            /** Laboratory Id */
+            laboratory_id: string;
+            /** Product Species Id */
+            product_species_id: string;
+            /**
+             * Disposed On
+             * Format: date
+             */
+            disposed_on: string;
+            /** Mass Kg */
+            mass_kg: string;
+            /** External Vsd Number */
+            external_vsd_number: string;
+            /** Actor Id */
+            actor_id: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
+        /**
+         * DisposalWrite
+         * @description API-06 ``DisposalWrite``: one full disposal of a laboratory/species
+         *     balance (FT-SMP-06/07). The weight is never editable: ``expected_mass_kg``
+         *     only guards the shown confirmation dialog — the server always recomputes
+         *     the actual mass from every active collection. ``external_vsd_number`` is a
+         *     manually entered fact (the eVSD issued in Mercury); it is never treated as
+         *     an API-confirmed value.
+         */
+        DisposalWrite: {
+            /**
+             * Laboratoryid
+             * Format: uuid
+             */
+            laboratoryId: string;
+            /**
+             * Productspeciesid
+             * Format: uuid
+             */
+            productSpeciesId: string;
+            /**
+             * Disposedon
+             * Format: date
+             */
+            disposedOn: string;
+            /** Externalvsdnumber */
+            externalVsdNumber: string;
+            /** Expectedmasskg */
+            expectedMassKg: string;
         };
         /**
          * DosimetryPair
@@ -1095,6 +1272,28 @@ export interface components {
         Page_ClassificationItemView_: {
             /** Items */
             items: components["schemas"]["ClassificationItemView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[CollectionView] */
+        Page_CollectionView_: {
+            /** Items */
+            items: components["schemas"]["CollectionView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[DisposalView] */
+        Page_DisposalView_: {
+            /** Items */
+            items: components["schemas"]["DisposalView"][];
             /** Total */
             total: number;
             /** Page */
@@ -3096,6 +3295,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommandStateView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_balances_api_v1_samples_balances_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collections_api_v1_samples_collections_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CollectionView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_disposals_api_v1_samples_disposals_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                date_from?: string | null;
+                date_to?: string | null;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DisposalView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_disposal_api_v1_samples_disposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisposalWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisposalView"];
                 };
             };
             /** @description Validation Error */

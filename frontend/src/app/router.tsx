@@ -19,6 +19,7 @@ import { AnalystLabsPage } from "../pages/AnalystLabsPage";
 import { CatalogsPage } from "../pages/CatalogsPage";
 import { ArrivalsPage } from "../pages/ArrivalsPage";
 import { ReconciliationPage } from "../pages/ReconciliationPage";
+import { SampleAccountingPage } from "../pages/SampleAccountingPage";
 
 /** Placeholder until the owning task delivers the real page. */
 function Stub({ title, note }: { title: string; note: string }): React.ReactElement {
@@ -75,7 +76,7 @@ export const routes: RouteObject[] = [
         path: "/labs/:labId/reports/:reportId",
         element: <Stub title="Просмотр отчёта" note="Задача R03." />,
       },
-      { path: "/labs/:labId/reports/samples", element: <Stub title="Учёт проб" note="Задача S03." /> },
+      { path: "/labs/:labId/reports/samples", element: <SampleAccountingPage /> },
       {
         path: "*",
         element: <PlaceholderPage title="Запись не указана" note="Такой маршрут отсутствует." notFound />,

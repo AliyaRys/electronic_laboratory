@@ -1,0 +1,65 @@
+/* Sample accounting screen (S03): balances, collections, disposal history. */
+
+.vse-samples-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 12px;
+}
+
+.vse-samples-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vse-samples-block h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.vse-samples-links {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.vse-samples-note {
+  margin: 4px 0 0;
+  color: #5a5a5a;
+}
+
+.vse-samples-history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 8px;
+}
+
+.vse-samples-dialog-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0 0 12px;
+}
+
+.vse-samples-dialog-facts dt {
+  font-weight: 600;
+}
+
+.vse-samples-dialog-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vse-samples-inert-link {
+  color: inherit;
+}
+
+@media (max-width: 480px) {
+  .vse-samples-dialog-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

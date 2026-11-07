@@ -55,8 +55,8 @@
 
 **Interfaces:** API-02; recovery только объяснение обращения к администратору; маршруты ui-mapping; read-only profile кроме смены известного пароля.
 
-- [ ] Написать e2e `test_four_role_landing`, `test_admin_cannot_open_working_data`, `test_password_reset_keeps_blocked`, `test_no_email_recovery`: assert роль-specific landing; ADMIN journal403; reset blocked остаётся blocked; нет отправки email/токена.
-- [ ] Запустить `npm.cmd --prefix frontend run test:e2e -- identity.spec.ts`, ожидаемый FAIL до страниц.
-- [ ] Подключить существующие backend команды I03; ADMIN поиск/фильтры/история/reset/block/delete с подтверждениями и сохранённым URL-контекстом; ошибки привязать полям, секреты очищать после submit/закрытия. Заблокирован/нет доступа/нет назначенной продукции различать. ANALYST выбирает одну лабораторию, VET/HEAD переходят в рабочий контекст.
-- [ ] Выполнить e2e с настоящим API/PostgreSQL/Redis, все frontend gates; сверить FT-ACC-01–10 и FT-COM-01–10, AT-20/24. Не переносить email-сценарий старого recovery макета поверх ФТ.
-- [ ] Зафиксировать: `feat: connect identity screens to scoped API`.
+- [x] Написать e2e `test_four_role_landing`, `test_admin_cannot_open_working_data`, `test_password_reset_keeps_blocked`, `test_no_email_recovery`: assert роль-specific landing; ADMIN journal403; reset blocked остаётся blocked; нет отправки email/токена.
+- [x] Запустить `npm.cmd --prefix frontend run test:e2e -- identity.spec.ts`, ожидаемый FAIL до страниц.
+- [x] Подключить существующие backend команды I03; ADMIN поиск/фильтры/история/reset/block/delete с подтверждениями и сохранённым URL-контекстом; ошибки привязать полям, секреты очищать после submit/закрытия. Заблокирован/нет доступа/нет назначенной продукции различать. ANALYST выбирает одну лабораторию, VET/HEAD переходят в рабочий контекст.
+- [x] Выполнить e2e с настоящим API/PostgreSQL/Redis, все frontend gates; сверить FT-ACC-01–10 и FT-COM-01–10, AT-20/24. Не переносить email-сценарий старого recovery макета поверх ФТ.
+- [x] Зафиксировать: `feat: connect identity screens to scoped API`.

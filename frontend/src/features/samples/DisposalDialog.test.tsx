@@ -74,10 +74,10 @@ describe("DisposalDialog", () => {
   });
 
   it("a stale dialog 409 shows the problem, requires a fresh confirmation and never resends silently", async () => {
-    const posts: Headers[] = [];
+    const posts: { headers: Headers; body: unknown }[] = [];
     server.use(
-      http.post("*/api/v1/samples/disposals", ({ request }) => {
-        posts.push(request.headers);
+      http.post("*/api/v1/samples/disposals", async ({ request }) => {
+        posts.push({ headers: request.headers, body: await request.json() });
         if (posts.length === 1) {
           return HttpResponse.json(
             {
@@ -104,7 +104,7 @@ describe("DisposalDialog", () => {
       }),
     );
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
+    const view = render(
       <QueryClientProvider client={client}>
         <DisposalDialog
           laboratoryId={LAB}
@@ -128,13 +128,35 @@ describe("DisposalDialog", () => {
     // Nothing was confirmed silently: exactly one POST so far.
     expect(posts.length).toBe(1);
 
-    // The explicit fresh confirmation resends with the same guard semantics.
+    // The balances behind the dialog are refetched: the remainder changed and
+    // the LIVE row (new mass, new revision) reaches the dialog without
+    // closing it.
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <DisposalDialog
+          laboratoryId={LAB}
+          balance={{ product_species_id: SPECIES, mass_kg: "13.4", revision: 2 }}
+          open
+          today="2026-11-06"
+          onClose={() => undefined}
+          onDisposed={() => undefined}
+        />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByTestId("disposal-shown-mass")).toHaveTextContent("13.4 кг");
+
+    // The explicit fresh confirmation rebinds to the NEW remainder: the
+    // If-Match and the guard mass carry the refreshed revision/mass and the
+    // disposal succeeds.
     await userEvent.click(fresh);
     await waitFor(() => {
       expect(posts.length).toBe(2);
-      expect(posts[1]?.get("if-match")).toBe('"1"');
-      expect(posts[1]?.get("idempotency-key")).toBeTruthy();
+      expect(posts[1]?.headers.get("if-match")).toBe('"2"');
+      expect(posts[1]?.headers.get("idempotency-key")).toBeTruthy();
     });
+    const second = posts[1]?.body as Record<string, unknown>;
+    expect(second["expectedMassKg"]).toBe("13.4");
+    expect(second["productSpeciesId"]).toBe(SPECIES);
   });
 
   it("distinct loading/empty/error states of the balances behind the dialog", async () => {

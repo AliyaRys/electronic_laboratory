@@ -50,7 +50,7 @@ function SampleAccountingContent(): React.ReactElement {
   const { labId } = useParams<{ labId: string }>();
   const me = useMe();
   const [params, setParams] = useSearchParams();
-  const [dialogBalance, setDialogBalance] = useState<BalanceView | null>(null);
+  const [dialogSpecies, setDialogSpecies] = useState<string | null>(null);
   const [openCounter, setOpenCounter] = useState(0);
 
   const historyFrom = params.get("from") ?? "";
@@ -148,7 +148,12 @@ function SampleAccountingContent(): React.ReactElement {
             emptyMessage="Положительных остатков нет."
             canDispose={canDispose}
             onDispose={(target) => {
-              setDialogBalance(target);
+              // The dialog binds the SPECIES, not a captured snapshot: the
+              // fresh BalanceView is resolved from the live balances query on
+              // every render, so after a 409 the refreshed remainder (and its
+              // revision) reaches both the readonly fact and the fresh
+              // confirmation's If-Match/expected_mass_kg.
+              setDialogSpecies(target.product_species_id);
               setOpenCounter((counter) => counter + 1);
             }}
           />
@@ -199,18 +204,29 @@ function SampleAccountingContent(): React.ReactElement {
           )}
         </section>
       </div>
-      <DisposalDialog
-        key={dialogBalance === null ? "closed" : `open-${openCounter}`}
-        laboratoryId={labId}
-        balance={dialogBalance}
-        open={dialogBalance !== null}
-        today={new Date().toISOString().slice(0, 10)}
-        onClose={() => {
-          setDialogBalance(null);
-          void balances.refetch();
-        }}
-        onDisposed={() => void balances.refetch()}
-      />
+      {/* The dialog's balance is the LIVE row of the opened species: after a
+          conflict the refreshed query data flows straight into the readonly
+          fact and the fresh confirmation. */}
+      {(() => {
+        const dialogBalance =
+          dialogSpecies !== null
+            ? ((balanceItems ?? []).find((item) => item.product_species_id === dialogSpecies) ?? null)
+            : null;
+        return (
+          <DisposalDialog
+            key={dialogSpecies === null ? "closed" : `open-${openCounter}`}
+            laboratoryId={labId}
+            balance={dialogBalance}
+            open={dialogSpecies !== null}
+            today={new Date().toISOString().slice(0, 10)}
+            onClose={() => {
+              setDialogSpecies(null);
+              void balances.refetch();
+            }}
+            onDisposed={() => void balances.refetch()}
+          />
+        );
+      })()}
     </div>
   );
 }

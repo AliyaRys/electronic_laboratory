@@ -710,7 +710,8 @@ export interface paths {
          */
         put: operations["update_examination_api_v1_examinations__examination_id__put"];
         post?: never;
-        delete?: never;
+        /** Delete Examination */
+        delete: operations["delete_examination_api_v1_examinations__examination_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1136,7 +1137,7 @@ export interface components {
         };
         /**
          * CommandStateView
-         * @description GET /operations/:id (API-01 minimal CommandState for catalog commands).
+         * @description API-01 state of an asynchronous or durability-uncertain command.
          */
         CommandStateView: {
             /**
@@ -4134,6 +4135,44 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ExaminationView"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_examination_api_v1_examinations__examination_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                examination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Remote WAL flush is not yet confirmed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandStateView"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

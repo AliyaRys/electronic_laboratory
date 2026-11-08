@@ -87,7 +87,7 @@ async def update_examination(
     work = uow if isinstance(uow, UnitOfWork) else UnitOfWork(db)
 
     # 1. The card row is the serialization point of the lifecycle.
-    row = await get_examination(db, examination_id, lock=True)
+    row = await get_examination(db, examination_id, lock=True, deleted_conflict=True)
 
     # 2. SPEC-04: the server time is read after the lock wait, never at the
     #    transaction start — a save blocked over midnight belongs to the new day.
@@ -208,7 +208,7 @@ async def complete_waiting(
     db = _session(uow)
     work = uow if isinstance(uow, UnitOfWork) else UnitOfWork(db)
 
-    row = await get_examination(db, examination_id, lock=True)
+    row = await get_examination(db, examination_id, lock=True, deleted_conflict=True)
     now = (clock or Clock()).now()  # after the lock wait (SPEC-04)
 
     recorder = IdempotencyRecorder()

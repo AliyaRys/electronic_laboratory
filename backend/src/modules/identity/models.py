@@ -47,6 +47,7 @@ class CommandStatus(StrEnum):
     IN_PROGRESS = "IN_PROGRESS"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    UNKNOWN = "UNKNOWN"
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
@@ -165,7 +166,7 @@ class CommandRecord(Base):
     __tablename__ = "command_records"
     __table_args__ = (
         UniqueConstraint("actor_id", "action", "context_id", "key", name="uq_command_scope"),
-        CheckConstraint("status IN ('IN_PROGRESS','SUCCESS','FAILED')", name="status_valid"),
+        CheckConstraint("status IN ('IN_PROGRESS','SUCCESS','FAILED','UNKNOWN')", name="status_valid"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()

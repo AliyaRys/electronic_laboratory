@@ -8,19 +8,42 @@ from typing import cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.core.problems import not_found
-from backend.src.modules.examinations.models import Examination, ExaminationSample
+from backend.src.core.problems import ProblemError, not_found
+from backend.src.modules.examinations.models import Examination, ExaminationSample, ExaminationTombstone
 from backend.src.modules.examinations.schemas import ExaminationView
 
-__all__ = ["get_examination", "build_view", "get_view"]
+__all__ = ["get_examination", "get_tombstone", "examination_deleted", "build_view", "get_view"]
 
 
-async def get_examination(db: AsyncSession, examination_id: uuid.UUID, *, lock: bool = False) -> Examination:
+def examination_deleted() -> ProblemError:
+    return ProblemError(
+        status=409,
+        code="EXAMINATION_DELETED",
+        title="Examination deleted",
+        detail="Карточка ВСЭ удалена и не может быть изменена или восстановлена.",
+    )
+
+
+async def get_tombstone(db: AsyncSession, examination_id: uuid.UUID) -> ExaminationTombstone | None:
+    return (
+        await db.execute(select(ExaminationTombstone).where(ExaminationTombstone.examination_id == examination_id))
+    ).scalar_one_or_none()
+
+
+async def get_examination(
+    db: AsyncSession,
+    examination_id: uuid.UUID,
+    *,
+    lock: bool = False,
+    deleted_conflict: bool = False,
+) -> Examination:
     statement = select(Examination).where(Examination.id == examination_id)
     if lock:
         statement = statement.with_for_update()
     row = (await db.execute(statement.execution_options(populate_existing=True))).scalar_one_or_none()
     if row is None:
+        if deleted_conflict and await get_tombstone(db, examination_id) is not None:
+            raise examination_deleted()
         raise not_found("ВСЭ не найдена.")
     return row
 

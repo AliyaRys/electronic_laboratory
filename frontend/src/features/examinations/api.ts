@@ -16,6 +16,7 @@ export type { Problem } from "../../shared/api/problem";
 export type ExaminationView = components["schemas"]["ExaminationView"];
 export type ExaminationWrite = components["schemas"]["ExaminationWrite"];
 export type OutcomeWrite = components["schemas"]["OutcomeWrite"];
+export type CommandStateView = components["schemas"]["CommandStateView"];
 export type SampleSelection = ExaminationWrite["sample"];
 export type ResearchWrite = ExaminationWrite["researches"][number];
 
@@ -117,24 +118,24 @@ export function completeWaiting(
 }
 
 /**
- * The examination delete (E03 route). The backend route is not part of this
- * task's merged contract yet, so the call is typed ``as never`` against the
- * generated client — the honest situation is documented in the evidence file.
+ * The durable examination delete (E03). A 204 means the remote WAL flush is
+ * confirmed; a 202 carries CommandState UNKNOWN and must not be presented as
+ * a completed deletion by the caller.
  */
 export function deleteExamination(
   examinationId: string,
   etag: string,
-): (ctx: { idempotencyKey: string; signal: AbortSignal }) => Promise<RawResult<undefined>> {
+): (ctx: {
+  idempotencyKey: string;
+  signal: AbortSignal;
+}) => Promise<RawResult<CommandStateView | undefined>> {
   return ({ idempotencyKey, signal }) =>
-    apiClient.DELETE(
-      "/api/v1/examinations/{examination_id}" as never,
-      {
-        params: { path: { examination_id: examinationId } } as never,
-        headers: {
-          "if-match": etag,
-          "idempotency-key": idempotencyKey,
-        },
-        signal,
-      } as never,
-    ) as unknown as Promise<RawResult<undefined>>;
+    apiClient.DELETE("/api/v1/examinations/{examination_id}", {
+      params: { path: { examination_id: examinationId } },
+      headers: {
+        "if-match": etag,
+        "idempotency-key": idempotencyKey,
+      },
+      signal,
+    }) as Promise<RawResult<CommandStateView | undefined>>;
 }

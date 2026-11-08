@@ -75,6 +75,32 @@ describe("DeleteDialog", () => {
     await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
   });
 
+  it("a 202 UNKNOWN stays open and is never reported as a completed deletion", async () => {
+    const operationId = "a0000000-0000-4000-8000-000000000001";
+    server.use(
+      http.delete("*/api/v1/examinations/*", () =>
+        HttpResponse.json(
+          {
+            id: operationId,
+            kind: "examination-delete",
+            state: "UNKNOWN",
+            result_id: EXAM.id,
+            problem: "Remote WAL flush is not confirmed.",
+          },
+          { status: 202 },
+        ),
+      ),
+    );
+    const onDeleted = vi.fn();
+    const user = userEvent.setup();
+    renderDialog(onDeleted);
+    await user.click(screen.getByRole("button", { name: "Удалить" }));
+    expect(await screen.findByText("Удаление принято, но ещё не подтверждено.")).toBeTruthy();
+    expect(screen.getByText(new RegExp(operationId))).toBeTruthy();
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
   it("an error keeps the dialog with the problem detail", async () => {
     server.use(
       http.delete("*/api/v1/examinations/*", () =>

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-__all__ = ["UUID", "CommandContext", "ResourceScope", "Page"]
+__all__ = ["UUID", "CommandContext", "ResourceScope", "Page", "CommandStateView"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,3 +42,16 @@ class Page[T](BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class CommandStateView(BaseModel):
+    """API-01 state of an asynchronous or durability-uncertain command."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    kind: str
+    state: str
+    result_id: UUID | None = None
+    problem: str | None = None
+    updated_at: datetime | None = None

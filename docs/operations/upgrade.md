@@ -5,6 +5,11 @@
 1. **Build once, deploy same digest.** Апгрейд выполняется только на digest
    из release manifest нового релиза; пересборка на установке запрещена.
    Один и тот же образ фронтенда используется во всех средах.
+   Механизм: переменные окружения `BACKEND_IMAGE` и `FRONTEND_IMAGE`
+   (закрытый env-file установки) указывают ссылки по digest, например
+   `BACKEND_IMAGE=<registry>/<ns>/vse-backend@sha256:<digest>`;
+   compose-сервисы (`backend`, `migrate`, `frontend`) используют эти
+   значения как `image:`. Pull вытянет ровно эти digest.
 2. **Миграции — one-shot с release lock.** Перед сменой версии API:
    ```sh
    docker compose --profile migrate run --rm migrate
@@ -22,7 +27,10 @@
    (key-ring сессий/снапшотов) добавляются в env-file, а не в образы.
 5. **Порядок.**
    ```sh
-   docker compose pull            # по digest из release manifest
+   # закрытый env-file установки задаёт digest-ссылки из release manifest
+   export BACKEND_IMAGE="<registry>/<ns>/vse-backend@<digest>"
+   export FRONTEND_IMAGE="<registry>/<ns>/vse-frontend@<digest>"
+   docker compose pull            # тянет ровно эти digest
    docker compose --profile migrate run --rm migrate
    docker compose up -d           # backend на новом digest
    ```

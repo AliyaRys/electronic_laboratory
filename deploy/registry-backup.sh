@@ -7,6 +7,11 @@ set -eu
 BACKUP_DIR="${REGISTRY_BACKUP_DIR:-/backup}"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 
+if [ ! -d /var/lib/registry ]; then
+  echo "backup: registry storage /var/lib/registry is not mounted; refusing" >&2
+  exit 3
+fi
+
 mkdir -p "${BACKUP_DIR}/${STAMP}"
 tar -C /var/lib/registry -cf - . | tar -C "${BACKUP_DIR}/${STAMP}" -xf -
 

@@ -232,7 +232,7 @@ jobs:
             },
             "migration_head": "${{ needs.migration-check.outputs.head }}",
             "locks": {
-              "release_lock_id": 14321869187,
+              "release_lock_id": 94914482292051,
               "serialization": "one-shot migrate holds a pg advisory lock; concurrent releases serialize; a failed migration blocks the version switch"
             },
             "licenses": [
@@ -280,9 +280,14 @@ jobs:
 
       - name: Start the own stand by digest
         run: |
-          docker compose -f docker-compose.yml up -d \
-            --no-build --pull never || true
+          BACKEND_IMAGE="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend@${BACKEND_DIGEST}" \
+          FRONTEND_IMAGE="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend@${FRONTEND_DIGEST}" \
+          docker compose -f docker-compose.yml up -d --no-build --pull never
         env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+          BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.build.outputs.frontend_digest }}
           SECRET_KEY: own-stand-smoke-secret
           # Valid keyring JSON (32-byte key, base64url) — the smoke stand must start.
           REPORT_PREVIEW_KEYS: '{"active":"smoke","keys":[{"id":"smoke","secret":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","activated_at":"2026-01-01T00:00:00+00:00"}]}'
@@ -290,6 +295,11 @@ jobs:
       - name: Run the one-shot migration (release lock held)
         run: docker compose --profile migrate run --rm migrate
         env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+          BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.build.outputs.frontend_digest }}
+          BACKEND_IMAGE: ${{ secrets.REGISTRY_HOST }}/${{ secrets.REGISTRY_NAMESPACE }}/vse-backend@${{ needs.build.outputs.backend_digest }}
           SECRET_KEY: own-stand-smoke-secret
           # Valid keyring JSON (32-byte key, base64url) — the smoke stand must start.
           REPORT_PREVIEW_KEYS: '{"active":"smoke","keys":[{"id":"smoke","secret":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","activated_at":"2026-01-01T00:00:00+00:00"}]}'
@@ -305,13 +315,29 @@ jobs:
           curl -sf http://127.0.0.1:8080/api/v1/health/ready > /dev/null
           curl -sf http://127.0.0.1:8080/ > /dev/null   # SPA single origin
 
-  # 6. Production deploy — ONLY on explicit instruction (environment approval).
-  #    No auto merge, no auto deploy: this job waits for the operator's
-  #    environment approval for the named installation.
+  # 6. Runner verification: the self-hosted runner's image digest must match
+  #    the expected value BEFORE any production step may proceed (ADR-024).
+  runner-verify:
+    name: Runner image digest verification
+    runs-on: [self-hosted, vse-runner]
+    steps:
+      - name: Verify the runner image is the expected verified digest
+        run: |
+          if [ "${{ secrets.RUNNER_IMAGE_DIGEST }}" != "${{ secrets.RUNNER_IMAGE_EXPECTED_DIGEST }}" ]; then
+            echo "runner image digest mismatch: refusing to release" >&2
+            exit 1
+          fi
+          echo "runner image verified: ${RUNNER_IMAGE_DIGEST}"
+        env:
+          RUNNER_IMAGE_DIGEST: ${{ secrets.RUNNER_IMAGE_DIGEST }}
+
+  # 7. Production deploy — ONLY on explicit instruction (environment approval).
+  #    It targets the DEDICATED self-hosted runner (never ubuntu-latest and
+  #    never the shared build runner) and is serialized per installation.
   production:
     name: Production deploy (explicit approval only)
-    needs: [smoke]
-    runs-on: ubuntu-latest
+    needs: [smoke, runner-verify]
+    runs-on: [self-hosted, vse-production]
     environment: production-${{ inputs.installation }}
     steps:
       - name: Deploy by digest to the approved installation

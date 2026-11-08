@@ -71,7 +71,7 @@
   },
   "migration_head": "b7d3f5c9a1e2",
   "locks": {
-    "release_lock_id": 14321869187,
+    "release_lock_id": 94914482292051,
     "serialization": "one-shot migrate holds a pg advisory lock; concurrent releases serialize; a failed migration blocks the version switch"
   },
   "licenses": [

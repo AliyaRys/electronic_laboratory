@@ -24,7 +24,10 @@ import os
 import sys
 
 # Stable id for this installation's release lock ("VSE" release lock).
-RELEASE_LOCK_ID = 0x00005653_00004553
+# THIS IS THE SINGLE SOURCE OF TRUTH for the id: release.yml (manifest job)
+# and docs/operations/release.md must record the SAME number, verified by
+# backend/tests/operations/test_configuration.py so they cannot drift.
+RELEASE_LOCK_ID = 0x00005653_00004553  # == 94914482292051
 
 
 def _dsn() -> str:

@@ -19,7 +19,12 @@
    non-root UID 10001, 200 GiB.
 2. **Pull по digest** — из release manifest берутся `image_digests`:
    `docker pull <registry>/vse-backend@<digest>`,
-   `docker pull <registry>/vse-frontend@<digest>`. **Пересборки нет и быть
+   `docker pull <registry>/vse-frontend@<digest>`. Для compose-стека
+   значения задаются в закрытом env-file установки как
+   `BACKEND_IMAGE=<registry>/<ns>/vse-backend@<digest>` и
+   `FRONTEND_IMAGE=<registry>/<ns>/vse-frontend@<digest>` — сервисы
+   `backend`, `migrate` и `frontend` используют их как `image:`.
+   **Пересборки нет и быть
    не должно**: тот же digest работает в любой среде (переносимость образов
    между стендами без rebuild).
 3. **Env-file** — скопировать шаблон в закрытый env-file, заполнить. Пустые

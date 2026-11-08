@@ -32,10 +32,12 @@ def _read(*parts: str) -> str:
     return (REPO_ROOT.joinpath(*parts)).read_text(encoding="utf-8")
 
 
-def _compose_config(*files: str) -> dict:
+def _compose_config(*files: str, extra_env: dict[str, str] | None = None) -> dict:
     """Render the merged Compose model for the given files."""
     env = dict(os.environ)
     env.update(_PLACEHOLDER_ENV)
+    if extra_env:
+        env.update(extra_env)
     argv = ["docker", "compose"]
     for f in files:
         argv += ["-f", str(REPO_ROOT / f)]
@@ -119,6 +121,35 @@ def test_migrate_is_one_shot_profile_service():
     command_text = " ".join(command) if isinstance(command, list) else str(command)
     assert "alembic" in command_text
     assert "migrate_lock" in command_text, "one-shot migrate must hold the release advisory lock"
+
+
+# --- Digest-deployable services: image fields on backend/migrate/frontend ------
+
+
+def test_compose_services_carry_digest_deployable_image_fields():
+    """Digest deploy (findings round 1): services carry image: so smoke and
+    `docker compose pull` work against pushed digests, not only build:."""
+    env = dict(os.environ)
+    env.update(_PLACEHOLDER_ENV)
+    env["BACKEND_IMAGE"] = "registry.example.invalid/vse/vse-backend@sha256:" + "a" * 64
+    env["FRONTEND_IMAGE"] = "registry.example.invalid/vse/vse-frontend@sha256:" + "b" * 64
+    model = _compose_config("docker-compose.yml", extra_env=env)
+    assert model["services"]["backend"]["image"] == env["BACKEND_IMAGE"]
+    assert model["services"]["migrate"]["image"] == env["BACKEND_IMAGE"]
+    assert model["services"]["frontend"]["image"] == env["FRONTEND_IMAGE"]
+    # local/dev default tags exist so source builds still work
+    text = _read("docker-compose.yml")
+    assert "${BACKEND_IMAGE:-vse-backend:local}" in text
+    assert "${FRONTEND_IMAGE:-vse-frontend:local}" in text
+
+
+def test_release_smoke_runs_loud_without_build_masking():
+    text = _read(".gitverse", "workflows", "release.yml")
+    assert "--no-build --pull never" in text
+    assert "BACKEND_IMAGE" in text and "FRONTEND_IMAGE" in text
+    # the smoke `up` step must fail loudly — no `|| true` masking in it
+    up_block = text.split("Start the own stand by digest")[1].split("- name:")[0]
+    assert "|| true" not in up_block
 
 
 # --- Development stack: docker-compose.dev.yml ----------------------------------
@@ -215,6 +246,35 @@ def test_registry_compose_auth_tls_network_nonroot():
     assert "registry:3.1.2@sha256:38907510915c3f1604c7e83d6ab602ab3020d092f73bdaed8696773693ff768c" in text
 
 
+def test_registry_front_network_is_publishable():
+    """Finding 2: published traffic must reach the TLS front — nginx sits on
+    the non-internal front network AND the internal network; the registry
+    daemon itself stays on the internal network only."""
+    text = _read("deploy", "registry-compose.yml")
+    networks_section = text.split("\nnetworks:\n")[1]
+    assert "registry_front" in networks_section
+    assert "registry_internal:\n    internal: true" in networks_section
+    # nginx attaches to both networks
+    nginx_block = text.split("  nginx:")[1].split("  registry-tools:")[0]
+    assert "registry_front" in nginx_block and "registry_internal" in nginx_block
+    # the registry daemon itself only on the internal network
+    registry_block = text.split("  registry:")[1].split("  nginx:")[0]
+    assert "registry_front" not in registry_block
+
+
+def test_registry_one_shots_carry_baked_scripts():
+    """Finding 3: retention/backup entrypoints exist as baked-in scripts in
+    a small tools image — no references to unmounted paths."""
+    text = _read("deploy", "registry-compose.yml")
+    assert "registry-tools.Dockerfile" in text
+    tools = _read("deploy", "registry-tools.Dockerfile")
+    for script in ("registry-retention.sh", "registry-backup.sh"):
+        assert f"COPY {script}" in tools, script
+        assert f"/usr/local/bin/{script}" in text, script
+        # the script file must exist in deploy/
+        assert (REPO_ROOT / "deploy" / script).exists(), script
+
+
 def test_registry_compose_no_public_registry_ports():
     """The registry itself is never published; only the TLS nginx on loopback."""
     rtext = _read("deploy", "registry-compose.yml")
@@ -231,6 +291,48 @@ def test_registry_retention_and_backup_defined():
     assert backup.strip(), "daily backup script must not be empty"
     rtext = _read("deploy", "registry-compose.yml")
     assert "backup" in rtext
+
+
+def test_retention_refuses_destructive_run_without_release_log():
+    """Finding 5: without the operator release log the script must refuse to
+    delete and exit loudly — never guess the newest releases."""
+    text = _read("deploy", "registry-retention.sh")
+    assert "RETENTION REFUSED" in text
+    assert "exit 3" in text
+    assert 'newest="$tags"' not in text, "no unsorted fallback ordering"
+    assert "released=$(ls" not in text, "dead code removed"
+    assert 'done < "$order_file"' in text, "deletion order comes only from the log"
+
+
+def test_release_lock_id_single_source_of_truth():
+    """Finding 4: the advisory-lock id in migrate_lock.py, release.yml and
+    docs/operations/release.md must be the SAME number — verified, not
+    copied three times unverified."""
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT))
+    import deploy.migrate_lock as migrate_lock  # noqa: PLC0415
+
+    lock_id = str(migrate_lock.RELEASE_LOCK_ID)
+    release = _read(".gitverse", "workflows", "release.yml")
+    doc = _read("docs", "operations", "release.md")
+    assert lock_id in release, f"release.yml must record {lock_id}"
+    assert lock_id in doc, f"release.md example must record {lock_id}"
+    # the stale id from the first implementation must be gone everywhere
+    for stale in ("14321869187", "94917581449779"):
+        assert stale not in release and stale not in doc, stale
+
+
+def test_production_runs_on_dedicated_selfhosted_runner():
+    """Finding 6: production and runner verification target the dedicated
+    self-hosted runners; the digest check gates production."""
+    text = _read(".gitverse", "workflows", "release.yml")
+    prod_block = text.split("  production:")[1]
+    assert "self-hosted" in prod_block and "vse-production" in prod_block
+    assert "ubuntu-latest" not in prod_block
+    assert "needs: [smoke, runner-verify]" in prod_block
+    verify_block = text.split("  runner-verify:")[1].split("  production:")[0]
+    assert "self-hosted" in verify_block and "RUNNER_IMAGE_DIGEST" in verify_block
 
 
 # --- Release manifest schema ------------------------------------------------------

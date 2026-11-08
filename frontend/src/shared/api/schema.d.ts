@@ -736,6 +736,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/arrivals/{party_id}/conclusion/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Conclusion
+         * @description The current conclusion view-model of one party (API-07, conclusion:preview).
+         */
+        get: operations["preview_conclusion_api_v1_arrivals__party_id__conclusion_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/arrivals/{party_id}/conclusion.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Conclusion
+         * @description The controlled PDF of the same live conclusion view-model (API-07).
+         *
+         *     The view-model is rebuilt (and re-authorized) on every call exactly as for
+         *     the preview — print never bypasses the fresh access check. Rendered bytes
+         *     are never cached (``no-store``) and no «выдано/подписано» record is
+         *     written by a read. An unusable template/engine is an honest 503 Problem
+         *     without a file.
+         */
+        get: operations["download_conclusion_api_v1_arrivals__party_id__conclusion_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/operational": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operational */
+        get: operations["operational_api_v1_reports_operational_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/5vet/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview */
+        post: operations["preview_api_v1_reports_5vet_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/5vet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save */
+        post: operations["save_api_v1_reports_5vet_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/5vet/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report */
+        get: operations["get_report_api_v1_reports_5vet__report_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_api_v1_reports_5vet__report_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1051,6 +1166,35 @@ export interface components {
             actual?: string | number | null;
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * ConclusionView
+         * @description One derived view of the currently valid basis (API-07).
+         *
+         *     ``fields`` carries every manifest space of INPUT-04: the real requisites
+         *     plus the always-blank manual ``signature`` space. The view is derived per
+         *     request from live state — it is never stored and never cached.
+         */
+        ConclusionView: {
+            /**
+             * Basis Kind
+             * @enum {string}
+             */
+            basis_kind: "LOCAL" | "PREVIOUS";
+            /** Basis Id */
+            basis_id: string;
+            /** Fields */
+            fields: {
+                [key: string]: string | null;
+            };
+            /** Form Id */
+            form_id: string;
+            /** Form Version */
+            form_version: string;
+            /** Official */
+            official: boolean;
+            /** Warnings */
+            warnings: string[];
         };
         /** ConfirmationSummary */
         ConfirmationSummary: {
@@ -1532,6 +1676,22 @@ export interface components {
             otherText?: string | null;
         };
         /**
+         * OperationalView
+         * @description API-08 ``GET /reports/operational``: the operational indicators of one
+         *     laboratory over a period plus the current live sample balances.
+         */
+        OperationalView: {
+            /** Processed Parties */
+            processed_parties: number;
+            /** Product Identifications */
+            product_identifications: number;
+            /** Transport Inspections */
+            transport_inspections: number;
+            /** Current Sample Balances */
+            current_sample_balances: components["schemas"]["BalanceView"][];
+            period: components["schemas"]["ReportPeriod"];
+        };
+        /**
          * OutcomeWrite
          * @description The late completion body (API-05): only the outcome block, nothing else.
          */
@@ -1898,6 +2058,107 @@ export interface components {
             actNumber?: string | null;
         };
         /**
+         * ReportCodesWrite
+         * @description Seven required textual codes; leading zeroes are meaningful.
+         */
+        ReportCodesWrite: {
+            /** Okud */
+            okud: string;
+            /** Okpo */
+            okpo: string;
+            /** Okved */
+            okved: string;
+            /** Oktmo */
+            oktmo: string;
+            /** Okogu */
+            okogu: string;
+            /** Okopf */
+            okopf: string;
+            /** Okfs */
+            okfs: string;
+        };
+        /**
+         * ReportPeriod
+         * @description The reporting window as it was requested (API-08 ``period``).
+         */
+        ReportPeriod: {
+            /**
+             * Date From
+             * Format: date-time
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date-time
+             */
+            date_to: string;
+        };
+        /**
+         * ReportPreviewParams
+         * @description Server-scoped parameters of an immutable 5-vet preview.
+         */
+        ReportPreviewParams: {
+            /**
+             * Report Type
+             * @default 5VET_SECTION_III
+             * @constant
+             */
+            report_type: "5VET_SECTION_III";
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /** Year */
+            year: number;
+            /**
+             * Half
+             * @enum {integer}
+             */
+            half: 1 | 2;
+        };
+        /** ReportSnapshotView */
+        ReportSnapshotView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Report Type */
+            report_type: string;
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /** Year */
+            year: number;
+            /** Half */
+            half: number;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Codes */
+            codes: {
+                [key: string]: string;
+            };
+            /** Source Count */
+            source_count: number;
+            /**
+             * Saved At
+             * Format: date-time
+             */
+            saved_at: string;
+            /**
+             * Saved By
+             * Format: uuid
+             */
+            saved_by: string;
+            /** Rev */
+            rev: number;
+        };
+        /**
          * ResearchValue
          * @description One typed research result (API-05); absence of ``value`` is allowed.
          */
@@ -1959,6 +2220,11 @@ export interface components {
              */
             collectionId: string;
         };
+        /** SaveReportWrite */
+        SaveReportWrite: {
+            preview: components["schemas"]["SignedPreview"];
+            codes: components["schemas"]["ReportCodesWrite"];
+        };
         /**
          * ScopeInput
          * @description One laboratory assignment; a missing product means the whole laboratory.
@@ -1990,6 +2256,22 @@ export interface components {
             code: string;
             /** Performed */
             performed: boolean;
+        };
+        /**
+         * SignedPreview
+         * @description The exact compact payload shown by the UI and its session-bound MAC.
+         */
+        SignedPreview: {
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Key Id */
+            key_id: string;
+            /** Signature */
+            signature: string;
+            /** Byte Size */
+            byte_size: number;
         };
         /**
          * SourceRef
@@ -3887,6 +4169,227 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ExaminationView"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_conclusion_api_v1_arrivals__party_id__conclusion_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConclusionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_conclusion_api_v1_arrivals__party_id__conclusion_pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operational_api_v1_reports_operational_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                date_from: string;
+                date_to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationalView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_v1_reports_5vet_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportPreviewParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_api_v1_reports_5vet_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveReportWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSnapshotView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_api_v1_reports_5vet__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSnapshotView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_v1_reports_5vet__report_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -48,6 +48,7 @@ services:
       DB_NAME: ${DB_NAME:-vse}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      REPORT_PREVIEW_KEYS: ${REPORT_PREVIEW_KEYS:?REPORT_PREVIEW_KEYS is required}
     depends_on:
       postgres:
         condition: service_healthy

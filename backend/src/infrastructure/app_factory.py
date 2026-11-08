@@ -7,6 +7,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 
+from backend.src.core.keyring import PreviewKeyring
 from backend.src.core.problems import register_exception_handlers
 from backend.src.infrastructure.config.settings import Settings, get_settings
 from backend.src.infrastructure.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
@@ -34,6 +35,9 @@ def lifespan_factory(settings: Settings) -> Callable[[FastAPI], AbstractAsyncCon
 def create_application(router: APIRouter, settings: Settings | None = None) -> FastAPI:
     """Create the configured FastAPI application."""
     settings = settings or get_settings()
+    # Validate the shared report signing keyring before accepting production
+    # traffic; development/test derive a deterministic local-only fallback.
+    PreviewKeyring.from_settings(settings)
 
     application = FastAPI(
         title=settings.app_name,

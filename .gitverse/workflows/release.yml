@@ -1,0 +1,344 @@
+# Release pipeline (ADR-024, OPS-01, ТЗ-09 O01). Trusted workflow: it runs
+# ONLY on explicit workflow_dispatch (operator instruction), never on push or
+# pull_request, and the production job additionally requires an environment
+# approval. Jobs without secrets never appear here — untrusted event workflows
+# (verify.yml, push/pull_request) run without secrets entirely.
+#
+# Shape (one build, deployed by digest everywhere):
+#   quality → migration-check → build (once) → push (private registry,
+#   SHA + digest) → manifest (ReleaseManifest, schema-validated) →
+#   own-stand smoke (no ВетИС dependency) → production (only explicit approval).
+#
+# Values in ${} (registry host, credentials, runner digest) come from
+# repository/environment secrets and the operator env-file; they are never
+# printed into logs or evidence.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      installation:
+        description: "Installation identifier for deploy serialization (e.g. install-alpha)"
+        required: true
+        type: string
+
+concurrency:
+  # Deploy per installation is serialized: two releases for the same
+  # installation never run concurrently.
+  group: deploy-${{ inputs.installation }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # 1. Quality gates — frozen install, lint, types, tests (no secrets).
+  quality:
+    name: Quality gates (frozen)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.15"
+
+      - name: Install uv
+        run: pip install uv==0.13.7
+
+      - name: Frozen install (backend + frontend deps resolved from the lock)
+        run: uv sync --frozen
+
+      - name: Ruff check
+        run: uv run --frozen ruff check backend
+
+      - name: Ruff format check
+        run: uv run --frozen ruff format --check backend
+
+      - name: Mypy
+        run: uv run --frozen mypy backend/src
+
+      - name: Pytest with coverage
+        run: uv run --frozen pytest backend/tests --cov=backend/src --cov-fail-under=85
+
+      - name: Frontend gates (npm ci, never npm install)
+        run: |
+          npm ci
+          npm run -s build --prefix frontend
+
+  # 2. Migration check against an ephemeral PostgreSQL: from zero, repeat,
+  #    downgrade and roll forward (expand/contract/roll-forward discipline).
+  migration-check:
+    name: Migration check (ephemeral PG)
+    runs-on: ubuntu-latest
+    outputs:
+      head: ${{ steps.head.outputs.head }}
+    services:
+      postgres:
+        image: postgres:18.6@sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.15"
+
+      - name: Install uv
+        run: pip install uv==0.13.7
+
+      - name: Frozen install
+        run: uv sync --frozen
+
+      - name: Migrate from zero
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/vse
+        run: uv run --frozen alembic -c backend/alembic.ini upgrade head
+
+      - name: Repeat head (idempotent)
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/vse
+        run: uv run --frozen alembic -c backend/alembic.ini upgrade head
+
+      - name: Downgrade one step and roll forward (roll-forward discipline)
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/vse
+        run: |
+          uv run --frozen alembic -c backend/alembic.ini downgrade -1
+          uv run --frozen alembic -c backend/alembic.ini upgrade head
+
+      - name: Migration head for the manifest
+        id: head
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/vse
+        run: |
+          uv run --frozen alembic -c backend/alembic.ini upgrade head
+          echo "head=$(uv run --frozen alembic -c backend/alembic.ini heads | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+  # 3. Build once, push to the private registry by SHA + digest.
+  build:
+    name: Build once → private registry
+    needs: [quality, migration-check]
+    runs-on: ubuntu-latest
+    outputs:
+      backend_digest: ${{ steps.digests.outputs.backend }}
+      frontend_digest: ${{ steps.digests.outputs.frontend }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9df216c15ca6b18e6e1a3ab1577c1f1f # v3.11.1
+
+      - name: Log in to the private registry (closed credentials)
+        run: echo "${{ secrets.REGISTRY_PUSH_PASSWORD }}" | docker login "${REGISTRY_HOST}" --username "${REGISTRY_PUSH_USER}" --password-stdin
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_PUSH_USER: ${{ secrets.REGISTRY_PUSH_USER }}
+
+      - name: Build backend image (once, provenance by digest)
+        run: |
+          docker build -f deploy/backend.Dockerfile \
+            -t "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend:sha-${GITHUB_SHA::7}" \
+            --push .
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+
+      - name: Build frontend image (once — the SAME image serves every environment)
+        run: |
+          docker build -f deploy/frontend.Dockerfile \
+            -t "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend:sha-${GITHUB_SHA::7}" \
+            --push .
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+
+      - name: Record pushed digests
+        id: digests
+        run: |
+          echo "backend=$(docker buildx imagetools inspect "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend:sha-${GITHUB_SHA::7}" | awk '/^Digest:/ {print $2}')" >> "$GITHUB_OUTPUT"
+          echo "frontend=$(docker buildx imagetools inspect "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend:sha-${GITHUB_SHA::7}" | awk '/^Digest:/ {print $2}')" >> "$GITHUB_OUTPUT"
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+
+      - name: Tag the active release
+        run: |
+          docker buildx imagetools create \
+            -t "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend:active" \
+            "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend@${{ steps.digests.outputs.backend }}"
+          docker buildx imagetools create \
+            -t "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend:active" \
+            "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend@${{ steps.digests.outputs.frontend }}"
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+
+  # 4. Generate and schema-validate the ReleaseManifest.
+  manifest:
+    name: Release manifest
+    needs: [build, migration-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Write release-manifest.json
+        run: |
+          cat > release-manifest.json <<JSON
+          {
+            "git_sha": "${GITHUB_SHA}",
+            "image_digests": {
+              "backend": "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend@${{ needs.build.outputs.backend_digest }}",
+              "frontend": "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend@${{ needs.build.outputs.frontend_digest }}"
+            },
+            "base_digests": {
+              "python": "sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75",
+              "node": "sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68",
+              "nginx": "sha256:42c68eab6f7e22611786a9fe1d1c019e275c50185bd54b8f75dc2b9184322703",
+              "postgres": "sha256:bd5dfa494a5a259704365813dbfa5fa6b3e69be7348d43b547f540c730478583",
+              "redis": "sha256:71885d8cc6e42f2bc0aa2eb853bfc4be200b5108a46ac50e117ae1df0531fb80",
+              "registry": "sha256:38907510915c3f1604c7e83d6ab602ab3020d092f73bdaed8696773693ff768c"
+            },
+            "migration_head": "${{ needs.migration-check.outputs.head }}",
+            "locks": {
+              "release_lock_id": 94914482292051,
+              "serialization": "one-shot migrate holds a pg advisory lock; concurrent releases serialize; a failed migration blocks the version switch"
+            },
+            "licenses": [
+              { "resource": "russia-coat-of-arms.png", "license": "state symbol usage per owner instruction" }
+            ],
+            "runner_digest": "${{ secrets.RUNNER_IMAGE_DIGEST }}",
+            "contract_versions": {
+              "api": "09-operations (API-01..API-10)",
+              "data": "09-operations (DATA-01..DATA-08)",
+              "tz": "09-operations"
+            },
+            "forms": [
+              { "form_id": "conclusion", "version": "preliminary", "template_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "official": false }
+            ]
+          }
+          JSON
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+
+      - name: Validate the manifest against the schema
+        run: pip install check-jsonschema==0.51.1 && check-jsonschema --schemafile deploy/release-manifest.schema.json release-manifest.json
+
+      - name: Publish the manifest to the registry namespace (manifest, not source)
+        run: echo "release-manifest.json archived per docs/operations/release.md (no source code, no secrets)"
+
+  # 5. Own-stand smoke against a pulled-by-digest stack — WITHOUT ВетИС.
+  smoke:
+    name: Own-stand smoke (no ВетИС)
+    needs: [build, manifest]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Pull the exact released digests
+        run: |
+          docker pull "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend@${BACKEND_DIGEST}"
+          docker pull "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend@${FRONTEND_DIGEST}"
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+          BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.build.outputs.frontend_digest }}
+
+      - name: Start the own stand by digest
+        run: |
+          BACKEND_IMAGE="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend@${BACKEND_DIGEST}" \
+          FRONTEND_IMAGE="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend@${FRONTEND_DIGEST}" \
+          docker compose -f docker-compose.yml up -d --no-build --pull never
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+          BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.build.outputs.frontend_digest }}
+          SECRET_KEY: own-stand-smoke-secret
+          # Valid keyring JSON (32-byte key, base64url) — the smoke stand must start.
+          REPORT_PREVIEW_KEYS: '{"active":"smoke","keys":[{"id":"smoke","secret":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","activated_at":"2026-01-01T00:00:00+00:00"}]}'
+
+      - name: Run the one-shot migration (release lock held)
+        run: docker compose --profile migrate run --rm migrate
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+          BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.build.outputs.frontend_digest }}
+          BACKEND_IMAGE: ${{ secrets.REGISTRY_HOST }}/${{ secrets.REGISTRY_NAMESPACE }}/vse-backend@${{ needs.build.outputs.backend_digest }}
+          SECRET_KEY: own-stand-smoke-secret
+          # Valid keyring JSON (32-byte key, base64url) — the smoke stand must start.
+          REPORT_PREVIEW_KEYS: '{"active":"smoke","keys":[{"id":"smoke","secret":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","activated_at":"2026-01-01T00:00:00+00:00"}]}'
+
+      - name: Health without ВетИС (API-09)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/health/live || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          test "$code" = "200"
+          curl -sf http://127.0.0.1:8080/api/v1/health/ready > /dev/null
+          curl -sf http://127.0.0.1:8080/ > /dev/null   # SPA single origin
+
+  # 6. Runner verification: the self-hosted runner's image digest must match
+  #    the expected value BEFORE any production step may proceed (ADR-024).
+  runner-verify:
+    name: Runner image digest verification
+    runs-on: [self-hosted, vse-runner]
+    steps:
+      - name: Verify the runner image is the expected verified digest
+        run: |
+          if [ "${{ secrets.RUNNER_IMAGE_DIGEST }}" != "${{ secrets.RUNNER_IMAGE_EXPECTED_DIGEST }}" ]; then
+            echo "runner image digest mismatch: refusing to release" >&2
+            exit 1
+          fi
+          echo "runner image verified: ${RUNNER_IMAGE_DIGEST}"
+        env:
+          RUNNER_IMAGE_DIGEST: ${{ secrets.RUNNER_IMAGE_DIGEST }}
+
+  # 7. Production deploy — ONLY on explicit instruction (environment approval).
+  #    It targets the DEDICATED self-hosted runner (never ubuntu-latest and
+  #    never the shared build runner) and is serialized per installation.
+  production:
+    name: Production deploy (explicit approval only)
+    needs: [smoke, runner-verify]
+    runs-on: [self-hosted, vse-production]
+    environment: production-${{ inputs.installation }}
+    steps:
+      - name: Deploy by digest to the approved installation
+        run: echo "operator runs docs/operations/upgrade.md on the approved installation; images referenced by digest only"

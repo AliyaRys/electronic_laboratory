@@ -35,6 +35,8 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY backend ./backend
 COPY pyproject.toml uv.lock .python-version ./
+# The one-shot migration wrapper (release advisory lock).
+COPY deploy/migrate_lock.py ./deploy/migrate_lock.py
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1

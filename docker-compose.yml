@@ -36,6 +36,11 @@ services:
     restart: unless-stopped
 
   backend:
+    # Digest-deployable: an installation sets BACKEND_IMAGE (and
+    # FRONTEND_IMAGE) to the release manifest digest ref, e.g.
+    #   BACKEND_IMAGE=<registry>/<ns>/vse-backend@sha256:<digest>
+    # The default tag is used only for local/dev builds from source.
+    image: ${BACKEND_IMAGE:-vse-backend:local}
     build:
       context: .
       dockerfile: deploy/backend.Dockerfile
@@ -68,6 +73,7 @@ services:
   # One-shot migration service, run before the new API version (ADR-003):
   #   docker compose --profile migrate run --rm migrate
   migrate:
+    image: ${BACKEND_IMAGE:-vse-backend:local}
     build:
       context: .
       dockerfile: deploy/backend.Dockerfile
@@ -78,12 +84,24 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_NAME: ${DB_NAME:-vse}
-    command: ["python", "-m", "alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    command:
+      [
+        "python",
+        "deploy/migrate_lock.py",
+        "python",
+        "-m",
+        "alembic",
+        "-c",
+        "backend/alembic.ini",
+        "upgrade",
+        "head",
+      ]
     depends_on:
       postgres:
         condition: service_healthy
 
   frontend:
+    image: ${FRONTEND_IMAGE:-vse-frontend:local}
     build:
       context: .
       dockerfile: deploy/frontend.Dockerfile

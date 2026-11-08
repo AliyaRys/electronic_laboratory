@@ -1,0 +1,112 @@
+# Private OCI registry stack (ADR-024, OPS-01): CNCF Distribution 3.1.2 behind
+# a TLS nginx with htpasswd authentication, on a dedicated internal network.
+#
+# - The registry daemon itself publishes NOTHING: its native port 5000 is
+#   reachable only through the nginx sidecar, which listens on host loopback
+#   127.0.0.1:5443 (TLS 1.2/1.3 only).
+# - The registry runs as non-root UID 10001 with a named volume so the storage
+#   stays writable by that UID after restarts.
+# - Credentials live in closed host files (htpasswd, TLS key/cert, the
+#   operator env-file) — never in Git, images or logs.
+#   Before first start, on the installation host:
+#     docker run --rm --entrypoint htpasswd httpd:2.4 -Bbn <user> <password> \
+#       > /srv/vse/registry/auth/htpasswd   # chmod 600, owner 10001
+# - Retention (active + 5 previous releases) and the daily backup are
+#   one-shot services below; the daily cadence is scheduled by the host cron
+#   described in docs/operations/release.md.
+# - The image digest is the verified Distribution 3.1.2 digest (ADR README).
+
+services:
+  registry:
+    image: registry:3.1.2@sha256:38907510915c3f1604c7e83d6ab602ab3020d092f73bdaed8696773693ff768c
+    user: "10001:10001"
+    environment:
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: vse-private-registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /etc/vse/registry/auth/htpasswd
+      REGISTRY_STORAGE_DELETE_ENABLED: "true" # required by the retention job
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /var/lib/registry
+    volumes:
+      - registry_data:/var/lib/registry
+      - /srv/vse/registry/auth/htpasswd:/etc/vse/registry/auth/htpasswd:ro
+    networks:
+      - registry_internal
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.30.6@sha256:42c68eab6f7e22611786a9fe1d1c019e275c50185bd54b8f75dc2b9184322703
+    ports:
+      - "127.0.0.1:5443:443"
+    environment:
+      REGISTRY_UPSTREAM: registry:5000
+    configs:
+      - source: registry_nginx_conf
+        target: /etc/nginx/templates/default.conf.template
+    volumes:
+      - /srv/vse/registry/tls:/etc/vse/registry/tls:ro
+    depends_on:
+      - registry
+    networks:
+      - registry_internal
+      - registry_front
+    restart: unless-stopped
+
+  # Tools image for the one-shots: alpine + curl with the deploy scripts
+  # baked in (no runtime bind mounts of scripts).
+  registry-tools:
+    build:
+      context: .
+      dockerfile: registry-tools.Dockerfile
+    image: ${REGISTRY_TOOLS_IMAGE:-vse-registry-tools:local}
+
+  # One-shot: enforce retention = active + 5 previous releases.
+  #   docker compose -f deploy/registry-compose.yml run --rm retention
+  retention:
+    image: ${REGISTRY_TOOLS_IMAGE:-vse-registry-tools:local}
+    build:
+      context: .
+      dockerfile: registry-tools.Dockerfile
+    profiles: ["retention"]
+    entrypoint: ["/usr/local/bin/registry-retention.sh"]
+    environment:
+      REGISTRY_HOST: registry:5000
+      REGISTRY_REPOSITORY: vse
+      RETENTION_KEEP_PREVIOUS: "5"
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    depends_on:
+      - registry
+    networks:
+      - registry_internal
+
+  # One-shot: back the registry storage up to the closed backup host.
+  #   docker compose -f deploy/registry-compose.yml run --rm backup
+  backup:
+    image: ${REGISTRY_TOOLS_IMAGE:-vse-registry-tools:local}
+    build:
+      context: .
+      dockerfile: registry-tools.Dockerfile
+    profiles: ["backup"]
+    entrypoint: ["/usr/local/bin/registry-backup.sh"]
+    environment:
+      REGISTRY_BACKUP_DIR: /backup
+    volumes:
+      - registry_data:/var/lib/registry:ro
+      - /srv/vse/backup/registry:/backup
+    networks:
+      - registry_internal
+
+configs:
+  registry_nginx_conf:
+    file: deploy/registry-nginx.conf
+
+networks:
+  # Front network carries the published TLS traffic (127.0.0.1:5443);
+  # it must NOT be internal, or Docker blocks published ports.
+  registry_front: {}
+  # Registry daemon and one-shot tools are reachable only inside.
+  registry_internal:
+    internal: true
+
+volumes:
+  registry_data:

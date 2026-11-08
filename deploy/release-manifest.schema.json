@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vse-release-manifest.schema.json",
+  "title": "ReleaseManifest",
+  "description": "Release manifest for the reproducible private delivery (API-09 / OPS-01). A release ships the manifest, not source code: images are referenced by digest, so the same manifest reproduces the release on any installation without a rebuild.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "git_sha",
+    "image_digests",
+    "base_digests",
+    "migration_head",
+    "locks",
+    "licenses",
+    "runner_digest",
+    "contract_versions",
+    "forms"
+  ],
+  "properties": {
+    "git_sha": {
+      "type": "string",
+      "description": "Full SHA of the released commit (never a branch or tag name).",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "image_digests": {
+      "type": "object",
+      "description": "Digests of the built artifacts pushed to the private registry. Build once; every environment deploys these exact digests.",
+      "additionalProperties": false,
+      "required": ["backend", "frontend"],
+      "properties": {
+        "backend": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "frontend": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "base_digests": {
+      "type": "object",
+      "description": "Verified upstream base-image digests used by the build (python, node, nginx, postgres, redis, registry).",
+      "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+    },
+    "migration_head": {
+      "type": "string",
+      "description": "Alembic revision at the head of the released migration chain.",
+      "pattern": "^[0-9a-z]{4,16}$"
+    },
+    "locks": {
+      "type": "object",
+      "description": "Concurrency facts of the release: the advisory-lock id of the one-shot migration and the serialization policy.",
+      "additionalProperties": false,
+      "required": ["release_lock_id", "serialization"],
+      "properties": {
+        "release_lock_id": { "type": "integer", "minimum": 1 },
+        "serialization": {
+          "type": "string",
+          "const": "one-shot migrate holds a pg advisory lock; concurrent releases serialize; a failed migration blocks the version switch"
+        }
+      }
+    },
+    "licenses": {
+      "type": "array",
+      "description": "Licenses of shipped third-party resources (fonts, images, libraries) referenced by the release.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resource", "license"],
+        "properties": {
+          "resource": { "type": "string" },
+          "license": { "type": "string" }
+        }
+      }
+    },
+    "runner_digest": {
+      "type": "string",
+      "description": "Exact verified digest of the self-hosted CI runner image used to execute the release pipeline.",
+      "pattern": "^(sha256:[0-9a-f]{64}|not-verified)$"
+    },
+    "contract_versions": {
+      "type": "object",
+      "description": "Versions of the contracts the release was built against.",
+      "additionalProperties": { "type": "string" }
+    },
+    "forms": {
+      "type": "array",
+      "description": "Form manifests shipped with the release (INPUT-04): id, version, template sha256, official flag.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["form_id", "version", "template_sha256", "official"],
+        "properties": {
+          "form_id": { "type": "string" },
+          "version": { "type": "string" },
+          "template_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "official": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

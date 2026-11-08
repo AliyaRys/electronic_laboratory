@@ -10,7 +10,7 @@
 | arrivals:list/read/search/count | Своя область | Своя лаборатория | Запрет | Выбранная лаборатория | Предикат до pagination/count |
 | arrivals:hide | Своя область | Своя лаборатория | Запрет | Запрет | Только ожидаемые без начатой сверки/ВСЭ/intent |
 | reconciliation:save | Своя область | Своя лаборатория | Запрет | Запрет | Не confirmed; ревизия |
-| vetis:sync | Своя область | Своя лаборатория | Запрет | Запрет | Личный initiator, read enabled, scope binding |
+| vetis:sync | Своя область: ручной запуск того же job | Своя лаборатория: ручной запуск того же job | Запрет | Запрет | Scheduler каждые 15 минут использует выделенную read-only identity; read enabled, scope binding |
 | receipt:submit | Своя область | Своя лаборатория | Запрет | Запрет | Write enabled, полный валидный intent, нет unresolved |
 | receipt:reconcile | Своя область | Своя лаборатория | Запрет | Запрет | Только чтение факта, без force-confirm |
 | operation:read | Своя область | Своя лаборатория | Только собственные catalog jobs в административной области | Свои catalog jobs и доступные рабочие read-model | Payload фильтруется по kind; никогда SOAP/secrets |

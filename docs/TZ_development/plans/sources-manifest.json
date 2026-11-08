@@ -66,8 +66,8 @@
     },
     {
       "path": "docs/adr/ADR-013-compose-and-environments.md",
-      "sha256": "a09daca15513e0df00c4d1f9d60380b75693ff4954caea7d2e65053e702d248e",
-      "bytes": 6697
+      "sha256": "60776396000831381639ffe955c0fe354160cb1003a58a6bd5b86dcf052b58c9",
+      "bytes": 6663
     },
     {
       "path": "docs/adr/ADR-014-versions-and-upgrades.md",
@@ -91,13 +91,13 @@
     },
     {
       "path": "docs/adr/ADR-018-vetis-module.md",
-      "sha256": "c968f624eeb6d42306130e27bb44742e71174927dc33cbfc540451f273fc8051",
-      "bytes": 10284
+      "sha256": "b4379c3d3528390e27b44ce7e4da723875cc983c366cb34a567454b9c4e5d19e",
+      "bytes": 11044
     },
     {
       "path": "docs/adr/ADR-019-receipt-orchestration.md",
-      "sha256": "96180200a15132ecad0a37704be6192e216b3d5c47f227baefff1d3391b0325a",
-      "bytes": 10939
+      "sha256": "7ca9554829add591db733f39421d60c1e066adf1c6584cf93300e1d7c456dd50",
+      "bytes": 11820
     },
     {
       "path": "docs/adr/ADR-020-pricing-and-methods.md",
@@ -126,8 +126,8 @@
     },
     {
       "path": "docs/adr/agent-handoff.md",
-      "sha256": "a59666cc23e4f5fd13902f69fd8116e661ebb6acbd548df7808b031f77e6eca9",
-      "bytes": 9313
+      "sha256": "1a22e10f68bff4d30ddc5def11849e7411ff84c5c2e40b58c21d6d2a4706a2d8",
+      "bytes": 9565
     },
     {
       "path": "docs/adr/architecture-overview.md",
@@ -136,13 +136,13 @@
     },
     {
       "path": "docs/adr/deployment-and-input-contracts.md",
-      "sha256": "d651d1622a403ddba97bcfc42d4df825e22674cc02d50632ac513b2cba45d912",
-      "bytes": 16076
+      "sha256": "2ef5dc57870fefaf87885ea9f58ea155259c7a2e321c5d4c1829852c1604654d",
+      "bytes": 16655
     },
     {
       "path": "docs/adr/README.md",
-      "sha256": "68d8e64dfc8a978712817822d59f3731f04a2e760ddbc4584b893f9875d264ba",
-      "bytes": 26451
+      "sha256": "63e2da533e172a0b67b1edf31a76fb5ac9a6304b8bee0c84efa5e777326e8a6a",
+      "bytes": 26627
     },
     {
       "path": "docs/adr/sources.md",
@@ -176,8 +176,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/02-arrivals-and-receipt.md",
-      "sha256": "4aa90f4b48fb116583d2258674e3303fa79fcd9bd35f8985da1aefcb8bece8e6",
-      "bytes": 18370
+      "sha256": "ee2fdad90e2d3b0b2964758dddaffa725c63d2aa9309549d9a9beccb2a1b0bee",
+      "bytes": 20207
     },
     {
       "path": "Функциональные требования/v2.0/03-examination.md",
@@ -206,8 +206,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/08-inputs-and-adr-handoff.md",
-      "sha256": "e8e446dd9b035be724450864d6918339adb23be95082236a7ab6101af470f300",
-      "bytes": 12442
+      "sha256": "c453a13c55f08d1ab4c5389f81ae573571cc22115d3f56d58d0247aedc7f52d0",
+      "bytes": 12679
     },
     {
       "path": "Функциональные требования/v2.0/09-reports.md",
@@ -236,8 +236,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/owner-decisions.md",
-      "sha256": "95a4b7f6d055d46afbbd4bca1f61dcd41cbab38acb1e6b7bf86fbc7baceca497",
-      "bytes": 6553
+      "sha256": "6ddb030596cf12c07d8579fa0f8d59ebe53f0209417178cf44ff4a39bf2546b3",
+      "bytes": 7175
     },
     {
       "path": "Функциональные требования/v2.0/README.md",
@@ -251,8 +251,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/review-findings.md",
-      "sha256": "d75352c94d8acc9573f5d1fd3ecb4a8369ef0bb64e14e1ba80dd1c617eb99289",
-      "bytes": 4078
+      "sha256": "6bd3c168bfa52a8a05bf6fe784ffe8b4701e819acb3196a69b175e3fb7331c25",
+      "bytes": 4245
     },
     {
       "path": "Функциональные требования/v2.0/sources-manifest.json",

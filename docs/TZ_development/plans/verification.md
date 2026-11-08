@@ -21,7 +21,7 @@ python docs/superpowers/plans/validate_docs.py
 - ADR1.1/ФТ v2/O/R → SPEC-01; scope исключений сохранён.
 - ADR001–014/024 → I/F/O; новый React-клиент отделён от старых HTML и API компонентов.
 - ADR015–017 → DATA/SPEC/A/S/E; независимые UUID, UNIQUE партии/номера, снимки, отсутствие draft/history, блокировки/revision/key, полночь после lock.
-- ADR018/019 и O-11 → V/W; production read-only ВУ, manifest вместо вымышленного endpoint, личный initiator, write только на офлайн-адаптере, UNKNOWN без слепого submit; production transport не имеет write credentials/маршрута.
+- ADR018/019 и O-11 → V/W; 15-минутный production read-only ВУ, manifest вместо вымышленного endpoint, выделенная read identity, полностью реализованный write-контракт на офлайн-адаптере, UNKNOWN без слепого submit; production transport не имеет write credentials/маршрута, будущий submit требует owner authorization.
 - ADR020 → C/E; Decimal, ROUND_HALF_UP, прежние price/norm, ярмарочный 0 без скрытого обычного тарифа.
 - ADR021/022 → R/D; точные строки 5-вет, signed session payload, snapshot не пересчитывается, два основания заключения, одинаковый вывод/печать.
 - ADR023 → E03/O02; DELETE remote WAL flush,503 до commit/UNKNOWN при разрыве, restore без возвращения удалённых карточек; обычный save local commit.

@@ -5,22 +5,26 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import Response as FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.commands import CommandContext, resolve_if_match
 from backend.src.core.database import async_session
 from backend.src.core.problems import ProblemError
+from backend.src.modules.documents import pdf, resources, xlsx
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session
 from backend.src.modules.identity.session import SessionIdentity
-from backend.src.modules.reporting import commands, queries, snapshots
+from backend.src.modules.reporting import commands, projection, queries, snapshots
 from backend.src.modules.reporting.schemas import (
     OperationalView,
     ReportPreviewParams,
     ReportSnapshotView,
+    ReportSummaryPage,
     SaveReportWrite,
     SignedPreview,
 )
@@ -134,3 +138,77 @@ async def delete(
     await commands.delete_report(ctx, report_id, db=db)
     await db.commit()
     return Response(status_code=204)
+
+
+@router.get("/5vet", response_model=ReportSummaryPage)
+async def list_reports(
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    laboratory_id: uuid.UUID,
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> ReportSummaryPage:
+    """The saved-report list of one laboratory (API-08 ``Page<ReportSummary>``)."""
+    identity, _actor = principal
+    await authorizer.authorize(db, identity.actor_id, "report:5vet-list", ScopeTarget(laboratory_id=laboratory_id))
+    return await commands.list_reports(db, laboratory_id, page=page)
+
+
+def _export_response(view: ReportSnapshotView, kind: str) -> FileResponse:
+    """Render one saved snapshot through the controlled D02 renderer."""
+    model = projection.report_document_view(view)
+    form = resources.load_manifest("report-5vet")
+    if kind == "pdf":
+        data = pdf.render_pdf(model, form)
+        filename = projection.report_pdf_filename(view)
+        media_type = "application/pdf"
+    elif kind == "xlsx":
+        data = xlsx.render_xlsx(model, form)
+        filename = projection.report_xlsx_filename(view)
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:  # pragma: no cover - guarded by the route definition
+        raise ProblemError(status=404, code="NOT_FOUND", title="Not found", detail="Форма не найдена.")
+    return FileResponse(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        },
+    )
+
+
+@router.get("/5vet/{report_id}/export.pdf")
+async def export_report_pdf(
+    report_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> FileResponse:
+    """The controlled PDF built exclusively from the saved snapshot (API-08)."""
+    identity, _actor = principal
+    view = await commands.load_report(db, report_id)
+    await authorizer.authorize(
+        db, identity.actor_id, "report:5vet-export", ScopeTarget(laboratory_id=view.laboratory_id), hide_foreign=True
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return _export_response(view, "pdf")
+
+
+@router.get("/5vet/{report_id}/export.xlsx")
+async def export_report_xlsx(
+    report_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> FileResponse:
+    """The controlled spreadsheet built exclusively from the saved snapshot (API-08)."""
+    identity, _actor = principal
+    view = await commands.load_report(db, report_id)
+    await authorizer.authorize(
+        db, identity.actor_id, "report:5vet-export", ScopeTarget(laboratory_id=view.laboratory_id), hide_foreign=True
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return _export_response(view, "xlsx")

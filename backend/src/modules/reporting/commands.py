@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.clock import utcnow
@@ -15,7 +15,13 @@ from backend.src.core.keyring import PreviewKeyring
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.identity.models import CommandStatus, TechnicalEvent
 from backend.src.modules.reporting.models import ReportSnapshot
-from backend.src.modules.reporting.schemas import ReportCodesWrite, ReportSnapshotView, SignedPreview
+from backend.src.modules.reporting.schemas import (
+    ReportCodesWrite,
+    ReportSnapshotView,
+    ReportSummary,
+    ReportSummaryPage,
+    SignedPreview,
+)
 from backend.src.modules.reporting.snapshots import verify_preview
 
 
@@ -133,6 +139,42 @@ async def save_report(
     await db.flush()
     await recorder.complete(work, record, row.id)
     return snapshot_view(row)
+
+
+async def list_reports(
+    db: AsyncSession,
+    laboratory_id: uuid.UUID,
+    *,
+    page: int,
+    page_size: int = 20,
+) -> ReportSummaryPage:
+    """The saved-report list of one laboratory (API-08 ``GET /reports``).
+
+    Newest saved period first; the payload never leaves the database here —
+    the list carries only period/source/revision metadata.
+    """
+    base = select(ReportSnapshot).where(ReportSnapshot.laboratory_id == laboratory_id)
+    total = await db.scalar(
+        select(func.count()).select_from(ReportSnapshot).where(ReportSnapshot.laboratory_id == laboratory_id)
+    )
+    offset = (page - 1) * page_size
+    rows = (
+        (
+            await db.execute(
+                base.order_by(ReportSnapshot.year.desc(), ReportSnapshot.half.desc(), ReportSnapshot.saved_at.desc())
+                .offset(offset)
+                .limit(page_size)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return ReportSummaryPage(
+        items=[ReportSummary.model_validate(row) for row in rows],
+        total=int(total or 0),
+        page=page,
+        page_size=page_size,
+    )
 
 
 async def delete_report(ctx: CommandContext, report_id: uuid.UUID, *, db: AsyncSession) -> None:

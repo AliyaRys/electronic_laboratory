@@ -20,6 +20,10 @@ import { CatalogsPage } from "../pages/CatalogsPage";
 import { ArrivalsPage } from "../pages/ArrivalsPage";
 import { ReconciliationPage } from "../pages/ReconciliationPage";
 import { SampleAccountingPage } from "../pages/SampleAccountingPage";
+import { ReportsPage } from "../pages/ReportsPage";
+import { ReportCreatePage } from "../pages/ReportCreatePage";
+import { ReportViewPage } from "../pages/ReportViewPage";
+import { OperationalReportPage } from "../pages/OperationalReportPage";
 import { ExaminationCreatePage } from "../pages/ExaminationCreatePage";
 import { ExaminationViewPage } from "../pages/ExaminationViewPage";
 import { ExaminationJournalPage } from "../pages/ExaminationJournalPage";
@@ -73,13 +77,14 @@ export const routes: RouteObject[] = [
         path: "/labs/:labId/examinations/:examinationId",
         element: <ExaminationViewPage />,
       },
-      { path: "/labs/:labId/reports", element: <Stub title="Отчёты" note="Задача R03." /> },
-      { path: "/labs/:labId/reports/new", element: <Stub title="Создание отчёта" note="Задача R03." /> },
+      { path: "/labs/:labId/reports/samples", element: <SampleAccountingPage /> },
+      { path: "/labs/:labId/reports", element: <ReportsPage /> },
+      { path: "/labs/:labId/reports/new", element: <ReportCreatePage /> },
       {
         path: "/labs/:labId/reports/:reportId",
-        element: <Stub title="Просмотр отчёта" note="Задача R03." />,
+        element: <ReportViewPage />,
       },
-      { path: "/labs/:labId/reports/samples", element: <SampleAccountingPage /> },
+      { path: "/labs/:labId/reports/operational", element: <OperationalReportPage /> },
       {
         path: "*",
         element: <PlaceholderPage title="Запись не указана" note="Такой маршрут отсутствует." notFound />,

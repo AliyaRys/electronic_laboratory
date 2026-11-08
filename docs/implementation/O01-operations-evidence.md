@@ -1,6 +1,7 @@
 # O01: Образы, CI и установка — evidence
 
-Дата: 2026-11-08. Ветка `feature/O01-ops` (от main 38ac87f).
+Дата: 2026-11-08. Ветка `feature/O01-ops`, коммит `7f4ddf3`
+`ops: add reproducible private delivery and installation` (pushed).
 Требования: ФТ 08 (OPS-01, inputs.md), ADR-013/014/023/024, API-09,
 plans/{inputs,api-contract,data-contract}.md, controller decisions ТЗ-09.
 
@@ -46,7 +47,9 @@ plans/{inputs,api-contract,data-contract}.md, controller decisions ТЗ-09.
 | Compose registry | `docker compose -f deploy/registry-compose.yml config --quiet` | exit 0 |
 | nginx edge | `nginx -t` в `nginx:1.30.6` с dummy-сертификатом, dummy host | syntax is ok, test successful |
 | nginx registry | то же c `REGISTRY_UPSTREAM=registry:5000` (template envsubst) | syntax is ok, test successful |
-| Полный бэкенд-набор с покрытием | `pytest backend/tests --cov=backend/src --cov-fail-under=85` | см. ниже |
+| Полный бэкенд-набор с покрытием | `pytest backend/tests --cov=backend/src --cov-fail-under=85` | **445 passed**, coverage **93.4%** (≥85) |
+| compileall / import | `python -m compileall backend`; импорт `backend.src.interfaces.main`, `deploy.migrate_lock` | 0 / ok |
+| YAML release.yml | `yaml.safe_load` | jobs: quality, migration-check, build, manifest, smoke, production; trigger — только workflow_dispatch |
 | Digest реестра 3.1.2 | `docker pull registry:3.1.2` + `docker image inspect` | `sha256:38907510915c3f1604c7e83d6ab602ab3020d092f73bdaed8696773693ff768c` |
 
 ## Runtime-проверки блокировки миграций (реальные, не только config)

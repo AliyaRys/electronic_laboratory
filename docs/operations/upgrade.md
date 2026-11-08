@@ -30,6 +30,7 @@
    # закрытый env-file установки задаёт digest-ссылки из release manifest
    export BACKEND_IMAGE="<registry>/<ns>/vse-backend@<digest>"
    export FRONTEND_IMAGE="<registry>/<ns>/vse-frontend@<digest>"
+   export BACKUP_TUNNEL_IMAGE="<registry>/<ns>/vse-backup-tunnel@<digest>"
    docker compose pull            # тянет ровно эти digest
    docker compose --profile migrate run --rm migrate
    docker compose up -d           # backend на новом digest

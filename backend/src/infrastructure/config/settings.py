@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # E03/O02: destructive examination deletes require a verified synchronous
     # WAL receiver. Disabled is the safe default until O02 provisions it.
     delete_durability_enabled: bool = False
+    backup_readiness_path: str = "/run/secrets/backup_readiness"
+    backup_replication_application_name: str = "vse_backup"
+    backup_replication_slot: str = "vse_backup"
 
     # Redis (sessions / rate limit / queue transport; ADR-005)
     redis_url: str = "redis://localhost:6379/0"

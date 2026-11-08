@@ -152,6 +152,7 @@ jobs:
     outputs:
       backend_digest: ${{ steps.digests.outputs.backend }}
       frontend_digest: ${{ steps.digests.outputs.frontend }}
+      backup_tunnel_digest: ${{ steps.digests.outputs.backup_tunnel }}
     steps:
       - name: Check out repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -183,11 +184,21 @@ jobs:
           REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
           REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
 
+      - name: Build backup tunnel image (once, disabled unless backup profile is selected)
+        run: |
+          docker build -f deploy/backup/tunnel.Dockerfile \
+            -t "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backup-tunnel:sha-${GITHUB_SHA::7}" \
+            --push deploy/backup
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
+
       - name: Record pushed digests
         id: digests
         run: |
           echo "backend=$(docker buildx imagetools inspect "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend:sha-${GITHUB_SHA::7}" | awk '/^Digest:/ {print $2}')" >> "$GITHUB_OUTPUT"
           echo "frontend=$(docker buildx imagetools inspect "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend:sha-${GITHUB_SHA::7}" | awk '/^Digest:/ {print $2}')" >> "$GITHUB_OUTPUT"
+          echo "backup_tunnel=$(docker buildx imagetools inspect "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backup-tunnel:sha-${GITHUB_SHA::7}" | awk '/^Digest:/ {print $2}')" >> "$GITHUB_OUTPUT"
         env:
           REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
           REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
@@ -200,6 +211,9 @@ jobs:
           docker buildx imagetools create \
             -t "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend:active" \
             "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend@${{ steps.digests.outputs.frontend }}"
+          docker buildx imagetools create \
+            -t "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backup-tunnel:active" \
+            "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backup-tunnel@${{ steps.digests.outputs.backup_tunnel }}"
         env:
           REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
           REGISTRY_NAMESPACE: ${{ secrets.REGISTRY_NAMESPACE }}
@@ -219,8 +233,9 @@ jobs:
           {
             "git_sha": "${GITHUB_SHA}",
             "image_digests": {
-              "backend": "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-backend@${{ needs.build.outputs.backend_digest }}",
-              "frontend": "${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/vse-frontend@${{ needs.build.outputs.frontend_digest }}"
+              "backend": "${{ needs.build.outputs.backend_digest }}",
+              "frontend": "${{ needs.build.outputs.frontend_digest }}",
+              "backup_tunnel": "${{ needs.build.outputs.backup_tunnel_digest }}"
             },
             "base_digests": {
               "python": "sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75",

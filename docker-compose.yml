@@ -10,6 +10,20 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-vse}
+    command:
+      - postgres
+      - -c
+      - synchronous_commit=local
+      - -c
+      - synchronous_standby_names=vse_backup
+      - -c
+      - max_slot_wal_keep_size=20GB
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
     volumes:
       # PostgreSQL 18+ stores clusters below a major-version directory.
       # Mount the parent so startup and future pg_upgrade --link are valid.
@@ -35,6 +49,27 @@ services:
       - "6379"
     restart: unless-stopped
 
+  # O02: app-side reverse tunnel. It is opt-in and has no host port. The
+  # backup host sees only 127.0.0.1:6543; the key is restricted server-side
+  # to permitlisten="127.0.0.1:6543" and cannot open a shell.
+  backup-tunnel:
+    image: ${BACKUP_TUNNEL_IMAGE:-vse-backup-tunnel:local}
+    build:
+      context: deploy/backup
+      dockerfile: tunnel.Dockerfile
+    profiles: ["backup"]
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,mode=1777
+    secrets:
+      - vse_backup_tunnel_key
+      - vse_backup_known_hosts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   backend:
     # Digest-deployable: an installation sets BACKEND_IMAGE (and
     # FRONTEND_IMAGE) to the release manifest digest ref, e.g.
@@ -56,6 +91,11 @@ services:
       REPORT_PREVIEW_KEYS: ${REPORT_PREVIEW_KEYS:?REPORT_PREVIEW_KEYS is required}
       # O02 enables this only after provisioning and proving a synchronous WAL receiver.
       DELETE_DURABILITY_ENABLED: ${DELETE_DURABILITY_ENABLED:-false}
+      BACKUP_READINESS_PATH: /run/secrets/backup_readiness
+      BACKUP_REPLICATION_APPLICATION_NAME: vse_backup
+      BACKUP_REPLICATION_SLOT: vse_backup
+    secrets:
+      - backup_readiness
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,3 +156,11 @@ services:
 
 volumes:
   postgres_data:
+
+secrets:
+  backup_readiness:
+    file: ${BACKUP_READINESS_FILE:-deploy/backup/not-ready.json}
+  vse_backup_tunnel_key:
+    file: ${BACKUP_TUNNEL_KEY_FILE:-deploy/backup/not-configured-key}
+  vse_backup_known_hosts:
+    file: ${BACKUP_KNOWN_HOSTS_FILE:-deploy/backup/not-configured-known-hosts}

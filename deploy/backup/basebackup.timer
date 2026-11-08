@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily VSE base backup at 02:00 Europe/Moscow
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 Europe/Moscow
+Persistent=true
+RandomizedDelaySec=5m
+Unit=basebackup.service
+
+[Install]
+WantedBy=timers.target

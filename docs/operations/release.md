@@ -59,7 +59,8 @@
   "git_sha": "38ac87fffffffffffffffffffffffffffffffffff",
   "image_digests": {
     "backend": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "frontend": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    "frontend": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "backup_tunnel": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   },
   "base_digests": {
     "python": "sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75",

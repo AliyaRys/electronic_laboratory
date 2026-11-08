@@ -1,0 +1,24 @@
+[Unit]
+Description=VSE continuous PostgreSQL WAL receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vsebackup
+Group=vsebackup
+EnvironmentFile=/etc/vse-backup/receiver.env
+ExecStartPre=/usr/bin/install -d -m 0700 /srv/vse-backup/wal
+ExecStart=/usr/lib/postgresql/18/bin/pg_receivewal --dbname=host=127.0.0.1 port=6543 user=vse_replication application_name=vse_backup sslmode=disable --directory=/srv/vse-backup/wal --slot=vse_backup --synchronous --verbose
+Restart=always
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/vse-backup
+ReadOnlyPaths=/etc/vse-backup
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

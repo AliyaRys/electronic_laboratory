@@ -1,0 +1,18 @@
+[Unit]
+Description=VSE verified PostgreSQL base backup
+After=network-online.target receiver.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vsebackup
+Group=vsebackup
+EnvironmentFile=/etc/vse-backup/receiver.env
+ExecStart=/usr/local/libexec/vse-backup/backup-base.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/vse-backup
+ReadOnlyPaths=/etc/vse-backup
+UMask=0077

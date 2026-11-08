@@ -26,10 +26,11 @@
       "type": "object",
       "description": "Digests of the built artifacts pushed to the private registry. Build once; every environment deploys these exact digests.",
       "additionalProperties": false,
-      "required": ["backend", "frontend"],
+      "required": ["backend", "frontend", "backup_tunnel"],
       "properties": {
         "backend": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-        "frontend": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        "frontend": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "backup_tunnel": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       }
     },
     "base_digests": {

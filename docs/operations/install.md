@@ -19,11 +19,14 @@
    non-root UID 10001, 200 GiB.
 2. **Pull по digest** — из release manifest берутся `image_digests`:
    `docker pull <registry>/vse-backend@<digest>`,
-   `docker pull <registry>/vse-frontend@<digest>`. Для compose-стека
+   `docker pull <registry>/vse-frontend@<digest>`,
+   `docker pull <registry>/vse-backup-tunnel@<digest>`. Для compose-стека
    значения задаются в закрытом env-file установки как
    `BACKEND_IMAGE=<registry>/<ns>/vse-backend@<digest>` и
-   `FRONTEND_IMAGE=<registry>/<ns>/vse-frontend@<digest>` — сервисы
-   `backend`, `migrate` и `frontend` используют их как `image:`.
+   `FRONTEND_IMAGE=<registry>/<ns>/vse-frontend@<digest>` и
+   `BACKUP_TUNNEL_IMAGE=<registry>/<ns>/vse-backup-tunnel@<digest>` — сервисы
+   `backend`, `migrate`, `frontend` и opt-in `backup-tunnel` используют их как
+   `image:`.
    **Пересборки нет и быть
    не должно**: тот же digest работает в любой среде (переносимость образов
    между стендами без rebuild).
@@ -46,6 +49,11 @@
 7. **Bootstrap** — закрытая одноразовая CLI (API-09): обязательная
    идентичность UserWrite, grants, без паролей по умолчанию, повтор
    запрещён.
+8. **Backup O02** — выполнить [backup.md](backup.md) на отдельном хосте и
+   ежемесячный [restore.md](restore.md). Стек с туннелем запускается профилем
+   `backup`; закрытый env-file задаёт `BACKUP_TUNNEL_KEY_FILE`,
+   `BACKUP_KNOWN_HOSTS_FILE`, `BACKUP_READINESS_FILE`. До свежего evidence
+   `DELETE_DURABILITY_ENABLED=false`; это не блокирует обычные сохранения.
 
 ## Install smoke (без ВетИС)
 

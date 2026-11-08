@@ -115,6 +115,60 @@ advisory lock (тогда она владеет замком, спокойно �
 `tests/load/`) `deploy/migrate_lock.py` не импортируют и на этот тест не
 влияют. Тест не исправлялся (не мой объём), зафиксировано для контроллера.
 
+## Fix round 1 — реальный исполнитель retention (ревью, Important)
+
+Адресовано: сроки 90/365/30d были константами без исполнителя.
+
+Изменения (`backend/src/core/audit.py`):
+
+- `SoapDiagnostics.record(..., at=...)` хранит wall-clock время каждой строки;
+  `expired(now)` теперь реально вычисляет просроченные trace_id (>30d), а
+  `purge_expired(now)` удаляет их и возвращает счётчик;
+- новый исполнитель `apply_retention(session, *, now, soap=None,
+  stores=PURGABLE_STORES)`: применяет отсечки `retention_plan` к
+  `technical_events` (без префикса `SECURITY.`), `security_events` (те же
+  строки с префиксом `SECURITY.`) и `soap_diagnostics`; бизнес-таблицы
+  отклоняются `assert_purgable`; возвращает счётчики по хранилищам; сам не
+  коммитит (транзакция у вызывающего);
+- одноразовая команда обслуживания `python -m backend.src.core.audit`
+  (`run_retention_command` + `main`): применяет план и коммитит один раз,
+  печатает JSON со счётчиками, отказ — exit 1 и stderr;
+- тест `test_purge_executor_applies_cutoffs_and_leaves_business_facts`
+  (реальный PostgreSQL): смешанные возрасты в каждом хранилище → удалены
+  только просроченные, счётчики {technical:1, security:1, soap:1}, свежие
+  строки живы, засеянный бизнес-факт (users) нетронут, запрос бизнес-таблицы
+  как store → ValueError;
+- расширен `test_masked_soap_diagnostics_service_account_only`: expiry по
+  wall-clock времени, purge 1 из 2.
+
+Команды и результаты:
+
+- `uv run --frozen pytest backend/tests/operations -v` → **56 passed**
+- `uv run --frozen pytest backend/tests --cov=backend/src --cov-fail-under=85`
+  → **475 passed / 0 failed**, coverage **93.16%** (flake этого прогона не
+  воспроизвёл; ранее 2/4 standalone прогонов падали — гонка в самом тесте)
+- `ruff check backend` → All checks passed; `mypy backend/src` → Success (89
+  files); `ruff format --check` на файлах O03 → clean. ⚠️ На прекоммитном
+  дереве O02 (`core/durability.py`, `test_durability_recovery.py`) `ruff
+  format --check backend` просит переформатирование — pre-existing, вне
+  адресованного объёма, не тронуто.
+- Кириллица проверена побайтно после `ruff format` (UTF-8 intact).
+
+Сквозная проверка одноразовой команды (disposable `postgres:18.6`, migration
+head, 4 seeded technical_events 100/5/400/10 дней + JSON):
+
+```
+{"purged": {"technical_events": 1, "security_events": 1, "soap_diagnostics": 0},
+ "at": "2026-11-08T17:53:30.352361+00:00"}
+```
+
+— удалены ровно просроченные (100d tech, 400d security), свежие живы.
+Контейнер остановлен, одноразовые тома удалены (`--rm`).
+
+Документы обновлены: `docs/operations/retention.md` (исполнитель, одноразовая
+команда, счётчики в журнале), `docs/operations/monitoring.md` (SOAP-строки
+несут wall-clock время). Minors ревью не трогались.
+
 ## Файлы задачи
 
 - `backend/src/core/audit.py`, `backend/src/core/metrics.py`;

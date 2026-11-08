@@ -33,6 +33,7 @@ import json
 import logging
 import sys
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -146,6 +147,78 @@ def test_retention_periods_and_business_facts_never_purged() -> None:
     # The purge executor refuses a business table outright.
     with pytest.raises(ValueError, match="business"):
         audit.assert_purgable("report_snapshots")
+
+
+@pytest.mark.integration
+async def test_purge_executor_applies_cutoffs_and_leaves_business_facts(db_session) -> None:  # noqa: ANN001
+    """Mixed-age rows in each store: only expired rows die, counts are returned."""
+    from sqlalchemy import func, select
+
+    from backend.src.modules.identity.models import TechnicalEvent, User
+
+    now = datetime.now(UTC)
+    actor = uuid.uuid4()
+    object_uuid = uuid.uuid4()
+
+    def event(action: str, age: timedelta) -> TechnicalEvent:
+        return TechnicalEvent(
+            actor_id=actor,
+            object_uuid=object_uuid,
+            action=action,
+            at=now - age,
+            result="SUCCESS",
+            trace_id=f"trace-{action}-{int(age.total_seconds())}",
+        )
+
+    db_session.add_all(
+        [
+            event("reconciliation:save", timedelta(days=100)),  # expired technical
+            event("reconciliation:save", timedelta(days=30)),  # fresh technical
+            event("SECURITY.user.block", timedelta(days=400)),  # expired security
+            event("SECURITY.user.block", timedelta(days=100)),  # fresh security
+        ]
+    )
+    user = User(
+        login="retention-user",
+        full_name="Пользователь ретеншена",
+        email="retention@example.test",
+        password_hash="x" * 60,
+        role="ADMIN",
+        active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    soap = audit.SoapDiagnostics()
+    soap.record("expired", "<r>старый</r>", at=now - timedelta(days=31))
+    soap.record("fresh", "<r>свежий</r>", at=now - timedelta(days=10))
+
+    counts = await audit.apply_retention(db_session, now=now, soap=soap)
+    await db_session.commit()
+    assert counts == {"technical_events": 1, "security_events": 1, "soap_diagnostics": 1}
+
+    remaining_actions = ("reconciliation:save", "SECURITY.user.block")
+    remaining = {}
+    for action in remaining_actions:
+        count = (
+            await db_session.execute(
+                select(func.count()).select_from(TechnicalEvent).where(TechnicalEvent.action == action)
+            )
+        ).scalar_one()
+        remaining[action] = count
+    assert remaining == {"reconciliation:save": 1, "SECURITY.user.block": 1}
+    assert soap.expired(now) == []
+    with pytest.raises(KeyError):
+        soap.read("expired", principal="vse_service")
+
+    # Business facts are untouched: the seeded user survived the purge...
+    surviving = (
+        await db_session.execute(select(func.count()).select_from(User).where(User.login == "retention-user"))
+    ).scalar_one()
+    assert surviving == 1
+    # ...and a business table can never even be requested as a purge store.
+    with pytest.raises(ValueError, match="бизнес-факт"):
+        await audit.apply_retention(db_session, now=now, stores=("users",))
 
 
 # --- named assertion: snapshot key rotation 90d / old 9h ------------------------
@@ -279,7 +352,18 @@ def test_masked_soap_diagnostics_service_account_only() -> None:
     with pytest.raises(KeyError):
         store.read("missing", principal="vse_service")
 
-    # Retention: diagnostics older than 30 days are collectable.
+    # Retention: rows carry wall-clock timestamps; only those older than
+    # 30 days are expired and purge_expired removes exactly them.
+    now = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
+    old = audit.SoapDiagnostics()
+    old.record("old", raw, at=now - timedelta(days=31))
+    old.record("fresh", raw, at=now - timedelta(days=29))
+    assert sorted(old.expired(now)) == ["old"]
+    assert old.purge_expired(now) == 1
+    assert old.expired(now) == []
+    with pytest.raises(KeyError):
+        old.read("old", principal="vse_service")
+    assert old.read("fresh", principal="vse_service")
     assert audit.SoapDiagnostics.retention == audit.SOAP_DIAGNOSTIC_RETENTION
 
 

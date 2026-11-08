@@ -16,11 +16,17 @@ Retention (docs/TZ_development/plans/data-contract.md, DATA-05):
 
 from __future__ import annotations
 
+import argparse
+import asyncio
+import json
 import re
+import sys
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
+
+from sqlalchemy import delete
 
 from backend.src.modules.identity.models import TechnicalEvent
 
@@ -246,6 +252,69 @@ def assert_purgable(store: str) -> None:
         raise ValueError(f"{store} — бизнес-факт без автоматического TTL; очистка запрещена (business fact, no TTL).")
 
 
+async def apply_retention(
+    session: Any,
+    *,
+    now: datetime,
+    soap: SoapDiagnostics | None = None,
+    stores: tuple[str, ...] = PURGABLE_STORES,
+) -> dict[str, int]:
+    """Run the TTL purge plan: delete rows older than each store's cutoff.
+
+    Only ``PURGABLE_STORES`` can be requested (``assert_purgable`` rejects every
+    business table outright). Security events live in ``technical_events`` with
+    a ``SECURITY.`` action prefix, so both log families are filtered on the same
+    table. The executor never commits — the caller (maintenance one-shot or the
+    command coordinator) owns the transaction. Returns per-store counts for the
+    ops runbook journal.
+    """
+    plan = {action.store: action.before for action in retention_plan(now)}
+    counts: dict[str, int] = {}
+    for store in stores:
+        assert_purgable(store)
+        before = plan[store]
+        if store == "technical_events":
+            statement = delete(TechnicalEvent).where(
+                TechnicalEvent.at < before, TechnicalEvent.action.notlike("SECURITY.%")
+            )
+            result = await session.execute(statement)
+            counts[store] = int(result.rowcount)
+        elif store == "security_events":
+            statement = delete(TechnicalEvent).where(
+                TechnicalEvent.at < before, TechnicalEvent.action.like("SECURITY.%")
+            )
+            result = await session.execute(statement)
+            counts[store] = int(result.rowcount)
+        elif store == "soap_diagnostics":
+            counts[store] = soap.purge_expired(now) if soap is not None else 0
+    return counts
+
+
+async def run_retention_command(database_url: str | None = None) -> dict[str, int]:
+    """The documented maintenance one-shot: apply retention cutoffs and commit.
+
+    Invocable from the runbook (``retention.md``) as
+    ``uv run --frozen python -m backend.src.core.audit``; the DSN comes from the
+    environment (``DATABASE_URL`` or DB_* variables), an explicit
+    ``--database-url`` overrides it for a disposable run.
+    """
+    import os
+
+    if database_url:
+        os.environ["DATABASE_URL"] = database_url
+
+    from backend.src.core.database import dispose_engine, get_session_factory
+
+    factory = get_session_factory()
+    try:
+        async with factory() as session:
+            counts = await apply_retention(session, now=datetime.now(UTC), soap=None)
+            await session.commit()
+            return counts
+    finally:
+        await dispose_engine()
+
+
 class ServiceAccountRequired(Exception):
     """SOAP diagnostics are readable only by the service account."""
 
@@ -260,11 +329,12 @@ class SoapDiagnostics:
     retention = SOAP_DIAGNOSTIC_RETENTION
 
     def __init__(self) -> None:
-        self._records: dict[str, str] = {}
+        self._records: dict[str, tuple[str, datetime]] = {}
 
-    def record(self, trace_id: str, soap_text: str) -> str:
+    def record(self, trace_id: str, soap_text: str, *, at: datetime | None = None) -> str:
+        """Store the masked diagnostic row with its wall-clock timestamp."""
         masked = self._mask(soap_text)
-        self._records[trace_id] = masked
+        self._records[trace_id] = (masked, at or datetime.now(UTC))
         return masked
 
     @staticmethod
@@ -287,12 +357,49 @@ class SoapDiagnostics:
     def read(self, trace_id: str, *, principal: str) -> str:
         if principal != SERVICE_ACCOUNT:
             raise ServiceAccountRequired("Диагностика SOAP доступна только служебной учётной записи vse_service.")
-        return self._records[trace_id]
+        return self._records[trace_id][0]
+
+    def stored_at(self, trace_id: str) -> datetime:
+        """The wall-clock timestamp the row was stored with."""
+        return self._records[trace_id][1]
 
     def expired(self, now: datetime) -> list[str]:
         """Trace ids whose diagnostic rows are older than 30 days."""
-        del now  # wall-clock rows carry their own timestamps in production
-        return []
+        cutoff = now - self.retention
+        return [trace_id for trace_id, (_, at) in self._records.items() if at < cutoff]
+
+    def purge_expired(self, now: datetime) -> int:
+        """Delete expired rows and return their count (retention executor step)."""
+        expired = self.expired(now)
+        for trace_id in expired:
+            del self._records[trace_id]
+        return len(expired)
 
 
-__all__ += ["retention_plan", "assert_purgable", "PURGABLE_STORES", "RetentionAction"]
+__all__ += [
+    "retention_plan",
+    "assert_purgable",
+    "PURGABLE_STORES",
+    "RetentionAction",
+    "apply_retention",
+    "run_retention_command",
+    "main",
+]
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry for the maintenance one-shot (see ``docs/operations/retention.md``)."""
+    parser = argparse.ArgumentParser(description="Применить TTL-план очистки (90d/365d/30d) к лог-хранилищам.")
+    parser.add_argument("--database-url", default=None, help="DSN disposable-прогона; иначе env DATABASE_URL/DB_*")
+    args = parser.parse_args(argv)
+    try:
+        counts = asyncio.run(run_retention_command(args.database_url))
+    except Exception as exc:  # noqa: BLE001 - the one-shot reports and fails closed
+        print(f"Очистка не выполнена: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps({"purged": counts, "at": datetime.now(UTC).isoformat()}, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

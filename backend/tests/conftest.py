@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Identity tables reset between tests (never ``alembic_version``).
 _IDENTITY_TABLES = (
+    "report_snapshots",
     "outbox",
     "technical_events",
     "command_records",

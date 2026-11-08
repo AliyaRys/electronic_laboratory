@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.src.modules.catalog_pricing.schemas import ANIMAL_COLUMNS
 from backend.src.modules.samples.schemas import BalanceView
@@ -30,6 +30,11 @@ __all__ = [
     "ROW_NAMES",
     "COUNT_ROWS",
     "MASS_ROWS",
+    "ReportPreviewParams",
+    "SignedPreview",
+    "ReportCodesWrite",
+    "SaveReportWrite",
+    "ReportSnapshotView",
 ]
 
 AnimalColumn = Literal[
@@ -144,3 +149,73 @@ class OperationalView(BaseModel):
     transport_inspections: int
     current_sample_balances: list[BalanceView]
     period: ReportPeriod
+
+
+REPORT_TYPE: Literal["5VET_SECTION_III"] = "5VET_SECTION_III"
+
+
+class ReportPreviewParams(BaseModel):
+    """Server-scoped parameters of an immutable 5-vet preview."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_type: Literal["5VET_SECTION_III"] = REPORT_TYPE
+    laboratory_id: UUID
+    year: int = Field(ge=2000, le=9998)
+    half: Literal[1, 2]
+
+
+class SignedPreview(BaseModel):
+    """The exact compact payload shown by the UI and its session-bound MAC."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, object]
+    key_id: str
+    signature: str
+    byte_size: int
+
+
+class ReportCodesWrite(BaseModel):
+    """Seven required textual codes; leading zeroes are meaningful."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    okud: str
+    okpo: str
+    okved: str
+    oktmo: str
+    okogu: str
+    okopf: str
+    okfs: str
+
+    @field_validator("*")
+    @classmethod
+    def trim_required(cls, value: str) -> str:
+        result = value.strip()
+        if not result:
+            raise ValueError("Код обязателен и не может быть пустым.")
+        return result
+
+
+class SaveReportWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    preview: SignedPreview
+    codes: ReportCodesWrite
+
+
+class ReportSnapshotView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    report_type: str
+    laboratory_id: UUID
+    year: int
+    half: int
+    payload: dict[str, object]
+    codes: dict[str, str]
+    source_count: int
+    saved_at: datetime
+    saved_by: UUID
+    rev: int

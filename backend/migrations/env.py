@@ -26,6 +26,7 @@ from backend.src.infrastructure.config.settings import get_settings  # noqa: E40
 from backend.src.modules import identity  # noqa: E402,F401  (register models)
 from backend.src.modules.examinations import models as examination_models  # noqa: E402,F401
 from backend.src.modules.integrations.vetis import models as vetis_models  # noqa: E402,F401
+from backend.src.modules.reporting import models as reporting_models  # noqa: E402,F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().async_database_url)

@@ -35,6 +35,8 @@ __all__ = [
     "ReportCodesWrite",
     "SaveReportWrite",
     "ReportSnapshotView",
+    "ReportSummary",
+    "ReportSummaryPage",
 ]
 
 AnimalColumn = Literal[
@@ -219,3 +221,32 @@ class ReportSnapshotView(BaseModel):
     saved_at: datetime
     saved_by: UUID
     rev: int
+
+
+class ReportSummary(BaseModel):
+    """One row of the saved-report list (API-08 ``Page<ReportSummary>``).
+
+    The summary never carries the payload: the heavy signed snapshot belongs
+    to the single-report read, not to the list projection.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    report_type: str
+    laboratory_id: UUID
+    year: int
+    half: int
+    source_count: int
+    saved_at: datetime
+    saved_by: UUID
+    rev: int
+
+
+class ReportSummaryPage(BaseModel):
+    """API-08 list page of saved reports, newest period first."""
+
+    items: list[ReportSummary]
+    total: int
+    page: int
+    page_size: int

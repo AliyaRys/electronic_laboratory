@@ -27,6 +27,7 @@ from backend.src.core.commands import (
 )
 from backend.src.core.contracts import Page
 from backend.src.core.database import async_session
+from backend.src.core.durability import DurabilityGuard, get_durability_guard
 from backend.src.core.problems import ProblemError, idempotency_key_required, not_found
 from backend.src.modules.catalog_pricing import bulk as bulk_module
 from backend.src.modules.catalog_pricing import commands, queries
@@ -42,6 +43,7 @@ from backend.src.modules.catalog_pricing.schemas import (
     TariffView,
 )
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
+from backend.src.modules.examinations import deletion as examination_deletion
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import CommandRecord, CommandStatus, User
 from backend.src.modules.identity.session import SessionIdentity, SessionTransport, get_session_transport
@@ -823,6 +825,7 @@ async def get_operation_state(
     db: Annotated[AsyncSession, Depends(async_session)],
     principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    durability: Annotated[DurabilityGuard, Depends(get_durability_guard)],
 ) -> bulk_module.CommandStateView:
     """GET /operations/:id → CommandState (API-01), catalog kind.
 
@@ -836,6 +839,19 @@ async def get_operation_state(
     job's actual current outcome, not the first accepted command.
     """
     identity, _ = principal
+    examination_record = (
+        await db.execute(
+            select(CommandRecord).where(
+                CommandRecord.id == operation_id,
+                CommandRecord.action == examination_deletion.ACTION,
+            )
+        )
+    ).scalar_one_or_none()
+    if examination_record is not None:
+        await _authorize_job_read(db, authorizer, identity, examination_record.actor_id)
+        outcome = await examination_deletion.recover_delete_operation(db, operation_id, durability)
+        response.headers["Cache-Control"] = "no-store"
+        return examination_deletion.delete_outcome_view(outcome)
     record = (
         await db.execute(
             select(CommandRecord)

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.src.core.database import Base
 
-__all__ = ["Examination", "ExaminationSample", "ExaminationStatus"]
+__all__ = ["Examination", "ExaminationSample", "ExaminationStatus", "ExaminationTombstone"]
 
 
 class ExaminationStatus(StrEnum):
@@ -76,3 +76,19 @@ class ExaminationSample(Base):
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sample_collections.id", ondelete="RESTRICT"), nullable=False
     )
+
+
+class ExaminationTombstone(Base):
+    """Minimal deletion fact: deliberately contains no medical payload."""
+
+    __tablename__ = "examination_tombstones"
+
+    examination_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    laboratory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("laboratories.id", ondelete="RESTRICT"), nullable=False
+    )
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    command_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, unique=True)

@@ -215,7 +215,7 @@ async def detach_examination_samples(uow: AsyncSession, examination_id: UUID) ->
 
     FT-SMP-02: deleting a ВСЭ detaches only the link rows — never the
     collections, which stay in the balance or in the disposal history. The
-    The E01 table exists now; this hook deliberately deletes only links.
+    E01 table exists now; this hook deliberately deletes only links.
     """
     result = await uow.execute(
         delete(_EXAMINATION_SAMPLES).where(_EXAMINATION_SAMPLES.c.examination_id == examination_id)

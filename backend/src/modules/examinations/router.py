@@ -6,14 +6,18 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.commands import CommandContext, format_etag, resolve_if_match
+from backend.src.core.contracts import CommandStateView
 from backend.src.core.database import async_session
+from backend.src.core.durability import DurabilityGuard, get_durability_guard
 from backend.src.core.problems import not_found
 from backend.src.modules.arrivals.models import Party
-from backend.src.modules.examinations import commands, lifecycle, queries
+from backend.src.modules.examinations import commands, deletion, lifecycle, queries
+from backend.src.modules.examinations.models import Examination
 from backend.src.modules.examinations.schemas import ExaminationView, ExaminationWrite, OutcomeWrite
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
@@ -29,6 +33,17 @@ def _product_scope(party: Party) -> uuid.UUID | None:
     product = party.classification_snapshot.get("product")
     value = product.get("id") if isinstance(product, dict) else None
     return uuid.UUID(str(value)) if value is not None else None
+
+
+async def _mutation_scope(db: AsyncSession, examination_id: uuid.UUID) -> tuple[uuid.UUID, bool]:
+    """Resolve a live/tombstoned lab without exposing a foreign UUID."""
+    row = (await db.execute(select(Examination).where(Examination.id == examination_id))).scalar_one_or_none()
+    if row is not None:
+        return row.laboratory_id, False
+    tombstone = await queries.get_tombstone(db, examination_id)
+    if tombstone is None:
+        raise not_found("ВСЭ не найдена.")
+    return tombstone.laboratory_id, True
 
 
 @router.post("/parties/{party_id}", status_code=201, response_model=ExaminationView)
@@ -78,14 +93,16 @@ async def update_examination(
     identity, _actor = principal
     _require_csrf(request, identity.csrf_token)
     key = _idempotency_key(request)
-    row = await queries.get_examination(db, examination_id)
+    laboratory_id, deleted = await _mutation_scope(db, examination_id)
     await authorizer.authorize(
         db,
         identity.actor_id,
         "examination:update",
-        ScopeTarget(laboratory_id=row.laboratory_id),
+        ScopeTarget(laboratory_id=laboratory_id),
         hide_foreign=True,
     )
+    if deleted:
+        raise queries.examination_deleted()
     view = await lifecycle.update_examination(
         CommandContext(
             actor_id=identity.actor_id,
@@ -115,14 +132,16 @@ async def complete_waiting(
     identity, _actor = principal
     _require_csrf(request, identity.csrf_token)
     key = _idempotency_key(request)
-    row = await queries.get_examination(db, examination_id)
+    laboratory_id, deleted = await _mutation_scope(db, examination_id)
     await authorizer.authorize(
         db,
         identity.actor_id,
         "examination:complete-waiting",
-        ScopeTarget(laboratory_id=row.laboratory_id),
+        ScopeTarget(laboratory_id=laboratory_id),
         hide_foreign=True,
     )
+    if deleted:
+        raise queries.examination_deleted()
     view = await lifecycle.complete_waiting(
         CommandContext(
             actor_id=identity.actor_id,
@@ -159,3 +178,43 @@ async def read_examination(
     response.headers["Cache-Control"] = "no-store"
     response.headers["ETag"] = format_etag(view.revision)
     return view
+
+
+@router.delete(
+    "/{examination_id}",
+    status_code=204,
+    responses={202: {"model": CommandStateView, "description": "Remote WAL flush is not yet confirmed."}},
+)
+async def delete_examination(
+    examination_id: uuid.UUID,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    guard: Annotated[DurabilityGuard, Depends(get_durability_guard)],
+) -> Response:
+    identity, _actor = principal
+    _require_csrf(request, identity.csrf_token)
+    key = _idempotency_key(request)
+    laboratory_id, _deleted = await _mutation_scope(db, examination_id)
+    await authorizer.authorize(
+        db,
+        identity.actor_id,
+        "examination:delete",
+        ScopeTarget(laboratory_id=laboratory_id),
+        hide_foreign=True,
+    )
+    outcome = await deletion.delete_examination(
+        CommandContext(
+            actor_id=identity.actor_id,
+            idempotency_key=key,
+            expected_revision=resolve_if_match(request.headers.get("if-match")),
+        ),
+        examination_id,
+        uow=db,
+        guard=guard,
+    )
+    outcome = await deletion.finalize_delete(db, outcome, guard)
+    if outcome.state == "SUCCESS":
+        return Response(status_code=204)
+    return JSONResponse(status_code=202, content=deletion.delete_outcome_view(outcome).model_dump(mode="json"))

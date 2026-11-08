@@ -49,6 +49,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
       REPORT_PREVIEW_KEYS: ${REPORT_PREVIEW_KEYS:?REPORT_PREVIEW_KEYS is required}
+      # O02 enables this only after provisioning and proving a synchronous WAL receiver.
+      DELETE_DURABILITY_ENABLED: ${DELETE_DURABILITY_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

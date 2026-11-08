@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.commands import UnitOfWork
+from backend.src.core.contracts import CommandStateView
 from backend.src.modules.catalog_pricing.models import BulkPriceJob, BulkPriceTarget, Tariff
 from backend.src.modules.catalog_pricing.schemas import MoneyStringType, parse_decimal
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget
@@ -92,19 +93,6 @@ class BulkAccepted(BaseModel):
     operation_id: uuid.UUID
     state: str
     status_url: str
-
-
-class CommandStateView(BaseModel):
-    """GET /operations/:id (API-01 minimal CommandState for catalog commands)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: uuid.UUID
-    kind: str
-    state: str
-    result_id: uuid.UUID | None = None
-    problem: str | None = None
-    updated_at: str | None = None
 
 
 # --- state derivation ----------------------------------------------------------------
@@ -245,14 +233,13 @@ def job_view(job: BulkPriceJob, targets: list[BulkPriceTarget]) -> BulkPriceJobV
 
 def command_state_view(record: CommandRecord) -> CommandStateView:
     """The minimal CommandState per API-01 for a catalog command record."""
-    finished = record.finished_at.isoformat() if record.finished_at is not None else None
     return CommandStateView(
         id=record.id,
         kind="catalog",
         state=record.status.value if isinstance(record.status, CommandStatus) else str(record.status),
         result_id=record.result_id,
         problem=record.problem_code,
-        updated_at=finished,
+        updated_at=record.finished_at,
     )
 
 

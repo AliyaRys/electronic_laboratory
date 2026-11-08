@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     secret_key: str = "insecure-secret-key-change-this"
     # JSON keyring shared by every worker; required in production (ADR-021).
     report_preview_keys: str | None = None
+    # E03/O02: destructive examination deletes require a verified synchronous
+    # WAL receiver. Disabled is the safe default until O02 provisions it.
+    delete_durability_enabled: bool = False
 
     # Redis (sessions / rate limit / queue transport; ADR-005)
     redis_url: str = "redis://localhost:6379/0"

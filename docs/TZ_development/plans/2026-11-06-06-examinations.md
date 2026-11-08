@@ -56,11 +56,11 @@
 
 **Interfaces:** `delete_examination(ctx,id)->DeleteOutcome`; `DurabilityGuard.ready()->bool`, `wait_flushed(lsn)->bool`; CommandState API-01. Тот же idempotency record определяет результат после timeout.
 
-- [ ] Написать assertions после delete: старый GET404/old PUT EXAMINATION_DELETED, номер свободен, party WORK с прежним confirmation, collections/disposals/saved report прежние, нет research/charges/medical versions. Новый create→новый UUID и REUSE без начисления. backup not ready→503 без удаления. uncertain COMMIT→UNKNOWN, проверяющий повтор не выполняет второй DELETE и ждёт receiver flush_lsn до текущей верхней LSN.
-- [ ] Запустить `uv run --frozen pytest backend/tests/examinations/test_delete.py -v`, получить FAIL.
-- [ ] Реализовать атомарный tombstone+physical delete+event+command record; SET LOCAL synchronous_commit=on для DELETE. До COMMIT проверить base-copy/WAL continuity/receiver readiness. Success только remote flush; связь потеряна во время commit→202 UNKNOWN. Recovery/replay читает fact и текущий WAL LSN, ждёт durable upper bound, не воскрешает/не удаляет повторно вслепую. Коллекции/гашение/report evidence не CASCADE, медицинский payload не в tombstone/логах.
-- [ ] Проверить concurrency delete/update/create/disposal и полночь; реальные destroy/restore критерии передать OPS02. AT-08/09/12/16, no external cancel. Без рабочего DurabilityGuard production DELETE не подтверждается.
-- [ ] Зафиксировать: `feat: delete examinations with durable independent facts`.
+- [x] Написать assertions после delete: старый GET404/old PUT EXAMINATION_DELETED, номер свободен, party WORK с прежним confirmation, collections/disposals/saved report прежние, нет research/charges/medical versions. Новый create→новый UUID и REUSE без начисления. backup not ready→503 без удаления. uncertain COMMIT→UNKNOWN, проверяющий повтор не выполняет второй DELETE и ждёт receiver flush_lsn до текущей верхней LSN.
+- [x] Запустить `uv run --frozen pytest backend/tests/examinations/test_delete.py -v`, получить FAIL.
+- [x] Реализовать атомарный tombstone+physical delete+event+command record; SET LOCAL synchronous_commit=on для DELETE. До COMMIT проверить base-copy/WAL continuity/receiver readiness. Success только remote flush; связь потеряна во время commit→202 UNKNOWN. Recovery/replay читает fact и текущий WAL LSN, ждёт durable upper bound, не воскрешает/не удаляет повторно вслепую. Коллекции/гашение/report evidence не CASCADE, медицинский payload не в tombstone/логах.
+- [x] Проверить concurrency delete/update/create/disposal и полночь; реальные destroy/restore критерии передать OPS02. AT-08/09/12/16, no external cancel. Без рабочего DurabilityGuard production DELETE не подтверждается.
+- [x] Зафиксировать: `feat: delete examinations with durable independent facts`.
 
 ### Task E04: Форма, журнал и просмотр
 

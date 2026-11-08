@@ -84,3 +84,5 @@ GET /health/live без секретов, GET /health/ready (БД/версия �
 ## API-10. Состояния ВетИС
 
 OperationView: `{id,kind,state,party_id?,application_id?,result_id?,last_error?,last_checked_at,can_check_result}`. Технические receipt states NOT_SENT/QUEUED/SUBMITTING/PROCESSING/CONFIRMED/REJECTED/UNKNOWN. Ошибки инициатора/площадки —422 INTEGRATION_INITIATOR_MISSING/INTEGRATION_SCOPE_MISSING; выключенный модуль —503 INTEGRATION_NOT_CONFIGURED. Секреты/сырой SOAP не входят DTO. Переход CONFIRMED допустим только для `ReceiptEvidence` DATA-06, не по HTTP 200 шлюза/UTILIZED/остатку склада. Единственные пользовательские действия — отправить приёмку и проверить результат, без force-confirm.
+
+По O-11 production работает read-only. Receipt mutation routes и пользовательские write-действия в production недоступны и возвращают 503 `INTEGRATION_WRITE_DISABLED` до создания outbox/сетевого вызова; UI не предлагает пробное гашение. Эти маршруты проверяются только офлайн детерминированным адаптером. Наличие `ReceiptEvidence` в тесте не разрешает production write и не меняет `VETIS_WRITE_ENABLED=false`.

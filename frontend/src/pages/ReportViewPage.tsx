@@ -55,6 +55,8 @@ function ReportViewContent(): React.ReactElement {
     typeof payload["laboratory"] === "object" && payload["laboratory"] !== null
       ? String((payload["laboratory"] as Record<string, unknown>)["name"] ?? "")
       : "";
+  // The marking follows the SAVED payload's official flag, never live state.
+  const official = payload["official"] === true;
   const savedAt = view !== null ? new Date(view.saved_at).toLocaleString("ru-RU") : "";
 
   return (
@@ -120,7 +122,7 @@ function ReportViewContent(): React.ReactElement {
           <ReportMatrix
             payload={payload}
             sourceCount={view.source_count}
-            official={false}
+            official={official}
             caption="Матрица сохранённого отчёта"
           />
           <ReportActions

@@ -57,16 +57,40 @@ export interface MatrixModel {
   sourceCount: number;
 }
 
-/** The sum of two decimal strings without float arithmetic; "" when absent. */
-function addDecimals(left: string, right: string): string {
-  const scale = 6;
-  const toUnits = (value: string): number => {
-    if (value === "") return 0;
-    return Number(value) * 10 ** scale;
-  };
-  const total = toUnits(left) + toUnits(right);
-  if (total === 0) return "0";
-  return String(total / 10 ** scale);
+/** Exact decimal-string addition on scale-6 BigInt units; no float arithmetic. */
+export const DECIMAL_SCALE = 6n;
+
+/** Parse one payload decimal string into scale-6 integer units (BigInt). */
+export function toScaledUnits(value: string): bigint {
+  if (value === "") return 0n;
+  const trimmed = value.trim();
+  const match = /^-?\d+(\.\d+)?$/.exec(trimmed);
+  if (match === null) return 0n;
+  const negative = trimmed.startsWith("-");
+  const digits = negative ? trimmed.slice(1) : trimmed;
+  const [integer = "0", fraction = ""] = digits.split(".");
+  const paddedFraction = (fraction + "000000").slice(0, 6);
+  const units = BigInt(integer) * 10n ** DECIMAL_SCALE + BigInt(paddedFraction);
+  return negative ? -units : units;
+}
+
+/** Format scale-6 integer units back into a plain decimal string. */
+export function formatScaled(units: bigint): string {
+  const negative = units < 0n;
+  const magnitude = negative ? -units : units;
+  const integerPart = magnitude / 10n ** DECIMAL_SCALE;
+  const fractionPart = magnitude % 10n ** DECIMAL_SCALE;
+  const fraction = fractionPart.toString().padStart(6, "0").replace(/0+$/, "");
+  if (units === 0n) return "0";
+  const sign = negative ? "-" : "";
+  return fraction === "" ? `${sign}${integerPart}` : `${sign}${integerPart}.${fraction}`;
+}
+
+/** The sum of two decimal strings without any float arithmetic; "" stays ""-neutral. */
+export function addDecimals(left: string, right: string): string {
+  const total = toScaledUnits(left) + toScaledUnits(right);
+  if (left === "" && right === "") return "";
+  return formatScaled(total);
 }
 
 /**

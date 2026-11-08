@@ -205,11 +205,11 @@ test.describe("report list", () => {
     const items = Array.from({ length: 25 }, (_value, index) =>
       summary(`${REPORT}-${index}`, 2026, index % 2 === 0 ? 1 : 2),
     );
-    let lastPage = "1";
+    const servedPages: number[] = [];
     await page.route("**/api/v1/reports/5vet*", (route: Route) => {
       const url = new URL(route.request().url());
       const page_ = Number(url.searchParams.get("page") ?? "1");
-      lastPage = String(page_);
+      servedPages.push(page_);
       const slice = items.slice((page_ - 1) * 20, page_ * 20);
       return route.fulfill({
         status: 200,
@@ -219,12 +219,23 @@ test.describe("report list", () => {
     });
     await page.goto(`/labs/${LAB}/reports`);
     await expect(page.getByRole("heading", { name: "Отчёты", exact: true })).toBeVisible();
-    await expect(page.getByText(/из 25/)).toBeVisible();
+    await expect(page.getByText(/Страница 1 из 2/)).toBeVisible();
     // The row itself is NOT a clickable container: the link is the entry point.
     const firstLink = page.getByRole("link", { name: /2026, I полугодие/ }).first();
     await expect(firstLink).toBeVisible();
     await shot(page, "list-page1");
-    void lastPage;
+
+    // Forward to page 2: the server is asked for page=2 and shows the rest.
+    await page.getByRole("button", { name: "Следующая страница" }).click();
+    await expect(page.getByText(/Страница 2 из 2/)).toBeVisible();
+    await expect(page).toHaveURL(/page=2/);
+    expect(servedPages).toContain(2);
+    await shot(page, "list-page2");
+
+    // Back returns to page 1 (browser history keeps the URL state).
+    await page.goBack();
+    await expect(page.getByText(/Страница 1 из 2/)).toBeVisible();
+    expect(servedPages).toContain(1);
   });
 
   test("the list link and create affordance are keyboard-accessible", async ({ page }) => {
@@ -268,12 +279,19 @@ test.describe("saved report view and exports", () => {
     await shot(page, "view-not-found");
   });
 
-  test("delete a source after save: screen, PDF, XLSX and print matrix all EQUAL", async ({ page }) => {
+  test("deleting a source after save: the saved snapshot stays equal on screen, PDF and XLSX", async ({
+    page,
+  }) => {
     await mockMe(page);
-    let sourceDeleted = false;
-    // The saved snapshot is immutable: deleting a source does NOT change it.
-    await page.route(`**/api/v1/reports/5vet/${REPORT}`, (route: Route) =>
-      route.fulfill({
+    const deletions: string[] = [];
+    const pdfBodies: string[] = [];
+    const xlsxBodies: string[] = [];
+    let snapshotServes = 0;
+    // The saved snapshot endpoint ALWAYS serves the stored payload: deleting
+    // a source afterwards cannot change or invalidate it (R02/E03 contract).
+    await page.route(`**/api/v1/reports/5vet/${REPORT}`, (route: Route) => {
+      snapshotServes += 1;
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
@@ -281,55 +299,74 @@ test.describe("saved report view and exports", () => {
           payload,
           codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
-      }),
-    );
-    await page.route(`**/api/v1/reports/5vet/${REPORT}/export.pdf`, (route: Route) =>
-      route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4 snapshot" }),
-    );
-    await page.route(`**/api/v1/reports/5vet/${REPORT}/export.xlsx`, (route: Route) =>
-      route.fulfill({
+      });
+    });
+    // The export mocks return deterministic realistic content; the byte
+    // equality between the first and the second fetch is asserted below.
+    await page.route(`**/api/v1/reports/5vet/${REPORT}/export.pdf`, (route: Route) => {
+      const body = "%PDF-1.4 snapshot-5vet-III-2026-1-0.25-0.3-34";
+      pdfBodies.push(body);
+      return route.fulfill({ status: 200, contentType: "application/pdf", body });
+    });
+    await page.route(`**/api/v1/reports/5vet/${REPORT}/export.xlsx`, (route: Route) => {
+      const body = "PKsnapshot-xlsx-5vet-III-2026-1-0.25-0.3-34";
+      xlsxBodies.push(body);
+      return route.fulfill({
         status: 200,
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        body: "PK",
-      }),
-    );
-    await page.route("**/examinations/*", async (route: Route) => {
+        body,
+      });
+    });
+    // A source card is deleted through its own route — mocked 204.
+    await page.route("**/api/v1/examinations/e0000000-0000-4000-8000-000000000001", async (route: Route) => {
       if (route.request().method() === "DELETE") {
-        sourceDeleted = true;
+        deletions.push(route.request().url());
         return route.fulfill({ status: 204, body: "" });
       }
-      return route.fallback();
+      return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
     });
 
     await page.goto(`/labs/${LAB}/reports/${REPORT}`);
     await expect(page.getByText("Матрица сохранённого отчёта")).toBeVisible();
     const screenCell = await page.getByText("0.25").first().textContent();
+    expect(screenCell).toBe("0.25");
 
-    const download = page.waitForEvent("download");
+    const pdfDownload = page.waitForEvent("download");
     await page.getByRole("button", { name: "Скачать PDF" }).click();
-    await download;
-    const xlsx = page.waitForEvent("download");
+    await pdfDownload;
+    const xlsxDownload = page.waitForEvent("download");
     await page.getByRole("button", { name: "Скачать XLSX" }).click();
-    await xlsx;
+    await xlsxDownload;
 
-    // The exports used the snapshot-only URLs regardless of the source deletion.
-    await page.route(`**/api/v1/reports/5vet/${REPORT}`, (route: Route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          ...summary(REPORT, 2026, 1),
-          payload,
-          codes: {},
-        }),
-      }),
-    );
+    // The named flow: a source is deleted AFTER the snapshot was saved.
+    await page.evaluate(async () => {
+      await fetch("/api/v1/examinations/e0000000-0000-4000-8000-000000000001", { method: "DELETE" });
+    });
+    expect(deletions).toHaveLength(1);
+
     await page.reload();
     await expect(page.getByText("Матрица сохранённого отчёта")).toBeVisible();
+    // The screen still renders the SAVED matrix: same values, same count,
+    // same source identities — the deletion did not recompute anything.
     expect(await page.getByText("0.25").first().textContent()).toBe(screenCell);
-    expect(sourceDeleted).toBe(false);
-    // Count and provenance of the snapshot stay the same.
     await expect(page.getByText(/Источников в снимке: 34/)).toBeVisible();
+    expect(snapshotServes).toBeGreaterThanOrEqual(2);
+
+    const pdfDownload2 = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Скачать PDF" }).click();
+    await pdfDownload2;
+    const xlsxDownload2 = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Скачать XLSX" }).click();
+    await xlsxDownload2;
+
+    // Byte equality: the second export serves exactly the first bytes.
+    expect(pdfBodies).toHaveLength(2);
+    expect(pdfBodies[0]).toBe(pdfBodies[1]);
+    expect(xlsxBodies).toHaveLength(2);
+    expect(xlsxBodies[0]).toBe(xlsxBodies[1]);
+    // The served content carries the saved snapshot's own markers.
+    expect(pdfBodies[0]).toContain("34");
+    expect(xlsxBodies[0]).toContain("0.25");
     await shot(page, "view-matrix-equal");
   });
 

@@ -105,4 +105,46 @@ describe("ReportsPage", () => {
     await user.click(await screen.findByRole("button", { name: "Создать отчёт 5-вет" }));
     await waitFor(() => expect(screen.getByText("Создание")).toBeVisible());
   });
+
+  it("pages through 25 saved reports: page 2 then back", async () => {
+    const user = userEvent.setup();
+    const gets: string[] = [];
+    server.use(
+      http.get("*/api/v1/me", () => HttpResponse.json(me("HEAD"))),
+      http.get("*/api/v1/reports/5vet", ({ request }) => {
+        const url = new URL(request.url);
+        const page = Number(url.searchParams.get("page") ?? "1");
+        gets.push(`page=${page}`);
+        const items = Array.from({ length: 25 }, (_value, index) => ({
+          id: `report-${index}`,
+          report_type: "5VET_SECTION_III",
+          laboratory_id: LAB,
+          year: 2026,
+          half: index % 2 === 0 ? 1 : 2,
+          source_count: 3,
+          saved_at: "2027-01-02T10:00:00Z",
+          saved_by: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          rev: 1,
+        }));
+        const pageSize = 20;
+        const start = (page - 1) * pageSize;
+        return HttpResponse.json({
+          items: items.slice(start, start + pageSize),
+          total: items.length,
+          page,
+          page_size: pageSize,
+        });
+      }),
+    );
+    renderPage();
+    expect(await screen.findByText(/Страница 1 из 2/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Следующая страница" }));
+    expect(await screen.findByText(/Страница 2 из 2/)).toBeVisible();
+    expect(gets).toContain("page=2");
+    await user.click(screen.getByRole("button", { name: "Предыдущая страница" }));
+    expect(await screen.findByText(/Страница 1 из 2/)).toBeVisible();
+    expect(gets).toContain("page=1");
+    // The «previous» control is disabled on the first page.
+    expect(screen.getByRole("button", { name: "Предыдущая страница" })).toBeDisabled();
+  });
 });

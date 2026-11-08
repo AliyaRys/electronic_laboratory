@@ -88,6 +88,34 @@ describe("ReportViewPage", () => {
     expect(screen.getByText(/Источников в снимке: 1/)).toBeVisible();
   });
 
+  it("an official=true snapshot does NOT show the preliminary marking", async () => {
+    server.use(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          full_name: "Тестовый пользователь",
+          login: "tester",
+          email: "tester@example.test",
+          position: null,
+          role: "HEAD",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: [],
+          revision: 1,
+        }),
+      ),
+      http.get(`*/api/v1/reports/5vet/${REPORT}`, () =>
+        HttpResponse.json({
+          ...(snapshotView() as Record<string, unknown>),
+          payload: { ...payload, official: true },
+        }),
+      ),
+    );
+    renderView();
+    expect(await screen.findByText("Матрица сохранённого отчёта")).toBeVisible();
+    expect(screen.queryByText("Предварительная форма")).toBeNull();
+  });
+
   it("a report deleted elsewhere answers 404 → honest not-found", async () => {
     server.use(
       http.get("*/api/v1/me", () =>

@@ -9,7 +9,7 @@
  */
 import "./../features/reports/reports.css";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { useMe } from "../shared/api/me";
 import { StatusView } from "../shared/ui/StatusView";
@@ -41,13 +41,17 @@ function halfLabel(half: number): string {
 function ReportsContent(): React.ReactElement {
   const { labId } = useParams<{ labId: string }>();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const me = useMe();
   const role = me.user?.role ?? null;
   const allowed = role !== null && REPORT_ROLES.has(role);
 
-  const page = useQuery({
-    queryKey: reportsKey(labId ?? "", 1),
-    queryFn: ({ signal }) => fetchReports(labId ?? "", 1, signal),
+  // The list page lives in the URL; going back corrects the page like every
+  // other screen (API-08 list semantics, page_size from the server answer).
+  const requestedPage = Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1);
+  const list = useQuery({
+    queryKey: reportsKey(labId ?? "", requestedPage),
+    queryFn: ({ signal }) => fetchReports(labId ?? "", requestedPage, signal),
     enabled: labId !== undefined && allowed,
   });
 
@@ -68,10 +72,23 @@ function ReportsContent(): React.ReactElement {
     );
   }
 
-  const problem = isProblem(page.data) ? page.data : null;
+  const problem = isProblem(list.data) ? list.data : null;
   const data: ReportSummaryPage | null =
-    problem === null ? ((page.data ?? null) as ReportSummaryPage | null) : null;
+    problem === null ? ((list.data ?? null) as ReportSummaryPage | null) : null;
   const items: ReportSummary[] = data?.items ?? [];
+  const pageSize = data?.page_size ?? 20;
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / pageSize));
+  // A delete elsewhere can shrink the list: an out-of-range URL corrects itself.
+  const page = Math.min(requestedPage, totalPages);
+  const setPage = (next: number): void => {
+    const url = new URLSearchParams(params);
+    if (next <= 1) {
+      url.delete("page");
+    } else {
+      url.set("page", String(next));
+    }
+    setParams(url);
+  };
 
   return (
     <div className="vse-app vse-page">
@@ -94,9 +111,9 @@ function ReportsContent(): React.ReactElement {
             title={problem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить список отчётов."}
             detail={problem.detail}
             trace={problem.trace_id}
-            onRetry={() => void page.refetch()}
+            onRetry={() => void list.refetch()}
           />
-        ) : page.isLoading ? (
+        ) : list.isLoading ? (
           <StatusView state="loading" title="Загрузка отчётов…" />
         ) : items.length === 0 ? (
           <StatusView state="empty" title="Сохранённых отчётов пока нет." />
@@ -115,10 +132,27 @@ function ReportsContent(): React.ReactElement {
                 </li>
               ))}
             </ul>
-            <p className="app-field-message">
-              Показаны {items.length} из {data?.total ?? items.length} — страница 1 (следующие страницы
-              добавляются при необходимости).
-            </p>
+            <nav className="vse-pagination" aria-label="Страницы списка отчётов">
+              <Button
+                iconOnly
+                label="Предыдущая страница"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
+                ‹
+              </Button>
+              <span aria-live="polite">
+                {`Страница ${page} из ${totalPages} — показано ${items.length} из ${data?.total ?? items.length}`}
+              </span>
+              <Button
+                iconOnly
+                label="Следующая страница"
+                disabled={page >= totalPages}
+                onClick={() => setPage(page + 1)}
+              >
+                ›
+              </Button>
+            </nav>
           </>
         )}
       </section>

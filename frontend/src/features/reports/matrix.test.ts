@@ -72,4 +72,23 @@ describe("buildMatrix", () => {
     expect(model.columns).toEqual(["Свиньи"]);
     expect(displayCell(model.rows[0]!, 0)).toBe("—");
   });
+
+  it("sums merged columns exactly, without float artifacts", () => {
+    const payloadWithBirds = {
+      columns: ["CHICKEN", "OTHER_BIRDS"],
+      matrix: [
+        ["0.07", "0"],
+        ["0.000000001", "0"],
+        ["100.5", "100.25"],
+      ],
+    };
+    const model = buildMatrix(payloadWithBirds, 3);
+    const birdIndex = model.columns.indexOf(BIRD_COLUMN);
+    // 0.07 + 0 = 0.07 (never 0.07000000000000001 from float arithmetic).
+    expect(displayCell(model.rows[0]!, birdIndex)).toBe("0.07");
+    // Sub-scale inputs stay exact.
+    expect(displayCell(model.rows[1]!, birdIndex)).toBe("0");
+    // kg-style two-column halves stay exact decimals.
+    expect(displayCell(model.rows[2]!, birdIndex)).toBe("200.75");
+  });
 });

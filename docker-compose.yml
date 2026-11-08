@@ -78,7 +78,18 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_NAME: ${DB_NAME:-vse}
-    command: ["python", "-m", "alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    command:
+      [
+        "python",
+        "deploy/migrate_lock.py",
+        "python",
+        "-m",
+        "alembic",
+        "-c",
+        "backend/alembic.ini",
+        "upgrade",
+        "head",
+      ]
     depends_on:
       postgres:
         condition: service_healthy

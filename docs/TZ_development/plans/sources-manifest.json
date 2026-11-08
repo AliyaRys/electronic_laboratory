@@ -141,8 +141,8 @@
     },
     {
       "path": "docs/adr/README.md",
-      "sha256": "63e2da533e172a0b67b1edf31a76fb5ac9a6304b8bee0c84efa5e777326e8a6a",
-      "bytes": 26627
+      "sha256": "098ba61bcd223410645b6399ac219d207b427e649820835b2242959676f3e864",
+      "bytes": 26459
     },
     {
       "path": "docs/adr/sources.md",

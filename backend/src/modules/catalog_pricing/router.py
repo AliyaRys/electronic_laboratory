@@ -47,6 +47,7 @@ from backend.src.modules.examinations import deletion as examination_deletion
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import CommandRecord, CommandStatus, User
 from backend.src.modules.identity.session import SessionIdentity, SessionTransport, get_session_transport
+from backend.src.modules.integrations.vetis import sync as vetis_sync
 
 __all__ = ["router"]
 
@@ -852,6 +853,14 @@ async def get_operation_state(
         outcome = await examination_deletion.recover_delete_operation(db, operation_id, durability)
         response.headers["Cache-Control"] = "no-store"
         return examination_deletion.delete_outcome_view(outcome)
+    # VetIS sync operations (ТЗ-10 V02, DATA-05 journal): readable in scope.
+    vetis_operation = await vetis_sync.load_operation_state(db, operation_id)
+    if vetis_operation is not None:
+        await authorizer.authorize(
+            db, identity.actor_id, "arrivals:list", ScopeTarget(laboratory_id=vetis_operation.laboratory_id)
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return vetis_sync.command_state_view(vetis_operation)
     record = (
         await db.execute(
             select(CommandRecord)

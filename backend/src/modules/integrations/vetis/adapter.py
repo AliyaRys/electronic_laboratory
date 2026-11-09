@@ -34,6 +34,7 @@ from backend.src.modules.integrations.vetis.manifest import (
 )
 from backend.src.modules.integrations.vetis.normalizer import (
     NormalizedEntry,
+    extract_raw_documents,
     filter_entries,
     normalize_document,
     parse_vet_document_list,
@@ -177,7 +178,13 @@ class VetisReadAdapter:
         if not complete:
             next_state = _CursorState(offset=new_offset, seen=state.seen + sorted(page_seen))
             next_cursor = _encode_cursor(next_state)
-        return IncomingPage(items=items, next_cursor=next_cursor, complete=complete, filtered=filtered)
+        return IncomingPage(
+            items=items,
+            next_cursor=next_cursor,
+            complete=complete,
+            filtered=filtered,
+            raw_documents=extract_raw_documents(result_xml),
+        )
 
 
 def _total(entries: list[NormalizedEntry], result_xml: str) -> int:

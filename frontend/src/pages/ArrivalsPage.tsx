@@ -2,8 +2,9 @@
  * Arrivals queues (FT-ARR-01/02, ui-mapping: working arrivals →
  * /labs/:labId/arrivals): the EXPECTED/WORK/ACCEPTED queues of one
  * laboratory. Filters/search/page live in the URL (FT-COM-01/02), rows open
- * the real party id, and the update button is honestly disabled while the
- * VetIS integration is not configured (ТЗ-10) — never a fake import.
+ * the real party id. The refresh button (ТЗ-10, VET/HEAD only) posts the
+ * SAME durable sync job the 15-minute scheduler runs and polls
+ * GET /operations/:id — an honest failed run is shown, never a fake import.
  */
 import "../features/arrivals/arrivals.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,22 +13,30 @@ import { useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import {
   fetchArrivals,
+  fetchOperationState,
   hideArrival,
   QUEUE_LABELS,
   RESULT_LABELS,
   revisionEtag,
+  syncArrivals,
+  syncIsTerminal,
   type ArrivalQueue,
   type ArrivalResult,
   type IncomingView,
   type Problem,
+  type SyncAccepted,
+  type SyncOperationState,
 } from "../features/arrivals/api";
 import { ArrivalList } from "../features/arrivals/ArrivalList";
+import { useMe } from "../shared/api/me";
 import { Button } from "../shared/ui/Button";
 import { Dialog } from "../shared/ui/Dialog";
 import { StatusView } from "../shared/ui/StatusView";
 
 const QUEUES: readonly ArrivalQueue[] = ["EXPECTED", "WORK", "ACCEPTED"];
 const RESULTS: readonly ArrivalResult[] = ["WAITING", "RETURNED", "COMPLETED"];
+const SYNC_ROLES = new Set(["VET", "HEAD"]);
+const POLL_INTERVAL_MS = 1500;
 
 interface Filters {
   queue: ArrivalQueue;
@@ -58,10 +67,14 @@ function ArrivalsContent(): React.ReactElement {
   const { labId } = useParams<{ labId: string }>();
   const [params, setParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const { user } = useMe();
   const filters = filtersFromParams(params);
   const searchRef = useRef<HTMLInputElement>(null);
   const [hideTarget, setHideTarget] = useState<IncomingView | null>(null);
   const [hideError, setHideError] = useState("");
+  const [syncJob, setSyncJob] = useState<SyncAccepted | null>(null);
+  const [syncError, setSyncError] = useState("");
+  const [syncState, setSyncState] = useState<SyncOperationState | null>(null);
 
   const arrivals = useQuery({
     queryKey: [null, labId ?? null, null, "/arrivals", filters],
@@ -102,6 +115,56 @@ function ArrivalsContent(): React.ReactElement {
     }
     setHideError(problem.detail !== "" ? problem.detail : problem.code);
   };
+
+  // Poll the accepted sync job until it reaches a terminal state; the list is
+  // refreshed for BOTH outcomes — a failed run shows its own honest problem.
+  const pollSyncJob = async (accepted: SyncAccepted): Promise<void> => {
+    setSyncState({ id: accepted.operation_id, kind: "vetis.sync", state: accepted.state });
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      const state = await fetchOperationState(accepted.operation_id);
+      if ("code" in state) {
+        setSyncError(state.detail !== "" ? state.detail : state.code);
+        setSyncJob(null);
+        return;
+      }
+      setSyncState(state);
+      if (syncIsTerminal(state)) {
+        setSyncJob(null);
+        await queryClient.invalidateQueries({ queryKey: [null, labId ?? null, null, "/arrivals"] });
+        return;
+      }
+    }
+  };
+
+  const runSync = async (): Promise<void> => {
+    if (labId === undefined) return;
+    setSyncError("");
+    const accepted = await syncArrivals(labId);
+    if ("code" in accepted) {
+      setSyncError(accepted.detail !== "" ? accepted.detail : accepted.code);
+      return;
+    }
+    setSyncJob(accepted);
+    await pollSyncJob(accepted);
+  };
+
+  const canSync = user !== null && SYNC_ROLES.has(user.role);
+  const syncRunning = syncJob !== null;
+  const syncDone =
+    syncState !== null && syncJob === null && syncError === "" && syncState.state === "SUCCESS";
+  const syncFailed =
+    syncState !== null && syncJob === null && syncError === "" && syncState.state === "FAILED";
+  const syncHint =
+    syncError !== ""
+      ? syncError
+      : syncRunning
+        ? "Обновление выполняется…"
+        : syncDone
+          ? "Поступления обновлены из ВетИС."
+          : syncFailed
+            ? "Обновление не выполнено: повторите позже или обратитесь к администратору."
+            : "Обновление поступлений из ВетИС выполняется автоматически каждые 15 минут.";
 
   if (labId === undefined) {
     return (
@@ -171,13 +234,21 @@ function ArrivalsContent(): React.ReactElement {
             </Button>
           </div>
           <div>
-            <Button disabled label="Обновить поступления — интеграция с ВетИС не настроена">
+            <Button
+              onClick={() => void runSync()}
+              disabled={!canSync || syncRunning}
+              label={
+                canSync
+                  ? "Обновить поступления из ВетИС"
+                  : "Обновление доступно только ветврачу и заведующему"
+              }
+            >
               Обновить
             </Button>
           </div>
         </form>
-        <p className="vse-arrival-hint app-field-message">
-          Обновление из ВетИС не настроено. Поступления появятся после подключения модуля интеграции.
+        <p className="vse-arrival-hint app-field-message" role="status">
+          {syncHint}
         </p>
 
         {arrivals.isLoading ? (

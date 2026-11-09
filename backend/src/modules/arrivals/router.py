@@ -21,8 +21,7 @@ from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_auth
 from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session
 from backend.src.modules.identity.session import SessionIdentity
-from backend.src.modules.integrations.vetis.contracts import VetisScope
-from backend.src.modules.integrations.vetis.ports import DisabledVetisAdapter
+from backend.src.modules.integrations.vetis import sync
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
@@ -170,18 +169,23 @@ async def hide_arrival(
     await db.commit()
 
 
-@router.post("/sync", status_code=202, response_model=None)
+@router.post("/sync", status_code=202, response_model=sync.SyncAccepted)
 async def sync_arrivals(
     payload: SyncRequest,
     request: Request,
+    response: Response,
     db: Annotated[AsyncSession, Depends(async_session)],
     principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
-) -> None:
-    """ТЗ-10 owns the real sync run; until it ships the answer is honest 503."""
+) -> sync.SyncAccepted:
+    """API-04: accept the manual refresh as the SAME durable job the 15-minute
+    scheduler uses (202 SyncRun — never a sync confirmation). API readiness
+    does not depend on VetIS: an unconfigured run fails honestly later, the
+    checkpoint stays put, and a missing binding is refused before any intent."""
     identity, actor = principal
     _require_csrf(request, identity.csrf_token)
     await authorizer.authorize(db, identity.actor_id, "vetis:sync", ScopeTarget(laboratory_id=payload.laboratory_id))
-    adapter = DisabledVetisAdapter()
-    scope = VetisScope(laboratory_id=payload.laboratory_id, contour="PILOT")  # type: ignore[arg-type]
-    await adapter.list_incoming(scope, None, "")
+    accepted = await sync.start_sync(db, actor_id=identity.actor_id, laboratory_id=payload.laboratory_id)
+    await db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return accepted

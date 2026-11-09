@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     session_cookie_secure: bool = True
 
+    # ТЗ-10 stage flag: V02 is read-only; the write state (receipt submission)
+    # is implemented in W01–W03 and enabled there. The seam is honest — the
+    # sync worker never touches the write port while this stays false.
+    vetis_write_enabled: bool = False
+
     # API
     api_prefix: str = "/api/v1"
 

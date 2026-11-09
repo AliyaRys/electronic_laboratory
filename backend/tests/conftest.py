@@ -50,6 +50,10 @@ _IDENTITY_TABLES = (
     "method_rules",
     # arrivals (Task A01)
     "hidden_incoming",
+    # VetIS sync journal (Task V02)
+    "vetis_source_documents",
+    "vetis_operations",
+    "vetis_bindings",
     # samples (Task S01)
     "sample_collections",
     "sample_disposals",

@@ -123,14 +123,14 @@ async def test_hide_endpoint_and_honest_sync(vet_env: SimpleNamespace) -> None:
     await env.db.commit()
 
     async with _client_for(env) as (http, identity):
-        # The sync button is honest: the disabled adapter answers 503.
+        # The honest refusal BEFORE any intent: no registered binding → 422.
         sync = await http.post(
             "/api/v1/arrivals/sync",
             json={"laboratory_id": str(env.own.id)},
             headers={"x-csrf-token": identity.csrf_token, "origin": "http://test"},
         )
-        assert sync.status_code == 503, sync.text
-        assert sync.json()["code"] == "INTEGRATION_NOT_CONFIGURED"
+        assert sync.status_code == 422, sync.text
+        assert sync.json()["code"] == "INTEGRATION_SCOPE_MISSING"
 
         hidden = await http.delete(
             f"/api/v1/arrivals/{party.id}",
@@ -145,6 +145,46 @@ async def test_hide_endpoint_and_honest_sync(vet_env: SimpleNamespace) -> None:
 
         after = await http.get("/api/v1/arrivals", params={"laboratory_id": str(env.own.id), "queue": "EXPECTED"})
         assert after.json()["total"] == 0
+
+
+async def test_sync_endpoint_accepts_the_durable_job(vet_env: SimpleNamespace) -> None:
+    """API-04: 202 SyncRun for a bound laboratory; the repeat reuses the pending run."""
+    from backend.src.modules.integrations.vetis.models import VetisBinding, VetisContour
+
+    env = vet_env
+    env.db.add(
+        VetisBinding(
+            laboratory_id=env.own.id,
+            contour=VetisContour.PILOT,
+            business_member_id="00000000-0000-0000-0000-0000000000be",
+            enterprise_id="00000000-0000-0000-0000-0000000000e1",
+            initiator="fixture-read-initiator",
+        )
+    )
+    await env.db.commit()
+
+    async with _client_for(env) as (http, identity):
+        headers = {"x-csrf-token": identity.csrf_token, "origin": "http://test"}
+        first = await http.post("/api/v1/arrivals/sync", json={"laboratory_id": str(env.own.id)}, headers=headers)
+        assert first.status_code == 202, first.text
+        payload = first.json()
+        assert payload["state"] == "PENDING"
+        assert payload["status_url"].endswith(f"/operations/{payload['operation_id']}")
+
+        # Manual refresh uses the SAME job: a repeat reuses the pending run.
+        second = await http.post("/api/v1/arrivals/sync", json={"laboratory_id": str(env.own.id)}, headers=headers)
+        assert second.status_code == 202
+        assert second.json()["operation_id"] == payload["operation_id"]
+
+        state = await http.get(f"/api/v1/operations/{payload['operation_id']}")
+        assert state.status_code == 200, state.text
+        assert state.json()["kind"] == "vetis.sync"
+        assert state.json()["state"] == "PENDING"
+
+        # A foreign laboratory is refused before any intent is written.
+        foreign = await http.post("/api/v1/arrivals/sync", json={"laboratory_id": str(env.foreign.id)}, headers=headers)
+        assert foreign.status_code == 403
+        assert foreign.json()["code"] == "ACCESS_DENIED"
 
 
 async def test_hide_requires_current_if_match(vet_env: SimpleNamespace) -> None:

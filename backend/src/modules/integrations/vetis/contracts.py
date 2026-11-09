@@ -52,6 +52,9 @@ class IncomingPage(BaseModel):
     # обезличенные счётчики локальных фильтров предиката (receiver/transport/
     # status/product_type); never external credentials or operational UUIDs.
     filtered: dict[str, int] = Field(default_factory=dict)
+    # The raw source XML per external UUID (ТЗ-10 V02 journal); keys are the
+    # eVSD UUID strings of ``items``. XML never leaves the vetis package.
+    raw_documents: dict[str, str] = Field(default_factory=dict)
 
 
 class ReceiptIntent(BaseModel):

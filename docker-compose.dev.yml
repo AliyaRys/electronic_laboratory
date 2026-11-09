@@ -13,3 +13,37 @@ services:
     volumes:
       - ./backend:/app/backend:ro
     command: ["python", "-m", "uvicorn", "backend.src.interfaces.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # ТЗ-10 V02: the VetIS scheduler + lease worker (same backend image).
+  # It claims due vetis.sync outbox rows and runs the 15-minute scheduler;
+  # the adapter stays honestly 503 until the WSDL/XSD pins are published.
+  vetis-worker:
+    image: ${BACKEND_IMAGE:-vse-backend:local}
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    environment:
+      ENVIRONMENT: development
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-vse}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app/backend:ro
+    command:
+      [
+        "python",
+        "-m",
+        "arq",
+        "--redis-url",
+        "redis://redis:6379/0",
+        "backend.src.modules.integrations.vetis.worker.WorkerSettings",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped

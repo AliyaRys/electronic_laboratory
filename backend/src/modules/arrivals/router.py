@@ -184,4 +184,4 @@ async def sync_arrivals(
     await authorizer.authorize(db, identity.actor_id, "vetis:sync", ScopeTarget(laboratory_id=payload.laboratory_id))
     adapter = DisabledVetisAdapter()
     scope = VetisScope(laboratory_id=payload.laboratory_id, contour="PILOT")  # type: ignore[arg-type]
-    await adapter.list_incoming(scope, None)
+    await adapter.list_incoming(scope, None, "")

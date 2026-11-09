@@ -64,6 +64,7 @@ def snapshot(
     *,
     issue_number: str = "A-001234",
     product: uuid.UUID = PILOT_BEEF,
+    product_name: str | None = None,
     product_item_name: str = "Отруба говяжьи",
     volume: str = "120.0",
 ) -> SourceSnapshot:
@@ -80,7 +81,7 @@ def snapshot(
                 name="Лабораторный убойный пункт", enterprise=ExternalRef(guid=_CONSIGNEE_ENTERPRISE)
             ),
             batch=Batch(
-                product=ExternalRef(guid=product),
+                product=ExternalRef(guid=product, name=product_name),
                 subProduct=ExternalRef(guid=_SUB_PRODUCT),
                 productItem=ExternalRef(guid=_PRODUCT_ITEM, name=product_item_name),
                 volume=volume,
@@ -351,6 +352,54 @@ async def test_product_lvl2_name(db_session: AsyncSession, lab: Laboratory) -> N
     assert raised.value.code == "MERCURY_PRODUCT_DICTIONARY_MISS"
     assert str(UNKNOWN_PRODUCT) not in raised.value.detail
     assert "сырой" not in raised.value.detail
+
+
+async def test_unknown_dictionary_guid_with_source_name_imports_unbound(
+    db_session: AsyncSession, lab: Laboratory
+) -> None:
+    """ТЗ-10: an unknown shared-dictionary GUID does not block a named product."""
+    party = await import_document(
+        db_session, document(uuid.uuid4(), lab.id, product=UNKNOWN_PRODUCT, product_name="Баранина")
+    )
+    classification = party.classification_snapshot
+    # The source name is stored as-is; no dictionary binding is fabricated.
+    assert classification["product"] == {"id": str(UNKNOWN_PRODUCT), "name": "Баранина"}
+    assert classification["productType"] is None
+    # The dictionary itself stays untouched (no fabricated entry).
+    from backend.src.modules.integrations.vetis.queries import find_product_lvl2
+
+    miss = await find_product_lvl2(db_session, VetisContour.PILOT, UNKNOWN_PRODUCT)
+    assert miss is None
+    # The document row still exists and is importable again idempotently.
+    again = await import_document(
+        db_session, document(uuid.uuid4(), lab.id, product=UNKNOWN_PRODUCT, product_name="Баранина")
+    )
+    assert again.id != party.id
+
+
+async def test_unknown_dictionary_guid_without_source_name_still_422(db_session: AsyncSession, lab: Laboratory) -> None:
+    """A dictionary miss WITHOUT any source name never imports."""
+    with pytest.raises(ProblemError) as raised:
+        await import_document(db_session, document(uuid.uuid4(), lab.id, product=UNKNOWN_PRODUCT))
+    assert raised.value.code == "MERCURY_PRODUCT_DICTIONARY_MISS"
+    # An empty-string source name is not a name either.
+    with pytest.raises(ProblemError) as raised_blank:
+        await import_document(db_session, document(uuid.uuid4(), lab.id, product=UNKNOWN_PRODUCT, product_name="   "))
+    assert raised_blank.value.code == "MERCURY_PRODUCT_DICTIONARY_MISS"
+
+
+async def test_substantive_update_unknown_named_product_succeeds(db_session: AsyncSession, lab: Laboratory) -> None:
+    """The substantive-update path mirrors the first-import semantics (ТЗ-10)."""
+    evsd = uuid.uuid4()
+    party = await import_document(db_session, document(evsd, lab.id))
+    refreshed = await import_document(
+        db_session,
+        document(evsd, lab.id, product=UNKNOWN_PRODUCT, product_name="Оленина", volume="130.0"),
+    )
+    assert refreshed.id == party.id
+    row = (await db_session.execute(select(Party).where(Party.id == party.id))).scalar_one()
+    assert row.classification_snapshot["product"] == {"id": str(UNKNOWN_PRODUCT), "name": "Оленина"}  # type: ignore[index]
+    assert row.classification_snapshot["productType"] is None  # type: ignore[index]
 
 
 async def test_at_23_hide_expected_does_not_annul_evsd(

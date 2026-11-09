@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Обезличенный fixture WSDL для контрактных тестов адаптера чтения ВУ (ТЗ-10 V01). -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  targetNamespace="http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2">
+  <wsdl:types>
+    <xs:schema targetNamespace="http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2">
+      <xs:import namespace="http://api.vetrf.ru/schema/cdm/base" schemaLocation="fixture.xsd"/>
+      <xs:element name="submitApplicationRequest" type="xs:string"/>
+      <xs:element name="receiveApplicationResultRequest" type="xs:string"/>
+    </xs:schema>
+  </wsdl:types>
+</wsdl:definitions>

@@ -13,11 +13,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.src.modules.arrivals.schemas import IncomingDocument
 from backend.src.modules.integrations.vetis.models import VetisContour
 
 __all__ = [
     "VetisScope",
-    "IncomingPageItem",
     "IncomingPage",
     "ReceiptIntent",
     "Submission",
@@ -38,19 +38,20 @@ class VetisScope(BaseModel):
     initiator: str | None = None
 
 
-class IncomingPageItem(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    evsd_uuid: uuid.UUID
-    external_status: str
-    payload: dict[str, object]
+IncomingDocumentDTO = IncomingDocument
 
 
 class IncomingPage(BaseModel):
+    """One read page (DATA-06): arrivals DTOs + honest pagination + filter counters."""
+
     model_config = ConfigDict(extra="forbid")
 
-    items: list[IncomingPageItem]
-    cursor: str | None = None
+    items: list[IncomingDocumentDTO]
+    next_cursor: str | None = None
+    complete: bool
+    # обезличенные счётчики локальных фильтров предиката (receiver/transport/
+    # status/product_type); never external credentials or operational UUIDs.
+    filtered: dict[str, int] = Field(default_factory=dict)
 
 
 class ReceiptIntent(BaseModel):

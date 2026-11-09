@@ -91,14 +91,27 @@ def _entry(ref: object) -> dict[str, str | None]:
 
 
 async def _classification_snapshot(db: AsyncSession, document: IncomingDocumentInput) -> dict[str, object]:
-    """Resolve the four classification levels strictly (API-04 / Global Constraints)."""
+    """Resolve the four classification levels (API-04 / Global Constraints).
+
+    A level-2 GUID that the shared local dictionary does not know does NOT
+    block the import while the source snapshot carries a non-empty product
+    name (ТЗ-10 contract): the source name is stored as-is and NO dictionary
+    binding is fabricated (``productType`` stays unset). A dictionary miss
+    WITHOUT a source name still raises the stable 422.
+    """
     batch = document.snapshot.vd_document.batch
     product_key = batch.product.guid or batch.product.external_uuid
-    if product_key is None or not await find_product_lvl2(db, document.contour, product_key):
-        raise _dictionary_miss_problem()
-    product = await find_product_lvl2(db, document.contour, product_key)
-    if product is None:  # pragma: no cover - double-check against races
-        raise _dictionary_miss_problem()
+    product = None if product_key is None else await find_product_lvl2(db, document.contour, product_key)
+    if product is None:
+        if not (batch.product.name or "").strip():
+            raise _dictionary_miss_problem()
+        return {
+            "product": {"id": str(product_key) if product_key else None, "name": batch.product.name},
+            "subProduct": _entry(batch.sub_product) if batch.sub_product is not None else None,
+            "productItem": _entry(batch.product_item) if batch.product_item is not None else None,
+            "unit": _entry(batch.unit) if batch.unit is not None else None,
+            "productType": None,
+        }
     return {
         "product": {"id": str(product.guid), "name": product.name},
         "subProduct": _entry(batch.sub_product) if batch.sub_product is not None else None,

@@ -39,7 +39,7 @@ def integration_not_configured() -> ProblemError:
 class VetisReadPort(Protocol):
     """Stage 1 (ADR-018): read-only access to the VU document list."""
 
-    async def list_incoming(self, scope: VetisScope, cursor: str | None) -> IncomingPage: ...
+    async def list_incoming(self, scope: VetisScope, cursor: str | None, initiator: str) -> IncomingPage: ...
 
 
 class VetisWritePort(Protocol):
@@ -55,7 +55,7 @@ class VetisWritePort(Protocol):
 class DisabledVetisAdapter:
     """The honest disabled adapter: every port raises a stable 503 problem."""
 
-    async def list_incoming(self, scope: VetisScope, cursor: str | None) -> IncomingPage:
+    async def list_incoming(self, scope: VetisScope, cursor: str | None, initiator: str) -> IncomingPage:
         raise integration_not_configured()
 
     async def submit_receipt(self, intent: ReceiptIntent, initiator: str) -> Submission:

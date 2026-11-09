@@ -1,0 +1,268 @@
+"""eVSD XML normalizer (ТЗ-10 V01): source-faithful snapshot + local filters.
+
+The normalizer preserves each classification level (``product`` / ``subProduct``
+/ ``productItem``) with its OWN source ``guid``/``uuid``/``name`` — the shared
+local dictionary is never consulted here and an unknown dictionary GUID never
+blocks a document that carries its source name. Decimal precision is kept as
+the source decimal string.
+
+The missing server-side filters are applied LOCALLY, before anything is
+persisted (plan Global Constraints / mercury-test-integration-contract):
+
+    recipient == pinned enterprise AND INCOMING AND TRANSPORT AND CONFIRMED
+    AND certifiedConsignment/batch/productType == 1
+
+A missing/unparseable ``productType`` never counts as meat.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any
+from xml.etree import ElementTree as ET
+
+from pydantic import BaseModel, ConfigDict
+
+from backend.src.core.problems import ProblemError
+from backend.src.modules.arrivals.schemas import (
+    Batch,
+    ConsignorConsignee,
+    ExternalRef,
+    SourceSnapshot,
+    VdDocument,
+)
+from backend.src.modules.integrations.vetis.contracts import VetisScope
+from backend.src.modules.integrations.vetis.models import VetisContour
+
+__all__ = ["NormalizedEntry", "parse_vet_document_list", "normalize_snapshot", "filter_entries"]
+
+_NS = {
+    "bs": "http://api.vetrf.ru/schema/cdm/base",
+    "mer": "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2",
+    "app": "http://api.vetrf.ru/schema/cdm/application/v2",
+}
+
+
+class NormalizedEntry(BaseModel):
+    """The parsed, still-source-faithful content of one ``vetDocument``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    evsd_uuid: uuid.UUID | None
+    document_type: str
+    document_status: str
+    issue_series: str | None
+    issue_number: str | None
+    issue_date: str | None
+    consignor: dict[str, Any]
+    consignee: dict[str, Any]
+    batch: dict[str, Any]
+    transport_number: str | None
+
+
+def dependency_unavailable(detail: str) -> ProblemError:
+    return ProblemError(status=503, code="DEPENDENCY_UNAVAILABLE", title="Dependency unavailable", detail=detail)
+
+
+def _text(element: ET.Element | None) -> str | None:
+    if element is None or element.text is None:
+        return None
+    value = element.text.strip()
+    return value or None
+
+
+def _find(element: ET.Element | None, path: str) -> ET.Element | None:
+    if element is None:
+        return None
+    return element.find(path, _NS)
+
+
+def _ref(element: ET.Element | None) -> dict[str, Any]:
+    if element is None:
+        return {}
+    return {
+        "guid": _text(_find(element, "bs:guid")),
+        "uuid": _text(_find(element, "bs:uuid")),
+        "name": _text(_find(element, "bs:name")),
+    }
+
+
+def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | None:
+    if _depth(element) > max_depth:
+        raise dependency_unavailable("Ответ ВетИС превышает допустимую глубину XML.")
+    raw_uuid = _text(_find(element, "bs:uuid"))
+    consignment = _find(element, "mer:certifiedConsignment")
+    consignor = _find(consignment, "mer:consignor") if consignment is not None else None
+    consignee = _find(consignment, "mer:consignee") if consignment is not None else None
+    batch = _find(consignment, "mer:batch") if consignment is not None else None
+    transport = _find(consignment, "mer:transportInfo") if consignment is not None else None
+    try:
+        evsd_uuid = uuid.UUID(raw_uuid) if raw_uuid else None
+    except ValueError:
+        evsd_uuid = None
+    volume = _text(_find(batch, "mer:volume")) if batch is not None else None
+    quantity = _text(_find(batch, "mer:quantity")) if batch is not None else None
+    product_type = _text(_find(batch, "mer:productType")) if batch is not None else None
+    return NormalizedEntry(
+        evsd_uuid=evsd_uuid,
+        document_type=_text(_find(element, "bs:type")) or "",
+        document_status=_text(_find(element, "bs:status")) or "",
+        issue_series=_text(_find(element, "bs:issueSeries")),
+        issue_number=_text(_find(element, "bs:issueNumber")),
+        issue_date=_text(_find(element, "bs:issueDate")),
+        consignor={
+            "name": _text(_find(consignor, "bs:name")) if consignor is not None else None,
+            "businessEntity": _ref(_find(consignor, "mer:businessEntity")),
+            "enterprise": _ref(_find(consignor, "mer:enterprise")),
+        },
+        consignee={
+            "name": _text(_find(consignee, "bs:name")) if consignee is not None else None,
+            "businessEntity": _ref(_find(consignee, "mer:businessEntity")),
+            "enterprise": _ref(_find(consignee, "mer:enterprise")),
+        },
+        batch={
+            "productType": product_type,
+            "product": _ref(_find(batch, "mer:product")),
+            "subProduct": _ref(_find(batch, "mer:subProduct")),
+            "productItem": _ref(_find(batch, "mer:productItem")),
+            "volume": volume,
+            "quantity": quantity,
+            "unit": _ref(_find(batch, "mer:unit")),
+        },
+        transport_number=_text(_find(transport, "mer:transportNumber")) if transport is not None else None,
+    )
+
+
+def _depth(element: ET.Element) -> int:
+    return 1 + max((_depth(child) for child in element), default=0)
+
+
+def parse_vet_document_list(
+    result_xml: str, *, xml_max_bytes: int = 32 * 1024 * 1024, xml_max_depth: int = 128
+) -> list[NormalizedEntry]:
+    """Parse a receiveApplicationResult page into source-faithful entries."""
+    if len(result_xml.encode("utf-8")) > xml_max_bytes:
+        raise dependency_unavailable("Ответ ВетИС превышает допустимый размер XML (32 МиБ).")
+    try:
+        root = ET.fromstring(result_xml)
+    except ET.ParseError as exc:
+        raise dependency_unavailable("Ответ ВетИС не является корректным XML.") from exc
+    if _depth(root) > xml_max_depth:
+        raise dependency_unavailable("Ответ ВетИС превышает допустимую глубину XML.")
+    entries: list[NormalizedEntry] = []
+    for element in root.findall(".//mer:vetDocument", _NS):
+        entry = _parse_document(element, xml_max_depth)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def _participant(raw: dict[str, Any]) -> dict[str, str | None]:
+    entity = raw.get("businessEntity") or {}
+    enterprise = raw.get("enterprise") or {}
+    return {
+        "name": raw.get("name"),
+        "guid": entity.get("guid"),
+        "uuid": entity.get("uuid"),
+        "enterprise_guid": enterprise.get("guid"),
+    }
+
+
+def filter_entries(entries: list[NormalizedEntry], scope: VetisScope) -> tuple[list[NormalizedEntry], dict[str, int]]:
+    """Apply the locally-enforced predicate; return (kept, per-reason counters).
+
+    Unsuitable receiver / non-transport / non-CONFIRMED / ``productType != 1``
+    (including a missing or unparseable type) are filtered before persisting.
+    """
+    kept: list[NormalizedEntry] = []
+    filtered = {"receiver": 0, "transport": 0, "status": 0, "product_type": 0}
+    for entry in entries:
+        consignee = _participant(entry.consignee)
+        enterprise_guid = consignee.get("enterprise_guid")
+        if not enterprise_guid or enterprise_guid != scope.enterprise_id:
+            filtered["receiver"] += 1
+            continue
+        if entry.document_type != "TRANSPORT":
+            filtered["transport"] += 1
+            continue
+        if entry.document_status != "CONFIRMED":
+            filtered["status"] += 1
+            continue
+        batch = entry.batch
+        product_type = batch.get("productType")
+        if not isinstance(product_type, str) or product_type.strip() != "1":
+            filtered["product_type"] += 1
+            continue
+        kept.append(entry)
+    return kept, filtered
+
+
+def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
+    """Build the DATA-02 ``source_snapshot`` from one kept entry."""
+    consignor = _participant(entry.consignor)
+    consignee = _participant(entry.consignee)
+    batch = entry.batch
+
+    def _external_ref(raw: object) -> ExternalRef | None:
+        if not isinstance(raw, dict):
+            return None
+        guid = raw.get("guid")
+        ref_uuid = raw.get("uuid")
+        name = raw.get("name")
+        if guid is None and ref_uuid is None and name is None:
+            return None
+        return ExternalRef.model_validate(
+            {
+                "guid": str(guid) if guid else None,
+                "uuid": str(ref_uuid) if ref_uuid else None,
+                "name": name,
+            }
+        )
+
+    volume = batch.get("volume")
+    quantity = batch.get("quantity")
+    return SourceSnapshot(
+        vd_document=VdDocument(
+            type=entry.document_type,
+            status=entry.document_status,
+            issue_series=entry.issue_series,
+            issue_number=entry.issue_number or "",
+            issue_date=entry.issue_date,
+            consignor=ConsignorConsignee(
+                name=consignor["name"] or "",
+                business_entity=_external_ref(
+                    {"guid": consignor.get("guid"), "uuid": consignor.get("uuid"), "name": consignor["name"]}
+                ),
+                enterprise=_external_ref({"guid": consignor.get("enterprise_guid"), "name": consignor["name"]}),
+            ),
+            consignee=ConsignorConsignee(
+                name=consignee["name"] or "",
+                business_entity=_external_ref(
+                    {"guid": consignee.get("guid"), "uuid": consignee.get("uuid"), "name": consignee["name"]}
+                ),
+                enterprise=_external_ref({"guid": consignee.get("enterprise_guid"), "name": consignee["name"]}),
+            ),
+            batch=Batch(
+                product=_external_ref(batch["product"]) or ExternalRef(),
+                sub_product=_external_ref(batch["subProduct"]),
+                product_item=_external_ref(batch["productItem"]),
+                volume=volume or "0",
+                quantity=quantity,
+                unit=_external_ref(batch["unit"]),
+            ),
+            transport_number=entry.transport_number,
+        ),
+        vet_documents=[],
+    )
+
+
+def normalize_document(
+    entry: NormalizedEntry,
+    *,
+    contour: VetisContour,
+    laboratory_id: uuid.UUID | None,
+    fetched_at: datetime,
+) -> tuple[uuid.UUID | None, str, SourceSnapshot]:
+    """Return (evsd_uuid, external_status, snapshot) for the arrivals upsert DTO."""
+    return entry.evsd_uuid, entry.document_status, normalize_snapshot(entry)

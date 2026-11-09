@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Обезличенный fixture XSD import для контрактных тестов адаптера чтения ВУ (ТЗ-10 V01). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://api.vetrf.ru/schema/cdm/base">
+  <xs:element name="uuid" type="xs:string"/>
+  <xs:element name="guid" type="xs:string"/>
+</xs:schema>

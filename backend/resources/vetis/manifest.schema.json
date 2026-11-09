@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "vse-lab/backend/resources/vetis/manifest.schema.json",
+  "title": "VetIS ВУ contract manifest (INPUT-01, ADR-018)",
+  "description": "Versioned pinned contract of the Veterinary Authority (VetIS/Меркурий) test profile. Versioned artifact: changes require a new manifest_version and a review of every consumer. Contains NO secrets: gateway login/password, apiKey, issuerId and the issued test profile live only in a server-side secret file (VETIS_SECRET_PROFILE).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profile_id",
+    "manifest_version",
+    "contour",
+    "family",
+    "service_id",
+    "endpoint",
+    "business_schema_version",
+    "soap_version",
+    "namespaces",
+    "soap_actions",
+    "operations",
+    "schema_pins",
+    "constraints",
+    "initiator",
+    "evidence_links"
+  ],
+  "properties": {
+    "profile_id": { "type": "string", "minLength": 1 },
+    "manifest_version": { "type": "integer", "minimum": 1 },
+    "contour": { "type": "string", "enum": ["PILOT", "PRODUCTION"] },
+    "family": { "type": "string", "const": "mercury-vu.service" },
+    "service_id": { "type": "string", "const": "mercury-vu.service:2.0" },
+    "endpoint": { "type": "string", "pattern": "^https://" },
+    "business_schema_version": { "type": "string", "minLength": 1 },
+    "soap_version": { "type": "string", "const": "1.1" },
+    "namespaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["business", "application", "base"],
+      "properties": {
+        "business": { "type": "string", "const": "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2" },
+        "application": { "type": "string", "const": "http://api.vetrf.ru/schema/cdm/application/v2" },
+        "base": { "type": "string", "const": "http://api.vetrf.ru/schema/cdm/base" }
+      }
+    },
+    "soap_actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["submit", "receive"],
+      "properties": {
+        "submit": { "type": "string", "const": "submitApplicationRequest" },
+        "receive": { "type": "string", "const": "receiveApplicationResultRequest" }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "input_type", "output_type", "read_only"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "input_type": { "type": "string", "minLength": 1 },
+          "output_type": { "type": "string", "minLength": 1 },
+          "read_only": { "type": "boolean" }
+        }
+      }
+    },
+    "schema_pins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "wsdl", "xsd"],
+      "properties": {
+        "status": { "type": "string", "enum": ["PINNED", "PENDING"] },
+        "wsdl": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["resource", "sha256"],
+              "properties": {
+                "resource": { "type": "string", "minLength": 1 },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+              }
+            }
+          ]
+        },
+        "xsd": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["resource", "sha256", "imports"],
+            "properties": {
+              "resource": { "type": "string", "minLength": 1 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "imports": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page_count_max",
+        "issue_date_interval_days_max",
+        "xml_max_bytes",
+        "xml_max_depth",
+        "connect_timeout_s",
+        "read_timeout_s"
+      ],
+      "properties": {
+        "page_count_max": { "type": "integer", "const": 1000 },
+        "issue_date_interval_days_max": { "type": "integer", "const": 31 },
+        "xml_max_bytes": { "type": "integer", "const": 33554432 },
+        "xml_max_depth": { "type": "integer", "const": 128 },
+        "connect_timeout_s": { "type": "integer", "const": 10 },
+        "read_timeout_s": { "type": "integer", "const": 60 }
+      }
+    },
+    "initiator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "secret_ref", "write_capability"],
+      "properties": {
+        "kind": { "type": "string", "const": "SERVICE_READ_IDENTITY" },
+        "secret_ref": { "type": "string", "minLength": 1 },
+        "write_capability": { "type": "boolean", "const": false }
+      }
+    },
+    "evidence_links": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

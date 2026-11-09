@@ -191,6 +191,6 @@ async def test_disabled_vetis_adapter_problem() -> None:
     ).DisabledVetisAdapter()
 
     with pytest.raises(ProblemError) as raised:
-        await adapter.list_incoming(VetisScope(laboratory_id=uuid.uuid4(), contour="PILOT"), None)  # type: ignore[arg-type]
+        await adapter.list_incoming(VetisScope(laboratory_id=uuid.uuid4(), contour="PILOT"), None, "")  # type: ignore[arg-type]
     assert raised.value.status == 503
     assert raised.value.code == "INTEGRATION_NOT_CONFIGURED"

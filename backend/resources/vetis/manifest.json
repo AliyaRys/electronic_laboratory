@@ -1,0 +1,56 @@
+{
+  "profile_id": "VU-TEST-2.0",
+  "manifest_version": 1,
+  "contour": "PILOT",
+  "family": "mercury-vu.service",
+  "service_id": "mercury-vu.service:2.0",
+  "endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/ApplicationManagementService",
+  "business_schema_version": "2.0",
+  "soap_version": "1.1",
+  "namespaces": {
+    "business": "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2",
+    "application": "http://api.vetrf.ru/schema/cdm/application/v2",
+    "base": "http://api.vetrf.ru/schema/cdm/base"
+  },
+  "soap_actions": {
+    "submit": "submitApplicationRequest",
+    "receive": "receiveApplicationResultRequest"
+  },
+  "operations": [
+    {
+      "name": "GetVetDocumentListOperation",
+      "input_type": "getVetDocumentListRequest",
+      "output_type": "getVetDocumentListResponse",
+      "read_only": true
+    },
+    {
+      "name": "ProcessIncomingConsignment",
+      "input_type": "processIncomingConsignmentRequest",
+      "output_type": "processIncomingConsignmentResponse",
+      "read_only": false
+    }
+  ],
+  "schema_pins": {
+    "status": "PENDING",
+    "wsdl": null,
+    "xsd": []
+  },
+  "constraints": {
+    "page_count_max": 1000,
+    "issue_date_interval_days_max": 31,
+    "xml_max_bytes": 33554432,
+    "xml_max_depth": 128,
+    "connect_timeout_s": 10,
+    "read_timeout_s": 60
+  },
+  "initiator": {
+    "kind": "SERVICE_READ_IDENTITY",
+    "secret_ref": "vetis_read_identity",
+    "write_capability": false
+  },
+  "evidence_links": [
+    "https://help.vetrf.ru/wiki/GetVetDocumentListOperation_v2",
+    "https://help.vetrf.ru/wiki/ProcessIncomingConsignment_v2",
+    "docs/TZ_development/plans/mercury-test-integration-contract.md"
+  ]
+}

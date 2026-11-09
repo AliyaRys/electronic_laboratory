@@ -39,7 +39,7 @@ warn_unused_ignores = true
 [[tool.mypy.overrides]]
 # The D02 renderer engines ship no type stubs (xhtml2pdf); every other
 # untyped dependency is covered by the types-* dev packages above.
-module = ["xhtml2pdf.*"]
+module = ["xhtml2pdf.*", "zeep.*"]
 ignore_missing_imports = true
 
 # --- ruff -------------------------------------------------------------------

@@ -1,10 +1,10 @@
 /**
- * Arrivals read/hide API (API-04) on top of the single F01 transport.
+ * Arrivals read/hide/sync API (API-04) on top of the single F01 transport.
  *
  * Every failure becomes a shared {@link Problem}; screens never parse raw
- * responses. The sync command is deliberately not exposed here: until ТЗ-10
- * ships, the update button renders an honest disabled/not-configured state
- * instead of pretending a successful import.
+ * responses. The sync command (ТЗ-10) accepts the SAME durable job the
+ * 15-minute scheduler uses (202 SyncRun) and is polled through
+ * GET /operations/:id — never treated as a sync confirmation.
  */
 import type { components } from "../../shared/api/schema";
 import { apiClient } from "../../shared/api/client";
@@ -69,6 +69,47 @@ export const RESULT_LABELS: Readonly<Record<ArrivalResult, string>> = Object.fre
   RETURNED: "Возврат",
   COMPLETED: "Завершено",
 });
+
+/** API-04: the 202 SyncRun body (the accepted intent, never a confirmation). */
+export interface SyncAccepted {
+  operation_id: string;
+  state: string;
+  status_url: string;
+}
+
+/** API-01: the polled operation state of the accepted sync job. */
+export interface SyncOperationState {
+  id: string;
+  kind: string;
+  state: string;
+  result_id?: string | null;
+  problem?: string | null;
+  updated_at?: string | null;
+}
+
+const SYNC_TERMINAL_STATES = new Set(["SUCCESS", "FAILED"]);
+
+export async function syncArrivals(laboratoryId: string): Promise<SyncAccepted | Problem> {
+  const settled = await settle(
+    apiClient.POST("/api/v1/arrivals/sync", {
+      body: { laboratory_id: laboratoryId },
+    }) as Promise<RawResult<SyncAccepted>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+export async function fetchOperationState(operationId: string): Promise<SyncOperationState | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/operations/{operation_id}", {
+      params: { path: { operation_id: operationId } },
+    }) as Promise<RawResult<SyncOperationState>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+export function syncIsTerminal(state: SyncOperationState | Problem | undefined): boolean {
+  return state !== undefined && "state" in state && SYNC_TERMINAL_STATES.has(state.state);
+}
 
 export async function fetchArrivals(
   query: ArrivalsQuery,

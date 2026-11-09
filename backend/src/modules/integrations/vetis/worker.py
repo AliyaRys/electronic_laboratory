@@ -1,0 +1,214 @@
+"""The VetIS worker (ТЗ-10 V02): lease outbox rows, run the sync, schedule.
+
+Three responsibilities, all proven against the real PostgreSQL journal in
+``backend/tests/vetis/test_sync.py``:
+
+- **lease worker** — a due ``vetis.sync`` outbox row is claimed with an
+  owner/lease deadline (``SKIP LOCKED``), so two workers never run the same
+  operation; ``run_sync`` stays idempotent even if a lease lapses;
+- **15-minute scheduler** — every bound laboratory whose checkpoint is older
+  than the interval gets the SAME job the manual refresh button enqueues
+  (overlap protection inside ``start_sync``);
+- **composition root** — the pinned read adapter is built here (and only
+  here); until the WSDL/XSD are pinned the adapter honestly answers
+  ``503 INTEGRATION_NOT_CONFIGURED`` and the run fails without moving the
+  checkpoint — API readiness never depends on VetIS.
+
+The arq worker (same backend image, Redis transport) is wired below; the
+pure-Python functions are the tested contract.
+"""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from backend.src.core.database import get_session_factory
+from backend.src.modules.identity.models import OutboxEntry
+from backend.src.modules.integrations.vetis import sync
+from backend.src.modules.integrations.vetis.adapter import VetisReadAdapter
+from backend.src.modules.integrations.vetis.dispatcher import dispatch_pending_operations
+from backend.src.modules.integrations.vetis.models import VetisOperation, VetisOperationState
+from backend.src.modules.integrations.vetis.transport import ZeepApplicationTransport, imports_allowlist
+
+__all__ = [
+    "SCHEDULE_INTERVAL",
+    "LEASE_TIMEOUT",
+    "claim_due_operation",
+    "run_claimed",
+    "run_sync_operation",
+    "schedule_scheduled_syncs",
+    "compose_read_adapter",
+    "WorkerSettings",
+]
+
+SCHEDULE_INTERVAL = sync.SCHEDULE_INTERVAL
+LEASE_TIMEOUT = timedelta(minutes=10)
+
+
+def compose_read_adapter() -> VetisReadAdapter:
+    """Build the pinned read adapter from the server-side profile.
+
+    Returns an adapter that honestly refuses live calls while the schema pins
+    are PENDING: the composition root never skips pin verification, and the
+    issued test profile (secret file) is simply absent right now.
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    from backend.src.modules.integrations.vetis.adapter import VetisReadAdapter
+    from backend.src.modules.integrations.vetis.manifest import (
+        load_manifest,
+        load_manifest_with_pins,
+        load_secret_profile,
+        secret_profile_path,
+    )
+
+    manifest_path = Path(__file__).resolve().parents[4] / "resources" / "vetis" / "manifest.json"
+    manifest = load_manifest(manifest_path)
+    issuer_id = ""
+    profile_path = secret_profile_path()
+    if profile_path:
+        issuer_id = load_secret_profile(profile_path).issuer_id
+        pins_path = os.environ.get("VETIS_SCHEMA_PINS")
+        if pins_path:
+            manifest = load_manifest_with_pins(manifest_path, json.loads(Path(pins_path).read_text(encoding="utf-8")))
+    transport = ZeepApplicationTransport(endpoint=manifest.endpoint, allowed_urls=imports_allowlist(manifest))
+    return VetisReadAdapter(transport=transport, manifest=manifest, issuer_id=issuer_id)
+
+
+async def claim_due_operation(db: AsyncSession, *, owner: str, now: datetime | None = None) -> uuid.UUID | None:
+    """Claim one due ``vetis.sync`` outbox row (lease, SKIP LOCKED)."""
+    current = now or datetime.now(UTC)
+    due = (
+        await db.execute(
+            select(OutboxEntry)
+            .where(
+                OutboxEntry.event_type == "vetis.sync",
+                OutboxEntry.delivered_at.is_(None),
+                OutboxEntry.next_attempt_at <= current,
+            )
+            .where((OutboxEntry.lease_until.is_(None)) | (OutboxEntry.lease_until < current))
+            .order_by(OutboxEntry.next_attempt_at)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+    ).scalar_one_or_none()
+    if due is None:
+        return None
+    await db.execute(
+        update(OutboxEntry)
+        .where(OutboxEntry.id == due.id)
+        .values(
+            lease_owner=owner,
+            lease_until=current + LEASE_TIMEOUT,
+            next_attempt_at=current + LEASE_TIMEOUT,
+        )
+    )
+    await db.commit()
+    return due.operation_id
+
+
+async def run_claimed(
+    db: AsyncSession,
+    operation_id: uuid.UUID,
+    *,
+    adapter: VetisReadAdapter | None = None,
+    owner: str = "worker",
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> bool:
+    """Run one claimed operation and mark the outbox row delivered.
+
+    ``run_sync`` always drives the operation to a terminal state (SUCCESS or
+    an honest FAILED), so the outbox row is delivered either way; an
+    operation that left the RUNNING path elsewhere stays undelivered for the
+    retry backoff.
+    """
+    if adapter is None:
+        adapter = compose_read_adapter()
+    await sync.run_sync(operation_id, adapter=adapter, session_factory=session_factory)
+    state = (
+        await db.execute(select(VetisOperation.state).where(VetisOperation.id == operation_id))
+    ).scalar_one_or_none()
+    terminal = state in (VetisOperationState.SUCCESS, VetisOperationState.FAILED)
+    if terminal:
+        await db.execute(
+            update(OutboxEntry)
+            .where(OutboxEntry.operation_id == operation_id, OutboxEntry.delivered_at.is_(None))
+            .values(delivered_at=datetime.now(UTC), lease_owner=owner, lease_until=None)
+        )
+        await db.commit()
+    return bool(terminal)
+
+
+async def run_sync_operation(operation_id: uuid.UUID) -> None:
+    """The documented worker entry point: ``run_sync(operation_id: UUID) -> None``.
+
+    Deliberately NOT named ``run_sync`` to avoid shadowing the tested
+    application function it delegates to.
+    """
+    await sync.run_sync(operation_id, adapter=compose_read_adapter())
+
+
+async def schedule_scheduled_syncs(db: AsyncSession, *, now: datetime | None = None) -> list[sync.SyncAccepted]:
+    """The 15-minute scheduler tick: enqueue due laboratories (same job)."""
+    return await sync.schedule_scheduled_syncs(
+        db, now=now or datetime.now(UTC), actor_id=sync.scheduled_sync_actor_id()
+    )
+
+
+@asynccontextmanager
+async def _lifespan(_: dict[str, Any]) -> AsyncIterator[None]:
+    """arq startup: restore pending operations from SQL before polling."""
+    factory = get_session_factory()
+    async with factory() as session:
+        await dispatch_pending_operations(session)
+        await session.commit()
+    yield
+
+
+async def _job_run_vetis_sync(ctx: dict[str, Any], *, operation_id: str) -> None:  # pragma: no cover - arq entry
+    await sync.run_sync(uuid.UUID(operation_id), adapter=compose_read_adapter())
+
+
+async def _job_vetis_scheduler(ctx: dict[str, Any]) -> None:  # pragma: no cover - arq entry
+    factory = get_session_factory()
+    async with factory() as session:
+        await schedule_scheduled_syncs(session)
+        await session.commit()
+
+
+async def _job_poll_due(ctx: dict[str, Any]) -> None:  # pragma: no cover - arq entry
+    """Poll due outbox rows (Redis-free fallback keeps the durable semantics)."""
+    factory = get_session_factory()
+    async with factory() as session:
+        operation_id = await claim_due_operation(session, owner=f"worker-{ctx.get('job_id', 'poll')}")
+        await session.commit()
+        if operation_id is not None:
+            await run_claimed(session, operation_id, owner=f"worker-{ctx.get('job_id', 'poll')}")
+
+
+class WorkerSettings:  # pragma: no cover - composition, exercised by compose
+    """arq worker settings (same backend image, Redis transport; ADR-013).
+
+    Started from compose as::
+
+        python -m arq --redis-url $REDIS_URL \\
+            backend.src.modules.integrations.vetis.worker.WorkerSettings
+
+    The scheduler tick runs every minute; the 15-minute interval lives in
+    ``sync.SCHEDULE_INTERVAL`` so the cadence is proven, not assumed.
+    """
+
+    functions = [_job_run_vetis_sync, _job_vetis_scheduler, _job_poll_due]
+    on_startup = _lifespan
+    poll_interval = 60
+    max_jobs = 4
+    job_timeout = 900

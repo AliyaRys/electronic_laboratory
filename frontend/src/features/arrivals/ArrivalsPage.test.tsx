@@ -1,6 +1,7 @@
 /**
- * ArrivalsPage tests (A01, MSW): URL-context filters, the honest disabled
- * update button, and the hide command path with If-Match + Idempotency-Key.
+ * ArrivalsPage tests (A01/V02, MSW): URL-context filters, the VET/HEAD-only
+ * sync job with its honest polling states, and the hide command path with
+ * If-Match + Idempotency-Key.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -107,12 +108,95 @@ describe("ArrivalsPage", () => {
     });
   });
 
-  it("shows the honest not-configured update state", async () => {
+  it("keeps the update button VET/HEAD-only and runs the durable sync job", async () => {
+    const posts: Headers[] = [];
+    let polls = 0;
+    server.use(
+      http.post("*/api/v1/arrivals/sync", ({ request }) => {
+        posts.push(request.headers);
+        return HttpResponse.json({
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000001",
+          state: "PENDING",
+          status_url: `/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000001`,
+        });
+      }),
+      http.get("*/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000001", () => {
+        polls += 1;
+        return HttpResponse.json({
+          id: "aaaaaaaa-0000-4000-8000-000000000001",
+          kind: "vetis.sync",
+          state: polls >= 2 ? "SUCCESS" : "RUNNING",
+          updated_at: "2026-11-09T10:00:00Z",
+        });
+      }),
+    );
+    renderPage();
+    await screen.findByText("говядина");
+    // A VET/HEAD sees the enabled button with the source name on the row.
+    const update = screen.getByRole("button", { name: "Обновить" });
+    expect(update.hasAttribute("disabled")).toBe(false);
+    await userEvent.click(update);
+    expect(posts.length).toBe(1);
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
+  });
+
+  it("an ANALYST cannot run the sync (honest disabled state)", async () => {
+    server.use(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          full_name: "Аналитик",
+          login: "analyst",
+          email: "analyst@example.test",
+          position: null,
+          role: "ANALYST",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: [],
+          revision: 1,
+        }),
+      ),
+    );
     renderPage();
     await screen.findByText("говядина");
     const update = screen.getByRole("button", { name: "Обновить" });
     expect(update.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText(/Обновление из ВетИС не настроено/)).toBeTruthy();
+    expect(screen.getByText(/Обновление поступлений из ВетИС выполняется автоматически/)).toBeTruthy();
+  });
+
+  it("shows the honest failure when the sync job fails", async () => {
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () =>
+        HttpResponse.json({
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000002",
+          state: "PENDING",
+          status_url: `/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000002`,
+        }),
+      ),
+      http.get("*/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000002", () =>
+        HttpResponse.json({
+          id: "aaaaaaaa-0000-4000-8000-000000000002",
+          kind: "vetis.sync",
+          state: "FAILED",
+          problem: "INTEGRATION_NOT_CONFIGURED",
+          updated_at: "2026-11-09T10:00:00Z",
+        }),
+      ),
+    );
+    renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Обновление не выполнено/)).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
   });
 
   it("hides an expected arrival with If-Match and an Idempotency-Key", async () => {

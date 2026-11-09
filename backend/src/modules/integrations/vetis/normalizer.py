@@ -35,7 +35,13 @@ from backend.src.modules.arrivals.schemas import (
 from backend.src.modules.integrations.vetis.contracts import VetisScope
 from backend.src.modules.integrations.vetis.models import VetisContour
 
-__all__ = ["NormalizedEntry", "parse_vet_document_list", "normalize_snapshot", "filter_entries"]
+__all__ = [
+    "NormalizedEntry",
+    "parse_vet_document_list",
+    "normalize_snapshot",
+    "filter_entries",
+    "extract_raw_documents",
+]
 
 _NS = {
     "bs": "http://api.vetrf.ru/schema/cdm/base",
@@ -156,6 +162,22 @@ def parse_vet_document_list(
         if entry is not None:
             entries.append(entry)
     return entries
+
+
+def extract_raw_documents(result_xml: str) -> dict[str, str]:
+    """The raw ``vetDocument`` XML per external UUID (ТЗ-10 V02 journal).
+
+    The subtree is serialized exactly as received (namespaces and all); the
+    raw source stays inside the vetis package and is journalled by the sync
+    worker with a checksum per external UUID.
+    """
+    root = ET.fromstring(result_xml)
+    raw: dict[str, str] = {}
+    for element in root.findall(".//mer:vetDocument", _NS):
+        uuid_text = _text(_find(element, "bs:uuid"))
+        if uuid_text:
+            raw[uuid_text] = ET.tostring(element, encoding="unicode")
+    return raw
 
 
 def _participant(raw: dict[str, Any]) -> dict[str, str | None]:

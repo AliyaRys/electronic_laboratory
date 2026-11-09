@@ -6,13 +6,34 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, SmallInteger, String, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.src.core.database import Base
 
-__all__ = ["MercuryProductGuidLvl2", "VetisContour"]
+__all__ = [
+    "MercuryProductGuidLvl2",
+    "VetisBinding",
+    "VetisContour",
+    "VetisOperation",
+    "VetisOperationKind",
+    "VetisOperationState",
+    "VetisSourceDocument",
+]
 
 
 class VetisContour(StrEnum):
@@ -55,3 +76,124 @@ class MercuryProductGuidLvl2(Base):
     synchronized_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
+
+
+class VetisOperationKind(StrEnum):
+    """The journal kinds of ТЗ-10/ТЗ-11 (DATA-05); the write kinds arrive with W01."""
+
+    SYNC = "SYNC"
+    RECEIPT = "RECEIPT"
+
+
+class VetisOperationState(StrEnum):
+    """Durable operation states; the worker and dispatcher restore from SQL."""
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    CONFIRMED = "CONFIRMED"
+    REJECTED = "REJECTED"
+
+
+def _operation_uuid_pk() -> Mapped[uuid.UUID]:
+    return mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()")
+    )
+
+
+class VetisBinding(Base):
+    """The laboratory's registered VetIS binding (``vetis_bindings``, ТЗ-10).
+
+    The initiator column carries the READ identity NAME only (the secret
+    profile lives server-side); ``revoked_at`` stops every further SOAP call
+    of the scope, and ``last_success`` is the checkpoint of the last
+    SUCCESSFUL FULL page walk — never moved by a partial or failed run.
+    """
+
+    __tablename__ = "vetis_bindings"
+    __table_args__ = (
+        CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="vetis_bindings_contour_valid"),
+        Index("ix_vetis_bindings_active", "laboratory_id"),
+    )
+
+    laboratory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("laboratories.id", ondelete="RESTRICT"), primary_key=True
+    )
+    contour: Mapped[str] = mapped_column(String(16), nullable=False)
+    business_member_id: Mapped[str | None] = mapped_column(String(64))
+    enterprise_id: Mapped[str | None] = mapped_column(String(64))
+    initiator: Mapped[str | None] = mapped_column(String(128))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+class VetisOperation(Base):
+    """One durable VetIS operation (``vetis_operations``, DATA-05 ТЗ-10).
+
+    The sync intent and its outbox row are written in ONE transaction; after a
+    restart the dispatcher restores every ``PENDING``/stale-``RUNNING`` row
+    from this journal. ``last_success`` carries the checkpoint of this run.
+    """
+
+    __tablename__ = "vetis_operations"
+    __table_args__ = (
+        CheckConstraint("kind IN ('SYNC','RECEIPT')", name="vetis_operations_kind_valid"),
+        CheckConstraint(
+            "state IN ('PENDING','RUNNING','SUCCESS','FAILED','CONFIRMED','REJECTED')",
+            name="vetis_operations_state_valid",
+        ),
+        CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="vetis_operations_contour_valid"),
+        Index("ix_vetis_operations_scope_state", "laboratory_id", "kind", "state"),
+    )
+
+    id: Mapped[uuid.UUID] = _operation_uuid_pk()
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False)
+    laboratory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("laboratories.id", ondelete="RESTRICT"), nullable=False
+    )
+    contour: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # The RECEIPT operations (ТЗ-11/W01) reference the party; sync rows leave it NULL.
+    party_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("parties.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    last_success: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    problem_code: Mapped[str | None] = mapped_column(String(128))
+    problem_detail: Mapped[str | None] = mapped_column(Text)
+    trace_id: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("gen_random_uuid()::text"))
+    pages_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    imported: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    rev: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1, server_default=text("1"))
+
+
+class VetisSourceDocument(Base):
+    """The raw source XML of one external eVSD (``vetis_source_documents``).
+
+    ``revision`` grows with every substantive re-fetch; ``checksum`` is the
+    SHA-256 of the stored XML. The normalized source GUIDs/UUIDs/names live in
+    the arrivals ``source_snapshot`` — this table is the raw journal.
+    """
+
+    __tablename__ = "vetis_source_documents"
+    __table_args__ = (
+        UniqueConstraint("contour", "evsd_uuid", name="uq_vetis_source_contour_evsd"),
+        CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="vetis_source_contour_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _operation_uuid_pk()
+    contour: Mapped[str] = mapped_column(String(16), nullable=False)
+    evsd_uuid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    laboratory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("laboratories.id", ondelete="RESTRICT"), nullable=False
+    )
+    raw_xml: Mapped[str] = mapped_column(Text, nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1, server_default=text("1"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

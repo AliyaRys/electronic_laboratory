@@ -66,8 +66,8 @@
     },
     {
       "path": "docs/adr/ADR-013-compose-and-environments.md",
-      "sha256": "32697c06d721121486a6b5c24840bd2bd58f899c048263a55eb3a16fa65ebc3d",
-      "bytes": 6605
+      "sha256": "24fe242f15090263db2eec4781aea7f5b20afa53dcfb61cb327e91271ba4751d",
+      "bytes": 6197
     },
     {
       "path": "docs/adr/ADR-014-versions-and-upgrades.md",
@@ -91,13 +91,13 @@
     },
     {
       "path": "docs/adr/ADR-018-vetis-module.md",
-      "sha256": "461b329c8b04ffa4f48993453b3d769d834b75891c05730317d5000a959d7629",
-      "bytes": 9132
+      "sha256": "a68b86ce0208272dbe4fe676d31ea90646c822104b1c5c32b7381250935c5d12",
+      "bytes": 9139
     },
     {
       "path": "docs/adr/ADR-019-receipt-orchestration.md",
-      "sha256": "e59ff56c9bc8b8ae90f1c7eea9eaf13cc40ba4d589d2220f3fedc14996cebea2",
-      "bytes": 11463
+      "sha256": "c6c28f0f83acb0222cf1753d15d661b81d1fe0eee0728ca37b9b980328fc3544",
+      "bytes": 10903
     },
     {
       "path": "docs/adr/ADR-020-pricing-and-methods.md",
@@ -126,8 +126,8 @@
     },
     {
       "path": "docs/adr/agent-handoff.md",
-      "sha256": "28161825b8fffa4e126022033e62301c5f11719bb28617c83c971c0379796bca",
-      "bytes": 9353
+      "sha256": "4410d6cd463cf7abbe15c87b51f3560f3563898f67a855109191e655adefd26b",
+      "bytes": 8877
     },
     {
       "path": "docs/adr/architecture-overview.md",
@@ -136,13 +136,13 @@
     },
     {
       "path": "docs/adr/deployment-and-input-contracts.md",
-      "sha256": "60938b215fbdc4994ca96e773b635daf57e09d825def87788b064101b05c80fd",
-      "bytes": 16623
+      "sha256": "23a0f10539cd518effb857433a431b624ab74c015e1b6c357b43c34722eb0fd5",
+      "bytes": 16408
     },
     {
       "path": "docs/adr/README.md",
-      "sha256": "21ad1cc985b124417e4151e1c78a74c81c3acb0976b7ccbc5fbb5026d1244fc0",
-      "bytes": 26521
+      "sha256": "f8bd91401896770798ed8f5300641d4d097aaba5a72b6909476db719424de9f5",
+      "bytes": 26508
     },
     {
       "path": "docs/adr/sources.md",
@@ -166,8 +166,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/00-specification.md",
-      "sha256": "d124e102430e4692275532e0164da441ee294d1f85e43da42227f148cc94b34d",
-      "bytes": 12186
+      "sha256": "2c30f441af66b68518881f3d760a79097037dc7aba7d4015d97ece1e9ec650dd",
+      "bytes": 12485
     },
     {
       "path": "Функциональные требования/v2.0/01-access-and-users.md",
@@ -176,8 +176,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/02-arrivals-and-receipt.md",
-      "sha256": "c9a07aac55cf2d540e9ac42eceddc38748e9de4d38877c2766398c70770cdde4",
-      "bytes": 21383
+      "sha256": "b6415002825c1b54748613a970788a0f52c14b5689e6b99cd1644d7b7ee99697",
+      "bytes": 21603
     },
     {
       "path": "Функциональные требования/v2.0/03-examination.md",
@@ -206,8 +206,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/08-inputs-and-adr-handoff.md",
-      "sha256": "dbca86120ebe9d0e3e8869b7122b96aa70a15551770cfcf4513069511cff8b42",
-      "bytes": 12230
+      "sha256": "7bdec8aaab18a902d031b50dcbbec646e24b4138b498a1893f76992ed8a0518e",
+      "bytes": 12337
     },
     {
       "path": "Функциональные требования/v2.0/09-reports.md",
@@ -221,8 +221,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/11-traceability-and-acceptance.md",
-      "sha256": "330e67254945002596db5f9c18cc2ce90c33ac4f128290dd0f0d151ba8763f91",
-      "bytes": 28561
+      "sha256": "7dc91268680827afc9e2c7b6a3c495ccfc2429839bd2d8fc4fb85a30f06b4e79",
+      "bytes": 28558
     },
     {
       "path": "Функциональные требования/v2.0/12-changes-and-mockups.md",
@@ -236,13 +236,13 @@
     },
     {
       "path": "Функциональные требования/v2.0/owner-decisions.md",
-      "sha256": "d1e33d7f0a6394325edc42ce29427370447b845b1e214032a7cf6e69a6d02602",
-      "bytes": 8832
+      "sha256": "e16f10151785f5190b4a63aaaff60bc335671bbd7732d13c975c4a50324901b3",
+      "bytes": 10050
     },
     {
       "path": "Функциональные требования/v2.0/README.md",
-      "sha256": "a5169f4ca7ebf84d11ebb64265ad373c7ff88a72f5a84353bda1f8f4184ac0d1",
-      "bytes": 5473
+      "sha256": "3c483a8324c84fbc411ebe6dfd711b42e8ae8e9a45364805a0a6f41015650b24",
+      "bytes": 5520
     },
     {
       "path": "Функциональные требования/v2.0/requirements-index.md",
@@ -251,8 +251,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/review-findings.md",
-      "sha256": "b1fabefc360e8c01464d352880ee1cbd1c56f396e387766a3567f33b775425d3",
-      "bytes": 4232
+      "sha256": "5371096c2222e43288c45721389c4d7f625dacd996ee04797a8d8cbcc168307e",
+      "bytes": 4426
     },
     {
       "path": "Функциональные требования/v2.0/sources-manifest.json",
@@ -266,8 +266,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/verification.md",
-      "sha256": "a854c9e1d2837447d3f3c6fe0f33ab247539cf572106d6cb7c6fedfe13234a68",
-      "bytes": 3989
+      "sha256": "a701766241dacd3efe4d82ffa63a5ed64f034f4ef28cfb05c164ab02f359a504",
+      "bytes": 3907
     },
     {
       "path": "AGENTS.md",

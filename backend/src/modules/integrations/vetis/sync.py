@@ -237,6 +237,26 @@ def _transport_problem(exc: Exception) -> ProblemError:
     )
 
 
+def _import_problem(exc: Exception) -> ProblemError:
+    """An import failure (DB constraint, upsert error) is recorded honestly."""
+    return ProblemError(
+        status=500,
+        code="VETIS_IMPORT_FAILED",
+        title="VetIS import failed",
+        detail=f"Импорт страницы прерван ({type(exc).__name__}); контрольная точка не изменена.",
+    )
+
+
+def _cursor_contract_problem() -> ProblemError:
+    """A non-complete page without a next cursor violates the read contract."""
+    return ProblemError(
+        status=502,
+        code="VETIS_CURSOR_CONTRACT_VIOLATED",
+        title="VetIS cursor contract violated",
+        detail="Ответ ВетИС не содержит курсор следующей страницы при незавершённом проходе; операция остановлена.",
+    )
+
+
 async def _fail_operation(db: AsyncSession, operation: VetisOperation, problem: ProblemError, *, now: datetime) -> None:
     await db.execute(
         update(VetisOperation)
@@ -248,6 +268,17 @@ async def _fail_operation(db: AsyncSession, operation: VetisOperation, problem: 
             problem_code=problem.code,
             problem_detail=problem.detail,
         )
+    )
+    # Finalize the durable outbox row: the failure is terminal, so no retry
+    # storm and no stale-lease resurrection afterwards.
+    await db.execute(
+        update(OutboxEntry)
+        .where(
+            OutboxEntry.operation_id == operation.id,
+            OutboxEntry.event_type == _OUTBOX_EVENT,
+            OutboxEntry.delivered_at.is_(None),
+        )
+        .values(delivered_at=now, lease_until=None)
     )
     write_structured_audit(
         _AuditUow(db),
@@ -333,8 +364,13 @@ async def run_sync(
                 await _fail_operation(db, operation, _transport_problem(exc), now=datetime.now(UTC))
                 await db.commit()
                 return
-            for item in current_page.items:
-                await _import_item(db, operation, item, current_page)
+            try:
+                for item in current_page.items:
+                    await _import_item(db, operation, item, current_page)
+            except Exception as exc:  # noqa: BLE001 - an import failure is ALSO an honest FAILED run
+                await _fail_operation(db, operation, _import_problem(exc), now=datetime.now(UTC))
+                await db.commit()
+                return
             pages_done += 1
             imported += len(current_page.items)
             await db.execute(
@@ -342,6 +378,13 @@ async def run_sync(
                 .where(VetisOperation.id == operation_id)
                 .values(pages_done=pages_done, imported=imported, updated_at=datetime.now(UTC))
             )
+            # Pagination contract (API-04/DATA-06): a non-complete page MUST
+            # carry a next cursor; otherwise re-entering the loop would restart
+            # the walk forever with cursor=None. Fail honestly instead.
+            if not current_page.complete and current_page.next_cursor is None:
+                await _fail_operation(db, operation, _cursor_contract_problem(), now=datetime.now(UTC))
+                await db.commit()
+                return
             await db.commit()
         if current_page.complete:
             break
@@ -494,7 +537,15 @@ async def recover_pending_operations(
             await db.execute(
                 update(VetisOperation)
                 .where(VetisOperation.id == operation.id)
-                .values(state=VetisOperationState.PENDING, updated_at=current)
+                .values(
+                    state=VetisOperationState.PENDING,
+                    updated_at=current,
+                    # A recovered stale lease is never silent: the interrupted
+                    # run keeps an honest problem code until it reruns.
+                    problem_code=operation.problem_code or "VETIS_SYNC_INTERRUPTED",
+                    problem_detail=operation.problem_detail
+                    or "Работа прервана перезапуском; операция будет повторена.",
+                )
             )
             operation.state = VetisOperationState.PENDING
         has_due = (

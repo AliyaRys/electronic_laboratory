@@ -420,3 +420,74 @@ async def test_composed_adapter_refuses_live_calls_without_pins() -> None:
         adapter.require_live_ready()
     assert raised.value.status == 503
     assert raised.value.code == "INTEGRATION_NOT_CONFIGURED"
+
+
+# --- fix round 1: honest failure on import errors / cursor violations ----------
+
+
+async def test_import_failure_marks_operation_failed(sync_env: SimpleNamespace, monkeypatch) -> None:
+    """An exception inside the page import is an honest FAILED run, not a stuck one."""
+    from backend.src.modules.integrations.vetis.models import VetisOperationState
+
+    env = sync_env
+    evsd = uuid.uuid4()
+
+    async def broken_upsert(uow, document):  # noqa: ANN001
+        raise RuntimeError("constraint violation")
+
+    monkeypatch.setattr(sync, "upsert_incoming", broken_upsert)
+
+    operation_id = await start(env)
+    transport = FakeTransport([page(1, 0, [doc(evsd, "1")])])
+    await run(env, operation_id, make_adapter(env, transport))
+
+    operation = await op_row(env, operation_id)
+    assert operation.state == VetisOperationState.FAILED
+    assert operation.problem_code == "VETIS_IMPORT_FAILED"
+    assert operation.problem_detail is not None and "RuntimeError" in operation.problem_detail
+    # The outbox row is finalized (no retry storm), the checkpoint is untouched.
+    rows = (await env.db.execute(select(OutboxEntry).where(OutboxEntry.operation_id == operation_id))).scalars().all()
+    assert all(row.delivered_at is not None for row in rows)
+    assert (await binding_row(env)).last_success is None
+    assert await party_count(env) == 0
+
+
+async def test_stale_recovery_records_the_problem_code(sync_env: SimpleNamespace) -> None:
+    """A stale-lease reset is never silent: the recovered run keeps a problem code."""
+    env = sync_env
+    operation_id = await start(env)
+    await env.db.execute(
+        update(VetisOperation)
+        .where(VetisOperation.id == operation_id)
+        .values(state="RUNNING", updated_at=datetime.now(UTC) - timedelta(hours=1))
+    )
+    await env.db.commit()
+
+    await sync.recover_pending_operations(env.db)
+    await env.db.commit()
+    recovered = await op_row(env, operation_id)
+    assert recovered.state == "PENDING"
+    assert recovered.problem_code == "VETIS_SYNC_INTERRUPTED"
+
+
+async def test_cursor_contract_violation_fails_honestly(sync_env: SimpleNamespace) -> None:
+    """A non-complete page without a next cursor fails instead of looping forever."""
+    env = sync_env
+    evsd = uuid.uuid4()
+    transport = FakeTransport([page(1, 0, [doc(evsd, "1")])])
+    inner = make_adapter(env, transport)
+
+    class BrokenCursorAdapter:
+        async def list_incoming(self, scope: VetisScope, cursor: str | None, initiator: str):
+            result = await inner.list_incoming(scope, cursor, initiator)
+            return result.model_copy(update={"complete": False, "next_cursor": None})
+
+    operation_id = await start(env)
+    await run(env, operation_id, BrokenCursorAdapter())
+
+    operation = await op_row(env, operation_id)
+    assert operation.state == "FAILED"
+    assert operation.problem_code == "VETIS_CURSOR_CONTRACT_VIOLATED"
+    # No second SOAP call: the walk stopped at the contract violation.
+    assert len(transport.calls) == 2  # one send + one receive
+    assert (await binding_row(env)).last_success is None

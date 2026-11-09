@@ -25,6 +25,11 @@ node_modules/
 *.pfx
 *.p12
 
+# Owner-provided Mercury test credentials and raw operational SOAP evidence.
+# Derived, sanitized contracts belong in Git; these source files do not.
+/docs/TZ_development/plans/API Mercury data for connection test.txt
+/docs/TZ_development/plans/API REQUESTS.txt
+
 # Operating system and editor files
 .DS_Store
 Thumbs.db

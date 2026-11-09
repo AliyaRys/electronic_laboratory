@@ -1,6 +1,6 @@
 {
-  "date": "2026-11-08",
-  "adr_version": "1.1",
+  "date": "2026-11-09",
+  "adr_version": "1.2",
   "ft_version": "2.0",
   "skill": "Superpowers 7.0.1 writing-plans",
   "files": [
@@ -66,8 +66,8 @@
     },
     {
       "path": "docs/adr/ADR-013-compose-and-environments.md",
-      "sha256": "60776396000831381639ffe955c0fe354160cb1003a58a6bd5b86dcf052b58c9",
-      "bytes": 6663
+      "sha256": "32697c06d721121486a6b5c24840bd2bd58f899c048263a55eb3a16fa65ebc3d",
+      "bytes": 6605
     },
     {
       "path": "docs/adr/ADR-014-versions-and-upgrades.md",
@@ -91,13 +91,13 @@
     },
     {
       "path": "docs/adr/ADR-018-vetis-module.md",
-      "sha256": "b4379c3d3528390e27b44ce7e4da723875cc983c366cb34a567454b9c4e5d19e",
-      "bytes": 11044
+      "sha256": "461b329c8b04ffa4f48993453b3d769d834b75891c05730317d5000a959d7629",
+      "bytes": 9132
     },
     {
       "path": "docs/adr/ADR-019-receipt-orchestration.md",
-      "sha256": "7ca9554829add591db733f39421d60c1e066adf1c6584cf93300e1d7c456dd50",
-      "bytes": 11820
+      "sha256": "e59ff56c9bc8b8ae90f1c7eea9eaf13cc40ba4d589d2220f3fedc14996cebea2",
+      "bytes": 11463
     },
     {
       "path": "docs/adr/ADR-020-pricing-and-methods.md",
@@ -126,8 +126,8 @@
     },
     {
       "path": "docs/adr/agent-handoff.md",
-      "sha256": "1a22e10f68bff4d30ddc5def11849e7411ff84c5c2e40b58c21d6d2a4706a2d8",
-      "bytes": 9565
+      "sha256": "28161825b8fffa4e126022033e62301c5f11719bb28617c83c971c0379796bca",
+      "bytes": 9353
     },
     {
       "path": "docs/adr/architecture-overview.md",
@@ -136,13 +136,13 @@
     },
     {
       "path": "docs/adr/deployment-and-input-contracts.md",
-      "sha256": "2ef5dc57870fefaf87885ea9f58ea155259c7a2e321c5d4c1829852c1604654d",
-      "bytes": 16655
+      "sha256": "60938b215fbdc4994ca96e773b635daf57e09d825def87788b064101b05c80fd",
+      "bytes": 16623
     },
     {
       "path": "docs/adr/README.md",
-      "sha256": "098ba61bcd223410645b6399ac219d207b427e649820835b2242959676f3e864",
-      "bytes": 26459
+      "sha256": "21ad1cc985b124417e4151e1c78a74c81c3acb0976b7ccbc5fbb5026d1244fc0",
+      "bytes": 26521
     },
     {
       "path": "docs/adr/sources.md",
@@ -166,8 +166,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/00-specification.md",
-      "sha256": "e29448c0628f0adf1089787b820a14f075f4eff32ee105424ae5ba87aa8cde4f",
-      "bytes": 12036
+      "sha256": "d124e102430e4692275532e0164da441ee294d1f85e43da42227f148cc94b34d",
+      "bytes": 12186
     },
     {
       "path": "Функциональные требования/v2.0/01-access-and-users.md",
@@ -176,13 +176,13 @@
     },
     {
       "path": "Функциональные требования/v2.0/02-arrivals-and-receipt.md",
-      "sha256": "ee2fdad90e2d3b0b2964758dddaffa725c63d2aa9309549d9a9beccb2a1b0bee",
-      "bytes": 20207
+      "sha256": "c9a07aac55cf2d540e9ac42eceddc38748e9de4d38877c2766398c70770cdde4",
+      "bytes": 21383
     },
     {
       "path": "Функциональные требования/v2.0/03-examination.md",
-      "sha256": "f6d2ca7bdebe349ee942f335e5181e26bbbbf8b0cfb5f85eba52dcbe9a77aebf",
-      "bytes": 14772
+      "sha256": "4c1191588449a26938b395458d0df1b2e8ec02f2a8fb7b8c5c3336c15e4d8759",
+      "bytes": 14789
     },
     {
       "path": "Функциональные требования/v2.0/04-outcomes-and-documents.md",
@@ -206,8 +206,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/08-inputs-and-adr-handoff.md",
-      "sha256": "c453a13c55f08d1ab4c5389f81ae573571cc22115d3f56d58d0247aedc7f52d0",
-      "bytes": 12679
+      "sha256": "dbca86120ebe9d0e3e8869b7122b96aa70a15551770cfcf4513069511cff8b42",
+      "bytes": 12230
     },
     {
       "path": "Функциональные требования/v2.0/09-reports.md",
@@ -221,8 +221,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/11-traceability-and-acceptance.md",
-      "sha256": "438cfdac1ad45ba7cd9b2dbbcc730637dfc09f534095624d03b96565dfabcb9d",
-      "bytes": 28545
+      "sha256": "330e67254945002596db5f9c18cc2ce90c33ac4f128290dd0f0d151ba8763f91",
+      "bytes": 28561
     },
     {
       "path": "Функциональные требования/v2.0/12-changes-and-mockups.md",
@@ -236,13 +236,13 @@
     },
     {
       "path": "Функциональные требования/v2.0/owner-decisions.md",
-      "sha256": "6ddb030596cf12c07d8579fa0f8d59ebe53f0209417178cf44ff4a39bf2546b3",
-      "bytes": 7175
+      "sha256": "d1e33d7f0a6394325edc42ce29427370447b845b1e214032a7cf6e69a6d02602",
+      "bytes": 8832
     },
     {
       "path": "Функциональные требования/v2.0/README.md",
-      "sha256": "61f33e7b99994278216086d5f6a67b001235ba9e9262a18588b6f0787e194ab8",
-      "bytes": 5415
+      "sha256": "a5169f4ca7ebf84d11ebb64265ad373c7ff88a72f5a84353bda1f8f4184ac0d1",
+      "bytes": 5473
     },
     {
       "path": "Функциональные требования/v2.0/requirements-index.md",
@@ -251,8 +251,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/review-findings.md",
-      "sha256": "6bd3c168bfa52a8a05bf6fe784ffe8b4701e819acb3196a69b175e3fb7331c25",
-      "bytes": 4245
+      "sha256": "b1fabefc360e8c01464d352880ee1cbd1c56f396e387766a3567f33b775425d3",
+      "bytes": 4232
     },
     {
       "path": "Функциональные требования/v2.0/sources-manifest.json",
@@ -266,8 +266,8 @@
     },
     {
       "path": "Функциональные требования/v2.0/verification.md",
-      "sha256": "0411b2fe6935e972eb8eb46ff22acac4f986410450ef57f885b6ed95e2c3f82c",
-      "bytes": 3880
+      "sha256": "a854c9e1d2837447d3f3c6fe0f33ab247539cf572106d6cb7c6fedfe13234a68",
+      "bytes": 3989
     },
     {
       "path": "AGENTS.md",
@@ -286,13 +286,13 @@
     },
     {
       "path": "STORYBOOK.md",
-      "sha256": "cb7e1ea14070365fc29b1460864cec6a5b3ba984d9d3170ff2efa04bbf149119",
-      "bytes": 9977
+      "sha256": "9b481b36dc44c86278df55d1835e40c6d81c07d6bb24dd01154556310492917e",
+      "bytes": 9988
     },
     {
       "path": "package.json",
-      "sha256": "6e89ab88d8ac2e382fee47544653ab2f625e4033000cee765d6bad65136e3730",
-      "bytes": 904
+      "sha256": "c5b95ae8e854790cbdefca6c0eee992738c6f57c751e33a4c0cd5e71c4467827",
+      "bytes": 937
     },
     {
       "path": "ФТ-v2.0.zip",

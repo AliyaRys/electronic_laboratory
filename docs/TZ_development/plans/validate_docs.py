@@ -31,7 +31,8 @@ def main():
             if task in tasks:
                 errors.append(f"duplicate task {task}")
             tasks.add(task)
-            if "**Files:**" not in body or "**Interfaces:**" not in body or body.count("- [ ]") != 5:
+            checklist_steps = body.count("- [ ]") + body.count("- [x]")
+            if "**Files:**" not in body or "**Interfaces:**" not in body or checklist_steps != 5:
                 errors.append(f"{task}: expected Files/Interfaces and 5 steps")
     if len(tasks) != 31:
         errors.append("expected 31 tasks")

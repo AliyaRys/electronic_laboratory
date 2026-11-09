@@ -20,8 +20,8 @@
 
 | Таблица | Поля и ограничения |
 | --- | --- |
-| incoming_documents | id, contour, evsd_uuid, laboratory_id RESTRICT, external_status, source_snapshot JSONB, content_hash, fetched_at, replaced_document_uuid?, rev; UNIQUE(contour, evsd_uuid) на установку |
-| parties | id, incoming_document_id UNIQUE RESTRICT, laboratory_id RESTRICT, classification_snapshot JSONB с четырьмя ID/именами и unit ID, created_at, rev |
+| incoming_documents | id, contour, evsd_uuid, laboratory_id RESTRICT, external_status, product_type, source_snapshot JSONB с raw XML metadata и собственными `{guid,uuid,name}` вложенных объектов, content_hash, fetched_at, replaced_document_uuid?, rev; UNIQUE(contour, evsd_uuid) на установку; MVP party только при `product_type=1` |
+| parties | id, incoming_document_id UNIQUE RESTRICT, laboratory_id RESTRICT, classification_snapshot JSONB с уровнями `product/productItem/subProduct`, их source ID/name и unit ID, created_at, rev |
 | reconciliations | id, party_id UNIQUE RESTRICT, checks JSONB по CHK, delivered/accepted/returned quantities и weights, decision?, transaction_planned?, transaction_type?, fair bool default false, services JSONB, repeated_required?, repeat_reason?, repeat_act_number?, actor_id, saved_at, completed_at?, state OPEN/CONFIRMED/RETURNED, rev |
 | receipt_confirmations | id, party_id UNIQUE RESTRICT, operation_id UNIQUE, source_evsd_uuid, fingerprint, evidence JSONB, accepted/returned quantities/weights, classification_snapshot, confirmed_at; запись только командой подтверждения, неизменяема |
 | hidden_incoming | contour, evsd_uuid, content_hash, actor_id, hidden_at; UNIQUE(contour, evsd_uuid); fetched_at исключён из hash |

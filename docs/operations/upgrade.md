@@ -48,7 +48,7 @@
   `deploy-<installation>` сериализует деплой, release lock сериализует
   миграции.
 - `VETIS_READ_ENABLED` / `VETIS_WRITE_ENABLED` не меняются апгрейдом;
-  write остаётся `false` (O-11).
+  write остаётся `false` (O-12).
 - Обновление lock-файлов (`uv.lock`, `package-lock.json`) — отдельный
   upgrade-коммит с диагностикой и полным CI, без самовольной смены
   версий стека (SPEC).

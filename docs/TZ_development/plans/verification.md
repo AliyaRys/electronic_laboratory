@@ -21,7 +21,7 @@ python docs/superpowers/plans/validate_docs.py
 - ADR1.1/ФТ v2/O/R → SPEC-01; scope исключений сохранён.
 - ADR001–014/024 → I/F/O; новый React-клиент отделён от старых HTML и API компонентов.
 - ADR015–017 → DATA/SPEC/A/S/E; независимые UUID, UNIQUE партии/номера, снимки, отсутствие draft/history, блокировки/revision/key, полночь после lock.
-- ADR018/019 и O-11 → V/W; 15-минутный production read-only ВУ, manifest вместо вымышленного endpoint, выделенная read identity, полностью реализованный write-контракт на офлайн-адаптере, UNKNOWN без слепого submit; production transport не имеет write credentials/маршрута, будущий submit требует owner authorization.
+- ADR018/019 и O-12 → V/W; 15-минутный test read ВУ, подтверждённый endpoint плюс pinned WSDL/XSD manifest, `productType=1`, source `name`, выделенная read identity, шесть write-сценариев на офлайн-адаптере, UNKNOWN без слепого submit; внешний transport блокирует write, будущий submit требует нового указания владельца и owner authorization.
 - ADR020 → C/E; Decimal, ROUND_HALF_UP, прежние price/norm, ярмарочный 0 без скрытого обычного тарифа.
 - ADR021/022 → R/D; точные строки 5-вет, signed session payload, snapshot не пересчитывается, два основания заключения, одинаковый вывод/печать.
 - ADR023 → E03/O02; DELETE remote WAL flush,503 до commit/UNKNOWN при разрыве, restore без возвращения удалённых карточек; обычный save local commit.
@@ -35,4 +35,4 @@ python docs/superpowers/plans/validate_docs.py
 
 Реализация приложения, миграции, Compose/CI и production-конфиги не созданы. Документы описывают будущие файлы. Код validate_docs.py проверяет только документацию. Чужие изменения, исходные ADR/ФТ, макеты и каталог компонентов не изменены. Коммиты не создавались.
 
-Storybook, UI/сценарные тесты приложения, frozen-install, production read ВетИС, нагрузка и restore не выполнялись. Их критерии и команды назначены будущим задачам. Реальных ВУ read credentials/manifest, норм/цен и официальных форм эта работа не получает и не выдумывает. Живое гашение не является будущим тестом действующего плана: оно запрещено O-11. W03 доказывает только production read-only UI, отсутствие write-вызовов и офлайн-корректность контракта; fixtures не доказывают готовность юридически значимой production-приёмки.
+Storybook, UI/сценарные тесты приложения, frozen-install, живой read ВетИС, нагрузка и restore этой документационной правкой не выполнялись. Test credentials и успешные XML предоставлены локально, но не использовались для сетевых запросов и не входят в Git. Живое гашение не является тестом действующего плана: оно запрещено O-12. W03 доказывает только test-read UI, отсутствие write-вызовов и офлайн-корректность контракта; fixtures не разрешают внешнюю приёмку.

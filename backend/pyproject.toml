@@ -37,5 +37,6 @@ dev = [
     "testcontainers[postgres]>=4.10.0",
     "pywin32>=312; sys_platform == 'win32'",
     "types-openpyxl>=3.1.5.20261017",
+    "types-requests>=2.32.4.20261017",
     "types-reportlab>=5.1.0.20261104",
 ]

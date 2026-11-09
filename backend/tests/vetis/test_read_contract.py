@@ -451,3 +451,67 @@ def test_subject_modules_never_import_zeep() -> None:
         encoding="utf-8"
     )  # type: ignore[arg-type]
     assert "zeep" not in arrivals_router_source
+
+
+# --- 7. Schema imports allowlist (fix round 1) ---------------------------------
+
+
+def test_allowlist_built_from_manifest_pins() -> None:
+    from backend.src.modules.integrations.vetis.transport import imports_allowlist
+
+    allowlist = imports_allowlist(pinned_manifest())
+    endpoint = json.loads((RESOURCES / "manifest.json").read_text(encoding="utf-8"))["endpoint"]
+    assert endpoint in allowlist
+    assert f"{endpoint}?wsdl" in allowlist
+    assert str(FIXTURES / "fixture.wsdl") in allowlist
+    assert str(FIXTURES / "fixture.xsd") in allowlist
+    # The committed PENDING manifest pins nothing but the endpoint itself.
+    from backend.src.modules.integrations.vetis.manifest import load_manifest
+
+    pending = imports_allowlist(load_manifest(RESOURCES / "manifest.json"))
+    assert pending == {endpoint, f"{endpoint}?wsdl"}
+
+
+def test_restricted_session_rejects_unpinned_import_without_egress() -> None:
+    from backend.src.modules.integrations.vetis.transport import RestrictedSession, imports_allowlist
+
+    session = RestrictedSession(allowed=imports_allowlist(pinned_manifest()))
+    recorded: list[tuple[str, str]] = []
+
+    class Spy(RestrictedSession):
+        def perform(self, method: str, url: str, **kwargs: object) -> object:
+            recorded.append((method, url))
+            return "egress-marker"
+
+    spy = Spy(allowed=imports_allowlist(pinned_manifest()))
+
+    # An unpinned import URL is rejected BEFORE any egress attempt.
+    with pytest.raises(ProblemError) as raised:
+        spy.request("GET", "https://unpinned.example/attacker.xsd")
+    assert raised.value.status == 503
+    assert raised.value.code == "INTEGRATION_SCHEMA_IMPORT_REJECTED"
+    assert recorded == []  # no egress, not even for the rejected URL
+    assert spy.attempted == ["https://unpinned.example/attacker.xsd"]
+
+    # A pinned location passes the guard (spy records instead of real network).
+    wsdl_path = str(FIXTURES / "fixture.wsdl")
+    result = spy.request("GET", wsdl_path)
+    assert result == "egress-marker"
+    assert recorded == [("GET", wsdl_path)]
+    assert spy.attempted[-1] == wsdl_path
+
+    # The plain (non-spy) session rejects the same unpinned URL.
+    with pytest.raises(ProblemError):
+        session.request("GET", "https://unpinned.example/attacker.xsd")
+    assert session.attempted == ["https://unpinned.example/attacker.xsd"]
+
+
+def test_transport_carries_the_manifest_allowlist() -> None:
+    from backend.src.modules.integrations.vetis.transport import ZeepApplicationTransport, imports_allowlist
+
+    manifest = pinned_manifest()
+    transport = ZeepApplicationTransport(
+        endpoint=manifest.endpoint,
+        allowed_urls=imports_allowlist(manifest),
+    )
+    assert transport._allowed_urls == frozenset(imports_allowlist(manifest))  # noqa: SLF001 - contract check

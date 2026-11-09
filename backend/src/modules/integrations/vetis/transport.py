@@ -14,8 +14,14 @@ modules never import Zeep, and tests inject a :class:`SpyTransport`.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Protocol
+
+import requests
+
+from backend.src.core.problems import ProblemError
+from backend.src.modules.integrations.vetis.manifest import VetisManifest
 
 __all__ = [
     "WRITE_OPERATIONS",
@@ -23,8 +29,10 @@ __all__ = [
     "WriteOperationRejected",
     "VetisTransport",
     "SpyTransport",
+    "RestrictedSession",
     "ZeepApplicationTransport",
     "build_get_vet_document_list_application",
+    "imports_allowlist",
     "is_read_only_operation",
 ]
 
@@ -60,6 +68,64 @@ class WriteOperationRejected(Exception):
 def is_read_only_operation(operation: str) -> bool:
     """True only for business operations that never change external state."""
     return operation not in WRITE_OPERATIONS
+
+
+def _schema_import_rejected(url: str) -> ProblemError:
+    return ProblemError(
+        status=503,
+        code="INTEGRATION_SCHEMA_IMPORT_REJECTED",
+        title="Schema import rejected",
+        detail="Запрос за пределами закреплённого набора схем ВетИС отклонён; сетевого обращения не было.",
+    )
+
+
+class RestrictedSession(requests.Session):
+    """A requests.Session restricted to the pinned schema import locations.
+
+    Every attempted URL is recorded in ``attempted`` (proof of no egress); a
+    URL outside the allowlist raises a 503-style problem BEFORE any network
+    contact. Used by the Zeep transport so the WSDL and every XSD
+    ``schemaLocation`` import stay inside the manifest pins.
+    """
+
+    def __init__(self, allowed: Collection[str]) -> None:
+        super().__init__()
+        self._allowed = frozenset(url.rstrip("/") for url in allowed)
+        self.attempted: list[str] = []
+
+    def is_allowed(self, url: str) -> bool:
+        return url.rstrip("/") in self._allowed
+
+    def request(  # type: ignore[override]
+        self,
+        method: str | bytes,
+        url: str,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        target = str(url)
+        self.attempted.append(target)
+        if not self.is_allowed(target):
+            raise _schema_import_rejected(target)
+        return self.perform(str(method), target, **kwargs)
+
+    def perform(self, method: str, url: str, **kwargs: object) -> object:
+        """The escape hook to the real session (spy tests override this)."""
+        return super().request(method, url, **kwargs)  # type: ignore[arg-type]
+
+
+def imports_allowlist(manifest: VetisManifest) -> set[str]:
+    """The pinned import locations: endpoint, its WSDL and every pinned XSD.
+
+    Built from the manifest only — never from an arbitrary WSDL response.
+    """
+    allowed: set[str] = {manifest.endpoint, f"{manifest.endpoint}?wsdl"}
+    if manifest.schema_pins.wsdl is not None:
+        allowed.add(manifest.schema_pins.wsdl.resource)
+    for entry in manifest.schema_pins.xsd:
+        allowed.add(entry.resource)
+        allowed.update(entry.imports)
+    return allowed
 
 
 class VetisTransport(Protocol):
@@ -115,12 +181,24 @@ class ZeepApplicationTransport:
     Connection timeout 10 s, read timeout 60 s (manifest constraints). The
     Zeep client is created lazily and used inside a worker thread because Zeep
     is synchronous; the async protocol stays honest for the caller.
+
+    ``allowed_urls`` is the schema imports allowlist (ADR-018): every HTTP(S)
+    request Zeep makes — the WSDL itself, every XSD ``schemaLocation`` import —
+    must be in the allowlist built from the manifest pins; anything else is
+    rejected BEFORE any network egress.
     """
 
-    def __init__(self, endpoint: str, connect_timeout_s: int = 10, read_timeout_s: int = 60) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        connect_timeout_s: int = 10,
+        read_timeout_s: int = 60,
+        allowed_urls: Collection[str] | None = None,
+    ) -> None:
         self._endpoint = endpoint
         self._connect_timeout = connect_timeout_s
         self._read_timeout = read_timeout_s
+        self._allowed_urls = frozenset(allowed_urls or ())
 
     def _client(self) -> object:  # pragma: no cover - requires credentials/zeep at runtime
         import zeep
@@ -133,7 +211,8 @@ class ZeepApplicationTransport:
             forbid_entities=True,
             forbid_external=True,
         )
-        transport = Transport(timeout=self._read_timeout, operation_timeout=self._read_timeout)  # type: ignore[no-untyped-call]
+        session = RestrictedSession(allowed=self._allowed_urls) if self._allowed_urls else requests.Session()
+        transport = Transport(session=session, timeout=self._read_timeout, operation_timeout=self._read_timeout)  # type: ignore[no-untyped-call]
         # TLS verification is left at its verified default (never disabled).
         return zeep.Client(wsdl=f"{self._endpoint}?wsdl", transport=transport, settings=settings)  # type: ignore[no-untyped-call]
 

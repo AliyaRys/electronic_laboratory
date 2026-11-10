@@ -578,7 +578,7 @@ def command_state_view(operation: VetisOperation) -> CommandStateView:
     """The API-01 CommandState of one VetIS sync operation (DATA-05)."""
     return CommandStateView(
         id=operation.id,
-        kind="vetis.sync",
+        kind="vetis.receipt" if operation.kind == VetisOperationKind.RECEIPT else "vetis.sync",
         state=str(operation.state),
         problem=operation.problem_code,
         updated_at=operation.updated_at,
@@ -589,8 +589,6 @@ async def load_operation_state(db: AsyncSession, operation_id: uuid.UUID) -> Vet
     """Resolve one VetIS operation row for GET /operations/:id (scope-checked upstream)."""
     return (
         await db.execute(
-            select(VetisOperation).where(
-                VetisOperation.id == operation_id, VetisOperation.kind == VetisOperationKind.SYNC
-            )
+            select(VetisOperation).where(VetisOperation.id == operation_id)
         )
     ).scalar_one_or_none()

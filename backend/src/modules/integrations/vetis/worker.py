@@ -30,11 +30,24 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.src.core.database import get_session_factory
+from backend.src.modules.arrivals.confirmation import confirm_receipt
+from backend.src.modules.arrivals.ports import ReceiptEvidence
 from backend.src.modules.identity.models import OutboxEntry
 from backend.src.modules.integrations.vetis import sync
 from backend.src.modules.integrations.vetis.adapter import VetisReadAdapter
+from backend.src.modules.integrations.vetis.contracts import ExternalResult, ReceiptIntent
 from backend.src.modules.integrations.vetis.dispatcher import dispatch_pending_operations
-from backend.src.modules.integrations.vetis.models import VetisOperation, VetisOperationState
+from backend.src.modules.integrations.vetis.evidence import parse_receipt_result
+from backend.src.modules.integrations.vetis.models import (
+    VetisOperation,
+    VetisOperationKind,
+    VetisOperationState,
+    VetisSourceDocument,
+)
+from backend.src.modules.integrations.vetis.polling import MAX_PROCESSING, poll_delay
+from backend.src.modules.integrations.vetis.receipt import write_enabled
+from backend.src.modules.integrations.vetis.receipt_mapping import build_process_incoming_application
+from backend.src.modules.integrations.vetis.reconcile import reconcile_receipt
 from backend.src.modules.integrations.vetis.transport import ZeepApplicationTransport, imports_allowlist
 
 __all__ = [
@@ -45,6 +58,7 @@ __all__ = [
     "run_sync_operation",
     "schedule_scheduled_syncs",
     "compose_read_adapter",
+    "run_receipt_operation",
     "WorkerSettings",
 ]
 
@@ -74,14 +88,33 @@ def compose_read_adapter() -> VetisReadAdapter:
     manifest_path = Path(__file__).resolve().parents[4] / "resources" / "vetis" / "manifest.json"
     manifest = load_manifest(manifest_path)
     issuer_id = ""
+    api_key = None
+    gateway_user = None
+    gateway_password = None
     profile_path = secret_profile_path()
     if profile_path:
-        issuer_id = load_secret_profile(profile_path).issuer_id
+        profile = load_secret_profile(profile_path)
+        issuer_id = profile.issuer_id
+        api_key = profile.api_key
+        gateway_user = profile.gateway_user
+        gateway_password = profile.gateway_password
         pins_path = os.environ.get("VETIS_SCHEMA_PINS")
         if pins_path:
             manifest = load_manifest_with_pins(manifest_path, json.loads(Path(pins_path).read_text(encoding="utf-8")))
-    transport = ZeepApplicationTransport(endpoint=manifest.endpoint, allowed_urls=imports_allowlist(manifest))
-    return VetisReadAdapter(transport=transport, manifest=manifest, issuer_id=issuer_id)
+    transport = ZeepApplicationTransport(
+        endpoint=manifest.endpoint,
+        allowed_urls=imports_allowlist(manifest),
+        gateway_user=gateway_user,
+        gateway_password=gateway_password,
+        api_key=api_key,
+        issuer_id=issuer_id,
+    )
+    return VetisReadAdapter(
+        transport=transport,
+        manifest=manifest,
+        issuer_id=issuer_id,
+        api_key=api_key,
+    )
 
 
 async def claim_due_operation(db: AsyncSession, *, owner: str, now: datetime | None = None) -> uuid.UUID | None:
@@ -91,7 +124,7 @@ async def claim_due_operation(db: AsyncSession, *, owner: str, now: datetime | N
         await db.execute(
             select(OutboxEntry)
             .where(
-                OutboxEntry.event_type == "vetis.sync",
+                OutboxEntry.event_type.in_(("vetis.sync", "vetis.receipt")),
                 OutboxEntry.delivered_at.is_(None),
                 OutboxEntry.next_attempt_at <= current,
             )
@@ -133,11 +166,41 @@ async def run_claimed(
     """
     if adapter is None:
         adapter = compose_read_adapter()
-    await sync.run_sync(operation_id, adapter=adapter, session_factory=session_factory)
+    operation = (await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id))).scalar_one()
+    if operation.kind == VetisOperationKind.RECEIPT:
+        if not write_enabled():
+            await db.execute(
+                update(OutboxEntry)
+                .where(OutboxEntry.operation_id == operation_id, OutboxEntry.delivered_at.is_(None))
+                .values(
+                    next_attempt_at=datetime.now(UTC) + timedelta(minutes=1),
+                    lease_owner=None,
+                    lease_until=None,
+                )
+            )
+            await db.commit()
+            return False
+        adapter.require_live_ready()
+        await run_receipt_operation(
+            operation_id,
+            transport=adapter._transport,
+            session_factory=session_factory,
+            service_id=adapter._manifest.service_id,
+            issuer_id=adapter._issuer_id,
+            api_key=adapter._api_key,
+        )
+    else:
+        await sync.run_sync(operation_id, adapter=adapter, session_factory=session_factory)
     state = (
         await db.execute(select(VetisOperation.state).where(VetisOperation.id == operation_id))
     ).scalar_one_or_none()
-    terminal = state in (VetisOperationState.SUCCESS, VetisOperationState.FAILED)
+    terminal = state in (
+        VetisOperationState.SUCCESS,
+        VetisOperationState.FAILED,
+        VetisOperationState.CONFIRMED,
+        VetisOperationState.REJECTED,
+        VetisOperationState.UNKNOWN,
+    )
     if terminal:
         await db.execute(
             update(OutboxEntry)
@@ -145,7 +208,159 @@ async def run_claimed(
             .values(delivered_at=datetime.now(UTC), lease_owner=owner, lease_until=None)
         )
         await db.commit()
+    elif operation.kind == VetisOperationKind.RECEIPT:
+        next_poll = (
+            await db.execute(select(VetisOperation.next_poll_at).where(VetisOperation.id == operation_id))
+        ).scalar_one_or_none()
+        await db.execute(
+            update(OutboxEntry)
+            .where(OutboxEntry.operation_id == operation_id, OutboxEntry.delivered_at.is_(None))
+            .values(next_attempt_at=next_poll or datetime.now(UTC), lease_owner=None, lease_until=None)
+        )
+        await db.commit()
     return bool(terminal)
+
+
+async def run_receipt_operation(
+    operation_id: uuid.UUID,
+    *,
+    transport: object,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+    service_id: str = "mercury-vu.service:2.0",
+    issuer_id: str = "",
+    api_key: str | None = None,
+) -> None:
+    """Submit once, then poll/reconcile; a lost submit response is UNKNOWN.
+
+    The SUBMITTING transition is committed before external I/O.  Therefore a
+    replacement worker never repeats an irreversible submit: it only polls an
+    already stored application id or freezes UNKNOWN when that id was lost.
+    """
+    factory = session_factory or get_session_factory()
+    first_submit = False
+    intent: ReceiptIntent
+    async with factory() as db:
+        operation = (
+            await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
+        ).scalar_one()
+        if operation.kind != VetisOperationKind.RECEIPT or operation.intent is None:
+            return
+        intent = ReceiptIntent.model_validate(operation.intent)
+        if operation.state == VetisOperationState.CONFIRMED and operation.evidence is not None:
+            await confirm_receipt(db, ReceiptEvidence.model_validate(operation.evidence))
+            await db.commit()
+            return
+        source_xml = (
+            await db.execute(
+                select(VetisSourceDocument.raw_xml).where(
+                    VetisSourceDocument.contour == str(intent.contour),
+                    VetisSourceDocument.evsd_uuid == intent.source_evsd_uuid,
+                    VetisSourceDocument.revision == intent.source_revision,
+                    VetisSourceDocument.checksum == intent.source_checksum,
+                )
+            )
+        ).scalar_one_or_none()
+        if source_xml is None:
+            operation.state = VetisOperationState.UNKNOWN
+            operation.problem_code = "VETIS_SOURCE_REVISION_LOST"
+            operation.problem_detail = "Закреплённая версия исходного XML недоступна; отправка запрещена."
+            await db.commit()
+            return
+        if operation.state == VetisOperationState.QUEUED:
+            operation.state = VetisOperationState.SUBMITTING
+            operation.started_at = datetime.now(UTC)
+            operation.updated_at = datetime.now(UTC)
+            first_submit = True
+            await db.commit()
+        elif operation.state == VetisOperationState.SUBMITTING and not operation.application_id:
+            operation.state = VetisOperationState.UNKNOWN
+            operation.problem_code = "VETIS_SUBMIT_OUTCOME_UNKNOWN"
+            operation.problem_detail = (
+                "Ответ submit с applicationId утрачен; повторная отправка автоматически запрещена."
+            )
+            await db.commit()
+            return
+        elif operation.state not in (VetisOperationState.SUBMITTING, VetisOperationState.PROCESSING):
+            return
+
+    if first_submit:
+        xml = build_process_incoming_application(
+            intent,
+            source_xml=source_xml,
+            service_id=service_id,
+            issuer_id=issuer_id,
+            api_key=api_key,
+        )
+        try:
+            application_id = await transport.send_application(xml)  # type: ignore[attr-defined]
+            if not application_id:
+                raise RuntimeError("missing application id")
+        except Exception:  # noqa: BLE001 - outcome may be externally committed
+            async with factory() as db:
+                operation = (
+                    await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
+                ).scalar_one()
+                operation.state = VetisOperationState.UNKNOWN
+                operation.problem_code = "VETIS_SUBMIT_OUTCOME_UNKNOWN"
+                operation.problem_detail = (
+                    "Связь оборвалась во время submit; автоматическая повторная отправка запрещена."
+                )
+                operation.updated_at = datetime.now(UTC)
+                await db.commit()
+            return
+        async with factory() as db:
+            operation = (
+                await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
+            ).scalar_one()
+            operation.application_id = str(application_id)
+            operation.state = VetisOperationState.PROCESSING
+            operation.submitted_at = datetime.now(UTC)
+            operation.next_poll_at = datetime.now(UTC)
+            operation.updated_at = datetime.now(UTC)
+            await db.commit()
+
+    async with factory() as db:
+        operation = (
+            await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
+        ).scalar_one()
+        application_id = operation.application_id
+        submitted_at = operation.submitted_at
+        attempts = operation.poll_attempts
+    if not application_id:
+        return
+    if submitted_at and datetime.now(UTC) - submitted_at >= MAX_PROCESSING:
+        async with factory() as db:
+            operation = (
+                await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
+            ).scalar_one()
+            operation.state = VetisOperationState.UNKNOWN
+            operation.problem_code = "VETIS_RESULT_TIMEOUT"
+            operation.problem_detail = "Результат не подтверждён за 15 минут; повторная отправка запрещена."
+            await db.commit()
+        return
+    try:
+        result_xml = await transport.receive_result(application_id)  # type: ignore[attr-defined]
+    except Exception:  # polling is safe to repeat
+        result = ExternalResult(
+            application_id=application_id,
+            state="PROCESSING",
+            detail={"problem": "VETIS_POLL_TEMPORARY_FAILURE"},
+        )
+    else:
+        result = parse_receipt_result(result_xml, intent, application_id=application_id)
+    async with factory() as db:
+        operation = (
+            await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
+        ).scalar_one()
+        if result.state == "PROCESSING":
+            operation.poll_attempts = attempts + 1
+            operation.next_poll_at = datetime.now(UTC) + poll_delay(attempts)
+        else:
+            await reconcile_receipt(db, operation, result)
+            operation.finished_at = datetime.now(UTC)
+            operation.next_poll_at = None
+        operation.updated_at = datetime.now(UTC)
+        await db.commit()
 
 
 async def run_sync_operation(operation_id: uuid.UUID) -> None:

@@ -9,6 +9,8 @@ fabricating data.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,6 +22,8 @@ __all__ = [
     "VetisScope",
     "IncomingPage",
     "ReceiptIntent",
+    "ReceiptPreview",
+    "UserConfirmation",
     "Submission",
     "ExternalResult",
     "ReconciliationEvidence",
@@ -58,13 +62,52 @@ class IncomingPage(BaseModel):
 
 
 class ReceiptIntent(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """Frozen, server-built input of one irreversible receipt application."""
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    operation_id: uuid.UUID
     party_id: uuid.UUID
     laboratory_id: uuid.UUID
+    contour: VetisContour
+    source_evsd_uuid: uuid.UUID
+    source_checksum: str
+    source_revision: int
+    receiver_enterprise_id: str
+    business_member_id: str
+    initiator: str
+    delivery_date: datetime
     reconciliation_revision: int
     decision: Literal["ACCEPT_ALL", "PARTIALLY", "RETURN_ALL"]
+    doc_inspection: Literal["CORRESPONDS", "MISMATCH"]
+    vet_inspection: Literal["CORRESPONDS", "MISMATCH", "UNSUPERVISED"]
+    documentary_quantity: Decimal
+    delivered_quantity: Decimal
+    accepted_quantity: Decimal
+    returned_quantity: Decimal
+    unit_id: str
+    discrepancy_items: list[dict[str, object]] = Field(default_factory=list)
+    return_reason_code: str | None = None
+    return_reason_text: str | None = None
+    act_number: str | None = None
+    local_transaction_id: str
     fingerprint: str
+
+
+class ReceiptPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    intent: ReceiptIntent
+    application_xml: str
+    fingerprint: str
+
+
+class UserConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    actor_id: uuid.UUID
+    fingerprint: str
+    confirmed_at: datetime
 
 
 class Submission(BaseModel):
@@ -72,6 +115,7 @@ class Submission(BaseModel):
 
     local_transaction_id: str
     application_id: str | None = None
+    transport_state: Literal["SUBMITTING", "PROCESSING", "UNKNOWN"]
 
 
 class ExternalResult(BaseModel):

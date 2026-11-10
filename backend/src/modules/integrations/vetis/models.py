@@ -20,7 +20,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.src.core.database import Base
@@ -92,8 +92,13 @@ class VetisOperationState(StrEnum):
     RUNNING = "RUNNING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    NOT_SENT = "NOT_SENT"
+    QUEUED = "QUEUED"
+    SUBMITTING = "SUBMITTING"
+    PROCESSING = "PROCESSING"
     CONFIRMED = "CONFIRMED"
     REJECTED = "REJECTED"
+    UNKNOWN = "UNKNOWN"
 
 
 def _operation_uuid_pk() -> Mapped[uuid.UUID]:
@@ -141,7 +146,8 @@ class VetisOperation(Base):
     __table_args__ = (
         CheckConstraint("kind IN ('SYNC','RECEIPT')", name="vetis_operations_kind_valid"),
         CheckConstraint(
-            "state IN ('PENDING','RUNNING','SUCCESS','FAILED','CONFIRMED','REJECTED')",
+            "state IN ('PENDING','RUNNING','SUCCESS','FAILED','NOT_SENT','QUEUED',"
+            "'SUBMITTING','PROCESSING','CONFIRMED','REJECTED','UNKNOWN')",
             name="vetis_operations_state_valid",
         ),
         CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="vetis_operations_contour_valid"),
@@ -171,6 +177,20 @@ class VetisOperation(Base):
     pages_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     imported: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     rev: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1, server_default=text("1"))
+    source_checksum: Mapped[str | None] = mapped_column(String(64))
+    source_revision: Mapped[int | None] = mapped_column(BigInteger)
+    reconciliation_revision: Mapped[int | None] = mapped_column(BigInteger)
+    local_transaction_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    application_id: Mapped[str | None] = mapped_column(String(128), unique=True)
+    fingerprint: Mapped[str | None] = mapped_column(String(64))
+    intent: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    evidence: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    diagnostics: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    confirmed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    poll_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
 
 
 class VetisSourceDocument(Base):

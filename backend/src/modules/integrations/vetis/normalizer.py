@@ -45,7 +45,9 @@ __all__ = [
 
 _NS = {
     "bs": "http://api.vetrf.ru/schema/cdm/base",
-    "mer": "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2",
+    "vu": "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2",
+    "vd": "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2",
+    "dt": "http://api.vetrf.ru/schema/cdm/dictionary/v2",
     "app": "http://api.vetrf.ru/schema/cdm/application/v2",
 }
 
@@ -90,53 +92,64 @@ def _ref(element: ET.Element | None) -> dict[str, Any]:
     return {
         "guid": _text(_find(element, "bs:guid")),
         "uuid": _text(_find(element, "bs:uuid")),
-        "name": _text(_find(element, "bs:name")),
+        "name": _text(_find(element, "dt:name")) or _text(_find(element, "bs:name")),
     }
+
+
+def _transport_number(transport: ET.Element | None) -> str | None:
+    number = _find(transport, "vd:transportNumber")
+    if number is None:
+        return None
+    for tag in ("vehicleNumber", "trailerNumber", "containerNumber", "wagonNumber", "shipName", "flightNumber"):
+        value = _text(_find(number, f"vd:{tag}"))
+        if value:
+            return value
+    return _text(number)
 
 
 def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | None:
     if _depth(element) > max_depth:
         raise dependency_unavailable("Ответ ВетИС превышает допустимую глубину XML.")
     raw_uuid = _text(_find(element, "bs:uuid"))
-    consignment = _find(element, "mer:certifiedConsignment")
-    consignor = _find(consignment, "mer:consignor") if consignment is not None else None
-    consignee = _find(consignment, "mer:consignee") if consignment is not None else None
-    batch = _find(consignment, "mer:batch") if consignment is not None else None
-    transport = _find(consignment, "mer:transportInfo") if consignment is not None else None
+    consignment = _find(element, "vd:certifiedConsignment")
+    consignor = _find(consignment, "vd:consignor") if consignment is not None else None
+    consignee = _find(consignment, "vd:consignee") if consignment is not None else None
+    batch = _find(consignment, "vd:batch") if consignment is not None else None
+    transport = _find(consignment, "vd:transportInfo") if consignment is not None else None
     try:
         evsd_uuid = uuid.UUID(raw_uuid) if raw_uuid else None
     except ValueError:
         evsd_uuid = None
-    volume = _text(_find(batch, "mer:volume")) if batch is not None else None
-    quantity = _text(_find(batch, "mer:quantity")) if batch is not None else None
-    product_type = _text(_find(batch, "mer:productType")) if batch is not None else None
+    volume = _text(_find(batch, "vd:volume")) if batch is not None else None
+    quantity = _text(_find(batch, "vd:quantity")) if batch is not None else None
+    product_type = _text(_find(batch, "vd:productType")) if batch is not None else None
     return NormalizedEntry(
         evsd_uuid=evsd_uuid,
-        document_type=_text(_find(element, "bs:type")) or "",
-        document_status=_text(_find(element, "bs:status")) or "",
-        issue_series=_text(_find(element, "bs:issueSeries")),
-        issue_number=_text(_find(element, "bs:issueNumber")),
-        issue_date=_text(_find(element, "bs:issueDate")),
+        document_type=_text(_find(element, "vd:vetDType")) or "",
+        document_status=_text(_find(element, "vd:vetDStatus")) or "",
+        issue_series=_text(_find(element, "vd:issueSeries")),
+        issue_number=_text(_find(element, "vd:issueNumber")),
+        issue_date=_text(_find(element, "vd:issueDate")),
         consignor={
-            "name": _text(_find(consignor, "bs:name")) if consignor is not None else None,
-            "businessEntity": _ref(_find(consignor, "mer:businessEntity")),
-            "enterprise": _ref(_find(consignor, "mer:enterprise")),
+            "name": _text(_find(consignor, "dt:name")) if consignor is not None else None,
+            "businessEntity": _ref(_find(consignor, "dt:businessEntity")),
+            "enterprise": _ref(_find(consignor, "dt:enterprise")),
         },
         consignee={
-            "name": _text(_find(consignee, "bs:name")) if consignee is not None else None,
-            "businessEntity": _ref(_find(consignee, "mer:businessEntity")),
-            "enterprise": _ref(_find(consignee, "mer:enterprise")),
+            "name": _text(_find(consignee, "dt:name")) if consignee is not None else None,
+            "businessEntity": _ref(_find(consignee, "dt:businessEntity")),
+            "enterprise": _ref(_find(consignee, "dt:enterprise")),
         },
         batch={
             "productType": product_type,
-            "product": _ref(_find(batch, "mer:product")),
-            "subProduct": _ref(_find(batch, "mer:subProduct")),
-            "productItem": _ref(_find(batch, "mer:productItem")),
+            "product": _ref(_find(batch, "vd:product")),
+            "subProduct": _ref(_find(batch, "vd:subProduct")),
+            "productItem": _ref(_find(batch, "vd:productItem")),
             "volume": volume,
             "quantity": quantity,
-            "unit": _ref(_find(batch, "mer:unit")),
+            "unit": _ref(_find(batch, "vd:unit")),
         },
-        transport_number=_text(_find(transport, "mer:transportNumber")) if transport is not None else None,
+        transport_number=_transport_number(transport),
     )
 
 
@@ -157,7 +170,7 @@ def parse_vet_document_list(
     if _depth(root) > xml_max_depth:
         raise dependency_unavailable("Ответ ВетИС превышает допустимую глубину XML.")
     entries: list[NormalizedEntry] = []
-    for element in root.findall(".//mer:vetDocument", _NS):
+    for element in root.findall(".//vd:vetDocument", _NS):
         entry = _parse_document(element, xml_max_depth)
         if entry is not None:
             entries.append(entry)
@@ -173,7 +186,7 @@ def extract_raw_documents(result_xml: str) -> dict[str, str]:
     """
     root = ET.fromstring(result_xml)
     raw: dict[str, str] = {}
-    for element in root.findall(".//mer:vetDocument", _NS):
+    for element in root.findall(".//vd:vetDocument", _NS):
         uuid_text = _text(_find(element, "bs:uuid"))
         if uuid_text:
             raw[uuid_text] = ET.tostring(element, encoding="unicode")
@@ -184,7 +197,7 @@ def _participant(raw: dict[str, Any]) -> dict[str, str | None]:
     entity = raw.get("businessEntity") or {}
     enterprise = raw.get("enterprise") or {}
     return {
-        "name": raw.get("name"),
+        "name": raw.get("name") or enterprise.get("name") or entity.get("name"),
         "guid": entity.get("guid"),
         "uuid": entity.get("uuid"),
         "enterprise_guid": enterprise.get("guid"),

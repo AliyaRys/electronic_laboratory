@@ -78,48 +78,48 @@ class FakeTransport:
 LIST_HEADER = (
     '<ns2:receiveApplicationResultResponse xmlns:ns2="http://api.vetrf.ru/schema/cdm/application/v2" '
     'xmlns:bs="http://api.vetrf.ru/schema/cdm/base" '
-    'xmlns:mer="http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2">'
+    'xmlns:vu="http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2" '
+    'xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2" '
+    'xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2">'
     "<bs:status>COMPLETED</bs:status>"
-    "<mer:getVetDocumentListResponse>"
-    "<bs:total>{total}</bs:total><bs:count>{count}</bs:count><bs:offset>{offset}</bs:offset>"
+    "<vu:getVetDocumentListResponse>"
+    '<vd:vetDocumentList total="{total}" count="{count}" offset="{offset}">'
     "{docs}"
-    "</mer:getVetDocumentListResponse></ns2:receiveApplicationResultResponse>"
+    "</vd:vetDocumentList></vu:getVetDocumentListResponse></ns2:receiveApplicationResultResponse>"
 )
 
 DOC_TEMPLATE = """
-<mer:vetDocument>
+<vd:vetDocument>
   <bs:uuid>{evsd}</bs:uuid>
   <bs:guid>{evsd}</bs:guid>
-  <bs:issueDate>2026-11-01T10:00:00+03:00</bs:issueDate>
-  <bs:issueSeries>ВИС</bs:issueSeries>
-  <bs:issueNumber>{number}</bs:issueNumber>
-  <bs:type>TRANSPORT</bs:type>
-  <bs:status>{status}</bs:status>
-  <mer:certifiedConsignment>
-    <mer:consignor>
-      <bs:name>{consignor_name}</bs:name>
-      <mer:businessEntity><bs:guid>00000000-0000-0000-0000-0000000000c0</bs:guid><bs:name>{consignor_name}</bs:name></mer:businessEntity>
-      <mer:enterprise><bs:guid>00000000-0000-0000-0000-0000000000c1</bs:guid><bs:name>{consignor_name}</bs:name></mer:enterprise>
-    </mer:consignor>
-    <mer:consignee>
-      <bs:name>{consignee_name}</bs:name>
-      <mer:businessEntity><bs:guid>00000000-0000-0000-0000-0000000000be</bs:guid><bs:name>{consignee_name}</bs:name></mer:businessEntity>
-      <mer:enterprise><bs:guid>{receiver}</bs:guid><bs:name>{consignee_name}</bs:name></mer:enterprise>
-    </mer:consignee>
-    <mer:batch>
-      <mer:productType>{product_type}</mer:productType>
-      <mer:product><bs:guid>00000000-0000-0000-0000-000000000101</bs:guid>
-        <bs:uuid>00000000-0000-0000-0000-000000000102</bs:uuid><bs:name>говядина</bs:name></mer:product>
-      <mer:subProduct><bs:guid>00000000-0000-0000-0000-000000000103</bs:guid>
-        <bs:name>полутуши</bs:name></mer:subProduct>
-      <mer:productItem><bs:guid>00000000-0000-0000-0000-000000000104</bs:guid>
-        <bs:name>Отруба говяжьи</bs:name></mer:productItem>
-      <mer:volume>120.500</mer:volume>
-      <mer:unit><bs:guid>00000000-0000-0000-0000-000000000105</bs:guid><bs:name>кг</bs:name></mer:unit>
-    </mer:batch>
-    <mer:transportInfo><mer:transportNumber>{transport}</mer:transportNumber></mer:transportInfo>
-  </mer:certifiedConsignment>
-</mer:vetDocument>
+  <vd:issueDate>2026-11-01T10:00:00+03:00</vd:issueDate>
+  <vd:issueSeries>ВИС</vd:issueSeries>
+  <vd:issueNumber>{number}</vd:issueNumber>
+  <vd:vetDType>TRANSPORT</vd:vetDType>
+  <vd:vetDStatus>{status}</vd:vetDStatus>
+  <vd:certifiedConsignment>
+    <vd:consignor>
+      <dt:businessEntity><bs:guid>00000000-0000-0000-0000-0000000000c0</bs:guid><dt:name>{consignor_name}</dt:name></dt:businessEntity>
+      <dt:enterprise><bs:guid>00000000-0000-0000-0000-0000000000c1</bs:guid><dt:name>{consignor_name}</dt:name></dt:enterprise>
+    </vd:consignor>
+    <vd:consignee>
+      <dt:businessEntity><bs:guid>00000000-0000-0000-0000-0000000000be</bs:guid><dt:name>{consignee_name}</dt:name></dt:businessEntity>
+      <dt:enterprise><bs:guid>{receiver}</bs:guid><dt:name>{consignee_name}</dt:name></dt:enterprise>
+    </vd:consignee>
+    <vd:batch>
+      <vd:productType>{product_type}</vd:productType>
+      <vd:product><bs:guid>00000000-0000-0000-0000-000000000101</bs:guid>
+        <bs:uuid>00000000-0000-0000-0000-000000000102</bs:uuid><dt:name>говядина</dt:name></vd:product>
+      <vd:subProduct><bs:guid>00000000-0000-0000-0000-000000000103</bs:guid>
+        <dt:name>полутуши</dt:name></vd:subProduct>
+      <vd:productItem><bs:guid>00000000-0000-0000-0000-000000000104</bs:guid>
+        <dt:name>Отруба говяжьи</dt:name></vd:productItem>
+      <vd:volume>120.500</vd:volume>
+      <vd:unit><bs:guid>00000000-0000-0000-0000-000000000105</bs:guid><dt:name>кг</dt:name></vd:unit>
+    </vd:batch>
+    <vd:transportInfo><vd:transportNumber><vd:vehicleNumber>{transport}</vd:vehicleNumber></vd:transportNumber></vd:transportInfo>
+  </vd:certifiedConsignment>
+</vd:vetDocument>
 """
 
 

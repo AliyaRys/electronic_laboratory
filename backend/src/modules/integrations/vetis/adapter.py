@@ -195,12 +195,13 @@ def _total(entries: list[NormalizedEntry], result_xml: str) -> int:
     """The page total; a missing total means this page is the last one."""
     from xml.etree import ElementTree as ET
 
-    ns = {"bs": "http://api.vetrf.ru/schema/cdm/base"}
+    ns = {"vd": "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"}
     try:
         root = ET.fromstring(result_xml)
     except ET.ParseError:
         return 0
-    total = root.findtext(".//bs:total", default=None, namespaces=ns)
+    document_list = root.find(".//vd:vetDocumentList", ns)
+    total = document_list.get("total") if document_list is not None else None
     if total is None or not total.strip().isdigit():
         return len(entries)
     return max(int(total), len(entries))

@@ -370,3 +370,240 @@
 .vse-lab-link:hover {
   border-color: var(--app-teal);
 }
+
+/* --- Profile page (DR4 §8): profile.html composition over the working tokens */
+.vse-profile-page {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 37px 24px 96px;
+}
+
+.vse-profile-page > h1 {
+  margin: 0 0 24px;
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.vse-profile-shell {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.vse-profile-summary-card,
+.vse-profile-details-card {
+  min-width: 0;
+  min-height: 560px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 18px;
+  padding: 25px;
+  background: var(--app-panel, #fff);
+  box-shadow: 0 8px 24px #1f5a5b08;
+}
+
+.vse-profile-summary-card {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 18px;
+  text-align: center;
+}
+
+.vse-profile-avatar-picker {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.vse-profile-avatar-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.vse-profile-avatar {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #d7efec, #f4fbfa);
+  color: var(--app-teal-dark, #0d5358);
+  font-size: 34px;
+  font-weight: 820;
+  box-shadow: inset 0 0 0 1px #c4e4df;
+}
+
+.vse-profile-camera {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #173f43;
+  color: #fff;
+  box-shadow: 0 8px 18px #17323a24;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.16s,
+    transform 0.16s;
+}
+
+.vse-profile-camera .app-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.vse-profile-avatar-picker:hover .vse-profile-camera,
+.vse-profile-avatar-picker:focus-within .vse-profile-camera {
+  opacity: 1;
+  transform: none;
+}
+
+.vse-profile-identity {
+  display: grid;
+  gap: 2px;
+  max-width: 100%;
+}
+
+.vse-profile-name {
+  font-size: 22px;
+  font-weight: 820;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.vse-profile-login {
+  color: var(--app-muted-readable, #566e75);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.vse-profile-access {
+  width: 100%;
+  border-top: 1px solid var(--app-line, #dfe9e9);
+  padding-top: 16px;
+  text-align: left;
+}
+
+.vse-profile-rights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vse-profile-right-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid #c9e6e2;
+  border-radius: 99px;
+  padding: 3px 9px;
+  background: var(--app-tint, #eaf6f4);
+  color: var(--app-teal-dark, #0d5358);
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.3;
+}
+
+.vse-profile-details-card {
+  display: grid;
+  align-content: start;
+  gap: 22px;
+}
+
+.vse-profile-section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vse-profile-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 37px;
+  height: 37px;
+  flex: 0 0 37px;
+  border-radius: 11px;
+  background: var(--app-tint, #eaf6f4);
+  color: var(--app-teal, #146c73);
+}
+
+.vse-profile-section-icon .app-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.vse-profile-section-title h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+
+.vse-profile-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vse-profile-security {
+  border-top: 1px solid var(--app-line, #dfe9e9);
+  padding-top: 18px;
+  display: grid;
+  gap: 13px;
+}
+
+.vse-profile-security-title {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+
+.vse-profile-security > .app-button {
+  justify-self: start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vse-profile-camera {
+    transition: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .vse-profile-shell {
+    grid-template-columns: 1fr;
+  }
+  .vse-profile-summary-card,
+  .vse-profile-details-card {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 800px) {
+  .vse-profile-page {
+    padding: 28px 16px 70px;
+  }
+  .vse-profile-page > h1 {
+    font-size: 27px;
+  }
+  .vse-profile-summary-card,
+  .vse-profile-details-card {
+    padding: 18px;
+  }
+  .vse-profile-info-grid {
+    grid-template-columns: 1fr;
+  }
+}

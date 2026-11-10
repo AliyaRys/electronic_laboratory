@@ -43,6 +43,8 @@ export interface AppHeaderProps {
   institution?: string;
   product?: ProductType;
   active?: HeaderActive;
+  /** /profile route: the user link is the current page (mockup profile.html). */
+  profileActive?: boolean;
   links?: HeaderLinks;
   onProductChange?: ((product: ProductType) => void) | undefined;
   onLogout: () => void;
@@ -170,6 +172,7 @@ export function AppHeader({
   institution = "Лаборатория ВСЭ",
   product = "meat",
   active = "",
+  profileActive = false,
   links = {},
   onProductChange,
   onLogout,
@@ -273,7 +276,16 @@ export function AppHeader({
         aria-label="Электронная лаборатория ВСЭ — главная"
       >
         <span className="brand-logo" aria-hidden="true">
-          <Icon name="check" className="brand-mark" />
+          {/* The real lab logo (spec §6): a byte-identical copy of the owner's
+              PNG served from ``frontend/public/`` — no check icon, no new SVG. */}
+          <img
+            src="/vse-lab-icon-transparent.png"
+            alt=""
+            width={43}
+            height={43}
+            loading="eager"
+            decoding="sync"
+          />
         </span>
         <div className="brand-copy">
           <strong>Электронная лаборатория ВСЭ</strong>
@@ -289,7 +301,12 @@ export function AppHeader({
       </nav>
       <div className="user-area">
         {user !== null ? (
-          <a id="profile" className="user-link" href={profileHref}>
+          <a
+            id="profile"
+            className={`user-link${profileActive ? " active" : ""}`}
+            href={profileHref}
+            aria-current={profileActive ? "page" : undefined}
+          >
             <span className="avatar" aria-hidden="true">
               {user.initials}
             </span>

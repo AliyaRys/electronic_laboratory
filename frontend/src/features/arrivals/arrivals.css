@@ -1,15 +1,487 @@
-/* Arrivals page layout (A01): queue tabs + honest sync state. The working
-   shell owns the header; these rules only arrange the list controls. */
+/* Arrivals queues (DR3): the three stages match the approved mockups on a
+   shared component basis. The working shell owns the header; this file owns
+   the 1180 px arrivals work area, stage tabs, per-stage filter panels, queue
+   table geometry (DataTable variant "arrivals"), compact icon actions and
+   pagination. */
 
+/* --- 6.1 work area ---------------------------------------------------------- */
+.arrivals-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 37px 24px 96px;
+}
+@media (max-width: 800px) {
+  .arrivals-shell {
+    padding: 28px 16px 70px;
+  }
+}
+
+/* --- 6.2 title -------------------------------------------------------------- */
+.arrivals-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+.arrivals-title-row h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+}
+.arrivals-title-row p {
+  margin: 7px 0 0;
+  max-width: 720px;
+  color: var(--app-muted);
+}
+@media (max-width: 800px) {
+  .arrivals-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+
+/* --- 7 stage tabs ----------------------------------------------------------- */
+.arrivals-stage-tabs {
+  display: flex;
+  gap: 9px;
+  margin-bottom: 16px;
+}
+@media (max-width: 800px) {
+  .arrivals-stage-tabs {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+}
+.arrivals-stage-tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 15px;
+  border: 1px solid var(--app-line);
+  border-radius: 999px;
+  background: var(--app-panel);
+  color: #4d676d;
+  font: inherit;
+  font-weight: 760;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.arrivals-stage-tab .count {
+  margin-left: 7px;
+  opacity: 0.75;
+}
+.arrivals-stage-tab[aria-selected="true"] {
+  border-color: var(--app-teal);
+  background: var(--app-teal);
+  color: #fff;
+  box-shadow: 0 6px 14px #146c7326;
+}
+
+/* --- 8 filter panel --------------------------------------------------------- */
+.arrivals-filters {
+  display: grid;
+  gap: 13px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--app-line);
+  border-radius: 16px;
+  background: var(--app-panel);
+  box-shadow: 0 8px 24px rgba(31, 90, 91, 0.03);
+}
+.arrivals-filters-row {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+  /* ACCEPTED: search | result | columns. EXPECTED/WORK: search only. */
+  grid-template-columns: minmax(280px, 1.2fr) minmax(180px, 0.7fr) auto;
+}
+.arrivals-filters-row:has(> :only-child) {
+  grid-template-columns: minmax(280px, 1fr) auto;
+}
+@media (max-width: 1120px) {
+  .arrivals-filters-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .arrivals-filters-row:has(> :only-child) {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 800px) {
+  .arrivals-filters-row,
+  .arrivals-filters-row:has(> :only-child) {
+    grid-template-columns: 1fr;
+  }
+}
+.arrivals-filter-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.arrivals-filter-field > label,
+.arrivals-filter-field > .arrivals-filter-label {
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.arrivals-filter-field input,
+.arrivals-filter-field select {
+  width: 100%;
+  min-height: 41px;
+  padding: 0 11px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 9px;
+  background: var(--app-panel);
+  color: var(--app-ink);
+}
+.arrivals-filter-field select {
+  appearance: none;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5.5 7.5 10 12l4.5-4.5z' fill='%23668087'/%3E%3C/svg%3E");
+  background-position: calc(100% - 15px) center;
+  background-size: 16px 16px;
+  background-repeat: no-repeat;
+}
+.arrivals-filter-field input:focus,
+.arrivals-filter-field select:focus {
+  outline: none;
+  border-color: var(--app-teal);
+  box-shadow: 0 0 0 3px #1b8b9130;
+}
+/* Search with its own explicit clear control (never the native webkit ×). */
+.arrivals-search {
+  position: relative;
+}
+.arrivals-search input {
+  padding-right: 46px;
+}
+.arrivals-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  width: 30px;
+  height: 30px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-muted);
+  display: grid;
+  place-items: center;
+}
+.arrivals-search-clear:hover {
+  background: var(--app-tint);
+  color: var(--app-teal-dark);
+}
+.arrivals-search-clear .app-icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* --- 8.4 columns chooser popover -------------------------------------------- */
+.arrivals-columns {
+  position: relative;
+  min-width: 0;
+}
+.arrivals-columns-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 41px;
+  padding: 0 13px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 9px;
+  background: var(--app-panel);
+  color: #4d676d;
+  font: inherit;
+  font-weight: 720;
+  white-space: nowrap;
+}
+.arrivals-columns-trigger:hover {
+  border-color: #b9d6d3;
+  background: #f5f8f8;
+  color: var(--app-teal-dark);
+}
+.arrivals-columns-trigger .app-icon {
+  width: 18px;
+  height: 18px;
+}
+.arrivals-columns-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: 308px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+  background: var(--app-panel);
+  box-shadow: 0 18px 42px #17323a22;
+}
+.arrivals-columns-title {
+  margin-bottom: 8px;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.arrivals-columns-popover fieldset {
+  margin: 0 0 6px;
+  padding: 0 0 8px;
+  border: 0;
+}
+.arrivals-columns-popover fieldset + fieldset {
+  padding-top: 10px;
+  border-top: 1px solid var(--app-line);
+}
+.arrivals-columns-popover fieldset:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.arrivals-columns-popover label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+  color: var(--app-ink);
+  font-weight: 620;
+}
+.arrivals-columns-popover input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+/* --- 8.5 sync button + honest sync status ----------------------------------- */
+.arrivals-sync {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.arrivals-sync .app-button {
+  min-height: 41px;
+}
+.arrivals-sync-status {
+  margin: 0;
+  max-width: 420px;
+  text-align: right;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+@media (max-width: 800px) {
+  .arrivals-sync {
+    align-items: flex-start;
+  }
+  .arrivals-sync-status {
+    text-align: left;
+  }
+}
+
+/* --- 9 table shell (DataTable variant "arrivals") ---------------------------- */
+.app-table-scroll.app-table-arrivals {
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(31, 90, 91, 0.03);
+}
+@media (max-width: 800px) {
+  .app-table-scroll.app-table-arrivals {
+    border-radius: 13px;
+  }
+}
+.app-table-arrivals {
+  font-size: 13px;
+}
+.app-table-arrivals caption {
+  padding: 0;
+}
+.app-table-arrivals th,
+.app-table-arrivals td {
+  padding: 12px 14px;
+  vertical-align: middle;
+}
+.app-table-arrivals thead th {
+  height: 54px;
+  background: #f7faf9;
+  border-bottom: 1px solid var(--app-line);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+.app-table-arrivals tbody td {
+  height: 68px;
+  overflow-wrap: normal;
+}
+.app-table-arrivals tbody td span.cell,
+.app-table-arrivals tbody td:not(:has(a)) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.app-table-arrivals tbody tr:hover {
+  background: #f8fcfb;
+}
+.app-table-arrivals tr.app-row-draft {
+  background: #eceff1;
+}
+.app-table-arrivals tr.app-row-draft:hover {
+  background: #eceff1;
+}
+/* Pinned actions column with its own white surface. */
+.app-table-arrivals .app-table-column-actions {
+  position: sticky;
+  right: 0;
+  z-index: 5;
+  background: var(--app-panel);
+  border-left: 1px solid var(--app-line);
+  min-width: 104px;
+  width: 1%;
+  text-align: right;
+}
+.app-table-arrivals thead .app-table-column-actions {
+  background: #f7faf9;
+}
+.app-table-arrivals tbody tr:hover .app-table-column-actions {
+  background: #fbfdfd;
+}
+
+/* --- 10/11/12 row actions ---------------------------------------------------- */
+.arrivals-icon-action {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 11px;
+  background: var(--app-panel);
+  color: #4d676d;
+  text-decoration: none;
+}
+.arrivals-icon-action .app-icon {
+  width: 19px;
+  height: 19px;
+}
+.arrivals-icon-action:hover {
+  border-color: #b9d6d3;
+  background: #f5f8f8;
+  color: var(--app-teal-dark);
+  text-decoration: none;
+}
+.arrivals-icon-action.danger {
+  border-color: #edd0d2;
+  color: var(--app-danger);
+}
+.arrivals-icon-action.danger:hover {
+  border-color: #e5b3b7;
+  background: #fff4f4;
+  color: var(--app-danger);
+}
+.arrivals-icon-action.primary {
+  border-color: var(--app-teal);
+  background: var(--app-teal);
+  color: #fff;
+  box-shadow: 0 7px 16px #146c7326;
+}
+.arrivals-icon-action.primary:hover {
+  border-color: var(--app-teal-dark);
+  background: var(--app-teal-dark);
+}
+.arrivals-icon-action:disabled,
+.arrivals-icon-action[aria-disabled="true"] {
+  background: #f3f6f6;
+  color: #9aacb0;
+  border-color: #d9e4e4;
+  cursor: not-allowed;
+}
+.arrivals-icon-action.compact {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.app-table-row-actions:has(.arrivals-icon-action) {
+  justify-content: flex-end;
+}
+
+/* Result tones (color is never the only carrier of meaning: the text stays). */
+.arrivals-result {
+  font-weight: 760;
+}
+.arrivals-result.good {
+  color: var(--app-good);
+}
+.arrivals-result.warn {
+  color: var(--app-warn, #8a6415);
+}
+.arrivals-result.bad {
+  color: var(--app-danger);
+}
+.vse-app {
+  --app-warn: #8a6415;
+}
+
+/* --- 13 pagination ----------------------------------------------------------- */
+.arrivals-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.arrivals-pagination .page-button,
+.arrivals-pagination .page-arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 10px;
+  background: var(--app-panel);
+  color: #4d676d;
+  font: inherit;
+  font-weight: 720;
+}
+.arrivals-pagination .page-button[aria-current="page"] {
+  border-color: #b8dcda;
+  background: var(--app-tint);
+  color: var(--app-teal-dark);
+}
+.arrivals-pagination .page-arrow {
+  color: var(--app-muted);
+  font-size: 18px;
+}
+.arrivals-pagination .page-button:disabled,
+.arrivals-pagination .page-arrow:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.arrivals-pagination .page-button:not(:disabled):hover,
+.arrivals-pagination .page-arrow:not(:disabled):hover {
+  border-color: #b9d6d3;
+  background: #f5f8f8;
+  color: var(--app-teal-dark);
+}
+.arrivals-pagination .app-icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* --- Shared classes other working screens reuse (kept for their consumers) --- */
 .vse-queue-tabs {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
-
 .vse-queue-tab {
-  border: 1px solid var(--app-border, #c9cdd4);
+  border: 1px solid var(--app-input-line);
   background: transparent;
   color: inherit;
   border-radius: 8px;
@@ -17,42 +489,17 @@
   font: inherit;
   cursor: pointer;
 }
-
 .vse-queue-tab[aria-selected="true"] {
   border-color: currentColor;
   font-weight: 600;
 }
-
 .vse-queue-tab[aria-disabled="true"] {
   cursor: default;
 }
-
 .vse-arrival-hint {
   margin: 8px 0 0;
 }
-
-.vse-arrival-controls {
-  display: flex;
-  gap: 12px;
-  align-items: end;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
-/* --- Reconciliation screen (A02) -------------------------------------------- */
-
 .vse-check-note {
   margin: 0;
-  color: var(--app-muted, #55606c);
-}
-
-/* W03: the legally significant receipt surface is styled in
-   reconciliation.css together with the aligned screen; the red tone is
-   reserved for the final dialog action. */
-
-@media (max-width: 420px) {
-  .vse-arrival-controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
+  color: var(--app-muted);
 }

@@ -1,6 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Icon } from "./Icon";
-import { ADMIN_ICON_NAMES, CHECK_ACTIONS, CHECK_SECTIONS, ICON_NAMES } from "./legacy-icons";
+import {
+  ADMIN_ICON_NAMES,
+  ARRIVAL_ICON_NAMES,
+  CHECK_ACTIONS,
+  CHECK_SECTIONS,
+  ICON_NAMES,
+} from "./legacy-icons";
 
 /** Catalog of the adapted registry — the adapter adds no SVG of its own. */
 function IconCatalog(): React.ReactElement {
@@ -39,6 +45,23 @@ function IconCatalog(): React.ReactElement {
           <li key={action.icon} style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <Icon name={action.icon} />
             <span>{action.label}</span>
+          </li>
+        ))}
+      </ul>
+      <h3>Иконки поступлений</h3>
+      <ul
+        style={{
+          listStyle: "none",
+          padding: 0,
+          display: "grid",
+          gap: 8,
+          gridTemplateColumns: "repeat(4, minmax(220px, 1fr))",
+        }}
+      >
+        {ARRIVAL_ICON_NAMES.map((name) => (
+          <li key={name} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <Icon name={name} />
+            <code>{name}</code>
           </li>
         ))}
       </ul>

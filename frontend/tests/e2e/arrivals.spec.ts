@@ -18,8 +18,9 @@ const singleView = {
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
     status: "COMPLETED",
     fields: {
-      documentNumber: "№ A-001234",
-      transportNumber: "А123ВС77",
+      documentNumber: "RU016:260812-005102",
+      issuedOn: "2026-08-12T08:40:00",
+      transportNumber: "А245КМ 116",
       consignor: "ООО «Мясопром»",
       consignee: "Убойный пункт Ленина, 5",
       productItem: "Отруба говяжьи",
@@ -31,7 +32,7 @@ const singleView = {
     productItem: { id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0002", name: "Отруба говяжьи" },
     unit: { id: "aaaaaaaa-1111-4111-8111-111111111111", name: "кг" },
   },
-  documentary: { mass_kg: "120.0", quantity: "4", unit_id: "u" },
+  documentary: { mass_kg: "486.5", quantity: "3", unit_id: "u" },
   confirmation: null,
   queue: "EXPECTED",
   examination_id: null,
@@ -100,37 +101,8 @@ async function mockSessionAndArrivals(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        items: [
-          {
-            id: "3f0e6d2a-1111-4222-8333-444444444444",
-            party_id: PARTY,
-            laboratory_id: LAB,
-            external: {
-              contour: "PILOT",
-              evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
-              status: "COMPLETED",
-              fields: {
-                documentNumber: "№ A-001234",
-                transportNumber: "А123ВС77",
-                consignor: "ООО «Мясопром»",
-                consignee: "Убойный пункт Ленина, 5",
-                productItem: "Отруба говяжьи",
-              },
-            },
-            classification: {
-              product: { id: "362aa885-9b9f-ae95-05d0-f9570f4fbdc6", name: "говядина" },
-              subProduct: null,
-              productItem: { id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0002", name: "Отруба говяжьи" },
-              unit: { id: "aaaaaaaa-1111-4111-8111-111111111111", name: "кг" },
-            },
-            documentary: { mass_kg: "120.0", quantity: "4", unit_id: "u" },
-            confirmation: null,
-            queue: "EXPECTED",
-            examination_id: null,
-            revision: 1,
-          },
-        ],
-        total: 1,
+        items: url.searchParams.get("queue") === "EXPECTED" ? [singleView] : [],
+        total: url.searchParams.get("queue") === "EXPECTED" ? 1 : 0,
         page: 1,
         page_size: 20,
       }),
@@ -179,7 +151,7 @@ test.describe("arrivals", () => {
         body: JSON.stringify(reconciliationView),
       }),
     );
-    await page.getByRole("link", { name: "говядина" }).click();
+    await page.getByRole("link", { name: "12.08.2026 08:40" }).click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/arrivals/${PARTY}/reconciliation`));
     await expect(page.getByRole("heading", { name: "Сверка данных транспортного эВСД" })).toBeVisible();
     await shot(page, "reconciliation-placeholder-1440");
@@ -195,7 +167,7 @@ test.describe("arrivals", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/labs/${LAB}/arrivals`);
     await expect(page.getByText("говядина")).toBeVisible();
-    const search = page.getByLabel("Поиск (документ, продукция)");
+    const search = page.getByLabel("Поиск");
     const box = (await search.boundingBox()) ?? { width: 0 };
     expect(box.width).toBeGreaterThan(200);
     await shot(page, "list-390");
@@ -217,10 +189,10 @@ test.describe("arrivals", () => {
     await page.goto(`/labs/${LAB}/arrivals?queue=expected`);
     await expect(page.getByRole("heading", { name: "Поступления" })).toBeVisible();
 
-    // The explicit action in the last column; the row menu is a different element.
+    // The explicit action in the last column; the hide button is separate.
     const action = page.getByRole("link", { name: "Перейти к сверке данных" });
     await expect(action).toBeVisible();
-    await expect(page.getByRole("button", { name: "Действия со строкой" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Скрыть поступление из очереди" })).toBeVisible();
     await page.screenshot({
       path: "../docs/implementation/evidence/DR-arrivals-action-row-1440.png",
       fullPage: true,
@@ -292,5 +264,91 @@ test.describe("arrivals", () => {
     // The action stays clickable: horizontal scroll belongs to the table, not the page.
     expect((await action.boundingBox())!.width).toBeGreaterThan(0);
     await expect(page.getByText(/Агрофирма Свободный Труд/)).toBeVisible();
+  });
+
+  /** Queue-aware /arrivals override: one row per stage for control shots. */
+  function workRowFixture() {
+    return {
+      ...singleView,
+      queue: "WORK",
+      confirmation: {
+        id: "55555555-1111-4222-8333-444444444444",
+        accepted_mass_kg: "486.500000",
+        accepted_quantity: "3.000000",
+        accepted_unit_id: "u",
+        returned_mass_kg: "0.000000",
+        returned_quantity: "0.000000",
+        confirmed_at: "2026-08-12T11:40:00Z",
+      },
+      examination_id: null,
+    };
+  }
+
+  function acceptedRowFixture() {
+    return {
+      ...singleView,
+      queue: "ACCEPTED",
+      confirmation: workRowFixture().confirmation,
+      examination_id: "77777777-1111-4222-8333-444444444444",
+    };
+  }
+
+  async function mockStageRows(page: Page): Promise<void> {
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("laboratory_id") !== LAB) {
+        return route.fulfill({ status: 403, contentType: "application/json", body: "{}" });
+      }
+      const queue = url.searchParams.get("queue") ?? "EXPECTED";
+      const item =
+        queue === "EXPECTED" ? singleView : queue === "WORK" ? workRowFixture() : acceptedRowFixture();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [item], total: 1, page: 1, page_size: 20 }),
+      });
+    });
+  }
+
+  test("control screenshots of the three stages, wide and narrow, no document overflow", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    await mockStageRows(page);
+
+    for (const [stage, label] of [
+      ["expected", "expected"],
+      ["work", "work"],
+      ["accepted", "accepted"],
+    ] as const) {
+      await page.goto(`/labs/${LAB}/arrivals?queue=${stage}`);
+      await expect(page.getByText("RU016:260812-005102")).toBeVisible();
+      await page.screenshot({
+        path: `../docs/implementation/evidence/DR3-arrivals-${label}-1440.png`,
+        fullPage: true,
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      // No horizontal document overflow on the narrow screen.
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+      await page.screenshot({
+        path: `../docs/implementation/evidence/DR3-arrivals-${label}-390.png`,
+        fullPage: true,
+      });
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+  });
+
+  test("the accepted stage keeps the column chooser keyboard-accessible", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    await mockStageRows(page);
+    await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
+    await expect(page.getByText("RU016:260812-005102")).toBeVisible();
+    const trigger = page.getByRole("button", { name: "Выбрать столбцы таблицы" });
+    await trigger.click();
+    await expect(page.getByRole("group", { name: "Столбцы таблицы" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("group", { name: "Столбцы таблицы" })).toBeHidden();
+    await expect(trigger).toBeFocused();
   });
 });

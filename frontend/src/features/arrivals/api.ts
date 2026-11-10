@@ -64,6 +64,27 @@ export const QUEUE_LABELS: Readonly<Record<ArrivalQueue, string>> = Object.freez
   ACCEPTED: "Принято",
 });
 
+/** Exact stage-tab titles of the approved mockups (never «Ожидается»/«Принято»). */
+export const STAGE_LABELS: Readonly<Record<ArrivalQueue, string>> = Object.freeze({
+  EXPECTED: "Ожидаемые",
+  WORK: "В работе",
+  ACCEPTED: "Завершенные",
+});
+
+/** Short stage explanations under the h1 (mockup wording, real lab context). */
+export const STAGE_DESCRIPTIONS: Readonly<Record<ArrivalQueue, string>> = Object.freeze({
+  EXPECTED: "Транспортные эВСД из системы «Меркурий», где получателем указана текущая лаборатория",
+  WORK: "Партии с пройденной сверкой данных",
+  ACCEPTED: "Завершенные партии: сверка завершена, ВСЭ проведена или подтверждена, можно оформить заключение",
+});
+
+/** Honest empty-state texts per stage (spec 14). */
+export const STAGE_EMPTY_TEXTS: Readonly<Record<ArrivalQueue, string>> = Object.freeze({
+  EXPECTED: "По заданным условиям эВСД не найдены",
+  WORK: "По заданным условиям поступления в работе не найдены",
+  ACCEPTED: "По заданным условиям завершенные поступления не найдены",
+});
+
 export const RESULT_LABELS: Readonly<Record<ArrivalResult, string>> = Object.freeze({
   WAITING: "Ожидание",
   RETURNED: "Возврат",

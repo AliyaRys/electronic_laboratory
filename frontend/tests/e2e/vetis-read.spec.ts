@@ -163,7 +163,7 @@ test.describe("vetis read sync", () => {
     await expect(page.getByText(/Обновление не выполнено/)).toBeVisible({ timeout: 10_000 });
   });
 
-  test("analyst cannot run the sync: the button stays disabled", async ({ page }) => {
+  test("analyst cannot run the sync: no refresh button, no posts", async ({ page }) => {
     await mockSession(page, "ANALYST");
     await mockArrivals(page);
     let posts = 0;
@@ -173,9 +173,10 @@ test.describe("vetis read sync", () => {
     });
 
     await page.goto(`/labs/${LAB}/arrivals`);
-    const update = page.getByRole("button", { name: "Обновить" });
-    await expect(update).toBeDisabled();
-    await expect(page.getByText(/Обновление поступлений из ВетИС выполняется автоматически/)).toBeVisible();
+    // The compact refresh button belongs to VET/HEAD only; an ANALYST gets
+    // neither the button nor a permanent hint row (DR3 spec 8.5).
+    await expect(page.getByRole("button", { name: "Обновить" })).toHaveCount(0);
+    await expect(page.getByText(/Обновление поступлений из ВетИС выполняется автоматически/)).toHaveCount(0);
     expect(posts).toBe(0);
   });
 });

@@ -12,7 +12,13 @@ import "./ui.css";
 import "./app-header.css";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useEffect, useMemo, type ReactNode } from "react";
-import { AppHeader, headerUserFromView, type HeaderUser, type HeaderMode } from "./AppHeader";
+import {
+  AppHeader,
+  headerUserFromView,
+  type HeaderLinks,
+  type HeaderUser,
+  type HeaderMode,
+} from "./AppHeader";
 import { StatusView } from "./StatusView";
 import { LEGACY_HTML_NAMES, resolveLegacyRoute } from "../lib/legacyRoutes";
 import { useContextStore, type ProductType } from "../../entities/session/context";
@@ -83,17 +89,11 @@ export function AppShell({
   children,
 }: AppShellProps): React.ReactElement {
   const navigate = useNavigate();
+  const location = useLocation();
   const legacy = useLegacyOutcome();
   const me = useMe();
   const productType = useContextStore((state) => state.productType);
-
-  // Publish the session identity into the scope store so scoped query keys
-  // (F01) and the legacy resolver work from the same source of truth.
-  useEffect(() => {
-    if (me.user !== null) {
-      useContextStore.getState().setScope({ userId: me.user.id });
-    }
-  }, [me.user]);
+  const storedLabId = useContextStore((state) => state.labId);
 
   // A legacy link with a real UUID identity redirects (replace) to its
   // canonical route; without identity the honest not-specified state renders.
@@ -113,6 +113,43 @@ export function AppShell({
   const role = injectedRole ?? me.user?.role;
   const hasScopes = injectedHasScopes ?? (me.user !== null ? me.user.scopes.length > 0 : false);
   const mode = headerMode(user, role, hasScopes);
+  const routeLabId = /^\/labs\/([^/]+)/.exec(location.pathname)?.[1] ?? null;
+  const workingLabId = useMemo(() => {
+    if (me.user === null || (me.user.role !== "VET" && me.user.role !== "HEAD")) return null;
+    const assignedLabIds = new Set(me.user.scopes.map((scope) => scope.laboratory_id));
+    if (routeLabId !== null && assignedLabIds.has(routeLabId)) return routeLabId;
+    if (storedLabId !== null && assignedLabIds.has(storedLabId)) return storedLabId;
+    return me.user.scopes[0]?.laboratory_id ?? null;
+  }, [me.user, routeLabId, storedLabId]);
+
+  // Restore the non-secret working context from GET /me after a refresh. The
+  // Zustand store is intentionally not persisted, so login bootstrap alone is
+  // insufficient: a VET/HEAD must still get working links after F5.
+  useEffect(() => {
+    if (me.user === null) return;
+    if (workingLabId === null) {
+      useContextStore.getState().setScope({ userId: me.user.id });
+      return;
+    }
+    const scopesForLab = me.user.scopes.filter((scope) => scope.laboratory_id === workingLabId);
+    const currentProductId = useContextStore.getState().productId;
+    const productId =
+      scopesForLab.find((scope) => scope.product_scope_id === currentProductId)?.product_scope_id ??
+      scopesForLab.find((scope) => scope.product_scope_id !== null)?.product_scope_id ??
+      null;
+    useContextStore.getState().setScope({ userId: me.user.id, labId: workingLabId, productId });
+  }, [me.user, workingLabId]);
+
+  const headerLinks = useMemo<HeaderLinks>(() => {
+    if (mode !== "work" || workingLabId === null) return {};
+    const arrivals = `/labs/${workingLabId}/arrivals?queue=expected`;
+    return {
+      brand: arrivals,
+      arrivals,
+      journal: `/labs/${workingLabId}/examinations`,
+      reports: `/labs/${workingLabId}/reports`,
+    };
+  }, [mode, workingLabId]);
 
   const changeProduct = (product: ProductType): void => {
     if (onProductChange !== undefined) {
@@ -128,6 +165,7 @@ export function AppShell({
         mode={mode}
         user={user}
         product={productType}
+        links={headerLinks}
         onProductChange={changeProduct}
         onLogout={() => onLogout?.()}
       />

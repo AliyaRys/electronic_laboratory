@@ -5,7 +5,7 @@
  */
 import "../features/identity/identity.css";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { Link, Navigate } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { fetchContexts, type Problem } from "../features/identity/api";
 import { StatusView } from "../shared/ui/StatusView";
@@ -24,16 +24,24 @@ function AnalystLabsContent(): React.ReactElement {
   const contexts = useQuery({
     queryKey: [null, null, null, "/contexts", null],
     queryFn: ({ signal }) => fetchContexts(signal),
+    enabled: me?.role === "ANALYST",
   });
 
   if (me !== null && me.role !== "ANALYST") {
+    if (me.role === "ADMIN") {
+      return <Navigate to="/users" replace />;
+    }
+    const laboratoryId = me.scopes[0]?.laboratory_id;
+    if (laboratoryId !== undefined) {
+      return <Navigate to={`/labs/${laboratoryId}/arrivals?queue=expected`} replace />;
+    }
     return (
       <div className="vse-app vse-page">
-        <h1>Выбор лаборатории</h1>
+        <h1>Поступления</h1>
         <StatusView
           state="no-scope"
-          title="Выберите лабораторию и тип продукции."
-          detail="Этот экран аналитика; рабочие разделы открываются после выбора лаборатории."
+          title="Рабочая область не назначена."
+          detail="Обратитесь к администратору, чтобы назначить лабораторию и тип продукции."
         />
       </div>
     );

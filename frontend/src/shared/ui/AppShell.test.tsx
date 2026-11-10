@@ -85,6 +85,23 @@ describe("AppShell", () => {
     expect(screen.getByRole("banner")).toBeInTheDocument();
   });
 
+  it("restores the assigned laboratory after refresh and builds working navigation", async () => {
+    renderShell("/profile");
+    await waitForUser();
+
+    const laboratoryId = me.scopes[0]?.laboratory_id;
+    expect(laboratoryId).toBeDefined();
+    expect(screen.getByRole("link", { name: "Поступления" })).toHaveAttribute(
+      "href",
+      `/labs/${laboratoryId}/arrivals?queue=expected`,
+    );
+    expect(screen.getByRole("link", { name: "Журнал ВСЭ" })).toHaveAttribute(
+      "href",
+      `/labs/${laboratoryId}/examinations`,
+    );
+    await waitFor(() => expect(useContextStore.getState().labId).toBe(laboratoryId));
+  });
+
   it("never shows an open examination's specialist as the current user", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByText("Анна Кузнецова")).toBeInTheDocument());

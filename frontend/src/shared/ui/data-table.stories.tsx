@@ -11,6 +11,11 @@ const rows: DataTableRow[] = [
   {
     id: "row-1",
     href: "/labs/11111111-2222-4333-8444-555555555555/arrivals/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/reconciliation",
+    rowAction: {
+      href: "/labs/11111111-2222-4333-8444-555555555555/arrivals/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/reconciliation",
+      label: "Сверить",
+      accessibleName: "Перейти к сверке данных",
+    },
     cells: [
       { columnId: "party", value: "эВСД 41-201" },
       { columnId: "owner", value: "ООО «Агрофирма Прогресс»" },
@@ -24,6 +29,11 @@ const rows: DataTableRow[] = [
   {
     id: "row-2",
     href: "/labs/11111111-2222-4333-8444-555555555555/arrivals/bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee/reconciliation",
+    rowAction: {
+      href: "/labs/11111111-2222-4333-8444-555555555555/arrivals/bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee/reconciliation",
+      label: "Сверить",
+      accessibleName: "Перейти к сверке данных",
+    },
     cells: [
       { columnId: "party", value: "эВСД 41-202" },
       { columnId: "owner", value: "КФХ Садыкова" },
@@ -36,6 +46,11 @@ const longRows: DataTableRow[] = [
   {
     id: "row-long",
     href: "/arrivals/1",
+    rowAction: {
+      href: "/arrivals/1",
+      label: "Сверить",
+      accessibleName: "Перейти к сверке данных",
+    },
     cells: [
       { columnId: "party", value: "эВСД 41-203" },
       {

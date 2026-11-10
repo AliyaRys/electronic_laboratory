@@ -97,4 +97,63 @@ describe("DataTable", () => {
     expect(screen.getByText("Загрузка…")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
+
+  it("shows the row action link next to the menu; one never triggers the other", async () => {
+    const onMenuAction = vi.fn();
+    const user = userEvent.setup();
+    const rows = [
+      {
+        id: "row-1",
+        href: "/labs/L/arrivals/P/reconciliation",
+        cells: [
+          { columnId: "party", value: "эВСД 41-201" },
+          { columnId: "owner", value: "ООО" },
+        ],
+        rowAction: {
+          href: "/labs/L/arrivals/P/reconciliation",
+          label: "Сверить",
+          accessibleName: "Перейти к сверке данных",
+        },
+        menu: [{ id: "hide", label: "Скрыть" }],
+      },
+    ];
+    render(<DataTable caption="Очередь" columns={columns} rows={rows} onMenuAction={onMenuAction} />);
+
+    // Distinct accessible name and the real href.
+    const action = screen.getByRole("link", { name: "Перейти к сверке данных" });
+    expect(action).toHaveAttribute("href", "/labs/L/arrivals/P/reconciliation");
+    expect(action).toHaveTextContent("Сверить");
+
+    // Clicking the action never opens the row menu and never calls onMenuAction.
+    action.addEventListener("click", (event) => event.preventDefault());
+    await user.click(action);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(onMenuAction).not.toHaveBeenCalled();
+
+    // The menu still works independently.
+    await user.click(screen.getByRole("button", { name: "Действия со строкой" }));
+    await user.click(screen.getByRole("menuitem", { name: "Скрыть" }));
+    expect(onMenuAction).toHaveBeenCalledWith(expect.anything(), "row-1", "hide");
+  });
+
+  it("renders the row action link even when the row has no menu", () => {
+    const rows = [
+      {
+        id: "row-1",
+        href: "/labs/L/arrivals/P/reconciliation",
+        cells: [
+          { columnId: "party", value: "эВСД 41-201" },
+          { columnId: "owner", value: "ООО" },
+        ],
+        rowAction: {
+          href: "/labs/L/arrivals/P/reconciliation",
+          label: "Сверить",
+          accessibleName: "Перейти к сверке данных",
+        },
+      },
+    ];
+    render(<DataTable caption="Очередь" columns={columns} rows={rows} />);
+    expect(screen.getByRole("link", { name: "Перейти к сверке данных" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Действия со строкой" })).toBeNull();
+  });
 });

@@ -355,6 +355,30 @@
   gap: 6px;
   position: relative;
 }
+.app-table-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.app-table-row-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 9px;
+  padding: 0 12px;
+  background: var(--app-panel);
+  color: var(--app-teal-dark);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.app-table-row-action:hover {
+  border-color: #b9d6d3;
+  background: #f5f8f8;
+  text-decoration: none;
+}
 .app-table-menu-button {
   min-height: 36px;
   border: 1px solid var(--app-input-line);

@@ -1,0 +1,33 @@
+# Local installation overlay. Secrets and host paths come from the ignored
+# .env file created during installation; no credentials belong in this file.
+services:
+  backend:
+    environment: &vetis_env
+      SESSION_COOKIE_SECURE: "false"
+      VETIS_READ_ENABLED: "true"
+      VETIS_WRITE_ENABLED: "true"
+      VETIS_SECRET_PROFILE: /run/secrets/vetis-profile.json
+      VETIS_SCHEMA_PINS: /run/secrets/vetis-pins.json
+    volumes:
+      - ./backend:/app/backend:ro
+      - ${VETIS_SECRET_PROFILE_HOST}:/run/secrets/vetis-profile.json:ro
+      - ${VETIS_SCHEMA_PINS_HOST}:/run/secrets/vetis-pins.json:ro
+      - ${VETIS_SCHEMA_DIR_HOST}:/run/vetis-schema:ro
+
+  vetis-worker:
+    environment:
+      <<: *vetis_env
+      ENVIRONMENT: development
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-vse}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      REPORT_PREVIEW_KEYS: ${REPORT_PREVIEW_KEYS}
+    volumes:
+      - ./backend:/app/backend:ro
+      - ${VETIS_SECRET_PROFILE_HOST}:/run/secrets/vetis-profile.json:ro
+      - ${VETIS_SCHEMA_PINS_HOST}:/run/secrets/vetis-pins.json:ro
+      - ${VETIS_SCHEMA_DIR_HOST}:/run/vetis-schema:ro

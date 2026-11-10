@@ -20,12 +20,13 @@ pure-Python functions are the tested contract.
 
 from __future__ import annotations
 
+import os
 import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from arq import cron
+from arq.connections import RedisSettings
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -379,14 +380,12 @@ async def schedule_scheduled_syncs(db: AsyncSession, *, now: datetime | None = N
     )
 
 
-@asynccontextmanager
-async def _lifespan(_: dict[str, Any]) -> AsyncIterator[None]:
+async def _startup(_: dict[str, Any]) -> None:
     """arq startup: restore pending operations from SQL before polling."""
     factory = get_session_factory()
     async with factory() as session:
         await dispatch_pending_operations(session)
         await session.commit()
-    yield
 
 
 async def _job_run_vetis_sync(ctx: dict[str, Any], *, operation_id: str) -> None:  # pragma: no cover - arq entry
@@ -423,7 +422,12 @@ class WorkerSettings:  # pragma: no cover - composition, exercised by compose
     """
 
     functions = [_job_run_vetis_sync, _job_vetis_scheduler, _job_poll_due]
-    on_startup = _lifespan
+    cron_jobs = [
+        cron(_job_vetis_scheduler, second=0, run_at_startup=True),
+        cron(_job_poll_due, second={0, 10, 20, 30, 40, 50}, run_at_startup=True),
+    ]
+    redis_settings = RedisSettings.from_dsn(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+    on_startup = _startup
     poll_interval = 60
     max_jobs = 4
     job_timeout = 900

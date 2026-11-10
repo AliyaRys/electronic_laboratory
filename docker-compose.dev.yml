@@ -37,8 +37,6 @@ services:
         "python",
         "-m",
         "arq",
-        "--redis-url",
-        "redis://redis:6379/0",
         "backend.src.modules.integrations.vetis.worker.WorkerSettings",
       ]
     depends_on:

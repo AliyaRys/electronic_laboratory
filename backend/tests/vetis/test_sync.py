@@ -491,3 +491,12 @@ async def test_cursor_contract_violation_fails_honestly(sync_env: SimpleNamespac
     # No second SOAP call: the walk stopped at the contract violation.
     assert len(transport.calls) == 2  # one send + one receive
     assert (await binding_row(env)).last_success is None
+
+
+def test_worker_composition_schedules_sql_dispatch_and_polling() -> None:
+    """The deployed worker must actually invoke both periodic SQL jobs."""
+    from backend.src.modules.integrations.vetis import worker
+
+    names = {job.name for job in worker.WorkerSettings.cron_jobs}
+    assert "cron:_job_vetis_scheduler" in names
+    assert "cron:_job_poll_due" in names

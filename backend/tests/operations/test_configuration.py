@@ -197,6 +197,12 @@ def test_frontend_nginx_api_proxy_without_rewrite():
     assert "api/" not in last_pass  # no trailing path in proxy_pass
 
 
+def test_frontend_nginx_preserves_browser_visible_port_for_csrf_origin():
+    """Local :8080 and non-default HTTPS ports must survive the proxy boundary."""
+    text = _read("deploy", "nginx.conf")
+    assert text.count("proxy_set_header Host $http_host;") == 2
+
+
 def test_frontend_nginx_openapi_not_served_by_spa():
     """API-09 contract: /openapi.json is backend's, not the SPA fallback."""
     text = _read("deploy", "nginx.conf")

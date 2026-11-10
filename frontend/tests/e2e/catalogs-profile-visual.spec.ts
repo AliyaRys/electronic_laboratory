@@ -71,12 +71,23 @@ test.describe("DR4 catalogs/profile mockup alignment", () => {
     await expect(edit).toBeFocused();
 
     // The editor transition keeps laboratory_id/product_species_id in the URL.
-    await edit.click();
+    // This run starts from a SCOPED overview so the preservation is real.
+    const LAB = seed.labAId;
+    const SPECIES = seed.productId;
+    await page.goto(
+      `/catalogs?laboratory_id=${encodeURIComponent(LAB)}&product_species_id=${encodeURIComponent(SPECIES)}`,
+    );
+    await expect(page.getByRole("heading", { name: "Управление справочниками" })).toBeVisible();
+    await page.getByTestId("catalog-card-tariffs").getByRole("button", { name: "Редактировать" }).click();
     await expect(page.getByRole("heading", { name: "Справочники" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Стоимость исследований" })).toHaveAttribute(
       "aria-current",
       "page",
     );
+    const url = new URL(page.url());
+    expect(url.searchParams.get("laboratory_id")).toBe(LAB);
+    expect(url.searchParams.get("product_species_id")).toBe(SPECIES);
+    expect(url.searchParams.get("tab")).toBe("tariffs");
     expect(await noHorizontalOverflow(page)).toBe(true);
     await shot(page, "catalogs-editor-1440");
   });

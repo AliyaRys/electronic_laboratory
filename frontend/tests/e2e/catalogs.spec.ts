@@ -62,7 +62,9 @@ test.describe("catalogs", () => {
     await page.getByLabel("Версия").fill("1");
     await page.getByLabel("Источник методики").fill("методика Е2Е");
     await page.getByRole("button", { name: "Сохранить" }).click();
-    await expect(page.getByRole("cell", { name: "22222222…" })).toBeVisible();
+    // The rule list may already contain earlier runs' rows (persistent
+    // database); the new rule only needs to appear among them.
+    await expect(page.getByRole("cell", { name: "22222222…" }).first()).toBeVisible();
 
     // Tariff of the same scope.
     await page.getByRole("link", { name: "Стоимость исследований" }).click();
@@ -74,7 +76,9 @@ test.describe("catalogs", () => {
     await page.getByLabel("Источник прейскуранта").fill("прейскурант Е2Е");
     await page.getByRole("button", { name: "Сохранить" }).click();
     await expect(page.getByRole("cell", { name: "trichinelloscopy" })).toBeVisible();
-    await expect(page.getByRole("cell", { name: "100.00" })).toBeVisible();
+    // Earlier runs may have left rows with the same values (persistent
+    // database); the new tariff only needs to appear among them.
+    await expect(page.getByRole("cell", { name: "100.00" }).first()).toBeVisible();
     await shot(page, "head-tariffs-1440");
 
     // Narrow (390) and wide (1440) screens of the same state.

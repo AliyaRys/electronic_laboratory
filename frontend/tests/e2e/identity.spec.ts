@@ -190,10 +190,29 @@ test.describe("identity", () => {
     // USER_HAS_REFERENCES: the linked user cannot be deleted…
     await expect(page.getByRole("dialog").getByText(/не может быть удалён/)).toBeVisible();
     await page.keyboard.press("Escape");
-    // …but blocking works.
-    await linkedRow.getByRole("button", { name: "Действия со строкой" }).click();
+    // …but blocking works. After a previous run the user can already be
+    // blocked (the suite runs against a persistent database), so unblock
+    // first to keep the test repeatable.
+    const actions = linkedRow.getByRole("button", { name: "Действия со строкой" });
+    if ((await linkedRow.getByText("Заблокирован").count()) > 0) {
+      await actions.click();
+      await page.getByRole("menuitem", { name: "Разблокировать" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Разблокировать" }).click();
+      await expect(linkedRow.getByText("Активен")).toBeVisible();
+    }
+    // The list re-renders after a status change; a menu click can be swallowed
+    // by that re-render, so one retry keeps the test deterministic.
+    const rowMenu = page.getByRole("menu", { name: "Действия со строкой" });
+    const openMenu = async (): Promise<void> => {
+      await actions.click();
+      if (!(await rowMenu.isVisible().catch(() => false))) {
+        await actions.click();
+      }
+      await expect(rowMenu).toBeVisible();
+    };
+    await openMenu();
     await page.getByRole("menuitem", { name: "Заблокировать" }).click();
-    await page.getByRole("button", { name: "Заблокировать" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Заблокировать" }).click();
     await expect(linkedRow.getByText("Заблокирован")).toBeVisible();
     await shot(page, "at24-blocked");
     // History keeps the event trail without secrets (AT-24).

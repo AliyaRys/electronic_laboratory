@@ -1,9 +1,10 @@
 /**
- * ReceiptDecision (A02, CHK-F34/35/39/40/41, FT-ARR-09/10/13): the three
- * receipt decisions in the fixed order, disabled with an explanation when the
- * current grounds forbid them, the return reason (a Mercury dictionary code;
- * OTHER_REASON demands its text), the transaction flag and the fair flag.
- * There is no separate «с актом» decision — the act is derived (CHK-F44).
+ * ReceiptDecision (A02, CHK-F34/35/39/40): the three receipt decisions in the
+ * fixed order, disabled with an explanation when the current grounds forbid
+ * them, the return reason (a Mercury dictionary code; OTHER_REASON demands
+ * its text) and the transaction flag. There is no separate «с актом»
+ * decision — the act is derived (CHK-F44). The fair (ярмарка) flag belongs to
+ * the invoice section of the composed screen.
  */
 import { Field } from "../../shared/ui/Field";
 import { DECISIONS, DECISION_LABELS, RETURN_REASON_CODES, type Decision } from "./api";
@@ -14,7 +15,6 @@ export interface ReceiptDecisionValue {
   return_reason_text: string;
   transaction_planned: boolean | null;
   transaction_type: "INTERNAL" | "EXTERNAL" | null;
-  fair: boolean;
 }
 
 export interface ReceiptDecisionProps {
@@ -42,13 +42,13 @@ export function ReceiptDecision({
   const showReason = decision === "PARTIAL" || decision === "RETURN_ALL";
   const needsReasonText = showReason && value.return_reason_code === "OTHER_REASON";
   return (
-    <fieldset className="vse-decision" disabled={disabled}>
+    <fieldset className="vse-rec-decision" disabled={disabled}>
       <legend>Решение о приёмке</legend>
-      <div className="vse-decision-options" role="radiogroup" aria-label="Решение о приёмке">
+      <div className="vse-rec-decision-options" role="radiogroup" aria-label="Решение о приёмке">
         {DECISIONS.map((option) => {
           const allowedHere = allowed.includes(option);
           return (
-            <div key={option} className="vse-decision-option" data-decision={option}>
+            <div key={option} className="vse-rec-decision-option" data-decision={option}>
               <label>
                 <input
                   type="radio"
@@ -61,7 +61,7 @@ export function ReceiptDecision({
                 />
                 <span>{DECISION_LABELS[option]}</span>
               </label>
-              <span className="vse-decision-note" id={`decision-note-${option}`}>
+              <span className="vse-rec-decision-note" id={`decision-note-${option}`}>
                 {allowedHere ? DECISION_NOTES[option] : "Недоступно при отмеченных расхождениях."}
               </span>
             </div>
@@ -75,7 +75,7 @@ export function ReceiptDecision({
       ) : null}
 
       {showReason ? (
-        <div className="vse-decision-reason">
+        <div className="vse-rec-decision-reason">
           <div className="app-field">
             <div className="app-field-heading">
               <label htmlFor="return-reason-code">Причина возврата</label>
@@ -110,9 +110,9 @@ export function ReceiptDecision({
         </div>
       ) : null}
 
-      <fieldset className="vse-transaction">
+      <fieldset className="vse-rec-transaction">
         <legend>По партии будет произведена транзакция</legend>
-        <label className="vse-comparison-mark">
+        <label className="vse-rec-mark">
           <input
             type="radio"
             name="transaction.planned"
@@ -121,7 +121,7 @@ export function ReceiptDecision({
           />
           Да
         </label>
-        <label className="vse-comparison-mark">
+        <label className="vse-rec-mark">
           <input
             type="radio"
             name="transaction.planned"
@@ -163,15 +163,6 @@ export function ReceiptDecision({
           </p>
         ) : null}
       </fieldset>
-
-      <label className="vse-comparison-mark vse-fair">
-        <input
-          type="checkbox"
-          checked={value.fair}
-          onChange={(event) => onChange({ ...value, fair: event.target.checked })}
-        />
-        Ярмарка
-      </label>
     </fieldset>
   );
 }

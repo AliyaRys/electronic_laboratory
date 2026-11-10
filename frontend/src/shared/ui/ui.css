@@ -17,6 +17,17 @@
   --app-focus: #75bfc2;
   --app-input-line: #cbdadb;
 
+  /* Comparison states of the reconciliation screen (evsd-check sample). */
+  --app-good: #176346;
+  --app-match-bg: #e4f4ed;
+  --app-match-line: #8cc7ad;
+  --app-mismatch-bg: #fff0f1;
+  --app-mismatch-line: #e2a3ab;
+  --app-card-bg: #fbfdfd;
+  --app-card-line: #edf3f3;
+  --app-mercury-bg: #f7fbfb;
+  --app-mercury-line: #d8e5e5;
+
   /* Mandatory research cards: calm blue tone. Green is reserved for «Соответствует» results. */
   --app-mandatory-line: #c9d6ec;
   --app-mandatory-tint: #f1f4fa;

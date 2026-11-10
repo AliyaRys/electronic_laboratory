@@ -1,5 +1,6 @@
 /**
- * ActPreview (A02, CHK-F44): the derived discrepancy-act plate. The rows come
+ * ActPreview (A02, CHK-F44): the derived discrepancy-act plate, attached to
+ * the results section as a linked card of the aligned screen. The rows come
  * from the server (field, source value, actual fact, reason); the client
  * never sets them. RETURN_ALL never promises this act (FT-ARR-08).
  */
@@ -15,8 +16,8 @@ export interface ActPreviewProps {
 export function ActPreview({ act, decision, problemItems }: ActPreviewProps): React.ReactElement | null {
   if (problemItems.length > 0) {
     return (
-      <div className="vse-act-preview vse-act-preview--error" role="alert">
-        <p className="vse-act-title">Сервер вернул ошибки проверки:</p>
+      <div className="vse-rec-act vse-rec-act--error" role="alert">
+        <p className="vse-rec-act-title">Сервер вернул ошибки проверки:</p>
         <ul>
           {problemItems.map((item, index) => (
             <li key={`${item.path}-${index}`}>
@@ -35,13 +36,13 @@ export function ActPreview({ act, decision, problemItems }: ActPreviewProps): Re
   }
   const promised = decision !== "RETURN_ALL";
   return (
-    <div className="vse-act-preview" role="status" data-required={promised ? "true" : "false"}>
-      <p className="vse-act-title">
+    <div className="vse-rec-act" role="status" data-required={promised ? "true" : "false"}>
+      <p className="vse-rec-act-title">
         {promised
           ? "Будет сформирован акт несоответствия"
           : "При возврате акт несоответствия этой ветки не формируется"}
       </p>
-      <table className="vse-act-table">
+      <table className="vse-rec-act-table">
         <caption className="vse-visually-hidden">Расхождения, включаемые в акт</caption>
         <thead>
           <tr>

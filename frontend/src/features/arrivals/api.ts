@@ -186,10 +186,36 @@ export function decisionLabel(decision: string | null): string {
 /** The CHK comparison fields shown on the screen, in the block order of FT-ARR-03. */
 export interface ComparedField {
   fieldId: string;
-  block: string;
+  /** Canonical reconciliation-section key (components/icons/README.md map). */
+  block: "participants" | "transport" | "product";
   label: string;
   source: string;
 }
+
+/** User-facing reconciliation section titles (mockup wording). */
+export const CHECK_SECTION_TITLES: Readonly<Record<string, string>> = Object.freeze({
+  document: "Документ",
+  participants: "Участники перевозки",
+  transport: "Ветеринарно-санитарная оценка и идентификация транспорта",
+  product: "Идентификация продукции по наименованию и визуальным осмотром",
+  documents: "Сопроводительные документы",
+  priorVse: "Ранее проведённая ВСЭ",
+  results: "Результаты сверки",
+  invoice: "Расчёт стоимости услуг",
+});
+
+/** Short section subtitles under the titles (mockup wording). */
+export const CHECK_SECTION_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze({
+  document: "Реквизиты транспортного эВСД и связанного контроля поставки.",
+  participants: "Отправитель, получатель и площадки, указанные в эВСД.",
+  transport: "Сведения о перевозке и транспортном средстве.",
+  product: "Классификация, наименование, объём и ветеринарные характеристики партии.",
+  documents: "Реквизиты транспортного документа партии.",
+  priorVse:
+    "Сведения из мероприятий с партией продукции: номер экспертизы, дата, организация и результат осмотра.",
+  results: "Отметки сравнения, решение о приёмке и формируемые документы.",
+  invoice: "Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма.",
+});
 
 export const RETURN_REASON_CODES: readonly { code: string; label: string }[] = Object.freeze([
   { code: "DEFECTIVE_GOODS", label: "Недоброкачественная продукция" },
@@ -213,20 +239,86 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   const fields: ComparedField[] = [];
   const external = view.external.fields;
   const classification = view.classification;
-  const push = (fieldId: string, block: string, label: string, source: string | null | undefined): void => {
+  // The server projection names a field by its snapshot key; the mapping
+  // tolerates both the CHK projection keys and the test fixtures so real
+  // arrivals always surface their values (senderEnterprise/vehicleNumber).
+  const source = (...keys: (string | null | undefined)[]): string | null | undefined => {
+    for (const key of keys) {
+      if (typeof key === "string" && key !== "") {
+        return key;
+      }
+    }
+    return null;
+  };
+  const push = (
+    fieldId: string,
+    block: ComparedField["block"],
+    label: string,
+    source: string | null | undefined,
+  ): void => {
     if (source !== null && source !== undefined && source !== "") {
       fields.push({ fieldId, block, label, source });
     }
   };
-  push("CHK-F05", "Участники перевозки", "Отправитель — предприятие", external.consignor);
-  push("CHK-F07", "Участники перевозки", "Получатель — предприятие", external.consignee);
-  push("CHK-F10", "Идентификация транспорта", "Номер ТС", external.transportNumber);
-  push("CHK-F16", "Идентификация продукции", "Продукция", classification.product?.name);
-  push("CHK-F17", "Идентификация продукции", "Вид продукции", classification.subProduct?.name ?? null);
-  push("CHK-F18", "Идентификация продукции", "Название продукции", classification.productItem?.name);
-  push("CHK-F20", "Идентификация продукции", "Количество", view.documentary.quantity);
-  push("CHK-F21", "Идентификация продукции", "Вес, кг", view.documentary.mass_kg);
+  push(
+    "CHK-F05",
+    "participants",
+    "Отправитель — предприятие",
+    source(external.consignor, external.senderEnterprise),
+  );
+  push(
+    "CHK-F07",
+    "participants",
+    "Получатель — предприятие",
+    source(external.consignee, external.receiverEnterprise),
+  );
+  push("CHK-F10", "transport", "Номер ТС", source(external.transportNumber, external.vehicleNumber));
+  push("CHK-F16", "product", "Продукция", source(classification.product?.name, external.product));
+  push("CHK-F17", "product", "Вид продукции", source(classification.subProduct?.name, external.species));
+  push(
+    "CHK-F18",
+    "product",
+    "Название продукции",
+    source(classification.productItem?.name, external.name, external.productItem),
+  );
+  push("CHK-F20", "product", "Количество", source(view.documentary.quantity, external.quantity));
+  push("CHK-F21", "product", "Вес, кг", source(view.documentary.mass_kg, external.massKg));
   return fields;
+}
+
+/** The external-fields document facts of the Документ section (real data; absent values stay «—»). */
+export function documentFacts(view: IncomingView): { label: string; value: string }[] {
+  const external = view.external.fields;
+  const pick = (...keys: (string | null | undefined)[]): string => {
+    for (const key of keys) {
+      if (typeof key === "string" && key.trim() !== "") {
+        return key;
+      }
+    }
+    return "—";
+  };
+  return [
+    { label: "Номер эВСД", value: pick(external.documentNumber) },
+    { label: "Дата оформления", value: pick(external.issuedOn) },
+    { label: "Статус эВСД", value: pick(external.status, view.external.status) },
+    { label: "Назначение груза", value: pick(external.purpose) },
+  ];
+}
+
+/** The owner facts of one participant (ЧК-F06/F09 stay informational). */
+export function participantOwner(view: IncomingView, side: "sender" | "receiver"): string | null {
+  const external = view.external.fields;
+  const value = side === "sender" ? external.senderOwner : external.receiverOwner;
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+/** The unit name of the party quantities (ЧК quantities are unit-agnostic). */
+export function partyUnit(view: IncomingView): string {
+  const external = view.external.fields;
+  if (typeof external.unitId === "string" && external.unitId.trim() !== "") {
+    return external.unitId;
+  }
+  return view.classification.unit?.name ?? "";
 }
 
 /** GET /arrivals/:party_id — the IncomingView of one party (API-04, party ETag).

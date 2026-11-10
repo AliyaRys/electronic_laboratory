@@ -8,7 +8,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -36,10 +36,24 @@ const server = setupServer(
 beforeAll(() => server.listen());
 afterAll(() => server.close());
 
+/** Reflects the CURRENT router location so tests can assert the real URL. */
+function RouteProbe(): React.ReactElement {
+  const location = useLocation();
+  return <span data-testid="route-probe">{location.pathname + location.search}</span>;
+}
+
 function renderCatalogs(path: string): void {
   const router = createMemoryRouter(
     [
-      { path: "/catalogs", element: <CatalogsPage /> },
+      {
+        element: (
+          <>
+            <RouteProbe />
+            <CatalogsPage />
+          </>
+        ),
+        path: "/catalogs",
+      },
       { path: "/catalogs/methods", element: <CatalogsPage /> },
       { path: "/catalogs/tariffs", element: <CatalogsPage /> },
       { path: "/login", element: <p>Вход</p> },
@@ -84,7 +98,9 @@ describe("CatalogsPage overview", () => {
 
   it("«Редактировать» keeps the scope in the query and opens the editor", async () => {
     const act = userEvent.setup();
-    renderCatalogs("/catalogs?laboratory_id=11111111-2222-4333-8444-555555555555");
+    const LAB = "11111111-2222-4333-8444-555555555555";
+    const SPECIES = "33333333-3333-4333-8333-333333333333";
+    renderCatalogs(`/catalogs?laboratory_id=${LAB}&product_species_id=${SPECIES}`);
     await waitFor(() => expect(screen.getByTestId("catalog-overview")).toBeInTheDocument());
     await act.click(
       within(screen.getByTestId("catalog-card-tariffs")).getByRole("button", { name: "Редактировать" }),
@@ -93,6 +109,12 @@ describe("CatalogsPage overview", () => {
     expect(screen.getByRole("link", { name: "Стоимость исследований" })).toHaveAttribute(
       "aria-current",
       "page",
+    );
+    // The real navigation URL keeps both scope identifiers and sets the tab.
+    expect(screen.getByTestId("route-probe")).toHaveTextContent(
+      new RegExp(
+        `^/catalogs\\?laboratory_id=${LAB}&product_species_id=${SPECIES}&tab=tariffs$`,
+      ),
     );
   });
 });

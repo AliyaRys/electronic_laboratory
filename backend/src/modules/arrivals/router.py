@@ -16,7 +16,7 @@ from backend.src.core.contracts import Page
 from backend.src.core.database import async_session
 from backend.src.core.problems import not_found
 from backend.src.modules.arrivals import commands, queries, reconciliation
-from backend.src.modules.arrivals.models import IncomingDocument, Party
+from backend.src.modules.arrivals.models import IncomingDocument, Party, Reconciliation
 from backend.src.modules.arrivals.schemas import IncomingView, ReconciliationView, ReconciliationWrite
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
@@ -24,7 +24,12 @@ from backend.src.modules.identity.router import _idempotency_key, _require_csrf,
 from backend.src.modules.identity.session import SessionIdentity
 from backend.src.modules.integrations.vetis import sync
 from backend.src.modules.integrations.vetis.contracts import ReceiptPreview, UserConfirmation
-from backend.src.modules.integrations.vetis.receipt import build_receipt_preview, queue_receipt
+from backend.src.modules.integrations.vetis.models import (
+    VetisOperation,
+    VetisOperationKind,
+    VetisSourceDocument,
+)
+from backend.src.modules.integrations.vetis.receipt import build_receipt_preview, queue_receipt, write_enabled
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
@@ -57,6 +62,18 @@ class ReceiptAccepted(BaseModel):
     operation_id: uuid.UUID
     state: str
     status_url: str
+
+
+class ReceiptContext(BaseModel):
+    """Safe read model for the receipt UI; it never exposes XML or credentials."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    write_enabled: bool
+    source_revision: int | None
+    reconciliation_revision: int | None
+    operation_id: uuid.UUID | None
+    operation_state: str | None
 
 
 async def _scoped_party(
@@ -147,6 +164,56 @@ async def get_reconciliation(
     response.headers["Cache-Control"] = "no-store"
     response.headers["ETag"] = format_etag(view.revision)
     return view
+
+
+@router.get("/{party_id}/receipt-context", response_model=ReceiptContext)
+async def get_receipt_context(
+    party_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> ReceiptContext:
+    """Return only the capability, frozen revisions and latest operation.
+
+    This read endpoint is deliberately side-effect free.  The preview and
+    submit routes repeat authorization and all source/revision checks.
+    """
+    _, actor = principal
+    party = await _scoped_party(db, authorizer, actor, party_id, "receipt:submit")
+    document = (
+        await db.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
+    ).scalar_one()
+    source_revision = (
+        await db.execute(
+            select(VetisSourceDocument.revision).where(
+                VetisSourceDocument.contour == document.contour,
+                VetisSourceDocument.evsd_uuid == document.evsd_uuid,
+            )
+        )
+    ).scalar_one_or_none()
+    reconciliation_revision = (
+        await db.execute(select(Reconciliation.rev).where(Reconciliation.party_id == party_id))
+    ).scalar_one_or_none()
+    operation = (
+        await db.execute(
+            select(VetisOperation)
+            .where(
+                VetisOperation.party_id == party_id,
+                VetisOperation.kind == VetisOperationKind.RECEIPT,
+            )
+            .order_by(VetisOperation.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    response.headers["Cache-Control"] = "no-store"
+    return ReceiptContext(
+        write_enabled=write_enabled(),
+        source_revision=source_revision,
+        reconciliation_revision=reconciliation_revision,
+        operation_id=operation.id if operation is not None else None,
+        operation_state=str(operation.state) if operation is not None else None,
+    )
 
 
 @router.put("/{party_id}/reconciliation", response_model=ReconciliationView)

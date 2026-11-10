@@ -165,6 +165,10 @@ export type Comparison = components["schemas"]["Comparison"];
 export type ActPreview = components["schemas"]["ActPreview"];
 export type Decision = NonNullable<ReconciliationView["decision"]>;
 export type ReceiptProblemItem = components["schemas"]["ProblemItem"];
+export type ReceiptContext = components["schemas"]["ReceiptContext"];
+export type ReceiptPreview = components["schemas"]["ReceiptPreview"];
+export type ReceiptAccepted = components["schemas"]["ReceiptAccepted"];
+export type VetInspection = components["schemas"]["ReceiptPreviewRequest"]["vet_inspection"];
 
 export const DECISIONS: readonly Decision[] = ["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"];
 
@@ -338,4 +342,47 @@ export function saveReconciliation(
       headers: { "if-match": etag, "idempotency-key": idempotencyKey },
       signal,
     }) as Promise<RawResult<ReconciliationView>>;
+}
+
+// --- Verified VetIS receipt (W03) ----------------------------------------------
+
+export async function fetchReceiptContext(
+  partyId: string,
+  signal?: AbortSignal | null,
+): Promise<ReceiptContext | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/arrivals/{party_id}/receipt-context", {
+      params: { path: { party_id: partyId } },
+      signal: signal ?? null,
+    }) as Promise<RawResult<ReceiptContext>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+export async function previewReceipt(
+  partyId: string,
+  payload: components["schemas"]["ReceiptPreviewRequest"],
+): Promise<ReceiptPreview | Problem> {
+  const settled = await settle(
+    apiClient.POST("/api/v1/arrivals/{party_id}/receipt-preview", {
+      params: { path: { party_id: partyId } },
+      body: payload,
+    }) as Promise<RawResult<ReceiptPreview>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+export async function submitReceipt(
+  partyId: string,
+  payload: components["schemas"]["ReceiptSubmitRequest"],
+  idempotencyKey: string,
+): Promise<ReceiptAccepted | Problem> {
+  const settled = await settle(
+    apiClient.POST("/api/v1/arrivals/{party_id}/receipt", {
+      params: { path: { party_id: partyId } },
+      headers: { "idempotency-key": idempotencyKey },
+      body: payload,
+    }) as Promise<RawResult<ReceiptAccepted>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
 }

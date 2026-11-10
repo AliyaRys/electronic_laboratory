@@ -15,6 +15,7 @@ import {
   type ReconciliationView,
 } from "../features/arrivals/api";
 import { ReconciliationForm } from "../features/arrivals/ReconciliationForm";
+import { ReceiptOperation } from "../features/arrivals/ReceiptOperation";
 import { StatusView } from "../shared/ui/StatusView";
 import type { IncomingView } from "../features/arrivals/api";
 
@@ -95,20 +96,25 @@ function ReconciliationContent(): React.ReactElement {
         <StatusView state="loading" title="Загрузка сверки…" />
       ) : party === null || view === null ? (
         <StatusView state="not-found" title="Поступление не найдено в доступной очереди." />
-      ) : view.state !== "OPEN" ? (
-        <StatusView
-          state="not-found"
-          title="Сверка уже подтверждена внешним результатом."
-          detail="Изменение принятого состава через обычное сохранение невозможно (FT-ARR-15)."
-        />
       ) : (
-        <ReconciliationForm
-          party={party}
-          initial={view}
-          onSaved={(next: ReconciliationView) => {
-            void queryClient.setQueryData([labId, partyId, "reconciliation"], next);
-          }}
-        />
+        <>
+          {view.state === "OPEN" ? (
+            <ReconciliationForm
+              party={party}
+              initial={view}
+              onSaved={(next: ReconciliationView) => {
+                void queryClient.setQueryData([labId, partyId, "reconciliation"], next);
+              }}
+            />
+          ) : (
+            <StatusView
+              state="empty"
+              title="Сверка подтверждена внешним результатом."
+              detail="Принятый состав больше нельзя изменить через обычное сохранение (FT-ARR-15)."
+            />
+          )}
+          <ReceiptOperation party={party} reconciliation={view} />
+        </>
       )}
     </div>
   );

@@ -319,6 +319,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/arrivals/{party_id}/receipt-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Receipt Context
+         * @description Return only the capability, frozen revisions and latest operation.
+         *
+         *     This read endpoint is deliberately side-effect free.  The preview and
+         *     submit routes repeat authorization and all source/revision checks.
+         */
+        get: operations["get_receipt_context_api_v1_arrivals__party_id__receipt_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/arrivals/{party_id}/receipt-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Receipt
+         * @description Build XML locally. This endpoint never queues or contacts VetIS.
+         */
+        post: operations["preview_receipt_api_v1_arrivals__party_id__receipt_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/arrivals/{party_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Receipt
+         * @description Freeze the re-built preview and queue one irreversible operation.
+         */
+        post: operations["submit_receipt_api_v1_arrivals__party_id__receipt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/arrivals/sync": {
         parameters: {
             query?: never;
@@ -330,7 +393,10 @@ export interface paths {
         put?: never;
         /**
          * Sync Arrivals
-         * @description ТЗ-10 owns the real sync run; until it ships the answer is honest 503.
+         * @description API-04: accept the manual refresh as the SAME durable job the 15-minute
+         *     scheduler uses (202 SyncRun — never a sync confirmation). API readiness
+         *     does not depend on VetIS: an unconfigured run fails honestly later, the
+         *     checkpoint stays put, and a missing binding is refused before any intent.
          */
         post: operations["sync_arrivals_api_v1_arrivals_sync_post"];
         delete?: never;
@@ -824,7 +890,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Reports
+         * @description The saved-report list of one laboratory (API-08 ``Page<ReportSummary>``).
+         */
+        get: operations["list_reports_api_v1_reports_5vet_get"];
         put?: never;
         /** Save */
         post: operations["save_api_v1_reports_5vet_post"];
@@ -847,6 +917,46 @@ export interface paths {
         post?: never;
         /** Delete */
         delete: operations["delete_api_v1_reports_5vet__report_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/5vet/{report_id}/export.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Report Pdf
+         * @description The controlled PDF built exclusively from the saved snapshot (API-08).
+         */
+        get: operations["export_report_pdf_api_v1_reports_5vet__report_id__export_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/5vet/{report_id}/export.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Report Xlsx
+         * @description The controlled spreadsheet built exclusively from the saved snapshot (API-08).
+         */
+        get: operations["export_report_xlsx_api_v1_reports_5vet__report_id__export_xlsx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1966,6 +2076,158 @@ export interface components {
             /** Schema Revision */
             schema_revision: string;
         };
+        /** ReceiptAccepted */
+        ReceiptAccepted: {
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** State */
+            state: string;
+            /** Status Url */
+            status_url: string;
+        };
+        /**
+         * ReceiptContext
+         * @description Safe read model for the receipt UI; it never exposes XML or credentials.
+         */
+        ReceiptContext: {
+            /** Write Enabled */
+            write_enabled: boolean;
+            /** Source Revision */
+            source_revision: number | null;
+            /** Reconciliation Revision */
+            reconciliation_revision: number | null;
+            /** Operation Id */
+            operation_id: string | null;
+            /** Operation State */
+            operation_state: string | null;
+        };
+        /**
+         * ReceiptIntent
+         * @description Frozen, server-built input of one irreversible receipt application.
+         */
+        ReceiptIntent: {
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /**
+             * Party Id
+             * Format: uuid
+             */
+            party_id: string;
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            contour: components["schemas"]["VetisContour"];
+            /**
+             * Source Evsd Uuid
+             * Format: uuid
+             */
+            source_evsd_uuid: string;
+            /** Source Checksum */
+            source_checksum: string;
+            /** Source Revision */
+            source_revision: number;
+            /** Receiver Enterprise Id */
+            receiver_enterprise_id: string;
+            /** Business Member Id */
+            business_member_id: string;
+            /** Initiator */
+            initiator: string;
+            /**
+             * Delivery Date
+             * Format: date-time
+             */
+            delivery_date: string;
+            /** Reconciliation Revision */
+            reconciliation_revision: number;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "ACCEPT_ALL" | "PARTIALLY" | "RETURN_ALL";
+            /**
+             * Doc Inspection
+             * @enum {string}
+             */
+            doc_inspection: "CORRESPONDS" | "MISMATCH";
+            /**
+             * Vet Inspection
+             * @enum {string}
+             */
+            vet_inspection: "CORRESPONDS" | "MISMATCH" | "UNSUPERVISED";
+            /** Documentary Quantity */
+            documentary_quantity: string;
+            /** Delivered Quantity */
+            delivered_quantity: string;
+            /** Accepted Quantity */
+            accepted_quantity: string;
+            /** Returned Quantity */
+            returned_quantity: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Discrepancy Items */
+            discrepancy_items?: {
+                [key: string]: unknown;
+            }[];
+            /** Return Reason Code */
+            return_reason_code?: string | null;
+            /** Return Reason Text */
+            return_reason_text?: string | null;
+            /** Act Number */
+            act_number?: string | null;
+            /** Local Transaction Id */
+            local_transaction_id: string;
+            /** Fingerprint */
+            fingerprint: string;
+        };
+        /** ReceiptPreview */
+        ReceiptPreview: {
+            intent: components["schemas"]["ReceiptIntent"];
+            /** Application Xml */
+            application_xml: string;
+            /** Fingerprint */
+            fingerprint: string;
+        };
+        /** ReceiptPreviewRequest */
+        ReceiptPreviewRequest: {
+            /** Source Revision */
+            source_revision: number;
+            /** Reconciliation Revision */
+            reconciliation_revision: number;
+            /**
+             * Vet Inspection
+             * @enum {string}
+             */
+            vet_inspection: "CORRESPONDS" | "MISMATCH" | "UNSUPERVISED";
+            /** Delivery Date */
+            delivery_date?: string | null;
+        };
+        /** ReceiptSubmitRequest */
+        ReceiptSubmitRequest: {
+            /** Source Revision */
+            source_revision: number;
+            /** Reconciliation Revision */
+            reconciliation_revision: number;
+            /**
+             * Vet Inspection
+             * @enum {string}
+             */
+            vet_inspection: "CORRESPONDS" | "MISMATCH" | "UNSUPERVISED";
+            /**
+             * Delivery Date
+             * Format: date-time
+             */
+            delivery_date: string;
+            /** Fingerprint */
+            fingerprint: string;
+        };
         /**
          * ReconciliationView
          * @description API-04 ``ReconciliationView`` with the server-calculated projection.
@@ -2160,6 +2422,59 @@ export interface components {
             rev: number;
         };
         /**
+         * ReportSummary
+         * @description One row of the saved-report list (API-08 ``Page<ReportSummary>``).
+         *
+         *     The summary never carries the payload: the heavy signed snapshot belongs
+         *     to the single-report read, not to the list projection.
+         */
+        ReportSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Report Type */
+            report_type: string;
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /** Year */
+            year: number;
+            /** Half */
+            half: number;
+            /** Source Count */
+            source_count: number;
+            /**
+             * Saved At
+             * Format: date-time
+             */
+            saved_at: string;
+            /**
+             * Saved By
+             * Format: uuid
+             */
+            saved_by: string;
+            /** Rev */
+            rev: number;
+        };
+        /**
+         * ReportSummaryPage
+         * @description API-08 list page of saved reports, newest period first.
+         */
+        ReportSummaryPage: {
+            /** Items */
+            items: components["schemas"]["ReportSummary"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /**
          * ResearchValue
          * @description One typed research result (API-05); absence of ``value`` is allowed.
          */
@@ -2285,6 +2600,21 @@ export interface components {
             edition?: string | null;
             /** Reference */
             reference?: string | null;
+        };
+        /**
+         * SyncAccepted
+         * @description API-04: the 202 answer of POST /arrivals/sync — never a sync confirmation.
+         */
+        SyncAccepted: {
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** State */
+            state: string;
+            /** Status Url */
+            status_url: string;
         };
         /** SyncRequest */
         SyncRequest: {
@@ -2473,6 +2803,12 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /**
+         * VetisContour
+         * @description VetIS contours must never share dictionary identities implicitly.
+         * @enum {string}
+         */
+        VetisContour: "PILOT" | "PRODUCTION";
     };
     responses: never;
     parameters: never;
@@ -3117,6 +3453,107 @@ export interface operations {
             };
         };
     };
+    get_receipt_context_api_v1_arrivals__party_id__receipt_context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptContext"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_receipt_api_v1_arrivals__party_id__receipt_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_receipt_api_v1_arrivals__party_id__receipt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sync_arrivals_api_v1_arrivals_sync_post: {
         parameters: {
             query?: never;
@@ -3136,7 +3573,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SyncAccepted"];
                 };
             };
             /** @description Validation Error */
@@ -4348,6 +4785,38 @@ export interface operations {
             };
         };
     };
+    list_reports_api_v1_reports_5vet_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSummaryPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     save_api_v1_reports_5vet_post: {
         parameters: {
             query?: never;
@@ -4429,6 +4898,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_report_pdf_api_v1_reports_5vet__report_id__export_pdf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_report_xlsx_api_v1_reports_5vet__report_id__export_xlsx_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

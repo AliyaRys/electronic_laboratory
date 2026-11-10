@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -22,6 +23,8 @@ from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session
 from backend.src.modules.identity.session import SessionIdentity
 from backend.src.modules.integrations.vetis import sync
+from backend.src.modules.integrations.vetis.contracts import ReceiptPreview, UserConfirmation
+from backend.src.modules.integrations.vetis.receipt import build_receipt_preview, queue_receipt
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
@@ -32,6 +35,28 @@ class SyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     laboratory_id: uuid.UUID
+
+
+class ReceiptPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_revision: int
+    reconciliation_revision: int
+    vet_inspection: Literal["CORRESPONDS", "MISMATCH", "UNSUPERVISED"]
+    delivery_date: datetime | None = None
+
+
+class ReceiptSubmitRequest(ReceiptPreviewRequest):
+    fingerprint: str
+    delivery_date: datetime
+
+
+class ReceiptAccepted(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: uuid.UUID
+    state: str
+    status_url: str
 
 
 async def _scoped_party(
@@ -149,6 +174,66 @@ async def put_reconciliation(
     response.headers["Cache-Control"] = "no-store"
     response.headers["ETag"] = format_etag(view.revision)
     return view
+
+
+@router.post("/{party_id}/receipt-preview", response_model=ReceiptPreview)
+async def preview_receipt(
+    party_id: uuid.UUID,
+    payload: ReceiptPreviewRequest,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> ReceiptPreview:
+    """Build XML locally. This endpoint never queues or contacts VetIS."""
+    identity, actor = principal
+    await _scoped_party(db, authorizer, actor, party_id, "receipt:submit")
+    return await build_receipt_preview(
+        db,
+        party_id=party_id,
+        source_revision=payload.source_revision,
+        reconciliation_revision=payload.reconciliation_revision,
+        vet_inspection=payload.vet_inspection,
+        delivery_date=payload.delivery_date,
+    )
+
+
+@router.post("/{party_id}/receipt", status_code=202, response_model=ReceiptAccepted)
+async def submit_receipt(
+    party_id: uuid.UUID,
+    payload: ReceiptSubmitRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> ReceiptAccepted:
+    """Freeze the re-built preview and queue one irreversible operation."""
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    _idempotency_key(request)
+    await _scoped_party(db, authorizer, actor, party_id, "receipt:submit", lock=True)
+    preview = await build_receipt_preview(
+        db,
+        party_id=party_id,
+        source_revision=payload.source_revision,
+        reconciliation_revision=payload.reconciliation_revision,
+        vet_inspection=payload.vet_inspection,
+        delivery_date=payload.delivery_date,
+    )
+    operation = await queue_receipt(
+        db,
+        preview=preview,
+        confirmation=UserConfirmation(
+            actor_id=identity.actor_id,
+            fingerprint=payload.fingerprint,
+            confirmed_at=datetime.now(UTC),
+        ),
+    )
+    await db.commit()
+    return ReceiptAccepted(
+        operation_id=operation.id,
+        state=operation.state,
+        status_url=f"/api/v1/operations/{operation.id}",
+    )
 
 
 @router.delete("/{party_id}", status_code=204)

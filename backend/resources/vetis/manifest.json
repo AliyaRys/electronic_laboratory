@@ -9,8 +9,11 @@
   "soap_version": "1.1",
   "namespaces": {
     "business": "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2",
-    "application": "http://api.vetrf.ru/schema/cdm/application/v2",
-    "base": "http://api.vetrf.ru/schema/cdm/base"
+    "application": "http://api.vetrf.ru/schema/cdm/application",
+    "application_definitions": "http://api.vetrf.ru/schema/cdm/application/ws-definitions",
+    "base": "http://api.vetrf.ru/schema/cdm/base",
+    "dictionary": "http://api.vetrf.ru/schema/cdm/dictionary/v2",
+    "vet_document": "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"
   },
   "soap_actions": {
     "submit": "submitApplicationRequest",

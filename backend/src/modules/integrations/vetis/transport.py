@@ -56,9 +56,12 @@ PRODUCT_SERVICE_OPERATIONS = frozenset(
     }
 )
 
-_APPLICATION_NS = "http://api.vetrf.ru/schema/cdm/application/v2"
+_APPLICATION_DEFINITIONS_NS = "http://api.vetrf.ru/schema/cdm/application/ws-definitions"
+_APPLICATION_NS = "http://api.vetrf.ru/schema/cdm/application"
 _BASE_NS = "http://api.vetrf.ru/schema/cdm/base"
+_DICTIONARY_NS = "http://api.vetrf.ru/schema/cdm/dictionary/v2"
 _MERCURY_NS = "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2"
+_VET_DOCUMENT_NS = "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"
 
 
 class WriteOperationRejected(Exception):
@@ -142,12 +145,19 @@ class SpyTransport:
     def __init__(self, result_pages: list[str] | None = None) -> None:
         self._pages = list(result_pages or [])
         self.calls: list[dict[str, object]] = []
+        self._last_operation = "GetVetDocumentListOperation"
 
     async def send_application(self, application_xml: str) -> str:
+        operation = (
+            "ProcessIncomingConsignment"
+            if "processIncomingConsignmentRequest" in application_xml
+            else "GetVetDocumentListOperation"
+        )
+        self._last_operation = operation
         self.calls.append(
             {
                 "kind": "submitApplicationRequest",
-                "operation": "GetVetDocumentListOperation",
+                "operation": operation,
                 "xml": application_xml,
                 "at": datetime.now(UTC).isoformat(),
             }
@@ -159,7 +169,9 @@ class SpyTransport:
         self.calls.append(
             {
                 "kind": "receiveApplicationResultRequest",
-                "operation": "GetVetDocumentListOperation",
+                # The business operation being polled (the SOAP action itself
+                # remains recorded in ``kind``).
+                "operation": self._last_operation,
                 "application_id": application_id,
                 "at": datetime.now(UTC).isoformat(),
             }
@@ -194,11 +206,19 @@ class ZeepApplicationTransport:
         connect_timeout_s: int = 10,
         read_timeout_s: int = 60,
         allowed_urls: Collection[str] | None = None,
+        gateway_user: str | None = None,
+        gateway_password: str | None = None,
+        api_key: str | None = None,
+        issuer_id: str | None = None,
     ) -> None:
         self._endpoint = endpoint
         self._connect_timeout = connect_timeout_s
         self._read_timeout = read_timeout_s
         self._allowed_urls = frozenset(allowed_urls or ())
+        self._gateway_user = gateway_user
+        self._gateway_password = gateway_password
+        self._api_key = api_key
+        self._issuer_id = issuer_id
 
     def _client(self) -> object:  # pragma: no cover - requires credentials/zeep at runtime
         import zeep
@@ -212,27 +232,62 @@ class ZeepApplicationTransport:
             forbid_external=True,
         )
         session = RestrictedSession(allowed=self._allowed_urls) if self._allowed_urls else requests.Session()
+        if self._gateway_user is not None and self._gateway_password is not None:
+            session.auth = (self._gateway_user, self._gateway_password)
         transport = Transport(session=session, timeout=self._read_timeout, operation_timeout=self._read_timeout)  # type: ignore[no-untyped-call]
         # TLS verification is left at its verified default (never disabled).
         return zeep.Client(wsdl=f"{self._endpoint}?wsdl", transport=transport, settings=settings)  # type: ignore[no-untyped-call]
 
-    async def send_application(self, application_xml: str) -> str:  # pragma: no cover
-        client = await asyncio.to_thread(self._client)
-        service = client.service  # type: ignore[attr-defined]
-        return await asyncio.to_thread(
-            service.submitApplicationRequest,
-            _tns=_APPLICATION_NS,
-            arg=application_xml,
+    def _post(self, action: str, body: str) -> str:  # pragma: no cover - live boundary
+        session = RestrictedSession(allowed=self._allowed_urls) if self._allowed_urls else requests.Session()
+        if self._gateway_user is not None and self._gateway_password is not None:
+            session.auth = (self._gateway_user, self._gateway_password)
+        envelope = (
+            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
+            f"<soapenv:Header/><soapenv:Body>{body}</soapenv:Body></soapenv:Envelope>"
         )
+        response = session.post(
+            self._endpoint,
+            data=envelope.encode("utf-8"),
+            headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": action},
+            timeout=(self._connect_timeout, self._read_timeout),
+        )
+        response.raise_for_status()
+        return str(response.text)
+
+    async def send_application(self, application_xml: str) -> str:  # pragma: no cover
+        response_xml = await asyncio.to_thread(self._post, "submitApplicationRequest", application_xml)
+        from xml.etree import ElementTree as ET
+
+        root = ET.fromstring(response_xml)
+        application_id = next(
+            (
+                node.text.strip()
+                for node in root.iter()
+                if node.tag.rsplit("}", 1)[-1] == "applicationId" and node.text and node.text.strip()
+            ),
+            None,
+        )
+        if application_id is None:
+            raise ProblemError(
+                status=502,
+                code="VETIS_SUBMIT_RESPONSE_INVALID",
+                title="VetIS submit response invalid",
+                detail="Шлюз ВетИС не вернул applicationId; повторная отправка автоматически запрещена.",
+            )
+        return application_id
 
     async def receive_result(self, application_id: str) -> str:  # pragma: no cover
-        client = await asyncio.to_thread(self._client)
-        service = client.service  # type: ignore[attr-defined]
-        return await asyncio.to_thread(
-            service.receiveApplicationResultRequest,
-            _tns=_APPLICATION_NS,
-            applicationId=application_id,
+        from xml.sax.saxutils import escape
+
+        body = (
+            f'<apldef:receiveApplicationResultRequest xmlns:apldef="{_APPLICATION_DEFINITIONS_NS}">'
+            f"<apldef:apiKey>{escape(self._api_key or '')}</apldef:apiKey>"
+            f"<apldef:issuerId>{escape(self._issuer_id or '')}</apldef:issuerId>"
+            f"<apldef:applicationId>{escape(application_id)}</apldef:applicationId>"
+            "</apldef:receiveApplicationResultRequest>"
         )
+        return await asyncio.to_thread(self._post, "receiveApplicationResultRequest", body)
 
 
 def build_get_vet_document_list_application(
@@ -240,6 +295,7 @@ def build_get_vet_document_list_application(
     endpoint_namespace: str,
     service_id: str,
     issuer_id: str,
+    business_member_id: str,
     enterprise_id: str,
     initiator: str,
     offset: int,
@@ -257,22 +313,29 @@ def build_get_vet_document_list_application(
         raise WriteOperationRejected("GetVetDocumentListOperation")
     count = max(1, min(count, 1000))
     offset = max(0, offset)
-    api_key_line = f"<ns2:apiKey>{escape(api_key)}</ns2:apiKey>" if api_key else ""
+    import uuid
+
+    api_key_value = escape(api_key or "")
     return (
-        f'<ns2:submitApplicationRequest xmlns:ns2="{_APPLICATION_NS}" '
-        f'xmlns:bs="{_BASE_NS}" xmlns:mer="{_MERCURY_NS}">'
-        f"{api_key_line}"
-        "<ns2:application>"
-        f"<ns2:serviceId>{escape(service_id)}</ns2:serviceId>"
-        f"<ns2:issuerId>{escape(issuer_id)}</ns2:issuerId>"
-        f"<ns2:issueDate>{datetime.now(UTC).isoformat()}</ns2:issueDate>"
-        "<mer:getVetDocumentListRequest>"
-        f"<mer:enterpriseGuid>{escape(enterprise_id)}</mer:enterpriseGuid>"
-        f"<mer:initiator><bs:login>{escape(initiator)}</bs:login></mer:initiator>"
-        "<bs:vetDocumentType>INCOMING</bs:vetDocumentType>"
-        "<bs:vetDocumentStatus>CONFIRMED</bs:vetDocumentStatus>"
-        f"<bs:count>{count}</bs:count>"
-        f"<bs:offset>{offset}</bs:offset>"
-        "</mer:getVetDocumentListRequest>"
-        "</ns2:application></ns2:submitApplicationRequest>"
+        f'<apldef:submitApplicationRequest xmlns:apldef="{_APPLICATION_DEFINITIONS_NS}" '
+        f'xmlns:apl="{_APPLICATION_NS}" xmlns:bs="{_BASE_NS}" xmlns:dt="{_DICTIONARY_NS}" '
+        f'xmlns:mercvu="{_MERCURY_NS}" xmlns:vd="{_VET_DOCUMENT_NS}">'
+        f"<apldef:apiKey>{api_key_value}</apldef:apiKey>"
+        "<apl:application>"
+        f"<apl:serviceId>{escape(service_id)}</apl:serviceId>"
+        f"<apl:issuerId>{escape(issuer_id)}</apl:issuerId>"
+        f"<apl:issueDate>{datetime.now(UTC).isoformat()}</apl:issueDate>"
+        "<apl:data>"
+        "<mercvu:getVetDocumentListRequest>"
+        f"<mercvu:localTransactionId>{uuid.uuid4()}</mercvu:localTransactionId>"
+        f"<mercvu:initiator><vd:login>{escape(initiator)}</vd:login></mercvu:initiator>"
+        f"<bs:listOptions><bs:count>{count}</bs:count><bs:offset>{offset}</bs:offset></bs:listOptions>"
+        "<vd:vetDocumentType>INCOMING</vd:vetDocumentType>"
+        "<vd:vetDocumentStatus>CONFIRMED</vd:vetDocumentStatus>"
+        "<mercvu:businessMember>"
+        f"<dt:businessEntity><bs:guid>{escape(business_member_id)}</bs:guid></dt:businessEntity>"
+        f"<dt:enterprise><bs:guid>{escape(enterprise_id)}</bs:guid></dt:enterprise>"
+        "</mercvu:businessMember>"
+        "</mercvu:getVetDocumentListRequest>"
+        "</apl:data></apl:application></apldef:submitApplicationRequest>"
     )

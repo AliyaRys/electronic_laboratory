@@ -57,3 +57,36 @@
 Контрактные проверки XPath/namespace и отдельных уровней выполняются в
 `backend/tests/vetis/test_read_contract.py` на обезличенных fixtures
 (де-идентифицированные UUID, без credentials).
+
+## 5. Гашение: CHK → ProcessIncomingConsignment (W01/W02)
+
+XML preview строится только из закреплённой ревизии исходного XML и сохранённой
+сверки. Текущий складской остаток в расчёте не участвует. Перед постановкой в
+очередь сервер повторно проверяет checksum XML, получателя, `CONFIRMED`, объём,
+единицу, ревизию сверки и fingerprint preview.
+
+| Решение | `acceptedConsignment` | `returnedDelivery` | `discrepancyReport` |
+| --- | --- | --- | --- |
+| `ACCEPT_ALL` | весь доставленный объём | отсутствует | обязателен при `docInspection=MISMATCH` |
+| `PARTIALLY` | положительная принятая часть | положительный остаток + причина | обязателен при `docInspection=MISMATCH` |
+| `RETURN_ALL` | отсутствует | весь доставленный объём + причина | отсутствует |
+
+- `vetCertificatePresence=ELECTRONIC`, исходный UUID берётся из входящего эВСД.
+- `vetInspection` (`CORRESPONDS`/`MISMATCH`/`UNSUPERVISED`) выбирается отдельно
+  от результата документарной сверки.
+- `OTHER_REASON` всегда требует текст. Блокирующее расхождение допускает только
+  полный возврат. Причина возврата передаётся в `authentication/specialMarks`
+  строкой `Причина возврата: <ID>`; для `OTHER_REASON` после ID добавляется
+  пояснение до 240 символов.
+- `localTransactionId` — локальная неизменяемая идентичность, `applicationId` —
+  отдельный ответ шлюза; одно не подменяет другое.
+- Перед сетью журнал долговечно переходит в `SUBMITTING`. Потеря ответа submit
+  без `applicationId` означает `UNKNOWN` и запрещает автоматический повтор.
+- Только полный ответ с совпавшими исходным UUID, получателем, принятой и
+  возвращённой частью создаёт `receipt_confirmation`. `REJECTED`, timeout и
+  неполные связи не открывают локальную ВСЭ.
+
+Проверки находятся в `backend/tests/vetis/test_receipt_mapping.py`,
+`test_receipt_failures.py` и `test_reconcile.py`. Они используют только
+обезличенные fixtures/spy; живой `ProcessIncomingConsignment` не выполняется
+согласно O-13.

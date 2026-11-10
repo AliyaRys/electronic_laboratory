@@ -501,16 +501,16 @@ async def test_no_http_force_success(arrivals_vet_env) -> None:  # noqa: F811 - 
         assert refused.status_code == 422
         assert refused.json()["code"] == "VALIDATION_ERROR"
 
-        # No force-confirm endpoint exists at all (the ТЗ-11 intent endpoint is
-        # a separate 202 operation that never accepts a verified fact): the
-        # unmatched path answers 404 — a client cannot fabricate a
-        # confirmation through HTTP.
+        # W01 provides an intent endpoint, but its strict schema never accepts
+        # external evidence or a client-supplied operation id.  Fabricated
+        # confirmation input is rejected before any intent/outbox write.
         forced = await http.post(
             f"/api/v1/arrivals/{party.id}/receipt",
             json={"verified": True, "operation_id": str(uuid.uuid4())},
             headers=headers,  # type: ignore[attr-defined]
         )
-        assert forced.status_code == 404
+        assert forced.status_code == 422
+        assert forced.json()["code"] == "VALIDATION_ERROR"
 
     from backend.src.interfaces.main import app
 

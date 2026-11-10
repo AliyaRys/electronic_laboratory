@@ -105,6 +105,7 @@ class VetisReadAdapter:
         manifest: VetisManifest,
         clock: Callable[[], datetime] | None = None,
         issuer_id: str = "",
+        api_key: str | None = None,
     ) -> None:
         self._transport = transport
         self._manifest = manifest
@@ -112,6 +113,7 @@ class VetisReadAdapter:
         # Issuer/application identity comes from the server-side secret file
         # via the composition root; it is never logged and never in fixtures.
         self._issuer_id = issuer_id
+        self._api_key = api_key
 
     def require_live_ready(self) -> None:
         """Refuse the network honestly until WSDL/XSD are pinned and verified."""
@@ -132,10 +134,12 @@ class VetisReadAdapter:
             endpoint_namespace=self._manifest.namespaces["business"],
             service_id=self._manifest.service_id,
             issuer_id=self._issuer_id,
+            business_member_id=scope.business_member_id,
             enterprise_id=scope.enterprise_id,
             initiator=initiator,
             offset=state.offset,
             count=_PAGE_SIZE,
+            api_key=self._api_key,
         )
         application_id = await self._transport.send_application(application)
         result_xml = await self._transport.receive_result(application_id)

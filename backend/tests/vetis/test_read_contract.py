@@ -430,12 +430,15 @@ async def test_transport_rejects_write_operations() -> None:
         endpoint_namespace="http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2",
         service_id="mercury-vu.service:2.0",
         issuer_id="fixture-issuer",
+        business_member_id="fixture-business-member-guid",
         enterprise_id="fixture-enterprise-guid",
         initiator="fixture-initiator",
         offset=0,
         count=1000,
     )
     assert "getVetDocumentListRequest" in application
+    assert "fixture-business-member-guid" in application
+    assert "<bs:listOptions>" in application
     assert "ProcessIncomingConsignment" not in application
 
 

@@ -105,7 +105,12 @@ export function Dialog({
             </Button>
           </div>
           <RadixDialog.Close asChild>
-            <button type="button" className="app-dialog-close" aria-label="Закрыть диалог">
+            <button
+              type="button"
+              className="app-dialog-close"
+              aria-label="Закрыть диалог"
+              onClick={() => onOpenChange(false)}
+            >
               ✕
             </button>
           </RadixDialog.Close>

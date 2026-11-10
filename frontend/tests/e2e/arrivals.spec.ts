@@ -157,7 +157,11 @@ test.describe("arrivals", () => {
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(singleView) }),
     );
     await page.route(`**/api/v1/arrivals/${PARTY}/reconciliation`, (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(reconciliationView) }),
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(reconciliationView),
+      }),
     );
     await page.getByRole("link", { name: "говядина" }).click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/arrivals/${PARTY}/reconciliation`));

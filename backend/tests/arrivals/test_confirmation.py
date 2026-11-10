@@ -518,6 +518,24 @@ async def test_no_http_force_success(arrivals_vet_env) -> None:  # noqa: F811 - 
     assert "ReceiptEvidence" not in spec.get("components", {}).get("schemas", {})
 
 
+async def test_receipt_context_is_read_only_and_disabled_by_default(arrivals_vet_env, monkeypatch) -> None:  # noqa: F811
+    """W03 can explain the installation gate without creating an intent."""
+    env = arrivals_vet_env
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "false")
+    party = await commands.upsert_incoming(env.db, document(uuid.uuid4(), env.own.id))  # type: ignore[attr-defined]
+    await env.db.commit()  # type: ignore[attr-defined]
+    async with _client_for(env) as (http, _identity):  # type: ignore[operator]
+        response = await http.get(f"/api/v1/arrivals/{party.id}/receipt-context")
+    assert response.status_code == 200
+    assert response.json() == {
+        "write_enabled": False,
+        "source_revision": None,
+        "reconciliation_revision": None,
+        "operation_id": None,
+        "operation_state": None,
+    }
+
+
 # --- helpers ----------------------------------------------------------------------
 
 

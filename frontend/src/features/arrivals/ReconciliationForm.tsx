@@ -1,27 +1,33 @@
 /**
- * ReconciliationForm (A02, FT-ARR-02/03): the composed CHK screen in the
- * fixed block order (документ → участники → транспорт → продукция →
- * сопроводительные → прежняя ВСЭ → результаты → стоимость). RHF + zod
+ * ReconciliationForm (A02, FT-ARR-02/03): the composed CHK screen aligned
+ * with the approved evsd-check mockup — the fixed section order (документ →
+ * участники → транспорт → продукция → сопроводительные → ранее проведённая
+ * ВСЭ → результаты сверки → расчёт стоимости услуг), the comparison cards,
+ * the sticky action panel and the linked discrepancy act. RHF + zod
  * validation at submit (the catalog-editor pattern); the save command runs
  * through ``useCommand`` so a conflict offers the actual state (never merges)
  * and a network error never loses the entered input. The started
  * reconciliation may be incomplete: it is saved separately and the completion
  * belongs to the external receipt (ТЗ-11).
  */
-import "./arrivals.css";
+import "./reconciliation.css";
 import { z } from "zod";
 import { useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useDirtyGuard } from "../context/SwitchContext";
 import { useCommand } from "../../shared/api/command";
 import type { Problem } from "../../shared/api/problem";
-import { Button } from "../../shared/ui/Button";
 import { Field } from "../../shared/ui/Field";
 import { StatusView } from "../../shared/ui/StatusView";
 import {
+  CHECK_SECTION_DESCRIPTIONS,
+  CHECK_SECTION_TITLES,
   comparedFields,
   computeAllowedDecisions,
   decisionLabel,
+  documentFacts,
+  partyUnit,
+  participantOwner,
   previousVse,
   saveReconciliation,
   revisionEtag,
@@ -31,7 +37,10 @@ import {
   type ReconciliationView,
   type ReconciliationWrite,
 } from "./api";
-import { ComparisonField, type ComparisonValue } from "./ComparisonField";
+import { ComparisonField, ReferenceField, type ComparisonValue } from "./ComparisonField";
+import { CheckSectionCard } from "./CheckSectionCard";
+import { ReconciliationActions } from "./ReconciliationActions";
+import { ReconciliationFeedback } from "./ReconciliationFeedback";
 import { ActPreview } from "./ActPreview";
 import { ReceiptDecision } from "./ReceiptDecision";
 
@@ -177,40 +186,72 @@ function toPayload(values: FormValues, party: IncomingView): ReconciliationWrite
   };
 }
 
+/** The observation cards of the transport section with semantic tone. */
+const COMPARTMENT_TONES: Readonly<Record<string, string>> = Object.freeze({
+  COMPLIANT: "positive",
+  DIRTY_OR_DAMAGED: "negative",
+});
+
+const JOINT_TONES: Readonly<Record<string, string>> = Object.freeze({
+  NONE: "positive",
+  SEPARATED: "positive",
+  NOT_SEPARATED: "negative",
+});
+
+const QUANTITY_PARTS = ["delivered", "accepted", "returned"] as const;
+
 export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFormProps): React.ReactElement {
   const compared = useMemo(() => comparedFields(party), [party]);
   const previous = useMemo(() => previousVse(party), [party]);
+  const unit = useMemo(() => partyUnit(party), [party]);
+  const facts = useMemo(() => documentFacts(party), [party]);
+  const senderOwner = participantOwner(party, "sender");
+  const receiverOwner = participantOwner(party, "receiver");
   const form = useForm<FormValues>({ defaultValues: initialValues(party, initial) });
   const values = useWatch({ control: form.control }) as FormValues;
   useDirtyGuard(form.formState.isDirty, "Сверка");
   const command = useCommand<ReconciliationView>();
   const [formError, setFormError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const submit = form.handleSubmit((formValues) => {
-    const parsed = formSchema.safeParse(formValues);
-    if (!parsed.success) {
-      setFormError("Проверьте введённые значения количеств и отметки.");
-      return;
-    }
-    setFormError("");
-    void command.submit(
-      async (ctx) => {
-        const result = await saveReconciliation(
-          party.party_id,
-          toPayload(formValues, party),
-          revisionEtag(party),
-        )(ctx);
-        if (result.response.ok && result.data !== undefined) {
-          // The server returned the saved view: publish it and refresh the
-          // form state (dirty flag clears with the confirmed facts).
-          onSaved(result.data);
-          form.reset(initialValues(party, result.data));
+  const submit = (event: React.FormEvent<HTMLFormElement>): void => {
+    const formElement = event.currentTarget;
+    void form.handleSubmit((formValues) => {
+      const parsed = formSchema.safeParse(formValues);
+      if (!parsed.success) {
+        const errors: Record<string, string> = {};
+        for (const issue of parsed.error.issues) {
+          errors[issue.path.join(".")] = issue.message;
         }
-        return result;
-      },
-      { queryKey: [party.laboratory_id, party.party_id, "reconciliation"] },
-    );
-  });
+        setFieldErrors(errors);
+        setFormError("Проверьте введённые значения количеств и отметки.");
+        // The focus moves to the first invalid field of the composed form.
+        requestAnimationFrame(() => {
+          formElement.querySelector<HTMLElement>('.app-field input[aria-invalid="true"]')?.focus();
+        });
+        return;
+      }
+      setFieldErrors({});
+      setFormError("");
+      void command.submit(
+        async (ctx) => {
+          const result = await saveReconciliation(
+            party.party_id,
+            toPayload(formValues, party),
+            revisionEtag(party),
+          )(ctx);
+          if (result.response.ok && result.data !== undefined) {
+            // The server returned the saved view: publish it and refresh the
+            // form state (dirty flag clears with the confirmed facts).
+            onSaved(result.data);
+            form.reset(initialValues(party, result.data));
+          }
+          return result;
+        },
+        { queryKey: [party.laboratory_id, party.party_id, "reconciliation"] },
+      );
+    })(event);
+  };
 
   const decisionErrors: Record<string, string> = {};
   const problem = command.error;
@@ -235,161 +276,214 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   const comparisonChange = (fieldId: string) => (next: ComparisonValue) =>
     form.setValue(`comparisons.${fieldId}`, next, { shouldDirty: true });
 
-  return (
-    <form className="vse-reconciliation-form" onSubmit={(event) => void submit(event)} noValidate>
-      <section className="vse-check-block" aria-label="Документ">
-        <h3>Документ</h3>
-        <dl className="vse-check-info">
-          <div>
-            <dt>Номер эВСД</dt>
-            <dd>{party.external.fields.documentNumber ?? "—"}</dd>
-          </div>
-          <div>
-            <dt>Статус</dt>
-            <dd>{party.external.status}</dd>
-          </div>
-        </dl>
-      </section>
+  const markAllCompared = (): void => {
+    for (const field of compared) {
+      const current = comparisonValue(field.fieldId);
+      if (current.matches !== true) {
+        form.setValue(`comparisons.${field.fieldId}`, { ...current, matches: true }, { shouldDirty: true });
+      }
+    }
+  };
 
-      {(["Участники перевозки", "Идентификация транспорта", "Идентификация продукции"] as const).map(
-        (block) => (
-          <section key={block} className="vse-check-block" aria-label={block}>
-            <h3>{block}</h3>
-            {compared
-              .filter((field) => field.block === block)
-              .map((field) => (
-                <ComparisonField
-                  key={field.fieldId}
-                  fieldId={field.fieldId}
-                  label={field.label}
-                  block={field.block}
-                  source={field.source}
-                  value={comparisonValue(field.fieldId)}
-                  onChange={comparisonChange(field.fieldId)}
-                />
-              ))}
-            {block === "Идентификация транспорта" ? (
-              <>
-                <div className="app-field">
-                  <div className="app-field-heading">
-                    <label htmlFor="inspection-compartment">Состояние грузового отделения</label>
-                  </div>
-                  <select
-                    id="inspection-compartment"
-                    value={values.compartment ?? ""}
-                    onChange={(event) =>
-                      form.setValue(
-                        "compartment",
-                        (event.target.value === "" ? null : event.target.value) as FormValues["compartment"],
-                        { shouldDirty: true },
-                      )
-                    }
-                  >
-                    <option value="">Не указано</option>
-                    <option value="COMPLIANT">Без загрязнений и повреждений</option>
-                    <option value="DIRTY_OR_DAMAGED">Есть загрязнения или повреждения</option>
-                  </select>
-                </div>
-                <div className="app-field">
-                  <div className="app-field-heading">
-                    <label htmlFor="inspection-joint">Совместная перевозка с другими грузами</label>
-                  </div>
-                  <select
-                    id="inspection-joint"
-                    value={values.joint_carriage ?? ""}
-                    onChange={(event) =>
-                      form.setValue(
-                        "joint_carriage",
-                        (event.target.value === ""
-                          ? null
-                          : event.target.value) as FormValues["joint_carriage"],
-                        { shouldDirty: true },
-                      )
-                    }
-                  >
-                    <option value="">Не указано</option>
-                    <option value="NONE">Без других грузов</option>
-                    <option value="SEPARATED">Совместная с разделением</option>
-                    <option value="NOT_SEPARATED">Совместная без разделения</option>
-                  </select>
-                </div>
-              </>
-            ) : null}
-            {block === "Идентификация продукции" ? (
-              <div className="vse-quantities">
-                {(["delivered", "accepted", "returned"] as const).map((part) => (
-                  <div key={part} className="vse-quantities-part">
-                    <p className="vse-quantities-title">
-                      {{ delivered: "Доставлено", accepted: "Принято", returned: "Возвращается" }[part]}
-                    </p>
-                    <Field
-                      label="Вес, кг"
-                      value={values[part].mass_kg}
-                      onChange={(next) => form.setValue(`${part}.mass_kg`, next, { shouldDirty: true })}
-                    />
-                    <Field
-                      label="Количество"
-                      value={values[part].quantity}
-                      onChange={(next) => form.setValue(`${part}.quantity`, next, { shouldDirty: true })}
-                    />
-                  </div>
-                ))}
+  const compareField = (fieldId: string): React.ReactElement => {
+    const field = compared.find((entry) => entry.fieldId === fieldId);
+    if (field === undefined) {
+      throw new TypeError(`Сравниваемое поле не найдено: ${fieldId}`);
+    }
+    return (
+      <ComparisonField
+        key={field.fieldId}
+        fieldId={field.fieldId}
+        label={field.label}
+        block={field.block}
+        source={field.source}
+        value={comparisonValue(field.fieldId)}
+        onChange={comparisonChange(field.fieldId)}
+        error={fieldErrors[`comparisons.${field.fieldId}`] ?? ""}
+      />
+    );
+  };
+
+  const compareGrid = (block: "participants" | "transport" | "product"): React.ReactElement[] =>
+    compared.filter((field) => field.block === block).map((field) => compareField(field.fieldId));
+
+  return (
+    <form className="vse-rec-form" onSubmit={(event) => void submit(event)} noValidate>
+      {/* 1. Документ — real available facts, neutral reference cards. */}
+      <CheckSectionCard
+        sectionKey="document"
+        title={CHECK_SECTION_TITLES.document}
+        description={CHECK_SECTION_DESCRIPTIONS.document}
+      >
+        <div className="vse-rec-compare-grid">
+          {facts.map((fact) => (
+            <ReferenceField key={fact.label} label={fact.label} value={fact.value} />
+          ))}
+        </div>
+      </CheckSectionCard>
+
+      {/* 2. Участники перевозки — sender/receiver sub-cards of the mockup. */}
+      <CheckSectionCard
+        sectionKey="participants"
+        title={CHECK_SECTION_TITLES.participants}
+        description={CHECK_SECTION_DESCRIPTIONS.participants}
+      >
+        <div className="vse-rec-participants">
+          <div className="vse-rec-participant-card" aria-labelledby="vse-rec-sender-title">
+            <h3 id="vse-rec-sender-title">Сведения об отправителе</h3>
+            {compared.some((field) => field.fieldId === "CHK-F05") ? compareField("CHK-F05") : null}
+            {senderOwner !== null ? (
+              <div className="vse-rec-compare reference">
+                <span className="vse-rec-compare-name">Владелец продукции</span>
+                <span className="vse-rec-mercury-value vse-rec-owner-value">{senderOwner}</span>
               </div>
             ) : null}
-          </section>
-        ),
-      )}
+          </div>
+          <div className="vse-rec-participant-card" aria-labelledby="vse-rec-receiver-title">
+            <h3 id="vse-rec-receiver-title">Сведения о получателе</h3>
+            {compared.some((field) => field.fieldId === "CHK-F07") ? compareField("CHK-F07") : null}
+            {receiverOwner !== null ? (
+              <div className="vse-rec-compare reference">
+                <span className="vse-rec-compare-name">Владелец продукции</span>
+                <span className="vse-rec-mercury-value vse-rec-owner-value">{receiverOwner}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </CheckSectionCard>
 
-      <section className="vse-check-block" aria-label="Сопроводительные документы">
-        <h3>Сопроводительные документы</h3>
-        <p className="vse-check-note">
-          Сведения транспортного документа приходят из эВСД; отдельные серии и связанные документы не вводятся
-          (FT-ARR-05).
+      {/* 3. Транспорт — comparison grid + the two observation cards. */}
+      <CheckSectionCard
+        sectionKey="transport"
+        title={CHECK_SECTION_TITLES.transport}
+        description={CHECK_SECTION_DESCRIPTIONS.transport}
+      >
+        <div className="vse-rec-compare-grid">{compareGrid("transport")}</div>
+        <div className="vse-rec-observations" aria-label="Фактическое состояние перевозки">
+          <div
+            className={`vse-rec-observation${
+              values.compartment !== null ? ` ${COMPARTMENT_TONES[values.compartment] ?? ""}` : ""
+            }`}
+          >
+            <label htmlFor="inspection-compartment">Состояние грузового отделения</label>
+            <select
+              id="inspection-compartment"
+              required
+              value={values.compartment ?? ""}
+              onChange={(event) =>
+                form.setValue(
+                  "compartment",
+                  (event.target.value === "" ? null : event.target.value) as FormValues["compartment"],
+                  { shouldDirty: true },
+                )
+              }
+            >
+              <option value="">Выберите значение</option>
+              <option value="COMPLIANT">Соответствует требованиям</option>
+              <option value="DIRTY_OR_DAMAGED">Есть загрязнения или повреждения</option>
+            </select>
+          </div>
+          <div
+            className={`vse-rec-observation${
+              values.joint_carriage !== null ? ` ${JOINT_TONES[values.joint_carriage] ?? ""}` : ""
+            }`}
+          >
+            <label htmlFor="inspection-joint">Совместная перевозка с другими грузами</label>
+            <select
+              id="inspection-joint"
+              required
+              value={values.joint_carriage ?? ""}
+              onChange={(event) =>
+                form.setValue(
+                  "joint_carriage",
+                  (event.target.value === "" ? null : event.target.value) as FormValues["joint_carriage"],
+                  { shouldDirty: true },
+                )
+              }
+            >
+              <option value="">Выберите значение</option>
+              <option value="NONE">Нет</option>
+              <option value="SEPARATED">Да, грузы разделены</option>
+              <option value="NOT_SEPARATED">Да, разделение не обеспечено</option>
+            </select>
+          </div>
+        </div>
+      </CheckSectionCard>
+
+      {/* 4. Продукция — classification grid + the quantity sets. */}
+      <CheckSectionCard
+        sectionKey="product"
+        title={CHECK_SECTION_TITLES.product}
+        description={CHECK_SECTION_DESCRIPTIONS.product}
+      >
+        <div className="vse-rec-compare-grid">{compareGrid("product")}</div>
+        <div className="vse-rec-quantities" aria-label="Количества партии">
+          {QUANTITY_PARTS.map((part) => {
+            const title = { delivered: "Доставлено", accepted: "Принято", returned: "Возвращается" }[part];
+            return (
+              <div key={part} className="vse-rec-quantities-part">
+                <p className="vse-rec-quantities-title">{title}</p>
+                <Field
+                  label="Вес, кг"
+                  value={values[part].mass_kg}
+                  error={fieldErrors[`${part}.mass_kg`] ?? ""}
+                  onChange={(next) => form.setValue(`${part}.mass_kg`, next, { shouldDirty: true })}
+                />
+                <Field
+                  label={unit !== "" ? `Количество (${unit})` : "Количество"}
+                  value={values[part].quantity}
+                  error={fieldErrors[`${part}.quantity`] ?? ""}
+                  onChange={(next) => form.setValue(`${part}.quantity`, next, { shouldDirty: true })}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </CheckSectionCard>
+
+      {/* 5. Сопроводительные документы — honest empty state (no FT-ARR-05 id). */}
+      <CheckSectionCard
+        sectionKey="documents"
+        title={CHECK_SECTION_TITLES.documents}
+        description={CHECK_SECTION_DESCRIPTIONS.documents}
+      >
+        <p className="vse-rec-prior-note">
+          Отдельные реквизиты транспортного документа в эВСД этой партии не заполнены. Документ сверки — сам
+          транспортный эВСД, дополнительные серии не вводятся.
         </p>
-      </section>
+      </CheckSectionCard>
 
-      <section className="vse-check-block" aria-label="Прежняя ВСЭ">
-        <h3>Прежняя ВСЭ</h3>
+      {/* 6. Ранее проведённая ВСЭ. */}
+      <CheckSectionCard
+        sectionKey="priorVse"
+        title={CHECK_SECTION_TITLES.priorVse}
+        description={CHECK_SECTION_DESCRIPTIONS.priorVse}
+      >
         {previous === null ? (
-          <p className="vse-check-note">
-            Сведений прежней ВСЭ в эВСД нет: по этой партии обязательна местная ВСЭ (без фиктивного выбора
-            повторной).
+          <p className="vse-rec-prior-note">
+            Сведений ранее проведённой ВСЭ в эВСД нет: по этой партии обязательна местная ВСЭ (без фиктивного
+            выбора повторной).
           </p>
         ) : (
           <>
-            <dl className="vse-check-info">
+            <div className="vse-rec-compare-grid">
               {previous.stamp !== "" ? (
-                <div>
-                  <dt>Клеймо убойного пункта</dt>
-                  <dd>{previous.stamp}</dd>
-                </div>
+                <ReferenceField label="Клеймо убойного пункта" value={previous.stamp} />
               ) : null}
-              <div>
-                <dt>Номер экспертизы</dt>
-                <dd>{previous.number || "—"}</dd>
-              </div>
-              <div>
-                <dt>Дата проведения</dt>
-                <dd>{previous.performedOn || "—"}</dd>
-              </div>
-              <div>
-                <dt>Организация-оператор</dt>
-                <dd>{previous.organization || "—"}</dd>
-              </div>
-              <div>
-                <dt>Результат осмотра</dt>
-                <dd>{previous.result || "—"}</dd>
-              </div>
-              {previous.conclusion !== "" ? (
-                <div>
-                  <dt>Заключение</dt>
-                  <dd>{previous.conclusion}</dd>
-                </div>
-              ) : null}
-            </dl>
-            <fieldset className="vse-repeat">
+              <ReferenceField label="Номер экспертизы" value={previous.number || "—"} />
+              <ReferenceField label="Дата проведения" value={previous.performedOn || "—"} />
+              <ReferenceField label="Организация-оператор" value={previous.organization || "—"} />
+              <ReferenceField label="Результат осмотра" value={previous.result || "—"} />
+            </div>
+            {previous.conclusion !== "" ? (
+              <details className="vse-rec-prior-conclusion">
+                <summary>Заключение</summary>
+                <p>{previous.conclusion}</p>
+              </details>
+            ) : null}
+            <fieldset className="vse-rec-repeat">
               <legend>Необходимость повторного ВСЭ</legend>
-              <label className="vse-comparison-mark">
+              <label className="vse-rec-mark">
                 <input
                   type="radio"
                   name="repeat.required"
@@ -398,7 +492,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
                 />
                 Требуется
               </label>
-              <label className="vse-comparison-mark">
+              <label className="vse-rec-mark">
                 <input
                   type="radio"
                   name="repeat.required"
@@ -408,7 +502,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
                 Не требуется
               </label>
               {values.repeat_required === true ? (
-                <div className="vse-repeat-inputs">
+                <div className="vse-rec-repeat-inputs">
                   <Field
                     id="repeat-reason"
                     label="Основание для проведения повторной ВСЭ"
@@ -426,10 +520,14 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             </fieldset>
           </>
         )}
-      </section>
+      </CheckSectionCard>
 
-      <section className="vse-check-block" aria-label="Результаты">
-        <h3>Результаты</h3>
+      {/* 7. Результаты сверки — decisions, transaction, derived act. */}
+      <CheckSectionCard
+        sectionKey="results"
+        title={CHECK_SECTION_TITLES.results}
+        description={CHECK_SECTION_DESCRIPTIONS.results}
+      >
         <ReceiptDecision
           value={{
             decision: values.decision,
@@ -437,7 +535,6 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             return_reason_text: values.return_reason_text,
             transaction_planned: values.transaction_planned,
             transaction_type: values.transaction_type,
-            fair: values.fair,
           }}
           onChange={(next) => {
             form.setValue("decision", next.decision, { shouldDirty: true });
@@ -445,70 +542,81 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             form.setValue("return_reason_text", next.return_reason_text, { shouldDirty: true });
             form.setValue("transaction_planned", next.transaction_planned, { shouldDirty: true });
             form.setValue("transaction_type", next.transaction_type, { shouldDirty: true });
-            form.setValue("fair", next.fair, { shouldDirty: true });
           }}
           allowed={allowed}
           errors={decisionErrors}
         />
-      </section>
+        <ActPreview act={initial.act} decision={decision} problemItems={actErrors} />
+      </CheckSectionCard>
 
-      <section className="vse-check-block" aria-label="Стоимость">
-        <h3>Стоимость</h3>
-        <p className="vse-check-note">
-          Расчёт стоимости формируется сервером по принятому составу; ярмарка обнуляет платные услуги
-          (CHK-F41).
-        </p>
-      </section>
-
-      <ActPreview act={initial.act} decision={decision} problemItems={actErrors} />
+      {/* 8. Расчёт стоимости услуг — honest server state, the fair flag. */}
+      <CheckSectionCard
+        sectionKey="invoice"
+        title={CHECK_SECTION_TITLES.invoice}
+        description={CHECK_SECTION_DESCRIPTIONS.invoice}
+      >
+        {initial.services.length === 0 ? (
+          <p className="vse-rec-invoice-empty">
+            Стоимость будет рассчитана после сохранения и подтверждения сверки.
+          </p>
+        ) : (
+          <div className="vse-rec-invoice-table-wrap">
+            <table className="vse-rec-invoice-table">
+              <caption className="vse-visually-hidden">Расчёт стоимости услуг по сверке</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Услуга</th>
+                  <th scope="col">Количество</th>
+                  <th scope="col">Тариф</th>
+                  <th scope="col">Сумма</th>
+                </tr>
+              </thead>
+              <tbody>
+                {initial.services.map((service) => (
+                  <tr key={service.code}>
+                    <td>{service.code}</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>—</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <label className="vse-rec-invoice-waiver">
+          <input
+            type="checkbox"
+            checked={values.fair}
+            onChange={(event) => form.setValue("fair", event.target.checked, { shouldDirty: true })}
+          />
+          <span>
+            <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
+            <span className="vse-rec-invoice-waiver-note">
+              Сверка данных и ВСЭ по этой партии проводятся без оплаты.
+            </span>
+          </span>
+        </label>
+      </CheckSectionCard>
 
       {formError !== "" ? <StatusView state="forbidden" title={formError} /> : null}
 
-      {problem !== null && problem.code !== "VALIDATION_ERROR" ? (
-        <StatusView
-          state={
-            problem.code === "REVISION_CONFLICT" || problem.code === "STATE_CONFLICT"
-              ? "not-found"
-              : "network-error"
-          }
-          title={
-            problem.code === "REVISION_CONFLICT" || problem.code === "STATE_CONFLICT"
-              ? "Сверка изменена или подтверждена другим пользователем."
-              : "Не удалось сохранить сверку."
-          }
-          detail={problem.detail}
-          trace={problem.trace_id !== "" ? `trace_id: ${problem.trace_id}` : undefined}
-          onRetry={
-            problem.code === "REVISION_CONFLICT" || problem.code === "STATE_CONFLICT"
-              ? () => void command.refresh()
-              : () => void command.retry()
-          }
-        />
-      ) : null}
-      {problem !== null && problem.code === "VALIDATION_ERROR" && decisionErrors.decision === undefined ? (
-        <StatusView
-          state="forbidden"
-          title="Сервер вернул ошибки проверки."
-          detail={problem.detail}
-          trace={problem.trace_id !== "" ? `trace_id: ${problem.trace_id}` : undefined}
-        />
-      ) : null}
+      <ReconciliationFeedback
+        problem={problem}
+        decisionError={decisionErrors.decision}
+        onRefresh={() => void command.refresh()}
+        onRetry={() => void command.retry()}
+      />
 
-      <div className="vse-form-actions">
-        <Button type="submit" variant="primary" disabled={command.status === "pending"}>
-          {command.status === "pending" ? "Сохранение…" : "Сохранить сверку"}
-        </Button>
-        {initial.complete ? (
-          <span className="vse-arrival-hint">
-            Сверка заполнена полностью; отправка приёмки — следующим шагом.
-          </span>
-        ) : (
-          <span className="vse-arrival-hint">
-            Начатая сверка сохраняется и может быть неполной
-            {decision !== null ? `; выбрано: ${decisionLabel(decision)}` : ""}.
-          </span>
-        )}
-      </div>
+      {/* 9. Sticky action panel of the mockup. */}
+      <ReconciliationActions
+        laboratoryId={party.laboratory_id}
+        busy={command.status === "pending"}
+        complete={initial.complete}
+        chosenDecision={decision !== null ? decisionLabel(decision) : undefined}
+        canMarkAll={compared.length > 0}
+        onMarkAll={markAllCompared}
+      />
     </form>
   );
 }

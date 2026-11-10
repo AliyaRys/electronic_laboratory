@@ -114,6 +114,29 @@ describe("ReconciliationPage", () => {
     expect(screen.getByText("№ A-001234")).toBeInTheDocument();
   });
 
+  it("renders the mockup title row with the Mercury badge", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}`, () => HttpResponse.json(party)),
+      http.get(`*/api/v1/arrivals/${PARTY}/reconciliation`, () => HttpResponse.json(emptyReconciliation)),
+    );
+    renderRoute();
+    expect(
+      await screen.findByRole("heading", { name: "Сверка данных транспортного эВСД" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Меркурий")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← Поступления" })).toBeInTheDocument();
+  });
+
+  it("renders the loading state while the reads are in flight", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}`, () => HttpResponse.json(party)),
+      http.get(`*/api/v1/arrivals/${PARTY}/reconciliation`, () => new Promise(() => undefined)),
+    );
+    renderRoute();
+    expect(await screen.findByText("Загрузка сверки…")).toBeInTheDocument();
+    expect(screen.queryByText("Решение о приёмке")).toBeNull();
+  });
+
   it("renders not-found for a foreign or unknown party UUID", async () => {
     server.use(
       http.get(`*/api/v1/arrivals/${PARTY}`, () =>
@@ -128,9 +151,47 @@ describe("ReconciliationPage", () => {
           { status: 404 },
         ),
       ),
+      http.get(`*/api/v1/arrivals/${PARTY}/reconciliation`, () => HttpResponse.json(emptyReconciliation)),
     );
     renderRoute();
     expect(await screen.findByText("Поступление не найдено в доступной области.")).toBeInTheDocument();
+    expect(screen.queryByText("Решение о приёмке")).toBeNull();
+  });
+
+  it("renders a network error with retry", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}`, () =>
+        HttpResponse.json(
+          {
+            code: "NETWORK_ERROR",
+            title: "Network error",
+            status: 0,
+            detail: "Сеть недоступна.",
+            instance: "",
+          },
+          { status: 500 },
+        ),
+      ),
+      http.get(`*/api/v1/arrivals/${PARTY}/reconciliation`, () => HttpResponse.json(emptyReconciliation)),
+    );
+    renderRoute();
+    expect(await screen.findByText("Не удалось загрузить поступление.")).toBeInTheDocument();
+  });
+
+  it("explains the closed state instead of the editable form", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}`, () => HttpResponse.json(party)),
+      http.get(`*/api/v1/arrivals/${PARTY}/reconciliation`, () =>
+        HttpResponse.json({
+          ...emptyReconciliation,
+          state: "CONFIRMED",
+          decision: "ACCEPT_ALL",
+          complete: true,
+        }),
+      ),
+    );
+    renderRoute();
+    expect(await screen.findByText("Сверка подтверждена внешним результатом.")).toBeInTheDocument();
     expect(screen.queryByText("Решение о приёмке")).toBeNull();
   });
 });

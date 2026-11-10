@@ -1,8 +1,10 @@
 /**
- * A02 unit tests: ComparisonField, ReceiptDecision, ActPreview and the
- * composed ReconciliationForm — keyboard marking, disabled decision with the
- * reason, the derived act plate, dirty navigation protection and the fact
- * that a failed save never loses the entered input.
+ * A02 unit tests (aligned screen): ComparisonField, ReceiptDecision,
+ * ActPreview and the composed ReconciliationForm — the canonical section
+ * order and titles, the icon-button marks with preserved radio semantics,
+ * «Все соответствует» over genuinely compared fields, the derived act plate,
+ * dirty navigation protection and the fact that a failed save never loses
+ * the entered input.
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,9 +13,10 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
-import { ComparisonField, type ComparisonValue } from "./ComparisonField";
+import { ComparisonField, ReferenceField, type ComparisonValue } from "./ComparisonField";
 import { ReceiptDecision, type ReceiptDecisionValue } from "./ReceiptDecision";
 import { ActPreview } from "./ActPreview";
+import { ReconciliationActions } from "./ReconciliationActions";
 import { ReconciliationForm, type ReconciliationFormProps } from "./ReconciliationForm";
 import { computeAllowedDecisions } from "./api";
 import type { IncomingView, ReconciliationView } from "./api";
@@ -104,14 +107,16 @@ describe("ComparisonField", () => {
       <ComparisonField
         fieldId="CHK-F21"
         label="Вес, кг"
-        block="Идентификация продукции"
+        block="product"
         source="120.0"
         value={{ matches: null, actual: "", reason: "" }}
         onChange={onChange}
       />,
     );
     expect(screen.queryByLabelText("Фактическое значение")).toBeNull();
-    await userEvent.click(screen.getByRole("radio", { name: "Не совпадает" }));
+    // The icon-button mark keeps the full Russian accessible name with the
+    // field name and the native radio semantics.
+    await userEvent.click(screen.getByRole("radio", { name: "Не совпадает: Вес, кг" }));
     expect(onChange).toHaveBeenCalledWith({ matches: false, actual: "", reason: "" });
   });
 
@@ -121,14 +126,54 @@ describe("ComparisonField", () => {
       <ComparisonField
         fieldId="CHK-F07"
         label="Получатель"
-        block="Участники перевозки"
+        block="participants"
         source="Убойный пункт"
         value={value}
         onChange={vi.fn()}
       />,
     );
-    expect((screen.getByRole("radio", { name: "Совпадает" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: "Совпадает: Получатель" }) as HTMLInputElement).checked).toBe(
+      true,
+    );
     expect(screen.getByText("Убойный пункт")).toBeInTheDocument();
+  });
+
+  it("shows the state text for a screen reader, never colour only", async () => {
+    render(
+      <ComparisonField
+        fieldId="CHK-F10"
+        label="Номер ТС"
+        block="transport"
+        source="А123ВС77"
+        value={{ matches: false, actual: "В456МК77", reason: "Замена ТС" }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Поле «Номер ТС»: не совпадает/)).toBeInTheDocument();
+  });
+
+  it("disables both marks in the busy state", () => {
+    render(
+      <ComparisonField
+        fieldId="CHK-F10"
+        label="Номер ТС"
+        block="transport"
+        source="А123ВС77"
+        value={{ matches: null, actual: "", reason: "" }}
+        onChange={vi.fn()}
+        disabled
+      />,
+    );
+    expect(screen.getByRole("radio", { name: "Совпадает: Номер ТС" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Не совпадает: Номер ТС" })).toBeDisabled();
+  });
+});
+
+describe("ReferenceField", () => {
+  it("renders a neutral value card without fictitious marks", () => {
+    render(<ReferenceField label="Номер эВСД" value="№ A-001234" />);
+    expect(screen.getByText("№ A-001234")).toBeInTheDocument();
+    expect(screen.queryByRole("radio")).toBeNull();
   });
 });
 
@@ -139,7 +184,6 @@ describe("ReceiptDecision", () => {
     return_reason_text: "",
     transaction_planned: false,
     transaction_type: null,
-    fair: false,
   };
 
   it("shows the three decisions in the fixed order and disables forbidden ones", () => {
@@ -232,6 +276,39 @@ describe("ActPreview", () => {
   });
 });
 
+describe("ReconciliationActions", () => {
+  it("marks every compared field only through the explicit action", async () => {
+    const onMarkAll = vi.fn();
+    render(
+      <MemoryRouter>
+        <ReconciliationActions
+          laboratoryId={LAB}
+          busy={false}
+          complete={false}
+          canMarkAll
+          onMarkAll={onMarkAll}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Все соответствует" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Отмена" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Погасить" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Все соответствует" }));
+    expect(onMarkAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the button size while busy and blocks a repeat submit", () => {
+    render(
+      <MemoryRouter>
+        <ReconciliationActions laboratoryId={LAB} busy complete={false} canMarkAll onMarkAll={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const save = screen.getByRole("button", { name: "Сохранение…" });
+    expect(save).toBeDisabled();
+    expect(save.getAttribute("class")).toContain("app-button");
+  });
+});
+
 function renderForm(props: Partial<ReconciliationFormProps> = {}, onSaved = vi.fn()): void {
   const client = new QueryClient();
   client.setQueryData([LAB, PARTY, "reconciliation"], emptyView);
@@ -249,25 +326,65 @@ function renderForm(props: Partial<ReconciliationFormProps> = {}, onSaved = vi.f
 }
 
 describe("ReconciliationForm", () => {
-  it("renders the CHK blocks in the fixed order with the source values", () => {
+  it("renders the sections in the fixed order with the canonical user-facing titles", () => {
     renderForm();
-    const headings = [...screen.getAllByRole("heading", { level: 3 })].map((h) => h.textContent);
-    expect(headings[0]).toBe("Документ");
-    expect(headings[1]).toBe("Участники перевозки");
-    expect(headings[2]).toBe("Идентификация транспорта");
-    expect(headings[3]).toBe("Идентификация продукции");
-    expect(headings[4]).toBe("Сопроводительные документы");
-    expect(headings[5]).toBe("Прежняя ВСЭ");
-    expect(headings[6]).toBe("Результаты");
-    expect(headings[7]).toBe("Стоимость");
+    const headings = [...screen.getAllByRole("heading", { level: 2 })].map((h) => h.textContent);
+    expect(headings).toEqual([
+      "Документ",
+      "Участники перевозки",
+      "Ветеринарно-санитарная оценка и идентификация транспорта",
+      "Идентификация продукции по наименованию и визуальным осмотром",
+      "Сопроводительные документы",
+      "Ранее проведённая ВСЭ",
+      "Результаты сверки",
+      "Расчёт стоимости услуг",
+    ]);
     expect(screen.getAllByText("А123ВС77").length).toBeGreaterThan(0);
     // The raw GUID of the eVSD is never shown.
     expect(document.body.textContent).not.toContain("1f0e6d2a");
   });
 
+  it("binds every section to its heading through aria-labelledby", () => {
+    renderForm();
+    for (const heading of screen.getAllByRole("heading", { level: 2 })) {
+      const section = heading.closest("section");
+      expect(section).not.toBeNull();
+      expect(section?.getAttribute("aria-labelledby")).toBe(heading.id);
+    }
+  });
+
+  it("renders the document facts as neutral reference cards", () => {
+    renderForm();
+    expect(screen.getByText("№ A-001234")).toBeInTheDocument();
+    expect(screen.getByText("Статус эВСД")).toBeInTheDocument();
+  });
+
+  it("marks a mismatch and keeps the mutual exclusion inside one field", async () => {
+    renderForm();
+    const weight = screen.getByRole("radio", { name: "Не совпадает: Вес, кг" });
+    await userEvent.click(weight);
+    expect(weight).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Совпадает: Вес, кг" })).not.toBeChecked();
+    expect(screen.getByLabelText("Фактическое значение")).toBeInTheDocument();
+  });
+
+  it("marks all compared fields with «Все соответствует»", async () => {
+    renderForm();
+    await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));
+    // Only the genuinely compared fields (CHK-F05..F21 here) get the mark;
+    // the transport observations, decisions and the fair flag are untouched.
+    const matchRadios = document.querySelectorAll<HTMLInputElement>('input[type="radio"][value="matches"]');
+    expect(matchRadios.length).toBe(7);
+    for (const radio of matchRadios) {
+      expect(radio.checked).toBe(true);
+    }
+    // The transport observations stay unanswered.
+    expect((screen.getByLabelText("Состояние грузового отделения") as HTMLSelectElement).value).toBe("");
+  });
+
   it("protects the entered input: the dirty flag blocks navigation", async () => {
     renderForm();
-    await userEvent.click(screen.getAllByRole("radio", { name: "Совпадает" })[0]);
+    await userEvent.click(screen.getAllByRole("radio", { name: /^Совпадает: / })[0]);
     await waitFor(() => expect(useDirtyStore.getState().dirty).toBe(true));
     useDirtyStore.getState().setDirty(false);
   });
@@ -277,12 +394,25 @@ describe("ReconciliationForm", () => {
     const weight = screen.getAllByLabelText("Вес, кг")[0];
     await userEvent.clear(weight);
     await userEvent.type(weight, "100");
-    await userEvent.click(screen.getAllByRole("radio", { name: "Совпадает" })[0]);
+    await userEvent.click(screen.getAllByRole("radio", { name: /^Совпадает: / })[0]);
     await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
     await waitFor(() => {
       expect(screen.getByText(/не удалось сохранить|Ошибка|Сверка изменена/i)).toBeInTheDocument();
     });
     expect(screen.getAllByLabelText("Вес, кг")[0]).toHaveValue("100");
+  });
+
+  it("keeps the mismatch fact and reason after a network error", async () => {
+    renderForm();
+    await userEvent.click(screen.getByRole("radio", { name: "Не совпадает: Вес, кг" }));
+    await userEvent.type(screen.getByLabelText("Фактическое значение"), "100");
+    await userEvent.type(screen.getByLabelText("Причина несоответствия"), "Недостача");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    await waitFor(() => {
+      expect(screen.getByText(/не удалось сохранить|Ошибка|Сверка изменена/i)).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Фактическое значение")).toHaveValue("100");
+    expect(screen.getByLabelText("Причина несоответствия")).toHaveValue("Недостача");
   });
 
   it("governs enablement by the local recompute, not the stale saved projection", () => {
@@ -299,6 +429,13 @@ describe("ReconciliationForm", () => {
     expect(screen.getByRole("radio", { name: "Полное гашение" })).toBeEnabled();
     expect(screen.getByRole("radio", { name: "Частичное гашение" })).toBeEnabled();
     expect(screen.getByRole("radio", { name: "Полный возврат" })).toBeEnabled();
+  });
+
+  it("shows the honest empty invoice state and the fair flag", async () => {
+    renderForm();
+    expect(screen.getByText(/Стоимость будет рассчитана после сохранения/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Ярмарка/ }));
+    expect(screen.getByRole("checkbox", { name: /Ярмарка/ })).toBeChecked();
   });
 });
 
@@ -399,7 +536,7 @@ describe("repeat ВСЭ inputs (fix round 1)", () => {
 
   it("keeps the note and a null repeat without a previous ВСЭ", async () => {
     renderForm();
-    expect(screen.getByText(/Сведений прежней ВСЭ в эВСД нет/)).toBeInTheDocument();
+    expect(screen.getByText(/Сведений ранее проведённой ВСЭ в эВСД нет/)).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Требуется" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
     await waitFor(() => expect(captured.length).toBeGreaterThan(0));

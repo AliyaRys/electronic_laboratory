@@ -1,10 +1,12 @@
 /**
  * ReconciliationPage (A02, API-04/FT-ARR-02): the saved CHK screen of one
- * party. Loads the arrival and its (possibly not-yet-created) reconciliation;
- * the empty OPEN view carries the parent ETag, so the first save uses the
- * party revision and later saves the reconciliation revision.
+ * party in the approved evsd-check composition — the 1180 px working area,
+ * the 30 px title with the Mercury badge and the linked receipt stage.
+ * Loads the arrival and its (possibly not-yet-created) reconciliation; the
+ * empty OPEN view carries the parent ETag, so the first save uses the party
+ * revision and later saves the reconciliation revision.
  */
-import "../features/arrivals/arrivals.css";
+import "../features/arrivals/reconciliation.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router";
 import { RequireSession } from "./RequireSession";
@@ -65,11 +67,14 @@ function ReconciliationContent(): React.ReactElement {
     reconciliation.data !== undefined && !("code" in reconciliation.data) ? reconciliation.data : null;
 
   return (
-    <div className="vse-app vse-page">
-      <nav className="vse-breadcrumb" aria-label="Навигация">
+    <div className="vse-rec-page">
+      <nav className="vse-rec-breadcrumb" aria-label="Навигация">
         <Link to={`/labs/${labId}/arrivals`}>← Поступления</Link>
       </nav>
-      <h1>Сверка эВСД</h1>
+      <div className="vse-rec-title-row">
+        <h1>Сверка данных транспортного эВСД</h1>
+        <span className="vse-rec-mercury-badge">Меркурий</span>
+      </div>
       {arrivalProblem !== null ? (
         arrivalProblem.status === 404 ? (
           <StatusView
@@ -113,6 +118,7 @@ function ReconciliationContent(): React.ReactElement {
               detail="Принятый состав больше нельзя изменить через обычное сохранение (FT-ARR-15)."
             />
           )}
+          {/* 10. The legally significant receipt stage — the next linked step. */}
           <ReceiptOperation party={party} reconciliation={view} />
         </>
       )}

@@ -136,6 +136,22 @@ async function mockSessionAndArrivals(page: Page): Promise<void> {
       }),
     });
   });
+  // The A02 reconciliation screen reads the W03 receipt stage on mount; with
+  // the real backend running an unmocked call answers 401 and kills the
+  // session, so the stage is mocked here like every other arrival read.
+  await page.route("**/api/v1/arrivals/*/receipt-context", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        write_enabled: false,
+        source_revision: null,
+        reconciliation_revision: null,
+        operation_id: null,
+        operation_state: null,
+      }),
+    }),
+  );
 }
 
 test.describe("arrivals", () => {
@@ -165,7 +181,7 @@ test.describe("arrivals", () => {
     );
     await page.getByRole("link", { name: "говядина" }).click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/arrivals/${PARTY}/reconciliation`));
-    await expect(page.getByRole("heading", { name: "Сверка эВСД" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Сверка данных транспортного эВСД" })).toBeVisible();
     await shot(page, "reconciliation-placeholder-1440");
 
     // Back: the URL context (queue filter) survives.
@@ -213,7 +229,7 @@ test.describe("arrivals", () => {
     // Mouse click → the reconciliation route of the SAME party (real party_id).
     await action.click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/arrivals/${PARTY}/reconciliation`));
-    await expect(page.getByRole("heading", { name: "Сверка эВСД" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Сверка данных транспортного эВСД" })).toBeVisible();
     await expect(page.getByText("Отруба говяжьи")).toBeVisible();
     await page.screenshot({
       path: "../docs/implementation/evidence/DR-arrivals-action-reconciliation-1440.png",

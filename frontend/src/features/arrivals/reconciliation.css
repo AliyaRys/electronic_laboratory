@@ -1,0 +1,818 @@
+/* Reconciliation screen (A02) aligned with the approved evsd-check mockup.
+   All values come from the shared tokens in shared/ui/ui.css; no component
+   invents its own hex palette. */
+
+/* --- page shell: 1180 px working area, natural document scroll -------------- */
+.vse-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.vse-rec-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 17px 0 104px;
+}
+
+.vse-rec-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+
+.vse-rec-title-row h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.vse-rec-mercury-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 34px;
+  border: 1px solid #d8e8e6;
+  border-radius: 99px;
+  background: #f8fbfb;
+  color: #4d676d;
+  padding: 0 12px;
+  font-weight: 720;
+  font-size: 12px;
+  box-shadow: 0 6px 14px #1f5a5b08;
+}
+
+.vse-rec-mercury-badge::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--app-teal);
+  box-shadow: inset 0 0 0 3px var(--app-tint);
+}
+
+.vse-rec-breadcrumb {
+  margin-bottom: 12px;
+}
+
+.vse-rec-breadcrumb a {
+  color: var(--app-muted-readable);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.vse-rec-breadcrumb a:hover {
+  color: var(--app-teal-dark);
+}
+
+/* --- section card ------------------------------------------------------------ */
+.vse-check-section {
+  border: 1px solid var(--app-line);
+  border-radius: 18px;
+  padding: 20px;
+  background: var(--app-panel);
+  box-shadow: 0 8px 24px #1f5a5b03;
+}
+
+.vse-check-section + .vse-check-section,
+.vse-check-section + .vse-rec-actions {
+  margin-top: 16px;
+}
+
+.vse-check-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.vse-check-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vse-check-section-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--app-tint);
+  color: var(--app-teal-dark);
+}
+
+.vse-check-section-icon .app-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.vse-check-section h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.vse-check-section-head p {
+  margin: 2px 0 0;
+  color: var(--app-muted);
+  font-size: 13px;
+}
+
+/* --- comparison grid ---------------------------------------------------------- */
+.vse-rec-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.vse-rec-compare {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px 40px;
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: var(--app-card-bg);
+}
+
+.vse-rec-compare.match {
+  border-color: var(--app-match-line);
+  background: var(--app-match-bg);
+  box-shadow: inset 0 0 0 1px #c8e6d8;
+}
+
+.vse-rec-compare.mismatch {
+  border-color: var(--app-mismatch-line);
+  background: var(--app-mismatch-bg);
+  box-shadow: inset 0 0 0 1px #f3cdd2;
+}
+
+.vse-rec-compare.reference {
+  grid-template-columns: minmax(0, 1fr);
+  background: #f8fbfb;
+}
+
+.vse-rec-compare-name {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: #29474d;
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1.2;
+}
+
+.vse-rec-mercury-value {
+  display: block;
+  min-width: 0;
+  min-height: 40px;
+  align-self: center;
+  border: 1px solid var(--app-mercury-line);
+  border-radius: 10px;
+  background: var(--app-mercury-bg);
+  color: #405e64;
+  padding: 9px 11px;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vse-rec-compare.match .vse-rec-mercury-value {
+  border-color: #a8d4c1;
+  background: #f7fffb;
+}
+
+.vse-rec-compare.mismatch .vse-rec-mercury-value {
+  border-color: #e7b7bc;
+  background: #fffafa;
+}
+
+.vse-rec-compare.reference .vse-rec-mercury-value {
+  border-color: var(--app-mercury-line);
+  background: var(--app-panel);
+}
+
+/* --- mark buttons (native radios, styled faces) -------------------------------- */
+.vse-rec-check {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--app-mercury-line);
+  border-radius: 11px;
+  background: var(--app-panel);
+  color: #5d757b;
+  cursor: pointer;
+}
+
+.vse-rec-check input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+}
+
+.vse-rec-check-face {
+  display: grid;
+  place-items: center;
+}
+
+.vse-rec-check-face .app-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.vse-rec-check:has(input:checked) {
+  cursor: default;
+}
+
+.vse-rec-check.ok:has(input:checked) {
+  border-color: var(--app-match-line);
+  background: #d7efe4;
+  color: var(--app-good);
+}
+
+.vse-rec-check.bad:has(input:checked) {
+  border-color: #e7b7bc;
+  background: #fff3f4;
+  color: var(--app-danger);
+}
+
+.vse-rec-check:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* the visible focus ring sits on the styled face (the radio itself is hidden) */
+.vse-rec-check:has(input:focus-visible) {
+  outline: 3px solid var(--app-focus);
+  outline-offset: 2px;
+}
+
+.vse-rec-facts {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+/* --- participants -------------------------------------------------------------- */
+.vse-rec-participants {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vse-rec-participant-card {
+  min-width: 0;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: var(--app-panel);
+  padding: 12px;
+}
+
+.vse-rec-participant-card h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.vse-rec-participant-card .vse-rec-compare {
+  margin-bottom: 12px;
+}
+
+.vse-rec-participant-card .vse-rec-compare:last-child {
+  margin-bottom: 0;
+}
+
+.vse-rec-owner-value {
+  display: block;
+  color: #29474d;
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+
+/* --- transport observations ------------------------------------------------------ */
+.vse-rec-observations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.vse-rec-observation {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: var(--app-card-bg);
+  padding: 13px;
+}
+
+.vse-rec-observation.positive {
+  border-color: var(--app-match-line);
+  background: var(--app-match-bg);
+  box-shadow: inset 0 0 0 1px #c8e6d8;
+}
+
+.vse-rec-observation.negative {
+  border-color: var(--app-mismatch-line);
+  background: var(--app-mismatch-bg);
+  box-shadow: inset 0 0 0 1px #f3cdd2;
+}
+
+.vse-rec-observation label {
+  min-height: 34px;
+  color: #29474d;
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1.2;
+}
+
+.vse-rec-observation select {
+  width: 100%;
+  height: 40px;
+  margin-top: auto;
+  border: 1px solid var(--app-mercury-line);
+  border-radius: 10px;
+  background: var(--app-panel);
+  color: #405e64;
+  font: inherit;
+  appearance: none;
+  padding: 0 40px 0 10px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='m5 7 5 5 5-5' fill='none' stroke='%23668087' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  background-position: calc(100% - 16px) center;
+}
+
+.vse-rec-observation select:invalid,
+.vse-rec-observation select option[value=""] {
+  color: #7a9297;
+}
+
+/* --- quantities ------------------------------------------------------------------ */
+.vse-rec-quantities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.vse-rec-quantities-part {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: var(--app-card-bg);
+  padding: 13px;
+}
+
+.vse-rec-quantities-title {
+  margin: 0;
+  color: #29474d;
+  font-size: 13px;
+  font-weight: 780;
+}
+
+/* --- prior ВСЭ ---------------------------------------------------------------------- */
+.vse-rec-prior-note {
+  margin: 0;
+  color: var(--app-muted-readable);
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: #f8fbfb;
+  padding: 14px;
+}
+
+.vse-rec-prior-conclusion {
+  margin-top: 12px;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: var(--app-card-bg);
+  padding: 12px 14px;
+}
+
+.vse-rec-prior-conclusion summary {
+  cursor: pointer;
+  color: var(--app-teal-dark);
+  font-weight: 700;
+}
+
+.vse-rec-prior-conclusion p {
+  margin: 10px 0 0;
+  color: #29474d;
+  overflow-wrap: anywhere;
+}
+
+.vse-rec-repeat {
+  margin-top: 14px;
+  border: none;
+  padding: 0;
+}
+
+.vse-rec-repeat legend,
+.vse-rec-decision legend,
+.vse-rec-transaction legend {
+  font-weight: 780;
+  color: #29474d;
+  font-size: 13px;
+  padding: 0;
+}
+
+.vse-rec-repeat-inputs {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.vse-rec-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+}
+
+.vse-rec-mark input {
+  width: 18px;
+  height: 18px;
+}
+
+/* --- decisions ----------------------------------------------------------------------- */
+.vse-rec-decision-options {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.vse-rec-decision-option {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: var(--app-card-bg);
+  padding: 12px 14px;
+}
+
+.vse-rec-decision-option:has(input:disabled) {
+  opacity: 0.55;
+}
+
+.vse-rec-decision-option:has(input:checked) {
+  border-color: var(--app-match-line);
+  background: var(--app-match-bg);
+}
+
+.vse-rec-decision-option label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  color: #29474d;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.vse-rec-decision-option input {
+  width: 18px;
+  height: 18px;
+}
+
+.vse-rec-decision-note {
+  font-size: 12px;
+  color: var(--app-muted-readable);
+}
+
+.vse-rec-decision-reason {
+  margin-top: 12px;
+  max-width: 560px;
+  display: grid;
+  gap: 8px;
+}
+
+.vse-rec-decision-reason select,
+.vse-rec-repeat-inputs select {
+  min-height: 43px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--app-panel);
+  color: var(--app-ink);
+  font: inherit;
+}
+
+/* --- act plate -------------------------------------------------------------------------- */
+.vse-rec-act {
+  margin-top: 12px;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: var(--app-card-bg);
+  padding: 12px 14px;
+}
+
+.vse-rec-act--error {
+  border-color: #e2a3ab;
+  background: #fff0f1;
+}
+
+.vse-rec-act-title {
+  margin: 0;
+  font-weight: 720;
+  color: #29474d;
+}
+
+.vse-rec-act ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--app-danger);
+  overflow-wrap: anywhere;
+}
+
+.vse-rec-act-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.vse-rec-act-table th,
+.vse-rec-act-table td {
+  border: 1px solid var(--app-mercury-line);
+  padding: 6px 9px;
+  text-align: left;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* --- invoice ------------------------------------------------------------------------------ */
+.vse-rec-invoice-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+}
+
+.vse-rec-invoice-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.vse-rec-invoice-table th {
+  padding: 11px 14px;
+  background: var(--app-page);
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.vse-rec-invoice-table td {
+  padding: 15px 14px;
+  border-top: 1px solid var(--app-line);
+  vertical-align: top;
+}
+
+.vse-rec-invoice-table td:first-child {
+  font-weight: 700;
+  color: #29474d;
+}
+
+.vse-rec-invoice-table th:not(:first-child),
+.vse-rec-invoice-table td:not(:first-child) {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.vse-rec-invoice-total {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 20px;
+  margin-top: 17px;
+  padding-top: 15px;
+  border-top: 1px solid var(--app-line);
+  font-weight: 760;
+}
+
+.vse-rec-invoice-total strong {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--app-teal-dark);
+}
+
+.vse-rec-invoice-empty {
+  margin: 0;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: #f8fbfb;
+  color: var(--app-muted-readable);
+  padding: 14px;
+}
+
+.vse-rec-invoice-waiver {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  max-width: 640px;
+}
+
+.vse-rec-invoice-waiver input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+}
+
+.vse-rec-invoice-waiver-title {
+  display: block;
+  font-weight: 760;
+  color: #29474d;
+}
+
+.vse-rec-invoice-waiver-note {
+  display: block;
+  color: var(--app-muted-readable);
+  font-size: 13px;
+}
+
+/* --- sticky actions panel ------------------------------------------------------------------- */
+.vse-rec-actions {
+  position: sticky;
+  bottom: 14px;
+  z-index: 8;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 13px;
+  background: #ffffffeb;
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--app-line);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px #17323a18;
+}
+
+.vse-rec-actions .app-button {
+  flex: none;
+}
+
+.vse-rec-actions-note {
+  margin: 0 auto 0 0;
+  align-self: center;
+  color: var(--app-muted-readable);
+  font-size: 13px;
+}
+
+/* --- receipt operation (W03) ------------------------------------------------------------------ */
+.vse-receipt-operation {
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid var(--app-line);
+  border-radius: 18px;
+  background: var(--app-panel);
+  box-shadow: 0 8px 24px #1f5a5b03;
+}
+
+.vse-receipt-operation h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.vse-receipt-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(220px, 1fr);
+  gap: 10px 16px;
+  align-items: center;
+  margin: 16px 0;
+}
+
+.vse-receipt-fields select,
+.vse-receipt-fields input {
+  min-height: 43px;
+  border: 1px solid var(--app-mercury-line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: inherit;
+  background: var(--app-panel);
+  font: inherit;
+}
+
+.vse-receipt-blocked {
+  color: var(--app-danger);
+}
+
+.vse-receipt-summary {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+
+.vse-receipt-summary div {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.4fr);
+  gap: 12px;
+  border-top: 1px solid var(--app-line);
+  padding-top: 8px;
+}
+
+.vse-receipt-summary dt {
+  color: var(--app-muted);
+}
+
+.vse-receipt-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vse-receipt-fingerprint {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.vse-receipt-route {
+  display: inline-flex;
+  margin-top: 12px;
+  text-decoration: none;
+}
+
+/* --- status blocks inside the page --------------------------------------------------------------- */
+.vse-rec-page .app-status {
+  max-width: none;
+  margin-top: 16px;
+}
+
+/* --- responsive (§12: 1020/800/700 px) ------------------------------------------------------------ */
+@media (max-width: 1020px) {
+  .vse-rec-compare-grid,
+  .vse-rec-participants,
+  .vse-rec-observations {
+    grid-template-columns: 1fr;
+  }
+
+  .vse-rec-observation label {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 800px) {
+  .vse-rec-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vse-rec-quantities {
+    grid-template-columns: 1fr;
+  }
+
+  .vse-rec-actions {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  .vse-rec-actions .app-button {
+    flex: 1;
+  }
+
+  .vse-rec-actions-note {
+    flex: 1 1 100%;
+    order: 3;
+  }
+}
+
+@media (max-width: 700px) {
+  .vse-check-section-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vse-rec-check,
+  .vse-rec-compare {
+    transition: none;
+  }
+}

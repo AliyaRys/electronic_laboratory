@@ -1,5 +1,11 @@
 import { Dialog } from "../../shared/ui/Dialog";
-import { decisionLabel, type IncomingView, type ReceiptPreview, type ReconciliationView } from "./api";
+import {
+  decisionLabel,
+  documentFacts,
+  type IncomingView,
+  type ReceiptPreview,
+  type ReconciliationView,
+} from "./api";
 
 export interface ReceiptConfirmationDialogProps {
   open: boolean;
@@ -10,6 +16,20 @@ export interface ReceiptConfirmationDialogProps {
   busy: boolean;
   error?: string | undefined;
   onConfirm: () => void;
+}
+
+/** The different consequence texts of the three decisions (spec §10). */
+function decisionNote(decision: string | null): string {
+  if (decision === "ACCEPT_ALL") {
+    return "После гашения партия будет принята полностью. Возвратный эВСД не формируется. Действие нельзя отменить или безопасно повторить.";
+  }
+  if (decision === "PARTIAL") {
+    return "Принятая часть партии будет погашена; непринятая часть оформляется к возврату отправителю. Действие нельзя отменить или безопасно повторить.";
+  }
+  if (decision === "RETURN_ALL") {
+    return "Вся партия будет возвращена отправителю; потребуется возвратный транспортный эВСД. Действие нельзя отменить или безопасно повторить.";
+  }
+  return "После отправки в ВетИС действие нельзя отменить или безопасно повторить. Проверьте решение и объёмы.";
 }
 
 export function ReceiptConfirmationDialog({
@@ -27,7 +47,7 @@ export function ReceiptConfirmationDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Подтвердите гашение эВСД"
-      description="После отправки в ВетИС действие нельзя отменить или безопасно повторить. Проверьте решение и объёмы."
+      description={decisionNote(reconciliation.decision)}
       confirmLabel="Погасить эВСД"
       cancelLabel="Вернуться к проверке"
       danger
@@ -38,7 +58,7 @@ export function ReceiptConfirmationDialog({
       <dl className="vse-receipt-summary">
         <div>
           <dt>эВСД</dt>
-          <dd>{party.external.fields.documentNumber ?? "—"}</dd>
+          <dd>{documentFacts(party)[0].value}</dd>
         </div>
         <div>
           <dt>Решение</dt>

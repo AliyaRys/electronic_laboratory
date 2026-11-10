@@ -4,6 +4,13 @@
  * navigation. Long values wrap (overflow-wrap: anywhere), so the full value
  * stays readable and reachable by keyboard/screen-reader users without hover;
  * horizontal scroll happens inside the table, never the page.
+ *
+ * Public row action (``DataTableRow.rowAction``): an optional separate link in
+ * the actions column. It has its own visible label and full accessible name,
+ * works by mouse, Enter and sequential Tab focus, and coexists with the row
+ * menu without opening or triggering it. It renders even for rows without a
+ * menu. When set for a canonical destination, it duplicates the leading-cell
+ * link deliberately so the destination is discoverable as an explicit action.
  */
 import "./ui.css";
 import { useEffect, useId, useRef, useState } from "react";
@@ -19,11 +26,25 @@ export interface DataTableCell {
   value: string;
 }
 
+export interface DataTableRowAction {
+  href: string;
+  /** Visible short label of the link action («Сверить»). */
+  label: string;
+  /** Full accessible name (e.g. «Перейти к сверке данных»). */
+  accessibleName: string;
+}
+
 export interface DataTableRow {
   id: string;
   /** Canonical navigation of the row: a real link in the leading cell. */
   href?: string;
   cells: DataTableCell[];
+  /**
+   * Explicit link action in the actions column, next to the row menu. It is a
+   * separate navigation element: it never opens or triggers the menu, and it
+   * is rendered even when the row has no menu.
+   */
+  rowAction?: DataTableRowAction;
   menu?: { id: string; label: string }[];
 }
 
@@ -152,9 +173,20 @@ export function DataTable({
                 );
               })}
               <td>
-                {row.menu !== undefined ? (
-                  <RowMenu key={`menu-${menuId}`} row={row} onAction={onMenuAction} />
-                ) : null}
+                <div className="app-table-row-actions">
+                  {row.rowAction !== undefined ? (
+                    <a
+                      className="app-table-row-action"
+                      href={row.rowAction.href}
+                      aria-label={row.rowAction.accessibleName}
+                    >
+                      {row.rowAction.label}
+                    </a>
+                  ) : null}
+                  {row.menu !== undefined ? (
+                    <RowMenu key={`menu-${menuId}`} row={row} onAction={onMenuAction} />
+                  ) : null}
+                </div>
               </td>
             </tr>
           ))}

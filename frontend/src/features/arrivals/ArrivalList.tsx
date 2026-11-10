@@ -2,7 +2,9 @@
  * ArrivalList (UI-03): the queue table of one laboratory. The list is
  * presentational — queue/result filters, search and paging belong to the page
  * that owns the URL state. Rows navigate by the REAL party id to the
- * reconciliation route (A02 renders a clearly marked placeholder there).
+ * reconciliation route (A02 renders a clearly marked placeholder there). The
+ * last column carries the explicit «Сверить» action («Перейти к сверке данных»)
+ * next to the row menu for every queue the party appears in.
  */
 import { DataTable, type DataTableRow } from "../../shared/ui/DataTable";
 import { QUEUE_LABELS, type IncomingView } from "./api";
@@ -28,11 +30,22 @@ function quantityText(view: IncomingView): string {
   return `${quantity} / ${mass} кг`;
 }
 
+function reconciliationHref(labId: string, view: IncomingView): string {
+  return `/labs/${labId}/arrivals/${view.party_id}/reconciliation`;
+}
+
 export function ArrivalList({ labId, items, onHide }: ArrivalListProps): React.ReactElement {
   const rows: DataTableRow[] = items.map((view) => {
     const row: DataTableRow = {
       id: view.party_id,
-      href: `/labs/${labId}/arrivals/${view.party_id}/reconciliation`,
+      href: reconciliationHref(labId, view),
+      // Explicit action in the last column (spec: явный переход к сверке);
+      // visible short label, full accessible name, real party id in the URL.
+      rowAction: {
+        href: reconciliationHref(labId, view),
+        label: "Сверить",
+        accessibleName: "Перейти к сверке данных",
+      },
       cells: [
         { columnId: "product", value: view.classification.product.name ?? "Продукция не определена" },
         { columnId: "document", value: view.external.fields.documentNumber ?? "" },

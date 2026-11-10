@@ -214,4 +214,14 @@ describe("ArrivalsPage", () => {
       expect(screen.queryByText("говядина")).toBeNull();
     });
   });
+
+  it("the reconciliation action never opens the hide dialog", async () => {
+    const { deletes } = renderPage();
+    await screen.findByText("говядина");
+    const action = screen.getByRole("link", { name: "Перейти к сверке данных" });
+    action.addEventListener("click", (event) => event.preventDefault());
+    await userEvent.click(action);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(deletes.length).toBe(0);
+  });
 });

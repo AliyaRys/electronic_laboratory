@@ -70,4 +70,47 @@ describe("ArrivalList", () => {
     ]);
     expect(screen.getByText("Продукция не определена")).toBeTruthy();
   });
+
+  it("has an explicit reconciliation action with the required accessible name", () => {
+    renderList([base]);
+    const action = screen.getByRole("link", { name: "Перейти к сверке данных" });
+    expect(action.getAttribute("href")).toBe(`/labs/${LAB}/arrivals/${PARTY}/reconciliation`);
+    expect(action.textContent).toContain("Сверить");
+  });
+
+  it("the action href uses the real party id and never the evsd_uuid", () => {
+    renderList([base]);
+    const action = screen.getByRole("link", { name: "Перейти к сверке данных" });
+    expect(action.getAttribute("href")).toContain(PARTY);
+    expect(action.getAttribute("href")).toContain(LAB);
+    expect(document.querySelector(`a[href*="1f0e6d2a"]`)).toBeNull();
+  });
+
+  it("the action is present for EXPECTED, WORK and ACCEPTED", () => {
+    renderList([
+      base,
+      { ...base, party_id: "b1", queue: "WORK" },
+      { ...base, party_id: "b2", queue: "ACCEPTED" },
+    ]);
+    expect(screen.getAllByRole("link", { name: "Перейти к сверке данных" }).length).toBe(3);
+  });
+
+  it("for EXPECTED the transition and hide coexist independently", async () => {
+    const onHide = vi.fn();
+    renderList([base], onHide);
+    const action = screen.getByRole("link", { name: "Перейти к сверке данных" });
+    expect(screen.getByRole("button", { name: "Действия со строкой" })).toBeTruthy();
+    // Clicking the transition must not trigger the hide mutation.
+    action.addEventListener("click", (event) => event.preventDefault());
+    await userEvent.click(action);
+    expect(onHide).not.toHaveBeenCalled();
+  });
+
+  it("a row without the hide right still gets the transition link", () => {
+    // WORK row: no hide menu is offered, read of the party is still possible.
+    renderList([{ ...base, party_id: "bb", queue: "WORK" }]);
+    const action = screen.getByRole("link", { name: "Перейти к сверке данных" });
+    expect(action.getAttribute("href")).toBe(`/labs/${LAB}/arrivals/bb/reconciliation`);
+    expect(screen.queryByRole("button", { name: "Действия со строкой" })).toBeNull();
+  });
 });

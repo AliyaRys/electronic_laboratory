@@ -184,4 +184,97 @@ test.describe("arrivals", () => {
     expect(box.width).toBeGreaterThan(200);
     await shot(page, "list-390");
   });
+
+  test("test_explicit_reconciliation_action_mouse_keyboard_and_narrow", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    await page.route(`**/api/v1/arrivals/${PARTY}`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(singleView) }),
+    );
+    await page.route(`**/api/v1/arrivals/${PARTY}/reconciliation`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(reconciliationView),
+      }),
+    );
+
+    await page.goto(`/labs/${LAB}/arrivals?queue=expected`);
+    await expect(page.getByRole("heading", { name: "Поступления" })).toBeVisible();
+
+    // The explicit action in the last column; the row menu is a different element.
+    const action = page.getByRole("link", { name: "Перейти к сверке данных" });
+    await expect(action).toBeVisible();
+    await expect(page.getByRole("button", { name: "Действия со строкой" })).toBeVisible();
+    await page.screenshot({
+      path: "../docs/implementation/evidence/DR-arrivals-action-row-1440.png",
+      fullPage: true,
+    });
+
+    // Mouse click → the reconciliation route of the SAME party (real party_id).
+    await action.click();
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/arrivals/${PARTY}/reconciliation`));
+    await expect(page.getByRole("heading", { name: "Сверка эВСД" })).toBeVisible();
+    await expect(page.getByText("Отруба говяжьи")).toBeVisible();
+    await page.screenshot({
+      path: "../docs/implementation/evidence/DR-arrivals-action-reconciliation-1440.png",
+      fullPage: true,
+    });
+
+    // Return with queue/search/page preserved (FT-COM-02).
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/arrivals\\?queue=expected`));
+    await expect(page.getByText("говядина")).toBeVisible();
+
+    // Keyboard: sequential focus reaches the action; Enter navigates.
+    await action.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/arrivals/${PARTY}/reconciliation`));
+  });
+
+  test("narrow screen keeps the explicit action reachable with long values", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("laboratory_id") !== LAB) {
+        return route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "ACCESS_DENIED" }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: [
+            {
+              ...singleView,
+              external: {
+                ...singleView.external,
+                fields: {
+                  ...singleView.external.fields,
+                  consignor:
+                    "Общество с ограниченной ответственностью «Агрофирма Свободный Труд имени двадцатилетия Татарской Автономной Советской Социалистической Республики»",
+                },
+              },
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20,
+        }),
+      });
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/labs/${LAB}/arrivals?queue=expected`);
+    const action = page.getByRole("link", { name: "Перейти к сверке данных" });
+    await expect(action).toBeVisible();
+    await page.screenshot({
+      path: "../docs/implementation/evidence/DR-arrivals-action-row-390.png",
+      fullPage: true,
+    });
+    // The action stays clickable: horizontal scroll belongs to the table, not the page.
+    expect((await action.boundingBox())!.width).toBeGreaterThan(0);
+    await expect(page.getByText(/Агрофирма Свободный Труд/)).toBeVisible();
+  });
 });

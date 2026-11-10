@@ -39,7 +39,7 @@
 - [ ] Запустить `uv run --frozen pytest backend/tests/vetis/test_receipt_mapping.py -v`, получить FAIL.
 - [x] Реализовать manifest/fixtures и **реальный external transport** `ProcessIncomingConsignment` + submit/receive result. Зафиксировать: `vetCertificatePresence=ELECTRONIC`; docInspection из сверки; vetInspection независимо из действия пользователя; ACCEPT/PARTIAL mismatch с актом; RETURN_ALL без акта/accepted consignment; returnedDelivery только PARTIAL/RETURN_ALL. Preview валидирует source checksum/receiver/status/quantity/unit/reason/codes; команда под locks создаёт frozen intent+outbox. Tests внедряют spy вместо сетевого transport; один unresolved partial UNIQUE.
 - [x] Проверить localTransactionId/applicationId как разные поля, rollback outbox и enabled/disabled capability. При disabled →503 до outbox; при enabled в тесте вызывается только spy и проверяется точный envelope/action. Сырые credentials тест не читает, агент не меняет реальную установку и не выполняет живой вызов.
-- [ ] Зафиксировать: `feat: prepare immutable verified receipt submissions`.
+- [x] Зафиксировать: `feat: prepare immutable verified receipt submissions` (`dfe45ce`).
 
 ### Task W02: Poll, доказательства и UNKNOWN
 
@@ -51,7 +51,7 @@
 - [ ] Запустить `uv run --frozen pytest backend/tests/vetis/test_receipt_failures.py backend/tests/vetis/test_reconcile.py -v`, получить FAIL.
 - [x] Реализовать NOT_SENT→QUEUED→SUBMITTING→PROCESSING→CONFIRMED/REJECTED/UNKNOWN в production adapter и локальном журнале. Перед submit durable SUBMITTING, applicationId записать немедленно после ответа шлюза. Receive result schedules backoff, SQL/HTTP locks не удерживать, job≤120 сек. При capability=true worker вызывает реальный transport; тест подменяет его spy. Reconcile проверяет business success+composition evidence, затем confirm_receipt atomically. Недостаточно связей→UNKNOWN+INTEGRATION_EVIDENCE_INCOMPLETE+обезличенный diagnostics bundle. Durable evidence/неразрешённые операции без TTL; masked fixture/rawSOAP30 дней.
 - [x] Проверить AT-05 и SC-098–101 на fixtures/симуляторе, включая full returns, смоделированное ручное гашение с evidence и restore после локальной потери подтверждения. Случай утраченного applicationId без доказательств остаётся безопасно заблокирован. Все живые write-сценарии отметить `not-run by O-13`, не заменять пробной операцией в тестовом контуре; production-код polling при этом обязателен.
-- [ ] Зафиксировать: `feat: reconcile receipt uncertainty without blind resubmission`.
+- [x] Зафиксировать: `feat: reconcile receipt uncertainty without blind resubmission` (`b330d5e`).
 
 ### Task W03: Подключение UI и итоговая приёмка
 

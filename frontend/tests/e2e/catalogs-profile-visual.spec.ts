@@ -16,6 +16,8 @@ const seedPath = resolve(process.cwd(), "tests/e2e/identity-seed.local.json");
 const seed = JSON.parse(readFileSync(seedPath, "utf8")) as {
   users: { head: string };
   userPassword: string;
+  labAId: string;
+  productId: string;
 };
 
 const widths: [number, number][] = [

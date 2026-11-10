@@ -45,6 +45,11 @@ export function ComparisonField({
   const generatedId = useId();
   const factId = `${name}-${generatedId}`;
   const marked = mismatch || match;
+  // The single error message of the comparison card (§7.3): the mark group
+  // references it through aria-describedby, and while the fact inputs are
+  // open the reason input carries the same message through the shared Field
+  // contract (aria-invalid + its own describedby under this stable id).
+  const reasonErrorId = `${name}-reason-error`;
   return (
     <div
       className={`vse-rec-compare${match ? " match" : ""}${mismatch ? " mismatch" : ""}`}
@@ -56,7 +61,13 @@ export function ComparisonField({
       <span className="vse-rec-mercury-value" title={source}>
         {source}
       </span>
-      <div className="vse-rec-check-buttons" role="radiogroup" aria-label={`Отметка сравнения: ${label}`}>
+      <div
+        className="vse-rec-check-buttons"
+        role="radiogroup"
+        aria-label={`Отметка сравнения: ${label}`}
+        aria-invalid={error !== "" ? "true" : undefined}
+        aria-describedby={error !== "" ? (mismatch ? reasonErrorId : `${factId}-error`) : undefined}
+      >
         <label className="vse-rec-check ok" title={`Совпадает: ${label}`}>
           <input
             type="radio"
@@ -101,13 +112,15 @@ export function ComparisonField({
           <Field
             label="Причина несоответствия"
             name={`${name}.reason`}
+            id={`${name}-reason`}
             value={value.reason}
             disabled={disabled}
+            error={error}
             onChange={(reason) => change({ ...value, reason })}
           />
         </div>
       ) : null}
-      {error !== "" ? (
+      {error !== "" && !mismatch ? (
         <p className="app-field-message app-field-error" id={`${factId}-error`} aria-live="polite">
           {error}
         </p>

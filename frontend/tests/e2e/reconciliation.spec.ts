@@ -312,6 +312,7 @@ test.describe("reconciliation transport spy (no live VetIS write)", () => {
     // Mark and save the draft through the REAL screen.
     await page.getByRole("radio", { name: "Не совпадает: Вес, кг" }).click();
     await page.getByLabel("Фактическое значение").fill("452");
+    await page.getByLabel("Причина несоответствия").fill("Недостача при доставке");
     await page.getByRole("button", { name: "Сохранить сверку" }).click();
     await expect(page.getByText(/Сохранение…|Сохранить сверку/).first()).toBeVisible();
     await expect.poll(() => reconciliationPuts, { timeout: 10_000 }).toBeGreaterThan(0);

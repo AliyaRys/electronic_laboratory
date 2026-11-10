@@ -95,6 +95,20 @@ const formSchema = z.object({
 
 export type FormValues = z.infer<typeof formSchema>;
 
+const formSchemaWithComparisonFacts = formSchema.superRefine((values, ctx) => {
+  // CHK-F44: the discrepancy act carries the reason, so a mismatch without
+  // one is a client-side validation error of the comparison card (§7.3).
+  for (const [fieldId, comparison] of Object.entries(values.comparisons)) {
+    if (comparison.matches === false && comparison.reason.trim() === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["comparisons", fieldId],
+        message: "Укажите причину несоответствия для отметки «Не совпадает».",
+      });
+    }
+  }
+});
+
 function fromComparison(value: ReconciliationView["checks"][string]): ComparisonValue {
   return {
     matches: value.matches ?? null,
@@ -217,7 +231,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   const submit = (event: React.FormEvent<HTMLFormElement>): void => {
     const formElement = event.currentTarget;
     void form.handleSubmit((formValues) => {
-      const parsed = formSchema.safeParse(formValues);
+      const parsed = formSchemaWithComparisonFacts.safeParse(formValues);
       if (!parsed.success) {
         const errors: Record<string, string> = {};
         for (const issue of parsed.error.issues) {
@@ -225,9 +239,15 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         }
         setFieldErrors(errors);
         setFormError("Проверьте введённые значения количеств и отметки.");
-        // The focus moves to the first invalid field of the composed form.
+        // The focus moves to the first invalid field of the composed form:
+        // a text input (quantities, the reason of a mismatch) or, for a
+        // mark-level comparison error without fact inputs, the first radio
+        // of the invalid mark group (§7.3).
         requestAnimationFrame(() => {
-          formElement.querySelector<HTMLElement>('.app-field input[aria-invalid="true"]')?.focus();
+          (
+            formElement.querySelector<HTMLElement>('.app-field input[aria-invalid="true"]') ??
+            formElement.querySelector<HTMLElement>('.vse-rec-check-buttons[aria-invalid="true"] input')
+          )?.focus();
         });
         return;
       }

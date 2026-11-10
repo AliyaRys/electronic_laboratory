@@ -368,6 +368,26 @@ describe("ReconciliationForm", () => {
     expect(screen.getByLabelText("Фактическое значение")).toBeInTheDocument();
   });
 
+  it("wires the comparison error to the reason input and focuses it on submit (§7.3)", async () => {
+    renderForm();
+    await userEvent.click(screen.getByRole("radio", { name: "Не совпадает: Вес, кг" }));
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    const reason = screen.getByLabelText("Причина несоответствия");
+    expect(reason).toHaveAttribute("aria-invalid", "true");
+    const describedBy = reason.getAttribute("aria-describedby") ?? "";
+    expect(describedBy).toContain("-reason-error");
+    const message = document.getElementById(
+      describedBy.split(" ").find((id) => id.endsWith("-reason-error")) ?? "",
+    );
+    expect(message?.textContent).toContain("причину несоответствия");
+    // The mark group of the same card references the message as well.
+    const group = screen.getByRole("radiogroup", { name: "Отметка сравнения: Вес, кг" });
+    expect(group).toHaveAttribute("aria-invalid", "true");
+    expect(group.getAttribute("aria-describedby")).toContain("-reason-error");
+    // Submit returns the focus to the invalid reason input.
+    await waitFor(() => expect(reason).toHaveFocus());
+  });
+
   it("marks all compared fields with «Все соответствует»", async () => {
     renderForm();
     await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));

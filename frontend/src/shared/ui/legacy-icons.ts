@@ -174,6 +174,20 @@ export const ICON_DEFINITIONS: Readonly<Record<string, readonly IconPart[]>> = O
     ["path", { d: "M6 12h.01" }],
     ["path", { d: "M18 12h.01" }],
   ],
+  "arrival-plus": [
+    ["path", { d: "M12 5v14" }],
+    ["path", { d: "M5 12h14" }],
+  ],
+  "arrival-reconcile": [
+    ["path", { d: "M9 11 12 14 20 6" }],
+    ["path", { d: "M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" }],
+  ],
+  "columns-grid": [
+    ["path", { d: "M4 4h6v6H4z" }],
+    ["path", { d: "M14 4h6v6h-6z" }],
+    ["path", { d: "M4 14h6v6H4z" }],
+    ["path", { d: "M14 14h6v6h-6z" }],
+  ],
   "chevron-left": [["path", { d: "m15 18-6-6 6-6" }]],
   "chevron-right": [["path", { d: "m9 18 6-6-6-6" }]],
   // --- components/shell/AppHeader.js (canonical shell icons)
@@ -328,3 +342,10 @@ export const ADMIN_ICON_NAMES: readonly IconName[] = Object.freeze([
 ]);
 
 export const DIRECTORY_ICON_NAMES: readonly IconName[] = Object.freeze(["directory-paid-services"]);
+
+/** Arrival-action icon names (components/icons/VseIcon.js, listArrivalIcons). */
+export const ARRIVAL_ICON_NAMES: readonly IconName[] = Object.freeze([
+  "arrival-plus",
+  "arrival-reconcile",
+  "columns-grid",
+]);

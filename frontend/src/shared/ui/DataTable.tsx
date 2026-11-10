@@ -13,7 +13,8 @@
  * link deliberately so the destination is discoverable as an explicit action.
  */
 import "./ui.css";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Icon, type IconName } from "./Icon";
 import { StatusView } from "./StatusView";
 
 export interface DataTableColumn {
@@ -24,6 +25,12 @@ export interface DataTableColumn {
 export interface DataTableCell {
   columnId: string;
   value: string;
+  /**
+   * Optional renderer override (named variant of the shared primitive): when
+   * set it replaces the plain text value in that cell. The ``value`` stays
+   * the accessible fallback. Other tables keep working unchanged.
+   */
+  node?: ReactNode;
 }
 
 export interface DataTableRowAction {
@@ -32,6 +39,10 @@ export interface DataTableRowAction {
   label: string;
   /** Full accessible name (e.g. «Перейти к сверке данных»). */
   accessibleName: string;
+  /** Registry icon; renders the action as a compact icon link. */
+  icon?: IconName | undefined;
+  /** Tone class of the icon action ("neutral" | "danger"). */
+  tone?: "neutral" | "danger" | undefined;
 }
 
 export interface DataTableRow {
@@ -39,12 +50,16 @@ export interface DataTableRow {
   /** Canonical navigation of the row: a real link in the leading cell. */
   href?: string;
   cells: DataTableCell[];
+  /** Row tone class (e.g. the light-gray draft row). */
+  className?: string | undefined;
   /**
    * Explicit link action in the actions column, next to the row menu. It is a
    * separate navigation element: it never opens or triggers the menu, and it
    * is rendered even when the row has no menu.
    */
   rowAction?: DataTableRowAction;
+  /** Extra icon actions rendered in the actions column (renderers variant). */
+  actions?: ReactNode;
   menu?: { id: string; label: string }[];
 }
 
@@ -57,6 +72,10 @@ export interface DataTableProps {
   loadingMessage?: string;
   emptyMessage?: string;
   onMenuAction?: (event: React.MouseEvent<HTMLButtonElement>, rowId: string, actionId: string) => void;
+  /** Named geometry variant applied on the scroller (arrivals queue tables). */
+  variant?: "default" | "arrivals" | undefined;
+  /** Keep the caption but hide it visually (mockups show no visible caption). */
+  visuallyHiddenCaption?: boolean | undefined;
 }
 
 function RowMenu({
@@ -135,6 +154,8 @@ export function DataTable({
   loadingMessage = "Загрузка…",
   emptyMessage = "Пока ничего нет.",
   onMenuAction,
+  variant = "default",
+  visuallyHiddenCaption = false,
 }: DataTableProps): React.ReactElement {
   const menuId = useId();
   if (loading) {
@@ -144,9 +165,13 @@ export function DataTable({
     return <StatusView state="no-match" title={emptyMessage} />;
   }
   return (
-    <div className="app-table-scroll">
-      <table className="app-table">
-        <caption>{caption}</caption>
+    <div className={`app-table-scroll${variant !== "default" ? ` app-table-${variant}` : ""}`}>
+      <table className={`app-table${variant !== "default" ? ` app-table-${variant}` : ""}`}>
+        {visuallyHiddenCaption ? (
+          <caption className="visually-hidden">{caption}</caption>
+        ) : (
+          <caption>{caption}</caption>
+        )}
         <thead>
           <tr>
             {columns.map((column) => (
@@ -154,35 +179,36 @@ export function DataTable({
                 {column.header}
               </th>
             ))}
-            <th scope="col">
+            <th scope="col" className="app-table-column-actions">
               <span className="visually-hidden">Действия</span>
             </th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id}>
+            <tr key={row.id} className={row.className}>
               {columns.map((column) => {
                 const cell = row.cells.find((entry) => entry.columnId === column.id);
-                const text = cell?.value ?? "—";
                 const isFirst = column.id === columns[0].id;
+                const text = cell?.value ?? "—";
+                const link = isFirst && row.href !== undefined ? <a href={row.href}>{text}</a> : text;
                 return (
-                  <td key={column.id}>
-                    {isFirst && row.href !== undefined ? <a href={row.href}>{text}</a> : text}
+                  <td
+                    key={column.id}
+                    title={
+                      variant === "arrivals" && !isFirst && typeof text === "string" && text !== ""
+                        ? text
+                        : undefined
+                    }
+                  >
+                    {cell?.node !== undefined ? cell.node : link}
                   </td>
                 );
               })}
-              <td>
+              <td className="app-table-column-actions">
                 <div className="app-table-row-actions">
-                  {row.rowAction !== undefined ? (
-                    <a
-                      className="app-table-row-action"
-                      href={row.rowAction.href}
-                      aria-label={row.rowAction.accessibleName}
-                    >
-                      {row.rowAction.label}
-                    </a>
-                  ) : null}
+                  {row.rowAction !== undefined ? <RowActionLink action={row.rowAction} /> : null}
+                  {row.actions}
                   {row.menu !== undefined ? (
                     <RowMenu key={`menu-${menuId}`} row={row} onAction={onMenuAction} />
                   ) : null}
@@ -193,5 +219,30 @@ export function DataTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function RowActionLink({ action }: { action: DataTableRowAction }): React.ReactElement {
+  if (action.icon !== undefined) {
+    return (
+      <a
+        className={`app-table-icon-action${action.tone === "danger" ? " danger" : ""}`}
+        href={action.href}
+        aria-label={action.accessibleName}
+        title={action.accessibleName}
+      >
+        <Icon name={action.icon} />
+      </a>
+    );
+  }
+  return (
+    <a
+      className="app-table-row-action"
+      href={action.href}
+      aria-label={action.accessibleName}
+      title={action.accessibleName}
+    >
+      {action.label}
+    </a>
   );
 }

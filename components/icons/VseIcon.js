@@ -148,6 +148,17 @@
     ],
     'chevron-left': [['path', { d: 'm15 18-6-6 6-6' }]],
     'chevron-right': [['path', { d: 'm9 18 6-6-6-6' }]],
+    'arrival-plus': [['path', { d: 'M12 5v14' }], ['path', { d: 'M5 12h14' }]],
+    'arrival-reconcile': [
+      ['path', { d: 'M9 11 12 14 20 6' }],
+      ['path', { d: 'M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9' }],
+    ],
+    'columns-grid': [
+      ['path', { d: 'M4 4h6v6H4z' }],
+      ['path', { d: 'M14 4h6v6h-6z' }],
+      ['path', { d: 'M4 14h6v6H4z' }],
+      ['path', { d: 'M14 14h6v6h-6z' }],
+    ],
   });
 
   const checkSections = Object.freeze({
@@ -177,6 +188,12 @@
     'admin-search', 'admin-more', 'admin-view', 'admin-download', 'admin-print',
     'admin-save', 'admin-warning', 'chevron-left', 'chevron-right',
   ]);
+
+  const arrivalIcons = Object.freeze({
+    'arrival-plus': 'Создать ВСЭ',
+    'arrival-reconcile': 'Перейти к сверке данных',
+    'columns-grid': 'Выбрать столбцы',
+  });
 
   const createNode = ([tag, attributes]) => {
     const node = document.createElementNS(svgNamespace, tag);
@@ -212,6 +229,7 @@
   api.listCheckActions = () => checkActions.map(value => ({ ...value }));
   api.listAdminIcons = () => [...adminIcons];
   api.listDirectoryIcons = () => Object.entries(directoryIcons).map(([icon, label]) => ({ icon, label }));
+  api.listArrivalIcons = () => Object.entries(arrivalIcons).map(([icon, label]) => ({ icon, label }));
 
   api.enhanceCheckInterface = (root = document) => {
     root.querySelectorAll('[data-check-section]').forEach(section => {

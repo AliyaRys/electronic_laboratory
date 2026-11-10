@@ -1,7 +1,8 @@
 /**
- * ArrivalsPage tests (A01/V02, MSW): URL-context filters, the VET/HEAD-only
- * sync job with its honest polling states, and the hide command path with
- * If-Match + Idempotency-Key.
+ * ArrivalsPage tests (A01/V02 + DR3, MSW): URL-context queues, real stage
+ * counters, per-stage filters without a «Найти» button, the hide command
+ * path (If-Match + Idempotency-Key) through the explicit icon button, and
+ * the VET/HEAD-only durable sync job.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -44,8 +45,9 @@ const view = {
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
     status: "COMPLETED",
     fields: {
-      documentNumber: "№ A-001234",
-      transportNumber: null,
+      documentNumber: "RU016:260812-005102",
+      issuedOn: "2026-08-12T08:40:00",
+      transportNumber: "А245КМ 116",
       consignor: "ООО «Мясопром»",
       consignee: "Убойный пункт",
       productItem: "Отруба говяжьи",
@@ -57,23 +59,27 @@ const view = {
     productItem: null,
     unit: null,
   },
-  documentary: { mass_kg: "120.0", quantity: "4", unit_id: "u1" },
+  documentary: { mass_kg: "486.5", quantity: "3", unit_id: "u" },
   confirmation: null,
   queue: "EXPECTED",
   examination_id: null,
   revision: 1,
 };
 
-function renderPage(initial = "/labs/" + LAB + "/arrivals"): {
+function renderPage(
+  initial = "/labs/" + LAB + "/arrivals",
+  arrivalsHandler?: (request: Request, items: unknown[]) => Response,
+): {
   captured: { url: string; headers: Headers }[];
-  setItems: (items: unknown[]) => void;
   deletes: Headers[];
+  setItems: (items: unknown[]) => void;
 } {
   const captured: { url: string; headers: Headers }[] = [];
   const deletes: Headers[] = [];
   let items: unknown[] = [view];
   server.use(
     http.get("*/api/v1/arrivals", ({ request }) => {
+      if (arrivalsHandler !== undefined) return arrivalsHandler(request, items);
       captured.push({ url: new URL(request.url).search, headers: request.headers });
       return HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 });
     }),
@@ -97,15 +103,157 @@ function renderPage(initial = "/labs/" + LAB + "/arrivals"): {
 }
 
 describe("ArrivalsPage", () => {
-  it("keeps the queue and search filters in the URL", async () => {
-    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=work`);
+  it("shows the three mockup stage tabs and keeps the queue in the URL", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals`);
     await screen.findByText("говядина");
-    expect(captured[0]?.url).toContain("queue=WORK");
-    await userEvent.type(screen.getByLabelText("Поиск (документ, продукция)"), "говя");
-    await userEvent.click(screen.getByRole("button", { name: "Найти" }));
+    expect(captured[0]?.url).toContain("queue=EXPECTED");
+    expect(screen.getByRole("button", { name: /Ожидаемые/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /В работе/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Завершенные/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Ожидается/ })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /Завершенные/ }));
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("queue=ACCEPTED");
+    });
+  });
+
+  it("renders the real stage totals as tab counters, not page rows", async () => {
+    const seen: string[] = [];
+    renderPage(`/labs/${LAB}/arrivals`, (request, items) => {
+      const url = new URL(request.url);
+      seen.push(url.search);
+      const queue = url.searchParams.get("queue") ?? "EXPECTED";
+      return HttpResponse.json({
+        items: queue === "EXPECTED" ? items : [],
+        total: queue === "EXPECTED" ? items.length : 137,
+        page: 1,
+        page_size: 20,
+      });
+    });
+    await screen.findByText("говядина");
+    await waitFor(
+      () => {
+        expect(seen.some((entry) => entry.includes("queue=WORK"))).toBe(true);
+      },
+      { timeout: 3000 },
+    );
+    await waitFor(
+      () => {
+        expect(screen.getByRole("button", { name: /В работе/ }).textContent).toContain("137");
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("per-stage filters without a «Найти» button; Enter applies and keeps q in the URL", async () => {
+    const { captured } = renderPage();
+    await screen.findByText("говядина");
+    expect(screen.queryByRole("button", { name: "Найти" })).toBeNull();
+    await userEvent.type(screen.getByLabelText("Поиск"), "говя{Enter}");
     await waitFor(() => {
       expect(captured.at(-1)?.url).toContain("q=");
+      expect(captured.at(-1)?.url).toContain("page=1");
     });
+  });
+
+  it("the result filter exists only on «Завершенные» (server-supported)", async () => {
+    renderPage(`/labs/${LAB}/arrivals?queue=accepted`);
+    await screen.findByText("говядина");
+    expect(screen.getByLabelText("Результат")).toBeTruthy();
+    // Real enum values keep their honest labels.
+    for (const option of ["Все результаты", "Ожидание", "Возврат", "Завершено"]) {
+      expect(screen.getByRole("option", { name: option })).toBeTruthy();
+    }
+  });
+
+  it("the accepted stage has its own column set with Статус ВСД", async () => {
+    renderPage(`/labs/${LAB}/arrivals?queue=accepted`);
+    await screen.findByText("говядина");
+    expect(screen.getByRole("columnheader", { name: "Статус ВСД" })).toBeTruthy();
+    expect(screen.getByText("Выбрать столбцы")).toBeTruthy();
+  });
+
+  it("the EXPECTED stage has distinct hide and reconciliation icon actions", async () => {
+    const { deletes } = renderPage();
+    await screen.findByText("говядина");
+    expect(screen.getByRole("button", { name: "Скрыть поступление из очереди" })).toBeTruthy();
+    const action = screen.getByRole("link", { name: "Перейти к сверке данных" });
+    action.addEventListener("click", (event) => event.preventDefault());
+    await userEvent.click(action);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(deletes.length).toBe(0);
+  });
+
+  it("hides an expected arrival with If-Match and an Idempotency-Key", async () => {
+    const { deletes } = renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Скрыть поступление из очереди" }));
+    await userEvent.click(screen.getByRole("button", { name: "Скрыть" }));
+    await waitFor(() => {
+      expect(deletes.length).toBe(1);
+      expect(deletes[0]?.get("if-match")).toBe('"1"');
+      expect(deletes[0]?.get("idempotency-key")).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("говядина")).toBeNull();
+    });
+  });
+
+  it("after hiding the last row of page 2, the page moves back to an existing page (11)", async () => {
+    // Page 2 holds exactly one row (total 21, page_size 20): hiding it makes
+    // page 2 empty, so the page corrects to the previous existing page.
+    const { captured, deletes } = renderPage(
+      `/labs/${LAB}/arrivals?queue=expected&page=2`,
+      (request, items) => {
+        captured.push({ url: new URL(request.url).search, headers: request.headers });
+        const pageNumber = Number(new URL(request.url).searchParams.get("page") ?? "1");
+        return HttpResponse.json({
+          items: pageNumber === 2 ? items : [],
+          total: 21,
+          page: pageNumber,
+          page_size: 20,
+        });
+      },
+    );
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Скрыть поступление из очереди" }));
+    await userEvent.click(screen.getByRole("button", { name: "Скрыть" }));
+    await waitFor(() => {
+      expect(deletes.length).toBe(1);
+    });
+    // The next read goes to the corrected page 1 (no empty «page=2» request).
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("page=1");
+      expect(captured.at(-1)?.url).not.toContain("page=2");
+    });
+  });
+
+  it("the chosen result stays in the URL on the accepted stage (9)", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=accepted`);
+    await screen.findByText("говядина");
+    expect(captured.at(-1)?.url).not.toContain("result=");
+    await userEvent.selectOptions(screen.getByLabelText("Результат"), "RETURNED");
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("result=returned");
+    });
+  });
+
+  it("changing the queue resets the page to 1", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=expected&page=3`);
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: /В работе/ }));
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("queue=WORK");
+      expect(captured.at(-1)?.url).not.toContain("page=3");
+    });
+  });
+
+  it("shows the page-level ACCESS_DENIED state", async () => {
+    renderPage(`/labs/${LAB}/arrivals`, () =>
+      HttpResponse.json({ code: "ACCESS_DENIED", detail: "" }, { status: 403 }),
+    );
+    await screen.findByText("Нет доступа к этому разделу.");
+    expect(screen.queryByText("говядина")).toBeNull();
   });
 
   it("keeps the update button VET/HEAD-only and runs the durable sync job", async () => {
@@ -132,7 +280,6 @@ describe("ArrivalsPage", () => {
     );
     renderPage();
     await screen.findByText("говядина");
-    // A VET/HEAD sees the enabled button with the source name on the row.
     const update = screen.getByRole("button", { name: "Обновить" });
     expect(update.hasAttribute("disabled")).toBe(false);
     await userEvent.click(update);
@@ -145,7 +292,7 @@ describe("ArrivalsPage", () => {
     );
   });
 
-  it("an ANALYST cannot run the sync (honest disabled state)", async () => {
+  it("an ANALYST cannot run the sync and sees no permanent hint row", async () => {
     server.use(
       http.get("*/api/v1/me", () =>
         HttpResponse.json({
@@ -164,9 +311,8 @@ describe("ArrivalsPage", () => {
     );
     renderPage();
     await screen.findByText("говядина");
-    const update = screen.getByRole("button", { name: "Обновить" });
-    expect(update.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText(/Обновление поступлений из ВетИС выполняется автоматически/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Обновить" })).toBeNull();
+    expect(screen.queryByText(/Обновление поступлений из ВетИС выполняется автоматически/)).toBeNull();
   });
 
   it("shows the honest failure when the sync job fails", async () => {
@@ -199,29 +345,11 @@ describe("ArrivalsPage", () => {
     );
   });
 
-  it("hides an expected arrival with If-Match and an Idempotency-Key", async () => {
-    const { deletes } = renderPage();
-    await screen.findByText("говядина");
-    await userEvent.click(screen.getByRole("button", { name: "Действия со строкой" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Скрыть из очереди" }));
-    await userEvent.click(screen.getByRole("button", { name: "Скрыть" }));
-    await waitFor(() => {
-      expect(deletes.length).toBe(1);
-      expect(deletes[0]?.get("if-match")).toBe('"1"');
-      expect(deletes[0]?.get("idempotency-key")).toBeTruthy();
-    });
-    await waitFor(() => {
-      expect(screen.queryByText("говядина")).toBeNull();
-    });
-  });
-
-  it("the reconciliation action never opens the hide dialog", async () => {
-    const { deletes } = renderPage();
-    await screen.findByText("говядина");
-    const action = screen.getByRole("link", { name: "Перейти к сверке данных" });
-    action.addEventListener("click", (event) => event.preventDefault());
-    await userEvent.click(action);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(deletes.length).toBe(0);
+  it("shows the honest network error with a retry", async () => {
+    renderPage(`/labs/${LAB}/arrivals`, () =>
+      HttpResponse.json({ code: "NETWORK", detail: "Сеть недоступна." }, { status: 500 }),
+    );
+    await screen.findByText(/Не удалось загрузить поступления/);
+    expect(screen.getByRole("button", { name: "Повторить" })).toBeTruthy();
   });
 });

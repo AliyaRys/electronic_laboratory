@@ -390,6 +390,38 @@
   background: #f5f8f8;
   text-decoration: none;
 }
+/* Icon variant of the row action (RowActionLink, ``rowAction.icon``): the same
+   square icon-button geometry as the mockup row actions — 40×40, r11 — with
+   the shared tokens instead of an unstyled inline SVG. Focus-visible comes
+   from the global ``:focus-visible`` rule above. */
+.app-table-icon-action {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 11px;
+  background: var(--app-panel);
+  color: var(--app-teal-dark);
+  text-decoration: none;
+}
+.app-table-icon-action .app-icon {
+  width: 19px;
+  height: 19px;
+}
+.app-table-icon-action:hover {
+  border-color: #b9d6d3;
+  background: #f5f8f8;
+  text-decoration: none;
+}
+.app-table-icon-action.danger {
+  border-color: #edd0d2;
+  color: var(--app-danger);
+}
+.app-table-icon-action.danger:hover {
+  border-color: #e5b3b7;
+  background: #fff4f4;
+}
 .app-table-menu-button {
   min-height: 36px;
   border: 1px solid var(--app-input-line);

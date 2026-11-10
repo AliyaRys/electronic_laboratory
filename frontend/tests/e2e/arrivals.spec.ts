@@ -192,6 +192,13 @@ test.describe("arrivals", () => {
     // The explicit action in the last column; the hide button is separate.
     const action = page.getByRole("link", { name: "Перейти к сверке данных" });
     await expect(action).toBeVisible();
+    // The icon action renders as the mockup's square icon button (40×40, r11),
+    // not as a bare inline SVG.
+    const actionBox = (await action.boundingBox())!;
+    expect(Math.round(actionBox.width)).toBe(40);
+    expect(Math.round(actionBox.height)).toBe(40);
+    expect(await action.evaluate((node) => getComputedStyle(node).borderRadius)).toBe("11px");
+    expect(await action.evaluate((node) => getComputedStyle(node).borderStyle)).toBe("solid");
     await expect(page.getByRole("button", { name: "Скрыть поступление из очереди" })).toBeVisible();
     await page.screenshot({
       path: "../docs/implementation/evidence/DR-arrivals-action-row-1440.png",

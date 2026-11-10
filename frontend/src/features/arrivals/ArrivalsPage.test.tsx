@@ -199,6 +199,63 @@ describe("ArrivalsPage", () => {
     });
   });
 
+  it("after hiding the last row of page 2, the page moves back to an existing page (11)", async () => {
+    // Page 2 holds exactly one row (total 21, page_size 20): hiding it makes
+    // page 2 empty, so the page corrects to the previous existing page.
+    const { captured, deletes } = renderPage(
+      `/labs/${LAB}/arrivals?queue=expected&page=2`,
+      (request, items) => {
+        captured.push({ url: new URL(request.url).search, headers: request.headers });
+        const pageNumber = Number(new URL(request.url).searchParams.get("page") ?? "1");
+        return HttpResponse.json({
+          items: pageNumber === 2 ? items : [],
+          total: 21,
+          page: pageNumber,
+          page_size: 20,
+        });
+      },
+    );
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Скрыть поступление из очереди" }));
+    await userEvent.click(screen.getByRole("button", { name: "Скрыть" }));
+    await waitFor(() => {
+      expect(deletes.length).toBe(1);
+    });
+    // The next read goes to the corrected page 1 (no empty «page=2» request).
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("page=1");
+      expect(captured.at(-1)?.url).not.toContain("page=2");
+    });
+  });
+
+  it("the chosen result stays in the URL on the accepted stage (9)", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=accepted`);
+    await screen.findByText("говядина");
+    expect(captured.at(-1)?.url).not.toContain("result=");
+    await userEvent.selectOptions(screen.getByLabelText("Результат"), "RETURNED");
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("result=returned");
+    });
+  });
+
+  it("changing the queue resets the page to 1", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=expected&page=3`);
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: /В работе/ }));
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("queue=WORK");
+      expect(captured.at(-1)?.url).not.toContain("page=3");
+    });
+  });
+
+  it("shows the page-level ACCESS_DENIED state", async () => {
+    renderPage(`/labs/${LAB}/arrivals`, () =>
+      HttpResponse.json({ code: "ACCESS_DENIED", detail: "" }, { status: 403 }),
+    );
+    await screen.findByText("Нет доступа к этому разделу.");
+    expect(screen.queryByText("говядина")).toBeNull();
+  });
+
   it("keeps the update button VET/HEAD-only and runs the durable sync job", async () => {
     const posts: Headers[] = [];
     let polls = 0;

@@ -406,7 +406,7 @@
   height: 36px;
   border-radius: 10px;
 }
-.app-table-row-actions:has(.arrivals-icon-action) {
+.app-table-row-actions:has(.arrivals-icon-action, .app-table-icon-action) {
   justify-content: flex-end;
 }
 

@@ -24,6 +24,22 @@ describe("AppHeader", () => {
     expect(screen.getByRole("button", { name: "Выйти" })).toBeInTheDocument();
   });
 
+  it("renders the PNG logo in the brand instead of the check icon", () => {
+    render(<AppHeader mode="work" user={user} onLogout={() => undefined} />);
+    const logo = document.querySelector(".topbar .brand-logo img");
+    expect(logo).not.toBeNull();
+    expect(logo).toHaveAttribute("src", "/vse-lab-icon-transparent.png");
+    expect(logo).toHaveAttribute("alt", "");
+    expect(document.querySelector(".topbar .brand-logo svg")).toBeNull();
+  });
+
+  it("marks the profile link active with aria-current on /profile", () => {
+    render(<AppHeader mode="work" user={user} profileActive onLogout={() => undefined} />);
+    const link = screen.getByRole("link", { name: "Анна Кузнецова" });
+    expect(link).toHaveClass("active");
+    expect(link).toHaveAttribute("aria-current", "page");
+  });
+
   it("opens the product list with the keyboard and switches with focus return", async () => {
     const act = userEvent.setup();
     const onProductChange = vi.fn();

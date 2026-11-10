@@ -10,12 +10,13 @@
 import "../features/catalogs/catalogs.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { fetchContexts } from "../features/identity/api";
 import { useMe } from "../shared/api/me";
 import { Button } from "../shared/ui/Button";
 import { Dialog } from "../shared/ui/Dialog";
+import { Icon, type IconName } from "../shared/ui/Icon";
 import { StatusView } from "../shared/ui/StatusView";
 import {
   fetchCheckServices,
@@ -41,8 +42,49 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-function tabFromParams(value: string | null): TabId {
-  return TABS.some((tab) => tab.id === value) ? (value as TabId) : "methods";
+/**
+ * Overview cards (directories.html composition, spec DR4 §7.2): the mockup
+ * order «Стоимость исследований ВСЭ» → «Платные услуги» → «Нормы исследований».
+ * Descriptions are static UI text from the approved mockup; every value and
+ * status keeps coming from the real model. No fake delete actions: only the
+ * existing editors are offered.
+ */
+const OVERVIEW: readonly {
+  tab: TabId;
+  name: string;
+  description: string;
+  icon?: IconName;
+  glyph?: string;
+}[] = [
+  {
+    tab: "tariffs",
+    name: "Стоимость исследований ВСЭ",
+    description: "Используется для автоматического расчёта стоимости услуг",
+    glyph: "₽",
+  },
+  {
+    tab: "check-services",
+    name: "Платные услуги",
+    description: "Стоимость услуг сверки данных для мясной и молочной продукции",
+    icon: "directory-paid-services",
+  },
+  {
+    tab: "methods",
+    name: "Нормы исследований",
+    description: "Используется для автоматической отметки «норма» и отклонений в результатах ВСЭ",
+    glyph: "≋",
+  },
+];
+
+/**
+ * The tab comes from the deep link path (/catalogs/methods, /catalogs/tariffs)
+ * first, then from ?tab=; a missing or unknown tab is the safe overview state
+ * — never a fetch with empty or foreign identifiers (spec DR4 §7.2).
+ */
+function tabFromRoute(pathname: string, value: string | null): TabId | null {
+  if (pathname.endsWith("/methods")) return "methods";
+  if (pathname.endsWith("/tariffs")) return "tariffs";
+  return TABS.some((tab) => tab.id === value) ? (value as TabId) : null;
 }
 
 export function CatalogsPage(): React.ReactElement {
@@ -64,10 +106,11 @@ interface EditorState {
 function CatalogsContent(): React.ReactElement {
   const { user: me } = useMe();
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const laboratoryId = params.get("laboratory_id") ?? "";
   const speciesId = params.get("product_species_id") ?? "";
-  const tab = tabFromParams(params.get("tab"));
+  const tab = tabFromRoute(location.pathname, params.get("tab"));
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [done, setDone] = useState("");
 
@@ -110,6 +153,13 @@ function CatalogsContent(): React.ReactElement {
     setParams(search);
   };
 
+  /** The editor transition keeps laboratory_id/product_species_id in the query. */
+  const openTab = (id: TabId): void => {
+    const search = new URLSearchParams(params);
+    search.set("tab", id);
+    setParams(search);
+  };
+
   const refresh = async (): Promise<void> => {
     // The list/readiness keys are [lab, species, null, "/catalogs/…", tab];
     // the scope prefix matches them all (and not the contexts query).
@@ -142,31 +192,70 @@ function CatalogsContent(): React.ReactElement {
       : labOptions;
 
   return (
-    <div className="vse-app vse-page">
-      <h1>Справочники</h1>
+    <div className="vse-app vse-page vse-catalog-page">
+      <div className="vse-catalog-header">
+        <p className="vse-catalog-eyebrow">Справочники</p>
+        <h1>{tab === null ? "Управление справочниками" : "Справочники"}</h1>
+      </div>
 
       {me !== null && !canEdit ? (
         <StatusView state="forbidden" detail="Раздел доступен заведующему, администратору и аналитику." />
+      ) : tab === null ? (
+        <section
+          className="vse-catalog-section"
+          aria-labelledby="catalog-overview-title"
+          data-testid="catalog-overview"
+        >
+          <div className="vse-catalog-section-head">
+            <div className="vse-catalog-section-title">
+              <span className="vse-catalog-section-icon" aria-hidden="true">
+                <Icon name="directories-classic" />
+              </span>
+              <div>
+                <h2 id="catalog-overview-title">Список справочников</h2>
+                <p>Настройки, которые используются при заполнении электронного журнала.</p>
+              </div>
+            </div>
+          </div>
+          <div className="vse-catalog-list">
+            {OVERVIEW.map((card) => (
+              <article className="vse-catalog-item" key={card.tab} data-testid={`catalog-card-${card.tab}`}>
+                <div className="vse-catalog-item-main">
+                  <span className="vse-catalog-item-icon" aria-hidden="true">
+                    {card.icon !== undefined ? <Icon name={card.icon} /> : card.glyph}
+                  </span>
+                  <div>
+                    <div className="vse-catalog-item-name">{card.name}</div>
+                    <div className="vse-catalog-item-meta">{card.description}</div>
+                  </div>
+                </div>
+                <div className="vse-catalog-item-actions">
+                  <Button type="button" variant="secondary" onClick={() => openTab(card.tab)}>
+                    Редактировать
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       ) : (
         <>
-          <div className="vse-catalog-tabs">
+          <div className="vse-catalog-tabs" role="list" aria-label="Разделы справочников">
             {TABS.map((item) => (
               <a
                 key={item.id}
-                href={`#/catalogs?tab=${item.id}`}
+                href={`/catalogs?tab=${item.id}`}
                 className={item.id === tab ? "active" : ""}
+                aria-current={item.id === tab ? "page" : undefined}
                 onClick={(event) => {
                   event.preventDefault();
-                  const search = new URLSearchParams(params);
-                  search.set("tab", item.id);
-                  setParams(search);
+                  openTab(item.id);
                 }}
               >
                 {item.label}
               </a>
             ))}
           </div>
-
           {tab !== "check-services" ? (
             <form className="vse-catalog-toolbar" onSubmit={(event) => event.preventDefault()}>
               <div className="app-field">
@@ -199,13 +288,11 @@ function CatalogsContent(): React.ReactElement {
               </div>
             </form>
           ) : null}
-
           {done !== "" ? (
             <div className="auth-success" role="status">
               {done}
             </div>
           ) : null}
-
           {readinessData !== null && readinessData.missing.length > 0 ? (
             <div className="vse-catalog-missing" data-testid="catalog-readiness">
               <strong>Раздел не готов к расчёту:</strong>
@@ -216,7 +303,6 @@ function CatalogsContent(): React.ReactElement {
               </ul>
             </div>
           ) : null}
-
           {tab === "methods" && scoped ? (
             <>
               <div className="vse-admin-controls" style={{ marginBottom: 12 }}>
@@ -281,7 +367,6 @@ function CatalogsContent(): React.ReactElement {
               )}
             </>
           ) : null}
-
           {tab === "tariffs" && scoped ? (
             <>
               <div className="vse-admin-controls" style={{ marginBottom: 12 }}>
@@ -344,7 +429,6 @@ function CatalogsContent(): React.ReactElement {
               )}
             </>
           ) : null}
-
           {tab === "check-services" ? (
             <>
               <div className="vse-admin-controls" style={{ marginBottom: 12 }}>
@@ -404,10 +488,9 @@ function CatalogsContent(): React.ReactElement {
               )}
             </>
           ) : null}
-
-          {!scoped && tab !== "check-services" ? (
+          {!scoped && tab !== null && tab !== "check-services" ? (
             <StatusView state="empty" title="Выберите лабораторию и вид продукции." />
-          ) : null}
+          ) : null}{" "}
         </>
       )}
 

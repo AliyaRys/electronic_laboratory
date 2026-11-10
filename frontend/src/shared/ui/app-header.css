@@ -65,6 +65,13 @@
   view-transition-name: lab-logo;
 }
 
+.topbar .brand-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .topbar .brand-copy {
   min-width: 0;
 }
@@ -120,9 +127,14 @@
 
 .topbar .navlink:hover,
 .topbar .user-link:hover,
-.topbar .navlink.active {
+.topbar .navlink.active,
+.topbar .user-link.active {
   background: var(--tint, #eaf6f4);
   color: var(--teal-dark, #0d5358);
+}
+
+.topbar .user-link.active {
+  box-shadow: inset 0 0 0 1px #c9e6e2;
 }
 
 .topbar .navlink:focus-visible,

@@ -15,6 +15,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import {
   AppHeader,
   headerUserFromView,
+  type HeaderActive,
   type HeaderLinks,
   type HeaderUser,
   type HeaderMode,
@@ -140,6 +141,12 @@ export function AppShell({
     useContextStore.getState().setScope({ userId: me.user.id, labId: workingLabId, productId });
   }, [me.user, workingLabId]);
 
+  // Active navigation follows the real route (spec DR4 §6): /catalogs marks
+  // «Справочники», /profile marks the user link; other routes keep no active
+  // item from the shell.
+  const headerActive: HeaderActive = location.pathname.startsWith("/catalogs") ? "directories" : "";
+  const profileActive = location.pathname === "/profile";
+
   const headerLinks = useMemo<HeaderLinks>(() => {
     if (mode !== "work" || workingLabId === null) return {};
     const arrivals = `/labs/${workingLabId}/arrivals?queue=expected`;
@@ -165,6 +172,8 @@ export function AppShell({
         mode={mode}
         user={user}
         product={productType}
+        active={headerActive}
+        profileActive={profileActive}
         links={headerLinks}
         onProductChange={changeProduct}
         onLogout={() => onLogout?.()}

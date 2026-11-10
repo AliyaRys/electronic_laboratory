@@ -99,6 +99,9 @@ describe("AppShell", () => {
       "href",
       `/labs/${laboratoryId}/examinations`,
     );
+    // /profile is the current page for the user link (DR4 §6).
+    expect(screen.getByRole("link", { name: "Анна Кузнецова" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Справочники" })).not.toHaveAttribute("aria-current");
     await waitFor(() => expect(useContextStore.getState().labId).toBe(laboratoryId));
   });
 
@@ -106,6 +109,13 @@ describe("AppShell", () => {
     renderShell();
     await waitFor(() => expect(screen.getByText("Анна Кузнецова")).toBeInTheDocument());
     expect(screen.queryByText(examinationSpecialist)).toBeNull();
+  });
+
+  it("marks «Справочники» active on /catalogs and the user link on /profile", async () => {
+    renderShell("/catalogs");
+    await waitForUser();
+    expect(screen.getByRole("link", { name: "Справочники" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Анна Кузнецова" })).not.toHaveAttribute("aria-current");
   });
 
   it("test_legacy_url_without_identity", async () => {

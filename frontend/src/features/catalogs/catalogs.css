@@ -1,5 +1,163 @@
 /* Catalog screens (Task C02): lists, editor dialogs and the bulk price flow. */
 
+/* Page container (DR4 §7.1): the local mockup geometry — 1180 px, 24 px
+   inline, 37 px top and 96 px bottom; the global app width is untouched. */
+.vse-catalog-page {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 37px 24px 96px;
+}
+
+.vse-catalog-header {
+  margin-bottom: 28px;
+}
+
+.vse-catalog-eyebrow {
+  margin: 0 0 6px;
+  color: var(--app-teal, #146c73);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.vse-catalog-page h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+/* Overview (directories.html): one white section with the directory rows. */
+.vse-catalog-section {
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 18px;
+  padding: 25px;
+  background: var(--app-panel, #fff);
+  box-shadow: 0 8px 24px #1f5a5b08;
+}
+
+.vse-catalog-section-head {
+  margin-bottom: 21px;
+}
+
+.vse-catalog-section-title {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.vse-catalog-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 37px;
+  height: 37px;
+  min-width: 37px;
+  border-radius: 11px;
+  background: var(--app-tint, #eaf6f4);
+  color: var(--app-teal, #146c73);
+}
+
+.vse-catalog-section-icon .app-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.vse-catalog-section-title h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+
+.vse-catalog-section-title p {
+  margin: 3px 0 0;
+  color: var(--app-muted, #668087);
+  font-size: 13px;
+}
+
+.vse-catalog-list {
+  display: grid;
+  gap: 12px;
+}
+
+.vse-catalog-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 13px;
+  background: #fff;
+  padding: 17px 18px;
+}
+
+.vse-catalog-item-main {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+}
+
+.vse-catalog-item-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 41px;
+  height: 41px;
+  min-width: 41px;
+  border-radius: 11px;
+  background: var(--app-tint, #eaf6f4);
+  color: var(--app-teal, #146c73);
+  font-size: 19px;
+  line-height: 1;
+}
+
+.vse-catalog-item-icon .app-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.vse-catalog-item-name {
+  font-weight: 760;
+  font-size: 15px;
+}
+
+.vse-catalog-item-meta {
+  color: var(--app-muted, #668087);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.vse-catalog-item-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 800px) {
+  .vse-catalog-page {
+    padding: 28px 16px 70px;
+  }
+  .vse-catalog-header {
+    margin-bottom: 20px;
+  }
+  .vse-catalog-page h1 {
+    font-size: 27px;
+  }
+  .vse-catalog-section {
+    padding: 18px;
+  }
+  .vse-catalog-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .vse-catalog-item-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 .vse-catalog-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -8,23 +166,34 @@
   margin-bottom: 16px;
 }
 
+/* Compact pill tabs of the editor mode (DR4 §7.4): active — teal with white
+   text, inactive — white with the line border, radius 999 px, height 40 px. */
 .vse-catalog-tabs {
   display: flex;
-  gap: 8px;
+  gap: 9px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .vse-catalog-tabs a {
-  padding: 6px 14px;
-  border: 1px solid var(--app-border, #c8c8c8);
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 999px;
+  background: #fff;
+  color: #4d676d;
+  font-weight: 650;
   text-decoration: none;
-  color: inherit;
+  line-height: 1.2;
 }
 
 .vse-catalog-tabs a.active {
-  background: var(--app-accent, #2f5c8f);
+  background: var(--app-teal, #146c73);
+  border-color: var(--app-teal, #146c73);
   color: #fff;
+  box-shadow: 0 5px 12px #146c7330;
 }
 
 .vse-catalog-missing {

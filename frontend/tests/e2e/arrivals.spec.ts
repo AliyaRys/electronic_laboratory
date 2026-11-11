@@ -358,4 +358,68 @@ test.describe("arrivals", () => {
     await expect(page.getByRole("group", { name: "Столбцы таблицы" })).toBeHidden();
     await expect(trigger).toBeFocused();
   });
+
+  // --- DR7 §10.3 e2e: ALL matching incoming VSDs are displayed -----------------
+
+  test("two matching incoming VSDs render two rows from the two-item fixture", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    const second = {
+      ...singleView,
+      party_id: "9c1b2d3e-2222-4222-8333-444444444444",
+      external: {
+        ...singleView.external,
+        evsd_uuid: "2f0e6d2a-1111-4222-8333-444444444444",
+        fields: { ...singleView.external.fields, documentNumber: "RU016:260812-005103" },
+      },
+      classification: {
+        ...singleView.classification,
+        product: { ...singleView.classification.product, name: "свинина" },
+      },
+    };
+    await page.route("**/api/v1/arrivals?*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [singleView, second], total: 2, page: 1, page_size: 20 }),
+      }),
+    );
+    await page.goto(`/labs/${LAB}/arrivals?queue=expected`);
+    await expect(page.getByText("говядина")).toBeVisible();
+    await expect(page.getByText("свинина")).toBeVisible();
+  });
+
+  test("21 records paginate: page 2 keeps the remaining row", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    const twenty = Array.from({ length: 20 }, (_unused, index) => ({
+      ...singleView,
+      party_id: `9c1b2d3e-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    }));
+    const last = {
+      ...singleView,
+      party_id: "9c1b2d3e-0000-4000-8000-999999999999",
+      classification: {
+        ...singleView.classification,
+        product: { ...singleView.classification.product, name: "свинина" },
+      },
+    };
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      const pageNumber = Number(url.searchParams.get("page") ?? "1");
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: pageNumber === 1 ? twenty : [last],
+          total: 21,
+          page: pageNumber,
+          page_size: 20,
+        }),
+      });
+    });
+    await page.goto(`/labs/${LAB}/arrivals?queue=expected`);
+    await expect(page.getByText("говядина")).toHaveCount(20);
+    await page.getByRole("button", { name: "2", exact: true }).click();
+    await expect(page).toHaveURL(/page=2/);
+    await expect(page.getByText("свинина")).toBeVisible();
+  });
 });

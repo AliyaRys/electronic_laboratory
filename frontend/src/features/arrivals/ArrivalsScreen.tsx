@@ -38,6 +38,8 @@ export interface ArrivalsScreenProps {
   onHide?: ((partyId: string) => void) | undefined;
   sync?: React.ReactElement | undefined;
   syncStatus?: string;
+  /** DR7 §6.3: обезличенные счётчики прохода (страницы/импортировано). */
+  syncDiagnostics?: string | null;
 }
 
 const OPTIONAL_COLUMN_LABELS: Readonly<Record<string, string>> = Object.freeze({
@@ -67,6 +69,7 @@ export function ArrivalsScreen({
   onHide,
   sync,
   syncStatus,
+  syncDiagnostics,
 }: ArrivalsScreenProps): React.ReactElement {
   const table = (): React.ReactElement => {
     switch (queue) {
@@ -113,6 +116,7 @@ export function ArrivalsScreen({
       </div>
       <p className="arrivals-sync-status" role="status">
         {syncStatus}
+        {syncDiagnostics !== null && syncDiagnostics !== undefined ? ` ${syncDiagnostics}` : ""}
       </p>
 
       <StageTabs current={queue} counts={counts} onQueueChange={onQueueChange} />

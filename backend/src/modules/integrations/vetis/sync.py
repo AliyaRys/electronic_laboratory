@@ -237,13 +237,26 @@ def _transport_problem(exc: Exception) -> ProblemError:
     )
 
 
-def _import_problem(exc: Exception) -> ProblemError:
-    """An import failure (DB constraint, upsert error) is recorded honestly."""
+def _import_problem(exc: Exception, *, evsd_uuid: str | None = None) -> ProblemError:
+    """An import failure (DB constraint, upsert error) is recorded honestly.
+
+    §7.3 (DR7): a KEPT document that fails to normalize/persist is never
+    silently dropped — the обезличенная диагностика names the external UUID,
+    the stage and the error code, and the operation stays FAILED until the
+    document is fixed. No substitute document is ever written.
+    """
+    stage = "upsert" if evsd_uuid is None else "upsert/journal"
+    detail = f"Импорт страницы прерван ({type(exc).__name__}); контрольная точка не изменена."
+    if evsd_uuid is not None:
+        detail = (
+            f"Документ {evsd_uuid} не импортирован на этапе {stage} "
+            f"({type(exc).__name__}); операция не завершена, контрольная точка не изменена."
+        )
     return ProblemError(
         status=500,
         code="VETIS_IMPORT_FAILED",
         title="VetIS import failed",
-        detail=f"Импорт страницы прерван ({type(exc).__name__}); контрольная точка не изменена.",
+        detail=detail,
     )
 
 
@@ -257,7 +270,14 @@ def _cursor_contract_problem() -> ProblemError:
     )
 
 
-async def _fail_operation(db: AsyncSession, operation: VetisOperation, problem: ProblemError, *, now: datetime) -> None:
+async def _fail_operation(
+    db: AsyncSession,
+    operation: VetisOperation,
+    problem: ProblemError,
+    *,
+    now: datetime,
+    diagnostics: dict[str, object] | None = None,
+) -> None:
     await db.execute(
         update(VetisOperation)
         .where(VetisOperation.id == operation.id)
@@ -267,6 +287,7 @@ async def _fail_operation(db: AsyncSession, operation: VetisOperation, problem: 
             updated_at=now,
             problem_code=problem.code,
             problem_detail=problem.detail,
+            diagnostics=diagnostics,
         )
     )
     # Finalize the durable outbox row: the failure is terminal, so no retry
@@ -330,6 +351,8 @@ async def run_sync(
     cursor: str | None = None
     pages_done = 0
     imported = 0
+    received = 0
+    filtered_totals: dict[str, int] = {}
     while True:
         async with factory() as db:
             operation = (await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id))).scalar_one()
@@ -366,23 +389,54 @@ async def run_sync(
                 return
             try:
                 for item in current_page.items:
-                    await _import_item(db, operation, item, current_page)
-            except Exception as exc:  # noqa: BLE001 - an import failure is ALSO an honest FAILED run
+                    try:
+                        await _import_item(db, operation, item, current_page)
+                    except Exception as exc:  # noqa: BLE001 - one bad KEPT document is never silently dropped
+                        await _fail_operation(
+                            db,
+                            operation,
+                            _import_problem(exc, evsd_uuid=str(item.evsd_uuid)),
+                            now=datetime.now(UTC),
+                            diagnostics={
+                                "received": received,
+                                "kept": imported,
+                                "filtered": dict(filtered_totals),
+                                "last_failed_evsd_uuid": str(item.evsd_uuid),
+                            },
+                        )
+                        await db.commit()
+                        return
+            except Exception as exc:  # noqa: BLE001 - a pre-import failure is ALSO an honest FAILED run
                 await _fail_operation(db, operation, _import_problem(exc), now=datetime.now(UTC))
                 await db.commit()
                 return
             pages_done += 1
             imported += len(current_page.items)
+            received += len(current_page.items) + sum(current_page.filtered.values())
+            for reason, count in current_page.filtered.items():
+                filtered_totals[reason] = filtered_totals.get(reason, 0) + count
+            diagnostics = {
+                "received": received,
+                "kept": imported,
+                "filtered": dict(filtered_totals),
+            }
             await db.execute(
                 update(VetisOperation)
                 .where(VetisOperation.id == operation_id)
-                .values(pages_done=pages_done, imported=imported, updated_at=datetime.now(UTC))
+                .values(
+                    pages_done=pages_done,
+                    imported=imported,
+                    diagnostics=diagnostics,
+                    updated_at=datetime.now(UTC),
+                )
             )
             # Pagination contract (API-04/DATA-06): a non-complete page MUST
             # carry a next cursor; otherwise re-entering the loop would restart
             # the walk forever with cursor=None. Fail honestly instead.
             if not current_page.complete and current_page.next_cursor is None:
-                await _fail_operation(db, operation, _cursor_contract_problem(), now=datetime.now(UTC))
+                await _fail_operation(
+                    db, operation, _cursor_contract_problem(), now=datetime.now(UTC), diagnostics=diagnostics
+                )
                 await db.commit()
                 return
             await db.commit()
@@ -575,13 +629,16 @@ async def recover_pending_operations(
 
 
 def command_state_view(operation: VetisOperation) -> CommandStateView:
-    """The API-01 CommandState of one VetIS sync operation (DATA-05)."""
+    """The API-01 CommandState of one VetIS sync operation (DATA-05, DR7 §6.3)."""
     return CommandStateView(
         id=operation.id,
         kind="vetis.receipt" if operation.kind == VetisOperationKind.RECEIPT else "vetis.sync",
         state=str(operation.state),
         problem=operation.problem_code,
         updated_at=operation.updated_at,
+        pages_done=operation.pages_done,
+        imported=operation.imported,
+        diagnostics=operation.diagnostics,
     )
 
 

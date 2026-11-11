@@ -9,7 +9,15 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.identity.commands import PAGE_SIZE
-from backend.src.modules.identity.models import DelegationGrant, Laboratory, Territory, User, UserEvent, UserRole, UserScope
+from backend.src.modules.identity.models import (
+    DelegationGrant,
+    Laboratory,
+    Territory,
+    User,
+    UserEvent,
+    UserRole,
+    UserScope,
+)
 from backend.src.modules.identity.policies import PERMISSION_MATRIX
 from backend.src.modules.identity.schemas import LaboratoryOptionView, ScopeView, UserEventView, UserView
 

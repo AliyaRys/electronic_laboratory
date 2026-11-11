@@ -339,10 +339,12 @@ describe("ArrivalsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
     await waitFor(
       () => {
-        expect(screen.getByText(/Обновление не выполнено/)).toBeTruthy();
+        expect(screen.getByText(/Обновление из ВетИС недоступно: интеграция не настроена/)).toBeTruthy();
       },
       { timeout: 5000 },
     );
+    // The honest problem stays visible; the refresh button never shows success.
+    expect(screen.queryByText(/Поступления обновлены/)).toBeNull();
   });
 
   it("shows the honest network error with a retry", async () => {
@@ -351,5 +353,144 @@ describe("ArrivalsPage", () => {
     );
     await screen.findByText(/Не удалось загрузить поступления/);
     expect(screen.getByRole("button", { name: "Повторить" })).toBeTruthy();
+  });
+
+  // --- DR7 §10.3: ALL matching incoming VSDs are displayed ---------------------
+
+  it("shows two rows when the response carries two matching items", async () => {
+    const second = {
+      ...view,
+      party_id: "9c1b2d3e-2222-4222-8333-444444444444",
+      external: {
+        ...view.external,
+        evsd_uuid: "2f0e6d2a-1111-4222-8333-444444444444",
+        fields: {
+          ...view.external.fields,
+          documentUuid: "3f0e6d2a-1111-4222-8333-444444444444",
+        },
+      },
+      classification: {
+        ...view.classification,
+        product: { ...view.classification.product, name: "свинина" },
+      },
+    };
+    renderPage(`/labs/${LAB}/arrivals`, (_request, items) => {
+      void items;
+      return HttpResponse.json({ items: [view, second], total: 2, page: 1, page_size: 20 });
+    });
+    await screen.findByText("говядина");
+    await screen.findByText("свинина");
+    expect(screen.getByText("говядина")).toBeTruthy();
+    expect(screen.getByText("свинина")).toBeTruthy();
+  });
+
+  it("paginates 21 records: 20 on page 1 and the rest on page 2", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals`, (request) => {
+      const pageNumber = Number(new URL(request.url).searchParams.get("page") ?? "1");
+      captured.push({ url: new URL(request.url).search, headers: request.headers });
+      const first = Array.from({ length: 20 }, (_unused, index) => ({
+        ...view,
+        party_id: `9c1b2d3e-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      }));
+      const secondItem = {
+        ...view,
+        party_id: "9c1b2d3e-0000-4000-8000-999999999999",
+        classification: {
+          ...view.classification,
+          product: { ...view.classification.product, name: "свинина" },
+        },
+      };
+      return HttpResponse.json({
+        items: pageNumber === 1 ? first : [secondItem],
+        total: 21,
+        page: pageNumber,
+        page_size: 20,
+      });
+    });
+    await screen.findAllByText("говядина");
+    expect(screen.getAllByText("говядина").length).toBe(20);
+    await userEvent.click(screen.getByRole("button", { name: "2" }));
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("page=2");
+    });
+    await screen.findByText("свинина");
+  });
+
+  it("after a successful sync the table AND the stage counters are re-read directly", async () => {
+    const reads: string[] = [];
+    let polls = 0;
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () =>
+        HttpResponse.json({
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000003",
+          state: "PENDING",
+          status_url: "/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000003",
+        }),
+      ),
+      http.get("*/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000003", () => {
+        polls += 1;
+        return HttpResponse.json({
+          id: "aaaaaaaa-0000-4000-8000-000000000003",
+          kind: "vetis.sync",
+          state: polls >= 2 ? "SUCCESS" : "RUNNING",
+          updated_at: "2026-11-11T10:00:00Z",
+          pages_done: 1,
+          imported: 2,
+        });
+      }),
+    );
+    renderPage(`/labs/${LAB}/arrivals`, (request, items) => {
+      reads.push(new URL(request.url).searchParams.get("queue") ?? "");
+      return HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 });
+    });
+    await screen.findByText("говядина");
+    const initialReads = reads.length;
+    expect(initialReads).toBeGreaterThanOrEqual(4);
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
+    // Table + three stage counters are refetched after the terminal state.
+    await waitFor(() => {
+      expect(reads.length).toBeGreaterThanOrEqual(initialReads + 4);
+    });
+  });
+
+  it("a failed sync shows the honest INTEGRATION_NOT_CONFIGURED message, never an empty result", async () => {
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () =>
+        HttpResponse.json({
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000004",
+          state: "PENDING",
+          status_url: "/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000004",
+        }),
+      ),
+      http.get("*/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000004", () =>
+        HttpResponse.json({
+          id: "aaaaaaaa-0000-4000-8000-000000000004",
+          kind: "vetis.sync",
+          state: "FAILED",
+          problem: "INTEGRATION_NOT_CONFIGURED",
+          updated_at: "2026-11-11T10:00:00Z",
+          pages_done: 0,
+          imported: 0,
+        }),
+      ),
+    );
+    renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Обновление из ВетИС недоступно: интеграция не настроена/)).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
+    expect(screen.queryByText(/Поступления обновлены/)).toBeNull();
+    expect(screen.queryByText(/эВСД не найдены/)).toBeNull();
+    expect(screen.getByText("говядина")).toBeTruthy();
   });
 });

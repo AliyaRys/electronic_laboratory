@@ -127,6 +127,10 @@ export interface SyncOperationState {
   result_id?: string | null;
   problem?: string | null;
   updated_at?: string | null;
+  /** DR7 §6.3 diagnostics: pages processed / documents imported / counters. */
+  pages_done?: number | null;
+  imported?: number | null;
+  diagnostics?: { [key: string]: unknown } | null;
 }
 
 const SYNC_TERMINAL_STATES = new Set(["SUCCESS", "FAILED"]);

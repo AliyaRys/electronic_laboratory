@@ -55,3 +55,8 @@ class CommandStateView(BaseModel):
     result_id: UUID | None = None
     problem: str | None = None
     updated_at: datetime | None = None
+    # VetIS sync diagnostics (ТЗ DR7 §6.3): обезличенные счётчики прохода —
+    # код проблемы, страницы, импортировано; причины фильтров и суммы.
+    pages_done: int | None = None
+    imported: int | None = None
+    diagnostics: dict[str, object] | None = None

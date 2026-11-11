@@ -8,7 +8,7 @@
  * a fake import. The work area is limited to 1180 px (spec 6.1) without
  * changing the global app shell width.
  */
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
@@ -65,7 +65,6 @@ export function ArrivalsPage(): React.ReactElement {
 function ArrivalsContent(): React.ReactElement {
   const { labId } = useParams<{ labId: string }>();
   const [params, setParams] = useSearchParams();
-  const queryClient = useQueryClient();
   const { user } = useMe();
   const filters = filtersFromParams(params);
   const [hideTarget, setHideTarget] = useState<IncomingView | null>(null);
@@ -143,6 +142,18 @@ function ArrivalsContent(): React.ReactElement {
   const page = arrivals.data !== undefined && !("code" in arrivals.data) ? arrivals.data : null;
   const pageCount = page !== null ? Math.max(1, Math.ceil(page.total / page.page_size)) : 1;
 
+  // DR7 §9: after a finished sync (and after a hide) the table and the stage
+  // counters are re-read DIRECTLY (refetch()) — the prefix invalidateQueries
+  // known defect does not reach the "arrivals-count" keys.
+  const refreshAfterSync = async (): Promise<void> => {
+    await Promise.all([
+      arrivals.refetch(),
+      expectedCount.refetch(),
+      workCount.refetch(),
+      acceptedCount.refetch(),
+    ]);
+  };
+
   const applyFilters = (next: Partial<Filters>): void => {
     const merged = { ...filters, ...next };
     const search = new URLSearchParams();
@@ -164,7 +175,7 @@ function ArrivalsContent(): React.ReactElement {
       if (page !== null && page.items.length <= 1 && filters.page > 1) {
         applyFilters({ page: filters.page - 1 });
       }
-      await queryClient.invalidateQueries({ queryKey: ["arrivals"] });
+      await refreshAfterSync();
       return;
     }
     setHideError(problem.detail !== "" ? problem.detail : problem.code);
@@ -185,7 +196,7 @@ function ArrivalsContent(): React.ReactElement {
       setSyncState(state);
       if (syncIsTerminal(state)) {
         setSyncJob(null);
-        await queryClient.invalidateQueries({ queryKey: ["arrivals"] });
+        await refreshAfterSync();
         return;
       }
     }
@@ -209,6 +220,24 @@ function ArrivalsContent(): React.ReactElement {
     syncState !== null && syncJob === null && syncError === "" && syncState.state === "SUCCESS";
   const syncFailed =
     syncState !== null && syncJob === null && syncError === "" && syncState.state === "FAILED";
+  // DR7 §6.3: an unconfigured integration is never dressed up as an empty
+  // result or a success; the honest problem code and the walk counters stay
+  // visible (pages processed, documents imported) — never credentials.
+  const syncProblemText = (state: SyncOperationState): string | null => {
+    if (state.problem === "INTEGRATION_NOT_CONFIGURED") {
+      return "Обновление из ВетИС недоступно: интеграция не настроена.";
+    }
+    return null;
+  };
+  const syncDiagnosticsText =
+    syncState !== null && (syncDone || syncFailed)
+      ? (() => {
+          const pages = syncState.pages_done ?? null;
+          const imported = syncState.imported ?? null;
+          if (pages === null && imported === null) return null;
+          return `Обработано страниц: ${pages ?? 0}; импортировано документов: ${imported ?? 0}.`;
+        })()
+      : null;
   const syncStatus =
     syncError !== ""
       ? syncError
@@ -217,7 +246,8 @@ function ArrivalsContent(): React.ReactElement {
         : syncDone
           ? "Поступления обновлены из ВетИС."
           : syncFailed
-            ? "Обновление не выполнено: повторите позже или обратитесь к администратору."
+            ? (syncProblemText(syncState) ??
+              "Обновление не выполнено: повторите позже или обратитесь к администратору.")
             : canSync
               ? "Автообновление из ВетИС каждые 15 минут"
               : "";
@@ -283,6 +313,7 @@ function ArrivalsContent(): React.ReactElement {
           ) : undefined
         }
         syncStatus={syncStatus}
+        syncDiagnostics={syncDiagnosticsText}
       />
 
       <Dialog

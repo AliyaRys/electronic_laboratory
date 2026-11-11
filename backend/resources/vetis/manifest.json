@@ -5,6 +5,7 @@
   "family": "mercury-vu.service",
   "service_id": "mercury-vu.service:2.0",
   "endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/ApplicationManagementService",
+  "dictionary_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/DictionaryService",
   "business_schema_version": "2.0",
   "soap_version": "1.1",
   "namespaces": {
@@ -17,13 +18,20 @@
   },
   "soap_actions": {
     "submit": "submitApplicationRequest",
-    "receive": "receiveApplicationResultRequest"
+    "receive": "receiveApplicationResultRequest",
+    "purpose_list": "getPurposeListRequest"
   },
   "operations": [
     {
       "name": "GetVetDocumentListOperation",
       "input_type": "getVetDocumentListRequest",
       "output_type": "getVetDocumentListResponse",
+      "read_only": true
+    },
+    {
+      "name": "GetPurposeList",
+      "input_type": "getPurposeListRequest",
+      "output_type": "getPurposeListResponse",
       "read_only": true
     },
     {
@@ -54,6 +62,7 @@
   "evidence_links": [
     "https://help.vetrf.ru/wiki/GetVetDocumentListOperation_v2",
     "https://help.vetrf.ru/wiki/ProcessIncomingConsignment_v2",
+    "https://help.vetrf.ru/wiki/GetPurposeList_v2.0",
     "docs/TZ_development/plans/mercury-test-integration-contract.md"
   ]
 }

@@ -30,7 +30,7 @@ const party = (over: Partial<IncomingView>): IncomingView => ({
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
     status: "COMPLETED",
     fields: {
-      documentNumber: "RU016:260812-005102",
+      documentUuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac",
       issuedOn: "2026-08-12T08:12:00",
       transportNumber: "А123ВС 116",
       consignor: "ООО «Мясопром» (Республика Татарстан, г. Казань, ул. Аграрная, 7)",
@@ -59,7 +59,7 @@ const expectedRows: IncomingView[] = [
       ...party({}).external,
       fields: {
         ...party({}).external.fields,
-        documentNumber: "RU016:260812-005118",
+        documentUuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac",
         issuedOn: "2026-08-12T10:15:00",
         consignor:
           "Общество с ограниченной ответственностью «Агрофирма Свободный Труд имени двадцатилетия Автономной Республики» — длинное значение хозяйствующего субъекта",

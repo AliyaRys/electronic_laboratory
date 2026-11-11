@@ -167,8 +167,8 @@ export function JournalRow({
         <p className="vse-journal-value">{view.external.fields.consignor ?? "—"}</p>
       </div>
       <div>
-        <p className="vse-journal-label">Номер эВСД</p>
-        <p className="vse-journal-value">{view.external.fields.documentNumber ?? "—"}</p>
+        <p className="vse-journal-label">UUID ВСД</p>
+        <p className="vse-journal-value">{view.external.fields.documentUuid ?? "—"}</p>
       </div>
       <div>
         <span className={`vse-status-badge ${waiting ? "waiting" : "completed"}`}>
@@ -178,7 +178,7 @@ export function JournalRow({
       <div>
         <Link
           to={`/labs/${labId}/examinations/${view.examination_id ?? ""}`}
-          aria-label={`Просмотр карточки ВСЭ, номер эВСД ${view.external.fields.documentNumber ?? "не указан"}`}
+          aria-label={`Просмотр карточки ВСЭ, UUID ВСД ${view.external.fields.documentUuid ?? "не указан"}`}
         >
           Просмотр
         </Link>

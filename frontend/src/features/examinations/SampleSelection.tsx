@@ -166,12 +166,12 @@ export function PartyReadonlyFacts({
       <h3>{headline}</h3>
       <dl className="vse-exam-facts">
         <div>
-          <dt>Номер эВСД</dt>
-          <dd>{party.external.fields.documentNumber ?? "—"}</dd>
+          <dt>UUID ВСД</dt>
+          <dd>{party.external.fields.documentUuid ?? "—"}</dd>
         </div>
         <div>
-          <dt>Дата эВСД</dt>
-          <dd>{sender.documentIssuedOn ?? "—"}</dd>
+          <dt>Дата оформления ВСД</dt>
+          <dd>{party.external.fields.issuedOn ?? "—"}</dd>
         </div>
         <div>
           <dt>Отправитель — предприятие</dt>

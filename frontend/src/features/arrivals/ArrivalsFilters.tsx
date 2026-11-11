@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../shared/ui/Icon";
 import { RESULT_LABELS, type ArrivalResult } from "./api";
 
-const SEARCH_PLACEHOLDER = "Номер эВСД, хозяйство, продукция или ТС";
+const SEARCH_PLACEHOLDER = "UUID ВСД, хозяйство, продукция или ТС";
 const DEBOUNCE_MS = 300;
 
 export interface ArrivalsFiltersProps {

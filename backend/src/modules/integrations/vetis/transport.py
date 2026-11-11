@@ -26,12 +26,17 @@ from backend.src.modules.integrations.vetis.manifest import VetisManifest
 __all__ = [
     "WRITE_OPERATIONS",
     "PRODUCT_SERVICE_OPERATIONS",
+    "PURPOSE_LIST_PAGE",
     "WriteOperationRejected",
     "VetisTransport",
     "SpyTransport",
     "RestrictedSession",
     "ZeepApplicationTransport",
+    "ZeepDictionaryTransport",
     "build_get_vet_document_list_application",
+    "build_purpose_list_request",
+    "parse_purpose_list",
+    "dictionary_allowlist",
     "imports_allowlist",
     "is_read_only_operation",
 ]
@@ -339,3 +344,162 @@ def build_get_vet_document_list_application(
         "</mercvu:getVetDocumentListRequest>"
         "</apl:data></apl:application></apldef:submitApplicationRequest>"
     )
+
+
+# --- the purpose dictionary (GetPurposeList, ТЗ DR5 §9.4) ------------------------
+
+# The page size the owner pinned for the full purpose walk (API REQUESTS.txt
+# item 3): more than 151 today, so a complete pass needs one page unless the
+# external list grows.
+PURPOSE_LIST_PAGE = 160
+
+_REGISTRY_DEFINITIONS_NS = "http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2"
+
+
+def dictionary_allowlist(manifest: VetisManifest) -> set[str]:
+    """The fail-closed allowlist of the DictionaryService boundary.
+
+    Built from the pinned manifest only: the DictionaryService endpoint
+    itself. Every other URL is rejected BEFORE any network contact.
+    """
+    allowed = imports_allowlist(manifest)
+    if manifest.dictionary_endpoint:
+        allowed.add(manifest.dictionary_endpoint)
+    return allowed
+
+
+def build_purpose_list_request(*, offset: int, count: int) -> str:
+    """The plain SOAP envelope of a read-only GetPurposeList page."""
+    if not is_read_only_operation("GetPurposeList"):
+        raise WriteOperationRejected("GetPurposeList")
+    return (
+        f'<ws:getPurposeListRequest xmlns:ws="{_REGISTRY_DEFINITIONS_NS}" '
+        f'xmlns:bs="{_BASE_NS}">'
+        f"<bs:listOptions><bs:count>{max(1, count)}</bs:count>"
+        f"<bs:offset>{max(0, offset)}</bs:offset></bs:listOptions>"
+        "</ws:getPurposeListRequest>"
+    )
+
+
+def parse_purpose_list(result_xml: str) -> tuple[list[dict[str, object]], int]:
+    """Parse one GetPurposeList page into source-faithful records.
+
+    Returns (records, total). A record carries guid/uuid/name/active/last/
+    status/createDate/updateDate/previous exactly as the source rendered them.
+    """
+    from xml.etree import ElementTree as ET
+
+    ns = {
+        "bs": _BASE_NS,
+        "dt": _DICTIONARY_NS,
+        "v2": _REGISTRY_DEFINITIONS_NS,
+    }
+    root = ET.fromstring(result_xml)
+    purpose_list = root.find(".//dt:purposeList", ns)
+    if purpose_list is None:
+        raise ProblemError(
+            status=502,
+            code="VETIS_PURPOSE_LIST_INVALID",
+            title="VetIS purpose list invalid",
+            detail="Ответ ВетИС не содержит список назначений груза.",
+        )
+    raw_total = purpose_list.get("total") or "0"
+    total = int(raw_total) if raw_total.strip().isdigit() else 0
+    records: list[dict[str, object]] = []
+
+    def _text(parent: ET.Element | None, tag: str) -> str | None:
+        node = parent.find(tag, ns) if parent is not None else None
+        if node is None or node.text is None:
+            return None
+        value = node.text.strip()
+        return value or None
+
+    for element in purpose_list.findall("dt:purpose", ns):
+        guid = _text(element, "bs:guid")
+        name = _text(element, "dt:name")
+        if not guid or not name:
+            # A record without its stable identity or name is unusable; the
+            # pass must not fabricate one.
+            raise ProblemError(
+                status=502,
+                code="VETIS_PURPOSE_LIST_INVALID",
+                title="VetIS purpose list invalid",
+                detail="Ответ ВетИС содержит запись назначения без GUID или названия.",
+            )
+        records.append(
+            {
+                "guid": guid,
+                "uuid": _text(element, "bs:uuid"),
+                "name": name,
+                "active": (_text(element, "bs:active") or "false") == "true",
+                "last": (_text(element, "bs:last") or "false") == "true",
+                "status": int(_text(element, "bs:status") or 0),
+                "created_at": _text(element, "bs:createDate"),
+                "updated_at": _text(element, "bs:updateDate"),
+                "previous": _text(element, "bs:previous"),
+            }
+        )
+    return records, total
+
+
+class ZeepDictionaryTransport:
+    """The real read-only DictionaryService boundary (GetPurposeList only).
+
+    Same guards as the application transport: TLS verified, DTD/entities off,
+    bounded timeouts and the fail-closed URL allowlist; the SOAPAction comes
+    from the pinned manifest, never guessed.
+    """
+
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        soap_action: str,
+        connect_timeout_s: int = 10,
+        read_timeout_s: int = 60,
+        allowed_urls: Collection[str] | None = None,
+        gateway_user: str | None = None,
+        gateway_password: str | None = None,
+    ) -> None:
+        self._endpoint = endpoint
+        self._soap_action = soap_action
+        self._connect_timeout = connect_timeout_s
+        self._read_timeout = read_timeout_s
+        self._allowed_urls = frozenset(allowed_urls or ())
+        self._gateway_user = gateway_user
+        self._gateway_password = gateway_password
+
+    def _post(self, body: str) -> str:  # pragma: no cover - live boundary
+        session = RestrictedSession(allowed=self._allowed_urls) if self._allowed_urls else requests.Session()
+        if self._gateway_user is not None and self._gateway_password is not None:
+            session.auth = (self._gateway_user, self._gateway_password)
+        envelope = (
+            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
+            f"<soapenv:Header/><soapenv:Body>{body}</soapenv:Body></soapenv:Envelope>"
+        )
+        response = session.post(
+            self._endpoint,
+            data=envelope.encode("utf-8"),
+            headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": self._soap_action},
+            timeout=(self._connect_timeout, self._read_timeout),
+        )
+        response.raise_for_status()
+        return str(response.text)
+
+    async def get_purpose_list_page(self, *, offset: int, count: int) -> str:
+        return await asyncio.to_thread(self._post, build_purpose_list_request(offset=offset, count=count))
+
+
+class SpyPurposeTransport:
+    """A recording spy of the purpose boundary: proves zero writes and records
+    every requested page (used by the dictionary-sync tests only)."""
+
+    def __init__(self, pages: list[str]) -> None:
+        self._pages = list(pages)
+        self.calls: list[dict[str, object]] = []
+
+    async def get_purpose_list_page(self, *, offset: int, count: int) -> str:
+        self.calls.append({"offset": offset, "count": count, "at": datetime.now(UTC).isoformat()})
+        if not self._pages:
+            raise RuntimeError("spy: no more purpose pages")
+        return self._pages.pop(0)

@@ -48,8 +48,8 @@ const partyView: IncomingView = {
   external: {
     contour: "PILOT",
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
-    status: "COMPLETED",
-    fields: { documentNumber: "№ A-001234", consignor: "ООО «Мясопром»" },
+    status: "CONFIRMED",
+    fields: { documentUuid: "1f0e6d2a-1111-4222-8333-444444444444", consignor: "ООО «Мясопром»" },
   },
   classification: {
     product: { id: "362aa885-9b9f-ae95-05d0-f9570f4fbdc6", name: "говядина" },
@@ -123,7 +123,9 @@ describe("ExaminationViewPage", () => {
     expect(screen.queryByRole("link", { name: /заключени|печать|скачат/i })).toBeNull();
     // Readonly facts of the card and the party.
     expect(screen.getByText("кл-1")).toBeTruthy();
-    expect(await screen.findByText("№ A-001234", {}, { timeout: 6000 })).toBeTruthy();
+    expect(
+      await screen.findByText("1f0e6d2a-1111-4222-8333-444444444444", {}, { timeout: 6000 }),
+    ).toBeTruthy();
     expect(screen.getByText("100.0")).toBeTruthy();
     // The late completion is its own single action.
     expect(screen.getByRole("button", { name: "Завершить ожидание" })).toBeTruthy();

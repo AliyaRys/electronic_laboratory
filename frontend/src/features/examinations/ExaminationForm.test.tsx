@@ -32,7 +32,7 @@ const party: IncomingView = {
     contour: "PILOT",
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
     status: "COMPLETED",
-    fields: { documentNumber: "№ A-001234", consignor: "ООО «Мясопром»" },
+    fields: { documentUuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac", consignor: "ООО «Мясопром»" },
   },
   classification: {
     product: { id: "362aa885-9b9f-ae95-05d0-f9570f4fbdc6", name: "говядина" },

@@ -42,9 +42,12 @@ const party: IncomingView = {
   external: {
     contour: "PILOT",
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
-    status: "COMPLETED",
+    status: "CONFIRMED",
     fields: {
-      documentNumber: "№ A-001234",
+      documentUuid: "1f0e6d2a-1111-4222-8333-444444444444",
+      issuedOn: "2026-11-03",
+      statusLabel: "Оформлен",
+      purpose: "реализация в пищу людям",
       transportNumber: "А123ВС77",
       consignor: "ООО «Мясопром»",
       consignee: "Убойный пункт",
@@ -111,7 +114,7 @@ describe("ReconciliationPage", () => {
     );
     renderRoute();
     expect(await screen.findByText("Решение о приёмке")).toBeInTheDocument();
-    expect(screen.getByText("№ A-001234")).toBeInTheDocument();
+    expect(screen.getByText("1f0e6d2a-1111-4222-8333-444444444444")).toBeInTheDocument();
   });
 
   it("renders the mockup title row with the Mercury badge", async () => {

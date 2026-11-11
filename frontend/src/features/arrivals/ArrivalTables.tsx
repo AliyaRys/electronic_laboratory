@@ -7,15 +7,7 @@
  */
 import { DataTable, type DataTableColumn, type DataTableRow } from "../../shared/ui/DataTable";
 import { Icon } from "../../shared/ui/Icon";
-import { STAGE_EMPTY_TEXTS, type IncomingView } from "./api";
-
-export function formatRuDateTime(value: string | null | undefined): string {
-  if (typeof value !== "string" || value === "") return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const pad = (part: number): string => String(part).padStart(2, "0");
-  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+import { STAGE_EMPTY_TEXTS, formatRuDate, formatRuDateTime, type IncomingView } from "./api";
 
 /** First non-empty string of the real source values, otherwise «—». */
 function first(...keys: (string | null | undefined)[]): string {
@@ -47,6 +39,16 @@ function vehicleText(view: IncomingView): string {
   return first(view.external.fields.transportNumber, view.external.fields.vehicleNumber);
 }
 
+/** The top-level eVSD UUID — the «UUID ВСД» shown in every table (ТЗ DR5 §6). */
+function documentUuidText(view: IncomingView): string {
+  return first(view.external.fields.documentUuid, view.external.evsd_uuid);
+}
+
+/** The backend-owned Russian label of the external VetIS status. */
+function statusLabelText(view: IncomingView): string {
+  return first(view.external.fields.statusLabel);
+}
+
 /** Confirmed reconciliation date — the only real «дата сверки» fact. */
 function reconciliationDate(view: IncomingView): string {
   return formatRuDateTime(view.confirmation?.confirmed_at);
@@ -63,8 +65,8 @@ function examinationHref(labId: string, view: IncomingView): string {
 // --- 10 «Ожидаемые» ---------------------------------------------------------------
 
 const EXPECTED_COLUMNS: readonly DataTableColumn[] = [
-  { id: "date", header: "Дата создания ВСД" },
-  { id: "number", header: "Номер эВСД" },
+  { id: "date", header: "Дата оформления ВСД" },
+  { id: "number", header: "UUID ВСД" },
   { id: "host", header: "Хозяйство" },
   { id: "product", header: "Вид продукции" },
   { id: "mass", header: "Объём / масса" },
@@ -89,8 +91,8 @@ export function ExpectedArrivalsTable({
       id: view.party_id,
       href: reconciliationHref(labId, view),
       cells: [
-        { columnId: "date", value: formatRuDateTime(first(view.external.fields.issuedOn)) },
-        { columnId: "number", value: first(view.external.fields.documentNumber) },
+        { columnId: "date", value: formatRuDate(view.external.fields.issuedOn) },
+        { columnId: "number", value: documentUuidText(view) },
         { columnId: "host", value: hostText(view) },
         { columnId: "product", value: productText(view) },
         { columnId: "mass", value: massText(view) },
@@ -133,7 +135,7 @@ export function ExpectedArrivalsTable({
 
 const WORK_COLUMNS: readonly DataTableColumn[] = [
   { id: "date", header: "Дата сверки данных" },
-  { id: "number", header: "Номер эВСД" },
+  { id: "number", header: "UUID ВСД" },
   { id: "host", header: "Хозяйство" },
   { id: "product", header: "Вид продукции" },
   { id: "mass", header: "Объём / масса" },
@@ -166,7 +168,7 @@ export function WorkArrivalsTable({
       className: isDraft ? "app-row-draft" : undefined,
       cells: [
         { columnId: "date", value: reconciliationDate(view) },
-        { columnId: "number", value: first(view.external.fields.documentNumber) },
+        { columnId: "number", value: documentUuidText(view) },
         { columnId: "host", value: hostText(view) },
         { columnId: "product", value: productText(view) },
         { columnId: "mass", value: massText(view) },
@@ -212,7 +214,7 @@ export function WorkArrivalsTable({
 
 const ACCEPTED_CORE_COLUMNS: readonly DataTableColumn[] = [
   { id: "date", header: "Дата сверки данных" },
-  { id: "number", header: "Номер эВСД" },
+  { id: "number", header: "UUID ВСД" },
   { id: "host", header: "Хозяйство" },
   { id: "product", header: "Вид продукции" },
   { id: "mass", header: "Объём / масса" },
@@ -253,13 +255,13 @@ export function CompletedArrivalsTable({
     href: reconciliationHref(labId, view),
     cells: [
       { columnId: "date", value: reconciliationDate(view) },
-      { columnId: "number", value: first(view.external.fields.documentNumber) },
+      { columnId: "number", value: documentUuidText(view) },
       { columnId: "host", value: hostText(view) },
       { columnId: "product", value: productText(view) },
       { columnId: "mass", value: massText(view) },
-      // API-gap: no human-readable ВетИС status label / ВСЭ result in the
-      // read model — the queue is never presented as a veterinary result.
-      { columnId: "status", value: "—" },
+      // The external VetIS status is shown in Russian (backend-owned label);
+      // the local ВСЭ result is a different entity and stays separate.
+      { columnId: "status", value: statusLabelText(view) },
       { columnId: "vse", value: "—" },
       { columnId: "cost", value: "—" },
       { columnId: "deadline", value: "—" },

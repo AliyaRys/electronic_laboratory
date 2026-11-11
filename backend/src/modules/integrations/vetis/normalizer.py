@@ -22,13 +22,15 @@ from datetime import datetime
 from typing import Any
 from xml.etree import ElementTree as ET
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.src.core.problems import ProblemError
 from backend.src.modules.arrivals.schemas import (
     Batch,
     ConsignorConsignee,
     ExternalRef,
+    ProductMark,
+    PurposeRef,
     SourceSnapshot,
     VdDocument,
 )
@@ -41,6 +43,7 @@ __all__ = [
     "normalize_snapshot",
     "filter_entries",
     "extract_raw_documents",
+    "package_quantity",
 ]
 
 _NS = {
@@ -67,6 +70,10 @@ class NormalizedEntry(BaseModel):
     consignee: dict[str, Any]
     batch: dict[str, Any]
     transport_number: str | None
+    purpose_guid: str | None = None
+    purpose_uuid: str | None = None
+    packages: list[dict[str, Any]] = Field(default_factory=list)
+    package_quantity: str | None = None
 
 
 def dependency_unavailable(detail: str) -> ProblemError:
@@ -107,6 +114,80 @@ def _transport_number(transport: ET.Element | None) -> str | None:
     return _text(number)
 
 
+def _int_text(element: ET.Element | None) -> int | None:
+    """An integer source value; anything unparseable stays ABSENT (no 0, no raise)."""
+    raw = _text(element)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _decimal_sum(values: list[str]) -> str | None:
+    """The exact decimal sum of source strings, without float precision loss."""
+    from decimal import Decimal, InvalidOperation
+
+    total = Decimal(0)
+    for value in values:
+        try:
+            total += Decimal(value)
+        except InvalidOperation:
+            return None
+    rendered = format(total.normalize(), "f")
+    return rendered
+
+
+def package_quantity(packages: list[dict[str, Any]]) -> str | None:
+    """The Mercury package-count rule: sum of ``dt:quantity`` of ONLY the
+    maximal numeric ``dt:level``; different levels are never added together.
+
+    Without a maximal level or without any populated quantity on it the source
+    quantity stays ABSENT — ``volume`` is mass and is NEVER substituted.
+    """
+    levels = [level for level in (item.get("level") for item in packages) if isinstance(level, int)]
+    if not levels:
+        return None
+    top = max(levels)
+    quantities = [
+        str(item["quantity"])
+        for item in packages
+        if item.get("level") == top and item.get("quantity") not in (None, "")
+    ]
+    if not quantities:
+        return None
+    return _decimal_sum(quantities)
+
+
+def _packages(batch: ET.Element | None) -> list[dict[str, Any]]:
+    package_list = _find(batch, "vd:packageList") if batch is not None else None
+    if package_list is None:
+        return []
+    packages: list[dict[str, Any]] = []
+    for package in package_list.findall("dt:package", _NS):
+        packing = _find(package, "dt:packingType")
+        packages.append(
+            {
+                "level": _int_text(_find(package, "dt:level")),
+                "packingType": {
+                    "guid": _text(_find(packing, "bs:guid")),
+                    "uuid": _text(_find(packing, "bs:uuid")),
+                    "name": _text(_find(packing, "dt:name")),
+                    "globalID": _text(_find(packing, "dt:globalID")),
+                }
+                if packing is not None
+                else None,
+                "quantity": _text(_find(package, "dt:quantity")),
+                "productMarks": [
+                    {"class": mark.get("class"), "value": (mark.text or "").strip()}
+                    for mark in package.findall("dt:productMarks", _NS)
+                ],
+            }
+        )
+    return packages
+
+
 def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | None:
     if _depth(element) > max_depth:
         raise dependency_unavailable("Ответ ВетИС превышает допустимую глубину XML.")
@@ -123,6 +204,9 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
     volume = _text(_find(batch, "vd:volume")) if batch is not None else None
     quantity = _text(_find(batch, "vd:quantity")) if batch is not None else None
     product_type = _text(_find(batch, "vd:productType")) if batch is not None else None
+    packages = _packages(batch)
+    authentication = _find(element, "vd:authentication")
+    purpose = _find(authentication, "vd:purpose") if authentication is not None else None
     return NormalizedEntry(
         evsd_uuid=evsd_uuid,
         document_type=_text(_find(element, "vd:vetDType")) or "",
@@ -148,8 +232,13 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
             "volume": volume,
             "quantity": quantity,
             "unit": _ref(_find(batch, "vd:unit")),
+            "packageList": packages,
         },
         transport_number=_transport_number(transport),
+        purpose_guid=_text(_find(purpose, "bs:guid")),
+        purpose_uuid=_text(_find(purpose, "bs:uuid")),
+        packages=packages,
+        package_quantity=package_quantity(packages),
     )
 
 
@@ -245,18 +334,37 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
         guid = raw.get("guid")
         ref_uuid = raw.get("uuid")
         name = raw.get("name")
-        if guid is None and ref_uuid is None and name is None:
+        global_id = raw.get("globalID")
+        if guid is None and ref_uuid is None and name is None and global_id is None:
             return None
         return ExternalRef.model_validate(
             {
                 "guid": str(guid) if guid else None,
                 "uuid": str(ref_uuid) if ref_uuid else None,
                 "name": name,
+                "globalID": global_id,
             }
         )
 
     volume = batch.get("volume")
-    quantity = batch.get("quantity")
+    package_quantity_value = entry.package_quantity or batch.get("quantity")
+    package_entries = []
+    for package in entry.packages:
+        packing = package.get("packingType") or {}
+        package_entries.append(
+            {
+                "level": package.get("level"),
+                "packingType": _external_ref(packing),
+                "quantity": package.get("quantity"),
+                "productMarks": [
+                    ProductMark.model_validate(mark) for mark in (package.get("productMarks") or [])
+                ],
+            }
+        )
+    purpose = PurposeRef(
+        guid=uuid.UUID(entry.purpose_guid) if entry.purpose_guid else None,
+        external_uuid=uuid.UUID(entry.purpose_uuid) if entry.purpose_uuid else None,
+    )
     return SourceSnapshot(
         vd_document=VdDocument(
             type=entry.document_type,
@@ -283,10 +391,12 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
                 sub_product=_external_ref(batch["subProduct"]),
                 product_item=_external_ref(batch["productItem"]),
                 volume=volume or "0",
-                quantity=quantity,
+                quantity=package_quantity_value,
                 unit=_external_ref(batch["unit"]),
+                package_list=package_entries,
             ),
             transport_number=entry.transport_number,
+            purpose=purpose if (purpose.guid or purpose.external_uuid) else None,
         ),
         vet_documents=[],
     )

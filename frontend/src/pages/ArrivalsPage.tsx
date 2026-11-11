@@ -294,7 +294,7 @@ function ArrivalsContent(): React.ReactElement {
         description={
           hideTarget === null
             ? undefined
-            : `Документ ${hideTarget.external.fields.documentNumber ?? ""} перестанет отображаться в очереди «Ожидаемые». Сам эВСД не аннулируется: документ останется в системе и при изменении внешнего содержания появится снова.`
+            : `Документ ${hideTarget.external.fields.documentUuid ?? hideTarget.external.evsd_uuid} перестанет отображаться в очереди «Ожидаемые». Сам эВСД не аннулируется: документ останется в системе и при изменении внешнего содержания появится снова.`
         }
         confirmLabel="Скрыть"
         error={hideError}

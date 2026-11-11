@@ -29,8 +29,8 @@ const party: IncomingView = {
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
     status: "COMPLETED",
     fields: {
-      documentNumber: "RU016:260807-002914",
-      documentIssuedOn: "2026-08-07",
+      documentUuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac",
+      issuedOn: "2026-11-03",
       consignor: "КФХ Шайдуллин Азат Рашидович (422336, Республика Татарстан, Кайбицкий район, с. Молькеево)",
       consignorOwner: "Шайдуллин Азат Рашидович, ИНН: 210803077517",
       consignee:

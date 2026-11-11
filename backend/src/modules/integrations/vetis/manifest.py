@@ -128,6 +128,7 @@ class VetisManifest(BaseModel):
     family: str
     service_id: str
     endpoint: str
+    dictionary_endpoint: str | None = None
     business_schema_version: str
     soap_version: str
     namespaces: dict[str, str]
@@ -167,6 +168,9 @@ def _validate(raw: dict[str, object]) -> None:
         raise ValueError("Неверный serviceId профиля ВУ.")
     if not str(raw["endpoint"]).startswith("https://"):
         raise ValueError("Endpoint профиля ВУ должен использовать HTTPS.")
+    dictionary_endpoint = raw.get("dictionary_endpoint")
+    if dictionary_endpoint is not None and not str(dictionary_endpoint).startswith("https://"):
+        raise ValueError("Endpoint справочника ВетИС должен использовать HTTPS.")
     if raw["contour"] not in ("PILOT", "PRODUCTION"):
         raise ValueError("Неверный контур manifest.")
     initiator = raw["initiator"]

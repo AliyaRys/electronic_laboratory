@@ -54,6 +54,9 @@ _IDENTITY_TABLES = (
     "vetis_source_documents",
     "vetis_operations",
     "vetis_bindings",
+    # purpose dictionary (DR5)
+    "mercury_purpose_sync_state",
+    "mercury_purpose_guid",
     # samples (Task S01)
     "sample_collections",
     "sample_disposals",

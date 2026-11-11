@@ -8,6 +8,7 @@ receipt confirmation, completed examination), never stored.
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from typing import Any, Literal, cast
@@ -31,6 +32,9 @@ from backend.src.modules.arrivals.schemas import (
     IncomingView,
     QuantitySet,
 )
+from backend.src.modules.integrations.vetis.models import VetisContour
+from backend.src.modules.integrations.vetis.queries import find_purpose_name
+from backend.src.modules.integrations.vetis.status import status_label
 
 __all__ = [
     "PAGE_SIZE",
@@ -171,6 +175,8 @@ def _search_condition(query: str) -> Any:
         issue_number.ilike(pattern, escape="\\"),
         product_item.ilike(pattern, escape="\\"),
         product_name.ilike(pattern, escape="\\"),
+        # The search finds a document by its UUID ВСД (full or partial).
+        IncomingDocument.evsd_uuid.cast(String).ilike(pattern, escape="\\"),
     )
 
 
@@ -288,14 +294,26 @@ def _quantity_set(batch: dict[str, object]) -> QuantitySet:
     unit_raw = batch.get("unit")
     unit = unit_raw if isinstance(unit_raw, dict) else None
     unit_id = str(unit.get("id") or "") if unit is not None else ""
+    # The documentary quantity is the number of transport packages the source
+    # carried (max-level packageList sum). An absent source quantity stays
+    # ABSENT: the mass (`volume`) is a different entity and is NEVER
+    # substituted, and no `0` is fabricated (ТЗ DR5 §5.2).
+    quantity_raw = batch.get("quantity")
+    quantity = str(quantity_raw) if quantity_raw not in (None, "") else ""
     return QuantitySet(
         mass_kg=str(batch.get("volume", "0")),
-        quantity=str(batch.get("quantity") or batch.get("volume") or "0"),
+        quantity=quantity,
         unit_id=unit_id,
     )
 
 
-def _external_fields(document: IncomingDocument) -> ExternalFields:
+def _external_fields(
+    document: IncomingDocument,
+    *,
+    purpose_name: str | None = None,
+    purpose_guid: str | None = None,
+    purpose_uuid: str | None = None,
+) -> ExternalFields:
     payload = document.source_snapshot["vdDocument"]
     document_payload = payload if isinstance(payload, dict) else {}
     consignor_raw = document_payload.get("consignor")
@@ -307,7 +325,19 @@ def _external_fields(document: IncomingDocument) -> ExternalFields:
     product_item_raw = batch.get("productItem")
     product_item = product_item_raw if isinstance(product_item_raw, dict) else None
     fields: dict[str, str | None] = {
+        # Deprecated alias with ONE fixed meaning: the blank issueNumber. The
+        # UUID ВСД is `documentUuid`/`evsd_uuid` — never this field.
         "documentNumber": str(document_payload.get("issueNumber") or ""),
+        "documentUuid": str(document.evsd_uuid),
+        "issuedOn": document_payload.get("issueDate") or None,
+        "status": document.external_status,
+        # Russian label projection (single backend owner, vetis.status).
+        "statusLabel": status_label(document.external_status),
+        # The purpose NAME is resolved from the contour-scoped local dictionary;
+        # the identifiers stay as backend requisites, never shown as text.
+        "purpose": purpose_name,
+        "purposeGuid": purpose_guid,
+        "purposeUuid": purpose_uuid,
         "transportNumber": document_payload.get("transportNumber") or None,
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),
@@ -352,11 +382,17 @@ async def build_incoming_view(
     batch = cast(dict[str, object], batch if isinstance(batch, dict) else {})
     examination_id = await _open_examination_id(db, party.id)
     queue_label = await queue_of(db, party, has_reconciliation, confirmation is not None)
+    purpose_name, purpose_guid, purpose_uuid = await _resolve_purpose(db, document, document_payload)
     return IncomingView(
         id=str(document.id),
         party_id=str(party.id),
         laboratory_id=str(party.laboratory_id),
-        external=_external_fields(document),
+        external=_external_fields(
+            document,
+            purpose_name=purpose_name,
+            purpose_guid=purpose_guid,
+            purpose_uuid=purpose_uuid,
+        ),
         classification=_classification_view(dict(party.classification_snapshot)),
         documentary=_quantity_set(batch),
         confirmation=_confirmation_summary(confirmation) if confirmation is not None else None,
@@ -364,3 +400,49 @@ async def build_incoming_view(
         examination_id=str(examination_id) if examination_id is not None else None,
         revision=party.rev,
     )
+
+
+# Honest UI fallback for a purpose GUID absent from the local dictionary
+# (ТЗ DR5 §9.1): the import is never rejected and the raw GUID never surfaces.
+PURPOSE_NOT_FOUND_TEXT = "Назначение не найдено в справочнике"
+
+_PURPOSE_LOG = logging.getLogger("vetis.purpose")
+
+
+async def _resolve_purpose(
+    db: AsyncSession,
+    document: IncomingDocument,
+    document_payload: object,
+) -> tuple[str | None, str | None, str | None]:
+    """Resolve the purpose name inside the SAME contour (contour isolation).
+
+    A GUID/UUID the snapshot carries but the dictionary does not know keeps
+    the import intact: the identifiers stay in the API, the UI receives the
+    honest fallback text and a structured diagnostic is recorded (no secrets,
+    no SOAP payloads).
+    """
+    payload = document_payload if isinstance(document_payload, dict) else {}
+    purpose_raw = payload.get("purpose")
+    purpose = purpose_raw if isinstance(purpose_raw, dict) else {}
+    guid = purpose.get("guid")
+    purpose_uuid = purpose.get("uuid")
+    if not guid and not purpose_uuid:
+        return None, None, None
+    name: str | None = None
+    try:
+        key = uuid.UUID(str(guid)) if guid else uuid.UUID(str(purpose_uuid))
+    except ValueError:
+        key = None
+    if key is not None:
+        name = await find_purpose_name(db, VetisContour(document.contour), key)
+    if name is None:
+        _PURPOSE_LOG.warning(
+            "purpose_dictionary_miss",
+            extra={
+                "contour": str(document.contour),
+                "purpose_guid": str(guid) if guid else None,
+                "evsd_uuid": str(document.evsd_uuid),
+            },
+        )
+        return PURPOSE_NOT_FOUND_TEXT, str(guid) if guid else None, str(purpose_uuid) if purpose_uuid else None
+    return name, str(guid) if guid else None, str(purpose_uuid) if purpose_uuid else None

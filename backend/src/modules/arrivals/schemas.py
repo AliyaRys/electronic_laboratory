@@ -41,6 +41,9 @@ __all__ = [
     "ActPreview",
     "ReconciliationView",
     "DecimalString",
+    "PackageEntry",
+    "ProductMark",
+    "PurposeRef",
     "parse_decimal",
 ]
 
@@ -75,10 +78,45 @@ class ExternalRef(StrictModel):
     guid: uuid.UUID | None = None
     external_uuid: uuid.UUID | None = Field(default=None, alias="uuid")
     name: str | None = Field(default=None, max_length=255)
+    global_id: str | None = Field(default=None, alias="globalID", max_length=64)
+
+
+class ProductMark(StrictModel):
+    """One ``dt:productMarks`` entry: its ``class`` attribute + the text."""
+
+    mark_class: str | None = Field(default=None, alias="class", max_length=64)
+    value: str = Field(max_length=255)
+
+
+class PackageEntry(StrictModel):
+    """One ``dt:package`` of ``vd:packageList`` — source-faithful, no float.
+
+    ``quantity`` is the raw source string; the sum over the MAXIMAL level is
+    computed separately (see ``normalizer.package_quantity``) and never mixed
+    with the mass (``batch.volume``).
+    """
+
+    level: int | None = None
+    packing_type: ExternalRef | None = Field(default=None, alias="packingType")
+    quantity: str | None = Field(default=None, max_length=64)
+    product_marks: list[ProductMark] = Field(default_factory=list, alias="productMarks")
+
+
+class PurposeRef(StrictModel):
+    """``vd:authentication/vd:purpose`` — identifiers only; the Russian name is
+    resolved at READ time from the contour-scoped local dictionary and is
+    never written into the snapshot."""
+
+    guid: uuid.UUID | None = None
+    external_uuid: uuid.UUID | None = Field(default=None, alias="uuid")
 
 
 class Batch(StrictModel):
-    """``batch`` of the eVSD: three separate classification levels + unit."""
+    """``batch`` of the eVSD: three separate classification levels + unit.
+
+    ``quantity`` is the number of transport packages (max-level sum of
+    ``packageList``) — NEVER the mass (``volume``) and never a fabricated ``0``.
+    """
 
     product: ExternalRef
     sub_product: ExternalRef | None = None
@@ -86,6 +124,7 @@ class Batch(StrictModel):
     volume: DecimalString
     quantity: DecimalString | None = None
     unit: ExternalRef | None = None
+    package_list: list[PackageEntry] = Field(default_factory=list, alias="packageList")
 
 
 class ConsignorConsignee(StrictModel):
@@ -104,6 +143,7 @@ class VdDocument(StrictModel):
     consignee: ConsignorConsignee
     batch: Batch
     transport_number: str | None = Field(default=None, max_length=64)
+    purpose: PurposeRef | None = None
 
 
 class SourceSnapshot(StrictModel):

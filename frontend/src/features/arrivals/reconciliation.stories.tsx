@@ -36,7 +36,7 @@ const party: IncomingView = {
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
     status: "COMPLETED",
     fields: {
-      documentNumber: "RU016:260812-005102",
+      documentUuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac",
       issuedOn: "2026-08-12T08:12:00",
       transportNumber: "А123ВС77",
       consignor: "ИП Усманов И.К. (Республика Татарстан, г. Казань, ул. Аграрная, 7)",
@@ -401,7 +401,7 @@ export const СравнениеРасхождение: StoryObj<typeof Compariso
 
 export const СправочноеЗначение: StoryObj<typeof ReferenceField> = {
   render: (args) => <ReferenceField {...args} />,
-  args: { label: "Номер эВСД", value: "RU016:260812-005102" },
+  args: { label: "UUID ВСД", value: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac" },
 };
 
 const decisionBase: ReceiptDecisionValue = {

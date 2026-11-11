@@ -50,6 +50,7 @@ from backend.src.modules.arrivals.validation import (
     normalize_payload,
     validate_receipt,
 )
+from backend.src.modules.integrations.vetis.status import status_label
 
 __all__ = ["save_reconciliation", "build_reconciliation_view", "load_reconciliation", "source_projection"]
 
@@ -102,8 +103,11 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
 
     fields: dict[str, str | int | None] = {
         "documentNumber": str(payload.get("issueNumber") or ""),
+        "documentUuid": str(row.evsd_uuid),
         "issuedOn": text_of(payload.get("issueDate")),
         "status": text_of(payload.get("status")),
+        # Russian label projection; the RAW code above keeps driving rules.
+        "statusLabel": status_label(row.external_status),
         "purpose": None,
         "senderEnterprise": enterprise_name(consignor),
         "senderOwner": _ref_name(consignor.get("businessEntity")),

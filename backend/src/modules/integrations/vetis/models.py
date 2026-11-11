@@ -27,6 +27,8 @@ from backend.src.core.database import Base
 
 __all__ = [
     "MercuryProductGuidLvl2",
+    "MercuryPurposeGuid",
+    "MercuryPurposeSyncState",
     "VetisBinding",
     "VetisContour",
     "VetisOperation",
@@ -76,6 +78,63 @@ class MercuryProductGuidLvl2(Base):
     synchronized_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
+
+
+class MercuryPurposeGuid(Base):
+    """One locally mirrored cargo purpose (``mercury_purpose_guid``, ТЗ DR5 §9.2).
+
+    ``guid`` is the stable identity received in ``vd:authentication/vd:purpose``
+    and is the ONLY resolution key; ``current_uuid`` identifies the current
+    version for audit. Contours are never merged implicitly: a document of one
+    contour resolves names only inside the SAME contour.
+    """
+
+    __tablename__ = "mercury_purpose_guid"
+    __table_args__ = (
+        UniqueConstraint("contour", "current_uuid", name="uq_mercury_purpose_contour_uuid"),
+        CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="mercury_purpose_contour_valid"),
+        CheckConstraint("length(name) > 0", name="mercury_purpose_name_not_empty"),
+        Index("ix_mercury_purpose_contour_name", "contour", "name"),
+    )
+
+    contour: Mapped[str] = mapped_column(String(16), primary_key=True)
+    guid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    current_uuid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_last: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    external_status: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    previous_uuid: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    source: Mapped[str] = mapped_column(String(128), nullable=False)
+    synchronized_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+
+class MercuryPurposeSyncState(Base):
+    """The purpose-dictionary sync checkpoint of one contour.
+
+    ``last_success`` moves ONLY after a complete paginated pass was applied
+    atomically; a partial or failed response never touches it and never
+    corrupts the previously stored dictionary rows.
+    """
+
+    __tablename__ = "mercury_purpose_sync_state"
+    __table_args__ = (
+        CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="mercury_purpose_sync_contour_valid"),
+        CheckConstraint("failures >= 0", name="mercury_purpose_sync_failures_positive"),
+    )
+
+    contour: Mapped[str] = mapped_column(String(16), primary_key=True)
+    last_success: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_attempt: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    records: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    problem_code: Mapped[str | None] = mapped_column(String(128))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
 
 class VetisOperationKind(StrEnum):

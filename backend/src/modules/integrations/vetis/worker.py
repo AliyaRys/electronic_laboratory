@@ -59,6 +59,7 @@ __all__ = [
     "run_sync_operation",
     "schedule_scheduled_syncs",
     "compose_read_adapter",
+    "purpose_sync_tick",
     "run_receipt_operation",
     "WorkerSettings",
 ]
@@ -397,6 +398,31 @@ async def _job_vetis_scheduler(ctx: dict[str, Any]) -> None:  # pragma: no cover
     async with factory() as session:
         await schedule_scheduled_syncs(session)
         await session.commit()
+    await purpose_sync_tick()
+
+
+async def purpose_sync_tick() -> dict[str, object]:
+    """The 14-day purpose-dictionary check at every scheduler tick.
+
+    Never per page view and never per document: the due check runs here and
+    the full read-only pass (when due) is the ONLY GetPurposeList traffic.
+    """
+    from pathlib import Path
+
+    from backend.src.core.problems import ProblemError
+    from backend.src.modules.integrations.vetis.manifest import load_manifest
+    from backend.src.modules.integrations.vetis.purpose_sync import (
+        compose_purpose_transport,
+        run_due_purpose_sync,
+    )
+
+    manifest_path = Path(__file__).resolve().parents[4] / "resources" / "vetis" / "manifest.json"
+    manifest = load_manifest(manifest_path)
+    try:
+        transport, _contour = compose_purpose_transport(manifest)
+    except ProblemError as problem:
+        return {"result": "NOT_CONFIGURED", "problem": problem.code}
+    return await run_due_purpose_sync(transport=transport, manifest=manifest)
 
 
 async def _job_poll_due(ctx: dict[str, Any]) -> None:  # pragma: no cover - arq entry

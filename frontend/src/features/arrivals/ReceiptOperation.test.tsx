@@ -13,7 +13,7 @@ const LAB = "11111111-2222-4333-8444-555555555555";
 const party = {
   party_id: PARTY,
   laboratory_id: LAB,
-  external: { fields: { documentNumber: "№ А-001234" } },
+  external: { fields: { documentUuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac" } },
   confirmation: null,
 } as unknown as IncomingView;
 

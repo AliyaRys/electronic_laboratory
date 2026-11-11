@@ -32,9 +32,12 @@ const party: IncomingView = {
   external: {
     contour: "PILOT",
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
-    status: "COMPLETED",
+    status: "CONFIRMED",
     fields: {
-      documentNumber: "№ A-001234",
+      documentUuid: "1f0e6d2a-1111-4222-8333-444444444444",
+      issuedOn: "2026-11-03",
+      statusLabel: "Оформлен",
+      purpose: "реализация в пищу людям",
       transportNumber: "А123ВС77",
       consignor: "ООО «Мясопром»",
       consignee: "Убойный пункт Ленина, 5",
@@ -171,8 +174,8 @@ describe("ComparisonField", () => {
 
 describe("ReferenceField", () => {
   it("renders a neutral value card without fictitious marks", () => {
-    render(<ReferenceField label="Номер эВСД" value="№ A-001234" />);
-    expect(screen.getByText("№ A-001234")).toBeInTheDocument();
+    render(<ReferenceField label="UUID ВСД" value="1f0e6d2a-1111-4222-8333-444444444444" />);
+    expect(screen.getByText("1f0e6d2a-1111-4222-8333-444444444444")).toBeInTheDocument();
     expect(screen.queryByRole("radio")).toBeNull();
   });
 });
@@ -340,8 +343,9 @@ describe("ReconciliationForm", () => {
       "Расчёт стоимости услуг",
     ]);
     expect(screen.getAllByText("А123ВС77").length).toBeGreaterThan(0);
-    // The raw GUID of the eVSD is never shown.
-    expect(document.body.textContent).not.toContain("1f0e6d2a");
+    // The UUID shown is the document identity; the blank issueNumber is never
+    // passed off as a UUID (ТЗ DR5 §6).
+    expect(screen.getByText("1f0e6d2a-1111-4222-8333-444444444444")).toBeInTheDocument();
   });
 
   it("binds every section to its heading through aria-labelledby", () => {
@@ -355,8 +359,47 @@ describe("ReconciliationForm", () => {
 
   it("renders the document facts as neutral reference cards", () => {
     renderForm();
-    expect(screen.getByText("№ A-001234")).toBeInTheDocument();
+    expect(screen.getByText("UUID ВСД")).toBeInTheDocument();
+    expect(screen.getByText("1f0e6d2a-1111-4222-8333-444444444444")).toBeInTheDocument();
+    expect(screen.getByText("Дата оформления ВСД")).toBeInTheDocument();
+    expect(screen.getByText("03.11.2026")).toBeInTheDocument();
     expect(screen.getByText("Статус эВСД")).toBeInTheDocument();
+    expect(screen.getByText("Оформлен")).toBeInTheDocument();
+    expect(screen.getByText("Назначение груза")).toBeInTheDocument();
+    expect(screen.getByText("реализация в пищу людям")).toBeInTheDocument();
+  });
+
+  it("shows the honest fallback when the purpose is not in the dictionary", () => {
+    renderForm({
+      party: {
+        ...party,
+        external: {
+          ...party.external,
+          fields: { ...party.external.fields, purpose: "Назначение не найдено в справочнике" },
+        },
+      },
+    });
+    expect(screen.getByText("Назначение не найдено в справочнике")).toBeInTheDocument();
+    // The raw GUID is never shown as the purpose value.
+    expect(document.body.textContent).not.toContain("0778b8cb");
+  });
+
+  it("keeps a very long purpose name without horizontal overflow", () => {
+    renderForm({
+      party: {
+        ...party,
+        external: {
+          ...party.external,
+          fields: {
+            ...party.external.fields,
+            purpose:
+              "реализация в пищу людям, включая переработку и хранение на предприятиях торговли очень длинное название назначения груза для проверки переноса строк",
+          },
+        },
+      },
+    });
+    expect(screen.getByText(/очень длинное название назначения/)).toBeInTheDocument();
+    expect(document.documentElement.scrollWidth <= window.innerWidth + 1).toBe(true);
   });
 
   it("marks a mismatch and keeps the mutual exclusion inside one field", async () => {

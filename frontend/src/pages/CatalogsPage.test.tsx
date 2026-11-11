@@ -112,9 +112,7 @@ describe("CatalogsPage overview", () => {
     );
     // The real navigation URL keeps both scope identifiers and sets the tab.
     expect(screen.getByTestId("route-probe")).toHaveTextContent(
-      new RegExp(
-        `^/catalogs\\?laboratory_id=${LAB}&product_species_id=${SPECIES}&tab=tariffs$`,
-      ),
+      new RegExp(`^/catalogs\\?laboratory_id=${LAB}&product_species_id=${SPECIES}&tab=tariffs$`),
     );
   });
 });

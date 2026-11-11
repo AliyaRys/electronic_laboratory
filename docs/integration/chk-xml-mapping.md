@@ -21,10 +21,10 @@
 
 | CHK | Поле | XPath (относительно `VD`) | Комментарий |
 | --- | --- | --- | --- |
-| CHK-F01 | Номер эВСД | `bs:issueNumber` (+ `bs:issueSeries`) | информационное |
-| CHK-F02 | Дата оформления | `bs:issueDate` | информационное |
-| CHK-F03 | Статус эВСД | `bs:status` | допуск операции: только `CONFIRMED` проходит предикат |
-| CHK-F04 | Назначение груза | `bs:type` | предикат требует `TRANSPORT`; `INCOMING` задаёт scope запроса |
+| CHK-F01 | Номер эВСД | `bs:uuid` (единый термин интерфейса — UUID ВСД; `bs:issueNumber`/`bs:issueSeries` остаются в source snapshot, но не показываются как UUID) | информационное; DR5 2026-11-11 |
+| CHK-F02 | Дата оформления ВСД | `bs:issueDate` | информационное; plain date без часового пояса |
+| CHK-F03 | Статус эВСД | `bs:status` | допуск операции: только `CONFIRMED` проходит предикат; код сохраняется вместе с русской подписью, неизвестный код — «Неизвестный статус» |
+| CHK-F04 | Назначение груза | `bs:type` + `certifiedConsignment/authentication/purpose` (`bs:guid`/`bs:uuid`); название по contour-scoped справочнику `mercury_purpose_guid` (read-only `GetPurposeList` раз в 14 суток) | предикат требует `TRANSPORT`; `INCOMING` задаёт scope запроса; промах справочника не блокирует импорт |
 | CHK-F05 | Отправитель — предприятие | `mer:certifiedConsignment/mer:consignor/mer:enterprise/bs:guid` + `bs:name` | сверка обязательна |
 | CHK-F06 | Отправитель — владелец | `mer:certifiedConsignment/mer:consignor/mer:businessEntity/bs:guid` + `bs:name` | сверка обязательна |
 | CHK-F07 | Получатель — предприятие | `mer:certifiedConsignment/mer:consignee/mer:enterprise/bs:guid` + `bs:name` | предикат: guid = закреплённая площадка |
@@ -38,9 +38,14 @@
 | CHK-F17 | Вид продукции (3-й уровень) | `.../mer:batch/mer:subProduct` → `bs:guid`, `bs:name` | хранится отдельно |
 | CHK-F18 | Название продукции (4-й уровень) | `.../mer:batch/mer:productItem` → `bs:guid`, `bs:name` | отдельное поле, не подменяет F16 |
 | CHK-F19 | Производитель | `.../mer:batch/mer:producer/mer:enterprise/bs:guid` + `bs:name` | недопустимое изменение блокирует принятие |
-| — | Объём/количество | `.../mer:batch/mer:volume`, `.../mer:quantity` | точность Decimal сохраняется |
+| — | Объём/количество | `.../mer:batch/mer:volume`, `mer:packageList/mer:package/mer:quantity` (максимальный уровень упаковки) | точность Decimal сохраняется; количество мест ≠ масса, volume в quantity не подставляется (DR5) |
 | — | Единица измерения | `.../mer:batch/mer:unit/bs:guid` + `bs:name` | сравнение только одинаковых unit |
 | — | Сопроводительные документы | `mer:certifiedConsignment/mer:accompanyingForms` | UUID электронного ВСД |
+
+Печатное заключение ВСЭ (`forms/conclusion-local.html`,
+`forms/conclusion-previous.html`) показывает этот же верхнеуровневый
+`bs:uuid` под меткой «UUID ВСД»; `issueNumber` остаётся в source snapshot и
+в печати не подставляется вместо UUID.
 
 ## 3. Правила нормализации
 

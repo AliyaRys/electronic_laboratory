@@ -12,6 +12,27 @@ import { networkProblem, problemFromParsed, type Problem } from "../../shared/ap
 
 export type { Problem } from "../../shared/api/problem";
 
+/** The accepted ru dateTime format of the project (kept for dateTime sources). */
+export function formatRuDateTime(value: string | null | undefined): string {
+  if (typeof value !== "string" || value === "") return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const pad = (part: number): string => String(part).padStart(2, "0");
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/**
+ * Plain eVSD dates (``vd:issueDate`` = ``2026-11-03``) render as «03.11.2026»
+ * WITHOUT any timezone shift and WITHOUT an invented time (ТЗ DR5 §7); a
+ * source dateTime keeps the accepted project format.
+ */
+export function formatRuDate(value: string | null | undefined): string {
+  if (typeof value !== "string") return "—";
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (plain) return `${plain[3]}.${plain[2]}.${plain[1]}`;
+  return formatRuDateTime(value);
+}
+
 export type IncomingView = components["schemas"]["IncomingView"];
 export type QuantitySet = components["schemas"]["QuantitySet"];
 
@@ -307,7 +328,12 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   return fields;
 }
 
-/** The external-fields document facts of the Документ section (real data; absent values stay «—»). */
+/** The external-fields document facts of the Документ section (real data; absent values stay «—»).
+ *
+ * ТЗ DR5: the identity shown to the user is the TOP-LEVEL eVSD UUID
+ * (``documentUuid``/``evsd_uuid``), never the blank ``issueNumber``; the date
+ * is ``vd:issueDate``; the status is the backend-owned Russian label; the
+ * purpose is the name resolved by the contour-scoped local dictionary. */
 export function documentFacts(view: IncomingView): { label: string; value: string }[] {
   const external = view.external.fields;
   const pick = (...keys: (string | null | undefined)[]): string => {
@@ -319,9 +345,9 @@ export function documentFacts(view: IncomingView): { label: string; value: strin
     return "—";
   };
   return [
-    { label: "Номер эВСД", value: pick(external.documentNumber) },
-    { label: "Дата оформления", value: pick(external.issuedOn) },
-    { label: "Статус эВСД", value: pick(external.status, view.external.status) },
+    { label: "UUID ВСД", value: pick(external.documentUuid, view.external.evsd_uuid) },
+    { label: "Дата оформления ВСД", value: formatRuDate(external.issuedOn) },
+    { label: "Статус эВСД", value: pick(external.statusLabel) },
     { label: "Назначение груза", value: pick(external.purpose) },
   ];
 }

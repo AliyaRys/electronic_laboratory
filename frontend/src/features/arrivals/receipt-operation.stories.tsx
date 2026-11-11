@@ -4,7 +4,7 @@ import type { IncomingView, ReceiptPreview, ReconciliationView } from "./api";
 
 const party = {
   party_id: "9c1b2d3e-1111-4222-8333-444444444444",
-  external: { fields: { documentNumber: "№ А-001234" } },
+  external: { fields: { documentUuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac" } },
 } as unknown as IncomingView;
 
 const reconciliation = {

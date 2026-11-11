@@ -29,6 +29,11 @@
     "family": { "type": "string", "const": "mercury-vu.service" },
     "service_id": { "type": "string", "const": "mercury-vu.service:2.0" },
     "endpoint": { "type": "string", "pattern": "^https://" },
+    "dictionary_endpoint": {
+      "type": ["string", "null"],
+      "pattern": "^https://",
+      "description": "The pinned read-only DictionaryService endpoint (GetPurposeList, ТЗ DR5 §9.4). Absent = the dictionary sync is not configured for this profile."
+    },
     "business_schema_version": { "type": "string", "minLength": 1 },
     "soap_version": { "type": "string", "const": "1.1" },
     "namespaces": {
@@ -47,7 +52,8 @@
       "required": ["submit", "receive"],
       "properties": {
         "submit": { "type": "string", "const": "submitApplicationRequest" },
-        "receive": { "type": "string", "const": "receiveApplicationResultRequest" }
+        "receive": { "type": "string", "const": "receiveApplicationResultRequest" },
+        "purpose_list": { "type": "string", "const": "getPurposeListRequest" }
       }
     },
     "operations": {

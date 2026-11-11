@@ -19,10 +19,12 @@ const base: IncomingView = {
   external: {
     contour: "PILOT",
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
-    status: "COMPLETED",
+    status: "CONFIRMED",
     fields: {
-      documentNumber: "RU016:260812-005102",
+      documentUuid: "1f0e6d2a-1111-4222-8333-444444444444",
       issuedOn: "2026-08-12T08:40:00",
+      statusLabel: "Оформлен",
+      purpose: "реализация в пищу людям",
       transportNumber: "А245КМ 116",
       consignor: "ООО «Мясопром»",
       consignee: "Лаборатория ВСЭ",
@@ -60,8 +62,8 @@ describe("ExpectedArrivalsTable", () => {
   it("shows the mockup columns in the mockup order without an «Очередь» column", () => {
     render(<ExpectedArrivalsTable labId={LAB} items={[base]} />);
     for (const header of [
-      "Дата создания ВСД",
-      "Номер эВСД",
+      "Дата оформления ВСД",
+      "UUID ВСД",
       "Хозяйство",
       "Вид продукции",
       "Объём / масса",
@@ -99,8 +101,39 @@ describe("ExpectedArrivalsTable", () => {
       />,
     );
     expect(screen.getByText("12.08.2026 08:40")).toBeTruthy();
-    expect(screen.getByText("RU016:260812-005102")).toBeTruthy();
+    expect(screen.getByText("1f0e6d2a-1111-4222-8333-444444444444")).toBeTruthy();
     expect(screen.getByText("—")).toBeTruthy();
+  });
+
+  it("renders the plain eVSD issue date without a timezone shift and the UUID column", () => {
+    render(
+      <ExpectedArrivalsTable
+        labId={LAB}
+        items={[
+          {
+            ...base,
+            external: { ...base.external, fields: { ...base.external.fields, issuedOn: "2026-11-03" } },
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("03.11.2026")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Дата оформления ВСД" })).toBeTruthy();
+    expect(screen.getByText("1f0e6d2a-1111-4222-8333-444444444444")).toBeTruthy();
+  });
+
+  it("an absent source quantity renders «—», never the mass", () => {
+    render(
+      <ExpectedArrivalsTable
+        labId={LAB}
+        items={[{ ...base, documentary: { mass_kg: "500.0", quantity: "", unit_id: "u" } }]}
+      />,
+    );
+    expect(screen.getByText("500.0 кг")).toBeTruthy();
+    // No cell carries the mass as a package count: the quantity cell is «—».
+    expect(screen.queryByText("500.0")).toBeNull();
+    const empty = screen.getAllByText("—");
+    expect(empty.length).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps the exact empty-state text", () => {
@@ -113,6 +146,8 @@ describe("WorkArrivalsTable", () => {
   it("shows the mockup columns and honest «—» for cost/author (API-gap)", () => {
     render(<WorkArrivalsTable labId={LAB} items={[withConfirmation(base)]} />);
     expect(screen.getByRole("columnheader", { name: "Дата сверки данных" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "UUID ВСД" })).toBeTruthy();
+    expect(screen.getByText("1f0e6d2a-1111-4222-8333-444444444444")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Стоимость сверки" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Автор сверки данных" })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: "Очередь" })).toBeNull();
@@ -155,11 +190,20 @@ describe("CompletedArrivalsTable", () => {
         hiddenColumns={new Set()}
       />,
     );
-    for (const header of ["Дата сверки данных", "Статус ВСД", "ВСЭ", "Стоимость", "Срок реализации"]) {
+    for (const header of [
+      "Дата сверки данных",
+      "UUID ВСД",
+      "Статус ВСД",
+      "ВСЭ",
+      "Стоимость",
+      "Срок реализации",
+    ]) {
       expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
     }
     expect(screen.queryByRole("columnheader", { name: "Очередь" })).toBeNull();
-    // Result column stays honest «—»: the read model has no ВСЭ result.
+    // The external status shows its backend-owned Russian label.
+    expect(screen.getByText("Оформлен")).toBeTruthy();
+    // The ВСЭ result column stays honest «—»: the read model has no ВСЭ result.
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
   });
 

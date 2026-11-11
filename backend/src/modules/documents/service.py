@@ -116,7 +116,10 @@ def _document_fields(document: IncomingDocument) -> dict[str, str | None]:
     batch = payload.get("batch")
     product_item = batch.get("productItem") if isinstance(batch, dict) else None
     return {
-        "evsd": _text(payload.get("issueNumber")) or str(document.evsd_uuid),
+        # DR5: the printed conclusion shows the top-level eVSD UUID (bs:uuid);
+        # issueNumber stays in the source snapshot but is never displayed as the
+        # document requisition (interface term: «UUID ВСД»).
+        "evsd": str(document.evsd_uuid),
         "owner": _text(consignee.get("name")) if isinstance(consignee, dict) else None,
         "product": _text(product_item.get("name")) if isinstance(product_item, dict) else None,
     }

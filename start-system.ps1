@@ -37,12 +37,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "Не удалось запустить контейнеры системы."
 }
 
+# Nginx resolves the backend container address when it starts. If Compose had
+# to recreate backend, refresh nginx as well so it cannot keep the old address.
+& docker compose `
+    -f docker-compose.yml `
+    -f docker-compose.dev.yml `
+    -f docker-compose.local.yml `
+    restart frontend
+if ($LASTEXITCODE -ne 0) {
+    throw "Не удалось подключить интерфейс к серверу системы."
+}
+
 $loginUrl = "http://127.0.0.1:8080/login"
+$apiReadyUrl = "http://127.0.0.1:8080/api/v1/auth/csrf"
 $isReady = $false
 for ($attempt = 0; $attempt -lt 30; $attempt++) {
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri $loginUrl -TimeoutSec 2
-        if ($response.StatusCode -eq 200) {
+        $response = Invoke-RestMethod -Uri $apiReadyUrl -TimeoutSec 2
+        if ($null -ne $response.csrf_token) {
             $isReady = $true
             break
         }

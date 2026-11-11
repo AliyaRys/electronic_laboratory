@@ -8,7 +8,8 @@
  * услуги» page instead (never by a Russian substring). A missing price stays
  * an empty field with «Не настроено»; an explicit 0,00 stays a valid price;
  * DecimalString never passes through a float. One «Сохранить справочник»
- * saves ONLY the dirty cards sequentially; a partial failure keeps the
+ * saves ONLY the dirty cards sequentially. Prices are monetary RUB values and
+ * do not depend on the presence or measurement unit of a clinical norm. A partial failure keeps the
  * failed cards dirty with a per-card message and retry re-sends only those.
  */
 import { useQuery } from "@tanstack/react-query";
@@ -19,16 +20,7 @@ import { INDICATORS } from "../examinations/indicators";
 import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
-import {
-  createTariff,
-  deleteTariff,
-  fetchMethods,
-  fetchReadiness,
-  fetchTariffs,
-  updateTariff,
-  type Problem,
-  type TariffView,
-} from "./api";
+import { createTariff, deleteTariff, fetchTariffs, updateTariff, type Problem, type TariffView } from "./api";
 import { BulkPriceDialog } from "./BulkPriceDialog";
 import { CatalogEditorPage, CatalogSectionHeader, PriceCard, SaveSummary } from "./editor-parts";
 import { CatalogContextSlot } from "./catalog-context-slot";
@@ -37,6 +29,7 @@ import { useDirtyGuard } from "../context/SwitchContext";
 import { MONEY } from "./common";
 
 const MANUAL_CATALOG_SOURCE = { name: "Ручная настройка справочника" } as const;
+const TARIFF_CURRENCY = "RUB";
 
 /** The two CHECK service codes: owned by the «Платные услуги» page (§10.3). */
 export const CHECK_SERVICE_CODES: ReadonlySet<string> = new Set([
@@ -104,16 +97,6 @@ export function TariffsEditorPage(): React.ReactElement {
     queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
     enabled: scoped,
   });
-  const readiness = useQuery({
-    queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/readiness", "tariffs"],
-    queryFn: ({ signal }) => fetchReadiness(laboratoryId ?? "", productSpeciesId ?? "", signal),
-    enabled: scoped,
-  });
-  const methods = useQuery({
-    queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/methods", "tariff-units"],
-    queryFn: ({ signal }) => fetchMethods(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
-    enabled: scoped,
-  });
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -176,29 +159,12 @@ export function TariffsEditorPage(): React.ReactElement {
           fail("Пустое поле не создаёт запись: заполните цену, чтобы настроить тариф.");
           continue;
         }
-        const methodItems = methods.data !== undefined && !("code" in methods.data) ? methods.data.items : [];
-        const units = [
-          ...new Set(
-            methodItems
-              .filter((rule) => rule.indicator_id === card.serviceCode && rule.active)
-              .map((rule) => rule.unit_id.trim())
-              .filter((unit) => unit !== ""),
-          ),
-        ];
-        if (units.length !== 1) {
-          fail(
-            units.length === 0
-              ? "Для исследования не настроена единица начисления. Сначала настройте действующую норму."
-              : "У исследования несколько единиц начисления. Исправьте нормы перед созданием цены.",
-          );
-          continue;
-        }
         const result = await createTariff(
           {
             laboratory_id: laboratoryId,
             product_species_id: productSpeciesId,
             service_code: card.serviceCode,
-            unit_id: units[0] as string,
+            unit_id: TARIFF_CURRENCY,
             price,
             version: 1,
             source: MANUAL_CATALOG_SOURCE,
@@ -294,7 +260,6 @@ export function TariffsEditorPage(): React.ReactElement {
   }
 
   const problem = tariffs.data !== undefined && "code" in tariffs.data ? (tariffs.data as Problem) : null;
-  const readinessData = readiness.data !== undefined && !("code" in readiness.data) ? readiness.data : null;
 
   return (
     <CatalogEditorPage
@@ -302,16 +267,6 @@ export function TariffsEditorPage(): React.ReactElement {
       description="Значения используются для автоматического расчёта стоимости услуг в журнале."
     >
       <CatalogContextSlot context={context} onPick={allowedToSwitch ? pickLaboratory : null} />
-      {scoped && readinessData !== null && readinessData.missing.length > 0 ? (
-        <div className="vse-catalog-missing" data-testid="catalog-readiness">
-          <strong>Раздел не готов к расчёту:</strong>
-          <ul>
-            {readinessData.missing.map((item) => (
-              <li key={item.input_id}>{item.message}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
       {summary !== null ? (
         <SaveSummary state={summary.state} text={summary.text} details={summary.details} />
       ) : null}
@@ -438,13 +393,6 @@ export function TariffsEditorPage(): React.ReactElement {
           <BulkPriceDialog
             laboratories={context.laboratories}
             productSpeciesId={productSpeciesId ?? ""}
-            unitsByServiceCode={Object.fromEntries(
-              methods.data !== undefined && !("code" in methods.data)
-                ? methods.data.items
-                    .filter((rule) => rule.active && rule.unit_id.trim() !== "")
-                    .map((rule) => [rule.indicator_id, rule.unit_id])
-                : [],
-            )}
             onClose={() => {
               setBulkOpen(false);
               void tariffs.refetch();

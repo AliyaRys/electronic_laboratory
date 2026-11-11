@@ -47,9 +47,6 @@ export interface BulkPriceDialogProps {
   laboratories: { id: string; name: string }[];
   productSpeciesId?: string | undefined;
   serviceCode?: string | undefined;
-  unitId?: string | undefined;
-  /** Pricing units resolved from active method rules; never entered manually. */
-  unitsByServiceCode?: Readonly<Record<string, string>> | undefined;
   onClose: () => void;
   onApplied?: () => void | undefined;
 }
@@ -58,8 +55,6 @@ export function BulkPriceDialog({
   laboratories,
   productSpeciesId = "",
   serviceCode = "",
-  unitId = "",
-  unitsByServiceCode = {},
   onClose,
   onApplied,
 }: BulkPriceDialogProps): React.ReactElement {
@@ -92,7 +87,7 @@ export function BulkPriceDialog({
     defaultValues: {
       product_species_id: productSpeciesId,
       service_code: serviceCode || INDICATORS[0]?.id || "",
-      unit_id: unitId || unitsByServiceCode[serviceCode || INDICATORS[0]?.id || ""] || "",
+      unit_id: "RUB",
       price: "",
       laboratory_ids: laboratories.map((item) => item.id),
       laboratory_ids_text: "",
@@ -108,17 +103,9 @@ export function BulkPriceDialog({
       } as never);
       return;
     }
-    const indicator = INDICATORS.find((item) => item.id === values.service_code);
-    const resolvedUnit = unitsByServiceCode[values.service_code] || unitId;
-    if (indicator === undefined || resolvedUnit === "") {
-      setError("service_code", {
-        message: "Для исследования не настроена единица начисления. Сначала настройте действующую норму.",
-      });
-      return;
-    }
     const parsed = bulkPriceSchema.safeParse({
       ...values,
-      unit_id: resolvedUnit,
+      unit_id: "RUB",
       laboratory_ids: ids,
     });
     if (!parsed.success) {

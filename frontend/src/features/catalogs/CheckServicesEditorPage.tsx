@@ -8,7 +8,7 @@
  *                              визуальным осмотром»;
  *   TRANSPORT_INSPECTION    — «Ветеринарно-санитарная оценка и идентификация
  *                              транспорта».
- * The global CheckServiceRule table is read only to resolve the price unit;
+ * The global CheckServiceRule table is not needed to save a monetary price;
  * its multiplier basis and applicable decisions are never edited or sent by
  * this page. A price save touches only Tariff records. There is no bulk
  * command here (§10.2).
@@ -20,15 +20,7 @@ import { useLocation, useNavigate } from "react-router";
 import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
-import {
-  createTariff,
-  deleteTariff,
-  fetchCheckServices,
-  fetchTariffs,
-  updateTariff,
-  type Problem,
-  type TariffView,
-} from "./api";
+import { createTariff, deleteTariff, fetchTariffs, updateTariff, type Problem, type TariffView } from "./api";
 import { CatalogEditorPage, CatalogSectionHeader, PriceCard, SaveSummary } from "./editor-parts";
 import { CatalogContextSlot } from "./catalog-context-slot";
 import { useCatalogContext } from "./use-catalog-context";
@@ -37,6 +29,7 @@ import { MONEY } from "./common";
 import { MONEY_MESSAGE, normalizeMoneyInput, type SaveSummaryState } from "./TariffsEditorPage";
 
 const MANUAL_CATALOG_SOURCE = { name: "Ручная настройка справочника" } as const;
+const TARIFF_CURRENCY = "RUB";
 
 export interface CheckServiceCard {
   serviceCode: "PRODUCT_IDENTIFICATION" | "TRANSPORT_INSPECTION";
@@ -68,11 +61,6 @@ export function CheckServicesEditorPage(): React.ReactElement {
   const tariffs = useQuery({
     queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/tariffs", "check-services"],
     queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
-    enabled: scoped,
-  });
-  const serviceRules = useQuery({
-    queryKey: [null, null, null, "/catalogs/check-services", "price-units"],
-    queryFn: ({ signal }) => fetchCheckServices(1, signal),
     enabled: scoped,
   });
 
@@ -129,19 +117,12 @@ export function CheckServicesEditorPage(): React.ReactElement {
           fail("Пустое поле не создаёт запись: заполните стоимость, чтобы настроить услугу.");
           continue;
         }
-        const ruleItems =
-          serviceRules.data !== undefined && !("code" in serviceRules.data) ? serviceRules.data.items : [];
-        const unit = ruleItems.find((rule) => rule.service_code === card.serviceCode)?.unit_id.trim();
-        if (unit === undefined || unit === "") {
-          fail("Для услуги не настроена единица начисления. Обратитесь к администратору системы.");
-          continue;
-        }
         const result = await createTariff(
           {
             laboratory_id: laboratoryId,
             product_species_id: productSpeciesId,
             service_code: card.serviceCode,
-            unit_id: unit,
+            unit_id: TARIFF_CURRENCY,
             price,
             version: 1,
             source: MANUAL_CATALOG_SOURCE,

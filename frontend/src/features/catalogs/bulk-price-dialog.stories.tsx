@@ -18,7 +18,6 @@ export const CoverageBeforeConfirm: Story = {
   args: {
     laboratories: labs,
     serviceCode: "trichinelloscopy",
-    unitId: "kg",
     onClose: () => undefined,
   },
 };
@@ -26,7 +25,6 @@ export const Narrow: Story = {
   args: {
     laboratories: labs,
     serviceCode: "trichinelloscopy",
-    unitId: "kg",
     onClose: () => undefined,
   },
   decorators: [

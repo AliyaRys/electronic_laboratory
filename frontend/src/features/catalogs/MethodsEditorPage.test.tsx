@@ -138,6 +138,7 @@ describe("MethodsEditorPage", () => {
     expect(screen.queryByText(/Версия записи/)).toBeNull();
     expect(screen.queryByText(/источник:/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
+    expect(screen.queryByText("Раздел не готов к расчёту:")).toBeNull();
   });
 
   it("a null upper boundary stays empty and is sent as null (not 0)", async () => {

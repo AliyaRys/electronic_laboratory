@@ -12,8 +12,8 @@
  * technical unit) is never read, edited or sent by this page: a price save
  * touches only Tariff records. There is no bulk command here (§10.2).
  */
+import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Button } from "../../shared/ui/Button";
@@ -51,7 +51,6 @@ export function CheckServicesEditorPage(): React.ReactElement {
   const context = useCatalogContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const queryClient = useQueryClient();
   const { laboratoryId, productSpeciesId, canEdit, allowedToSwitch } = context;
   const scoped = laboratoryId !== null && productSpeciesId !== null;
 

@@ -11,8 +11,8 @@
  * saves ONLY the dirty cards sequentially; a partial failure keeps the
  * failed cards dirty with a per-card message and retry re-sends only those.
  */
+import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { INDICATORS } from "../examinations/indicators";
@@ -94,7 +94,6 @@ export function TariffsEditorPage(): React.ReactElement {
   const context = useCatalogContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const queryClient = useQueryClient();
   const { laboratoryId, productSpeciesId, canEdit, canBulk, allowedToSwitch } = context;
   const scoped = laboratoryId !== null && productSpeciesId !== null;
 

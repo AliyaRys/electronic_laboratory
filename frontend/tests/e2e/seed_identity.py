@@ -6,6 +6,7 @@ Usage (repo root, PowerShell):
     $env:Path = "C:\Users\Алия\.local\bin;$env:Path"
     $env:DATABASE_URL = "postgresql+asyncpg://127.0.0.1:55433/vse"
     $env:REDIS_URL = "redis://127.0.0.1:56380/0"
+    $env:VSE_E2E_DESTRUCTIVE_SEED = "TRUNCATE_ISOLATED_E2E_DATABASE"
     uv run --frozen python frontend/tests/e2e/seed_identity.py
 
 The script truncates the identity tables (like backend conftest), runs the
@@ -50,6 +51,7 @@ USER_PASSWORD = "e2e-user-password-1"
 NEW_PASSWORD = "e2e-reset-password-1"
 
 PRODUCT_ID = "11111111-1111-4111-8111-111111111111"
+SEED_CONFIRMATION = "TRUNCATE_ISOLATED_E2E_DATABASE"
 
 TABLES = (
     "outbox",
@@ -78,6 +80,23 @@ def mk_user(login: str, name: str, role: UserRole, active: bool = True) -> User:
 
 async def main() -> None:
     engine = get_engine()
+    if os_imports.environ.get("VSE_E2E_DESTRUCTIVE_SEED") != SEED_CONFIRMATION:
+        raise RuntimeError(
+            "Destructive identity seed refused: set VSE_E2E_DESTRUCTIVE_SEED only for an isolated E2E database."
+        )
+
+    # A mistyped DATABASE_URL must never erase a developer or installation
+    # database. An isolated E2E database is either empty or contains only the
+    # fixture accounts created by this script.
+    async with engine.connect() as conn:
+        existing_logins = (await conn.execute(text("SELECT login FROM users ORDER BY login"))).scalars().all()
+    protected_logins = [login for login in existing_logins if not login.startswith("e2e-")]
+    if protected_logins:
+        raise RuntimeError(
+            "Destructive identity seed refused: target contains non-E2E users. "
+            "Create a separate PostgreSQL container/database for browser tests."
+        )
+
     async with engine.begin() as conn:
         for table in TABLES:
             await conn.execute(text(f'TRUNCATE TABLE "{table}" CASCADE'))

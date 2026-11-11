@@ -50,6 +50,7 @@ function tariff(overrides: Partial<TariffView>): TariffView {
 }
 
 const putSpy = vi.fn();
+const postSpy = vi.fn();
 const checkRulesSpy = vi.fn();
 
 const server = setupServer(
@@ -76,11 +77,44 @@ const server = setupServer(
   ),
   http.get("*/api/v1/catalogs/check-services", () => {
     checkRulesSpy();
-    return HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 });
+    return HttpResponse.json({
+      items: [
+        {
+          id: "dddddddd-0000-4000-8000-000000000001",
+          service_code: PRODUCT_IDENTIFICATION,
+          unit_id: "service",
+          multiplier_basis: "ONE_SERVICE",
+          applicable_decisions: ["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"],
+          version: 1,
+          source: { name: "правило" },
+          revision: 1,
+        },
+        {
+          id: "dddddddd-0000-4000-8000-000000000002",
+          service_code: TRANSPORT_INSPECTION,
+          unit_id: "service",
+          multiplier_basis: "ONE_SERVICE",
+          applicable_decisions: ["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"],
+          version: 1,
+          source: { name: "правило" },
+          revision: 1,
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 50,
+    });
   }),
   http.put("*/api/v1/catalogs/tariffs/:id", async ({ request }) => {
     putSpy(await request.clone().json());
     return HttpResponse.json(tariff({ price: "55.00", revision: 3 }));
+  }),
+  http.post("*/api/v1/catalogs/tariffs", async ({ request }) => {
+    const body = (await request.clone().json()) as Record<string, unknown>;
+    postSpy(body);
+    return HttpResponse.json(tariff({ service_code: String(body.service_code), price: String(body.price) }), {
+      status: 201,
+    });
   }),
 );
 
@@ -88,6 +122,7 @@ beforeAll(() => server.listen());
 afterAll(() => server.close());
 beforeEach(() => {
   putSpy.mockClear();
+  postSpy.mockClear();
   checkRulesSpy.mockClear();
   server.resetHandlers();
 });
@@ -116,7 +151,7 @@ describe("CheckServicesEditorPage", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Платные услуги" })).toBeInTheDocument());
     expect(await screen.findByLabelText(`Стоимость: ${NAME_1}, ₽`)).toHaveValue("40.00");
     expect(screen.getByLabelText(`Стоимость: ${NAME_2}, ₽`)).toHaveValue("94.00");
-    expect(checkRulesSpy).not.toHaveBeenCalled();
+    expect(checkRulesSpy).toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Применить стоимость к лабораториям" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Добавить правило" })).toBeNull();
   });
@@ -132,7 +167,7 @@ describe("CheckServicesEditorPage", () => {
     const payload = putSpy.mock.calls[0][0] as { service_code: string; price: string };
     expect(payload.service_code).toBe(PRODUCT_IDENTIFICATION);
     expect(payload.price).toBe("55.00");
-    expect(checkRulesSpy).not.toHaveBeenCalled();
+    expect(checkRulesSpy).toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.getByTestId("catalog-save-summary")).toHaveTextContent("Справочник сохранён."),
     );
@@ -147,5 +182,29 @@ describe("CheckServicesEditorPage", () => {
     renderEditor();
     expect(await screen.findByLabelText(`Стоимость: ${NAME_2}, ₽`)).toHaveValue("");
     expect(screen.getByText("Не настроено")).toBeInTheDocument();
+  });
+
+  it("creates a missing service price without unit or source inputs", async () => {
+    const act = userEvent.setup();
+    server.use(
+      http.get("*/api/v1/catalogs/tariffs", () =>
+        HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 }),
+      ),
+    );
+    renderEditor();
+    const input = await screen.findByLabelText(`Стоимость: ${NAME_1}, ₽`);
+    expect(screen.queryByText("Данные новой записи (единица, источник)")).toBeNull();
+    expect(screen.queryByLabelText("Единица измерения")).toBeNull();
+    expect(screen.queryByLabelText("Источник прейскуранта")).toBeNull();
+    await act.type(input, "45");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
+    expect(postSpy.mock.calls[0][0]).toMatchObject({
+      service_code: PRODUCT_IDENTIFICATION,
+      unit_id: "service",
+      price: "45",
+      version: 1,
+      source: { name: "Ручная настройка справочника" },
+    });
   });
 });

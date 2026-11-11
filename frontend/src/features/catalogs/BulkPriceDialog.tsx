@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "../../shared/ui/Button";
 import { createBulkPrice, fetchBulkJob, retryBulkJob, BULK_STATE_LABELS, type BulkPriceJobView } from "./api";
 import { MONEY, isUuid, problemFieldErrors, shortId } from "./common";
+import { INDICATORS } from "../examinations/indicators";
 
 export const bulkPriceSchema = z.object({
   product_species_id: z
@@ -47,6 +48,8 @@ export interface BulkPriceDialogProps {
   productSpeciesId?: string | undefined;
   serviceCode?: string | undefined;
   unitId?: string | undefined;
+  /** Pricing units resolved from active method rules; never entered manually. */
+  unitsByServiceCode?: Readonly<Record<string, string>> | undefined;
   onClose: () => void;
   onApplied?: () => void | undefined;
 }
@@ -56,6 +59,7 @@ export function BulkPriceDialog({
   productSpeciesId = "",
   serviceCode = "",
   unitId = "",
+  unitsByServiceCode = {},
   onClose,
   onApplied,
 }: BulkPriceDialogProps): React.ReactElement {
@@ -87,8 +91,8 @@ export function BulkPriceDialog({
   } = useForm<BulkPriceValues>({
     defaultValues: {
       product_species_id: productSpeciesId,
-      service_code: serviceCode,
-      unit_id: unitId,
+      service_code: serviceCode || INDICATORS[0]?.id || "",
+      unit_id: unitId || unitsByServiceCode[serviceCode || INDICATORS[0]?.id || ""] || "",
       price: "",
       laboratory_ids: laboratories.map((item) => item.id),
       laboratory_ids_text: "",
@@ -104,7 +108,19 @@ export function BulkPriceDialog({
       } as never);
       return;
     }
-    const parsed = bulkPriceSchema.safeParse({ ...values, laboratory_ids: ids });
+    const indicator = INDICATORS.find((item) => item.id === values.service_code);
+    const resolvedUnit = unitsByServiceCode[values.service_code] || unitId;
+    if (indicator === undefined || resolvedUnit === "") {
+      setError("service_code", {
+        message: "Для исследования не настроена единица начисления. Сначала настройте действующую норму.",
+      });
+      return;
+    }
+    const parsed = bulkPriceSchema.safeParse({
+      ...values,
+      unit_id: resolvedUnit,
+      laboratory_ids: ids,
+    });
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         setError(issue.path.join(".") as never, { message: issue.message });
@@ -216,51 +232,30 @@ export function BulkPriceDialog({
               {errors.laboratory_ids?.message ?? errors.laboratory_ids_text?.message}
             </p>
           ) : null}
+          <input type="hidden" {...register("product_species_id")} />
           <div className="app-field">
             <div className="app-field-heading">
-              <label htmlFor="bulk-species">Вид продукции (UUID)</label>
+              <label htmlFor="bulk-code">Исследование</label>
             </div>
-            <input
-              id="bulk-species"
-              type="text"
-              disabled={pending}
-              aria-invalid={errors.product_species_id !== undefined ? "true" : undefined}
-              {...register("product_species_id")}
-            />
-            {errors.product_species_id !== undefined ? (
-              <p className="app-field-message app-field-error" role="alert">
-                {errors.product_species_id.message}
-              </p>
-            ) : null}
-          </div>
-          <div className="app-field">
-            <div className="app-field-heading">
-              <label htmlFor="bulk-code">Код услуги</label>
-            </div>
-            <input
+            <select
               id="bulk-code"
-              type="text"
               disabled={pending}
               aria-invalid={errors.service_code !== undefined ? "true" : undefined}
               {...register("service_code")}
-            />
+            >
+              {INDICATORS.map((indicator) => (
+                <option key={indicator.id} value={indicator.id}>
+                  {indicator.name}
+                </option>
+              ))}
+            </select>
             {errors.service_code !== undefined ? (
               <p className="app-field-message app-field-error" role="alert">
                 {errors.service_code.message}
               </p>
             ) : null}
           </div>
-          <div className="app-field">
-            <div className="app-field-heading">
-              <label htmlFor="bulk-unit">Единица измерения</label>
-            </div>
-            <input id="bulk-unit" type="text" disabled={pending} {...register("unit_id")} />
-            {errors.unit_id !== undefined ? (
-              <p className="app-field-message app-field-error" role="alert">
-                {errors.unit_id.message}
-              </p>
-            ) : null}
-          </div>
+          <input type="hidden" {...register("unit_id")} />
           <div className="app-field">
             <div className="app-field-heading">
               <label htmlFor="bulk-price">Новая цена, ₽</label>

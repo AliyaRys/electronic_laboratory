@@ -6,8 +6,8 @@
  * unit]; qualitative rules render as the «Проба варки» composition with the
  * variants coming from the SHARED INDICATORS registry (no second copy of the
  * dictionary). A null boundary stays null (never 0); lower ≤ upper is
- * enforced; inclusivity and version/source/effective date live in the
- * folded «Методика и версия» area and are never lost on save. One
+ * enforced; inclusivity stays in the folded business settings while
+ * version/source/effective date remain hidden and are never lost on save. One
  * «Сохранить справочник» saves ONLY the dirty rules sequentially with honest
  * per-rule results and 409 revision resolution.
  */
@@ -38,7 +38,7 @@ import {
 import { CatalogContextSlot } from "./catalog-context-slot";
 import { useCatalogContext } from "./use-catalog-context";
 import { useDirtyGuard } from "../context/SwitchContext";
-import { MethodEditor, DELETE_WARNING } from "./MethodEditor";
+import { DELETE_WARNING } from "./MethodEditor";
 
 const NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 
@@ -161,7 +161,6 @@ export function MethodsEditorPage(): React.ReactElement {
     text: string;
     details: string[];
   } | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ key: string; rule: MethodRuleTyped } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [savePending, setSavePending] = useState(false);
@@ -451,13 +450,6 @@ export function MethodsEditorPage(): React.ReactElement {
             icon="directory-norms"
             title="Диапазоны нормы"
             description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
-            actions={
-              canEdit ? (
-                <Button type="button" variant="secondary" onClick={() => setAddOpen(true)}>
-                  Добавить норму
-                </Button>
-              ) : null
-            }
           />
           {methods.isLoading ? (
             <StatusView state="loading" title="Загрузка норм…" />
@@ -474,7 +466,6 @@ export function MethodsEditorPage(): React.ReactElement {
             <div className="vse-catalog-norm-list">
               {intervalRows.map((row) => {
                 const draft = draftFor(row);
-                const source = row.rule.source as { name?: string; edition?: string };
                 const interval = row.rule.rule;
                 const serverValue =
                   interval.type === "interval" && (interval.lower != null || interval.upper != null)
@@ -511,16 +502,6 @@ export function MethodsEditorPage(): React.ReactElement {
                       />{" "}
                       верхняя граница включена
                     </label>
-                    <p className="vse-catalog-norm-meta">
-                      Версия записи: {row.rule.version}
-                      {typeof source.name === "string" && source.name !== ""
-                        ? ` · источник: ${source.name}`
-                        : ""}
-                      {typeof source.edition === "string" && source.edition !== ""
-                        ? ` · редакция: ${source.edition}`
-                        : ""}
-                      {row.rule.effective_from != null ? ` · действует с ${row.rule.effective_from}` : ""}
-                    </p>
                   </div>
                 );
                 if (row.unknown) {
@@ -583,8 +564,6 @@ export function MethodsEditorPage(): React.ReactElement {
                 const indicator = INDICATORS.find((item) => item.id === row.indicatorId);
                 const registryOptions = indicator?.options ?? [];
                 const normSet = new Set(draft.accepted);
-                const shown = new Set([...draft.accepted, ...draft.extra]);
-                const available = registryOptions.filter((option) => !shown.has(option.value));
                 const rowsModel: QualitativeRow[] = [
                   // The full registry variant list is always shown (mockup);
                   // an option outside the accepted list is «Отклонение».
@@ -599,20 +578,7 @@ export function MethodsEditorPage(): React.ReactElement {
                           : draft.accepted.filter((value) => value !== option.value);
                         return { ...current, [row.key]: { ...draftFor(row), accepted } };
                       }),
-                    onRemove:
-                      normSet.has(option.value) || draft.extra.includes(option.value)
-                        ? () =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [row.key]: {
-                                ...draftFor(row),
-                                accepted: normSet.has(option.value)
-                                  ? draft.accepted.filter((value) => value !== option.value)
-                                  : draft.accepted,
-                                extra: draft.extra.filter((value) => value !== option.value),
-                              },
-                            }))
-                        : undefined,
+                    onRemove: undefined,
                   })),
                   // Manually added rows beyond the registry (honest, marked).
                   ...draft.extra
@@ -638,16 +604,6 @@ export function MethodsEditorPage(): React.ReactElement {
                         })),
                     })),
                 ];
-                const metadata = (
-                  <p className="vse-catalog-norm-meta">
-                    Версия записи: {row.rule.version}
-                    {row.rule.source !== null && typeof row.rule.source === "object"
-                      ? typeof (row.rule.source as { name?: string }).name === "string"
-                        ? ` · источник: ${(row.rule.source as { name: string }).name}`
-                        : ""
-                      : ""}
-                  </p>
-                );
                 return (
                   <QualitativeBlock
                     key={row.key}
@@ -661,16 +617,6 @@ export function MethodsEditorPage(): React.ReactElement {
                     readOnly={!canEdit}
                     busy={savePending}
                     error={errors[row.key]}
-                    details={metadata}
-                    onAdd={
-                      available.length > 0
-                        ? () =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [row.key]: { ...draftFor(row), extra: [...draft.extra, available[0].value] },
-                            }))
-                        : undefined
-                    }
                     secondary={
                       canEdit ? (
                         <Button
@@ -707,31 +653,6 @@ export function MethodsEditorPage(): React.ReactElement {
           Сохранить справочник
         </Button>
       </div>
-
-      {addOpen ? (
-        <Dialog
-          open
-          onOpenChange={setAddOpen}
-          title="Новая норма исследования"
-          description="Норма принадлежит выбранной области: лаборатория, вид и состояние продукции."
-          cancelLabel="Закрыть"
-          confirmLabel="Готово"
-        >
-          <MethodEditor
-            mode="create"
-            laboratoryId={laboratoryId ?? ""}
-            productSpeciesId={productSpeciesId ?? ""}
-            onSaved={() => {
-              setAddOpen(false);
-              // A direct refetch: the prefix-key invalidateQueries never
-              // re-runs the query in this app (verified), so the new rule
-              // would stay invisible until a remount.
-              void methods.refetch();
-            }}
-            onClose={() => setAddOpen(false)}
-          />
-        </Dialog>
-      ) : null}
 
       {deleteTarget !== null ? (
         <Dialog

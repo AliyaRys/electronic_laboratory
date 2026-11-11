@@ -22,6 +22,7 @@ import { Dialog } from "../../shared/ui/Dialog";
 import {
   createTariff,
   deleteTariff,
+  fetchMethods,
   fetchReadiness,
   fetchTariffs,
   updateTariff,
@@ -33,8 +34,9 @@ import { CatalogEditorPage, CatalogSectionHeader, PriceCard, SaveSummary } from 
 import { CatalogContextSlot } from "./catalog-context-slot";
 import { useCatalogContext } from "./use-catalog-context";
 import { useDirtyGuard } from "../context/SwitchContext";
-import { TariffEditor } from "./TariffEditor";
 import { MONEY } from "./common";
+
+const MANUAL_CATALOG_SOURCE = { name: "Ручная настройка справочника" } as const;
 
 /** The two CHECK service codes: owned by the «Платные услуги» page (§10.3). */
 export const CHECK_SERVICE_CODES: ReadonlySet<string> = new Set([
@@ -107,15 +109,17 @@ export function TariffsEditorPage(): React.ReactElement {
     queryFn: ({ signal }) => fetchReadiness(laboratoryId ?? "", productSpeciesId ?? "", signal),
     enabled: scoped,
   });
+  const methods = useQuery({
+    queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/methods", "tariff-units"],
+    queryFn: ({ signal }) => fetchMethods(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
+    enabled: scoped,
+  });
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  /** Extra create inputs (unit/source) for not-yet-configured cards. */
-  const [createMeta, setCreateMeta] = useState<Record<string, { unit: string; source: string }>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   /** Active 409 states (§12.6): the fresh revision is loaded, the draft stays. */
   const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState<SaveSummaryState | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
     card: CardMeta;
@@ -172,13 +176,21 @@ export function TariffsEditorPage(): React.ReactElement {
           fail("Пустое поле не создаёт запись: заполните цену, чтобы настроить тариф.");
           continue;
         }
-        const meta = createMeta[key] ?? { unit: card.unit, source: "" };
-        if (meta.unit.trim() === "") {
-          fail("Укажите единицу измерения новой записи в разделе «Данные новой записи».");
-          continue;
-        }
-        if (meta.source.trim() === "") {
-          fail("Укажите источник прейскуранта новой записи в разделе «Данные новой записи».");
+        const methodItems = methods.data !== undefined && !("code" in methods.data) ? methods.data.items : [];
+        const units = [
+          ...new Set(
+            methodItems
+              .filter((rule) => rule.indicator_id === card.serviceCode && rule.active)
+              .map((rule) => rule.unit_id.trim())
+              .filter((unit) => unit !== ""),
+          ),
+        ];
+        if (units.length !== 1) {
+          fail(
+            units.length === 0
+              ? "Для исследования не настроена единица начисления. Сначала настройте действующую норму."
+              : "У исследования несколько единиц начисления. Исправьте нормы перед созданием цены.",
+          );
           continue;
         }
         const result = await createTariff(
@@ -186,10 +198,10 @@ export function TariffsEditorPage(): React.ReactElement {
             laboratory_id: laboratoryId,
             product_species_id: productSpeciesId,
             service_code: card.serviceCode,
-            unit_id: meta.unit.trim(),
+            unit_id: units[0] as string,
             price,
             version: 1,
-            source: { name: meta.source.trim() },
+            source: MANUAL_CATALOG_SOURCE,
           },
           crypto.randomUUID(),
         );
@@ -309,13 +321,6 @@ export function TariffsEditorPage(): React.ReactElement {
             icon="directory-price"
             title="Исследования ВСЭ"
             description="Укажите стоимость каждого исследования."
-            actions={
-              canEdit ? (
-                <Button type="button" variant="secondary" onClick={() => setAddOpen(true)}>
-                  Добавить тариф
-                </Button>
-              ) : null
-            }
           />
           {tariffs.isLoading ? (
             <StatusView state="loading" title="Загрузка тарифов…" />
@@ -360,46 +365,6 @@ export function TariffsEditorPage(): React.ReactElement {
                       setDrafts((current) => ({ ...current, [key]: next }));
                       setSummary(null);
                     }}
-                    extra={
-                      card.tariff === null && canEdit ? (
-                        <>
-                          <div className="vse-catalog-field">
-                            <label htmlFor={`unit-${key}`}>Единица измерения</label>
-                            <input
-                              id={`unit-${key}`}
-                              type="text"
-                              value={createMeta[key]?.unit ?? card.unit}
-                              disabled={savePending}
-                              onChange={(event) =>
-                                setCreateMeta((current) => ({
-                                  ...current,
-                                  [key]: { unit: event.target.value, source: current[key]?.source ?? "" },
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="vse-catalog-field">
-                            <label htmlFor={`source-${key}`}>Источник прейскуранта</label>
-                            <input
-                              id={`source-${key}`}
-                              type="text"
-                              value={createMeta[key]?.source ?? ""}
-                              disabled={savePending}
-                              onChange={(event) =>
-                                setCreateMeta((current) => ({
-                                  ...current,
-                                  [key]: {
-                                    unit: current[key]?.unit ?? card.unit,
-                                    source: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </div>
-                        </>
-                      ) : undefined
-                    }
-                    extraSummary="Данные новой записи (единица, источник)"
                     secondary={
                       card.tariff !== null && canEdit ? (
                         <Button
@@ -445,31 +410,6 @@ export function TariffsEditorPage(): React.ReactElement {
         </Button>
       </div>
 
-      {addOpen ? (
-        <Dialog
-          open
-          onOpenChange={setAddOpen}
-          title="Новый тариф"
-          description="Цена принадлежит области: лаборатория, вид продукции, код услуги и единица."
-          cancelLabel="Закрыть"
-          confirmLabel="Готово"
-        >
-          <TariffEditor
-            mode="create"
-            laboratoryId={laboratoryId ?? ""}
-            productSpeciesId={productSpeciesId ?? ""}
-            onSaved={() => {
-              setAddOpen(false);
-              // A direct refetch: the prefix-key invalidateQueries never
-              // re-runs the query in this app (verified), so the new record
-              // would stay invisible until a remount.
-              void tariffs.refetch();
-            }}
-            onClose={() => setAddOpen(false)}
-          />
-        </Dialog>
-      ) : null}
-
       {deleteTarget !== null ? (
         <Dialog
           open
@@ -498,6 +438,13 @@ export function TariffsEditorPage(): React.ReactElement {
           <BulkPriceDialog
             laboratories={context.laboratories}
             productSpeciesId={productSpeciesId ?? ""}
+            unitsByServiceCode={Object.fromEntries(
+              methods.data !== undefined && !("code" in methods.data)
+                ? methods.data.items
+                    .filter((rule) => rule.active && rule.unit_id.trim() !== "")
+                    .map((rule) => [rule.indicator_id, rule.unit_id])
+                : [],
+            )}
             onClose={() => {
               setBulkOpen(false);
               void tariffs.refetch();

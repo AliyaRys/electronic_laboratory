@@ -8,9 +8,10 @@
  *                              визуальным осмотром»;
  *   TRANSPORT_INSPECTION    — «Ветеринарно-санитарная оценка и идентификация
  *                              транспорта».
- * The global CheckServiceRule table (multiplier basis, applicable decisions,
- * technical unit) is never read, edited or sent by this page: a price save
- * touches only Tariff records. There is no bulk command here (§10.2).
+ * The global CheckServiceRule table is read only to resolve the price unit;
+ * its multiplier basis and applicable decisions are never edited or sent by
+ * this page. A price save touches only Tariff records. There is no bulk
+ * command here (§10.2).
  */
 import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
@@ -19,13 +20,23 @@ import { useLocation, useNavigate } from "react-router";
 import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
-import { createTariff, deleteTariff, fetchTariffs, updateTariff, type Problem, type TariffView } from "./api";
+import {
+  createTariff,
+  deleteTariff,
+  fetchCheckServices,
+  fetchTariffs,
+  updateTariff,
+  type Problem,
+  type TariffView,
+} from "./api";
 import { CatalogEditorPage, CatalogSectionHeader, PriceCard, SaveSummary } from "./editor-parts";
 import { CatalogContextSlot } from "./catalog-context-slot";
 import { useCatalogContext } from "./use-catalog-context";
 import { useDirtyGuard } from "../context/SwitchContext";
 import { MONEY } from "./common";
 import { MONEY_MESSAGE, normalizeMoneyInput, type SaveSummaryState } from "./TariffsEditorPage";
+
+const MANUAL_CATALOG_SOURCE = { name: "Ручная настройка справочника" } as const;
 
 export interface CheckServiceCard {
   serviceCode: "PRODUCT_IDENTIFICATION" | "TRANSPORT_INSPECTION";
@@ -59,9 +70,13 @@ export function CheckServicesEditorPage(): React.ReactElement {
     queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
     enabled: scoped,
   });
+  const serviceRules = useQuery({
+    queryKey: [null, null, null, "/catalogs/check-services", "price-units"],
+    queryFn: ({ signal }) => fetchCheckServices(1, signal),
+    enabled: scoped,
+  });
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [createMeta, setCreateMeta] = useState<Record<string, { unit: string; source: string }>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   /** Active 409 states (§12.6): the fresh revision is loaded, the draft stays. */
   const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
@@ -114,13 +129,11 @@ export function CheckServicesEditorPage(): React.ReactElement {
           fail("Пустое поле не создаёт запись: заполните стоимость, чтобы настроить услугу.");
           continue;
         }
-        const meta = createMeta[card.serviceCode] ?? { unit: "", source: "" };
-        if (meta.unit.trim() === "") {
-          fail("Укажите единицу измерения новой записи в разделе «Данные новой записи».");
-          continue;
-        }
-        if (meta.source.trim() === "") {
-          fail("Укажите источник прейскуранта новой записи в разделе «Данные новой записи».");
+        const ruleItems =
+          serviceRules.data !== undefined && !("code" in serviceRules.data) ? serviceRules.data.items : [];
+        const unit = ruleItems.find((rule) => rule.service_code === card.serviceCode)?.unit_id.trim();
+        if (unit === undefined || unit === "") {
+          fail("Для услуги не настроена единица начисления. Обратитесь к администратору системы.");
           continue;
         }
         const result = await createTariff(
@@ -128,10 +141,10 @@ export function CheckServicesEditorPage(): React.ReactElement {
             laboratory_id: laboratoryId,
             product_species_id: productSpeciesId,
             service_code: card.serviceCode,
-            unit_id: meta.unit.trim(),
+            unit_id: unit,
             price,
             version: 1,
-            source: { name: meta.source.trim() },
+            source: MANUAL_CATALOG_SOURCE,
           },
           crypto.randomUUID(),
         );
@@ -273,49 +286,6 @@ export function CheckServicesEditorPage(): React.ReactElement {
                       setDrafts((current) => ({ ...current, [card.serviceCode]: next }));
                       setSummary(null);
                     }}
-                    extra={
-                      card.tariff === null && canEdit ? (
-                        <>
-                          <div className="vse-catalog-field">
-                            <label htmlFor={`check-unit-${card.serviceCode}`}>Единица измерения</label>
-                            <input
-                              id={`check-unit-${card.serviceCode}`}
-                              type="text"
-                              value={createMeta[card.serviceCode]?.unit ?? ""}
-                              disabled={savePending}
-                              onChange={(event) =>
-                                setCreateMeta((current) => ({
-                                  ...current,
-                                  [card.serviceCode]: {
-                                    unit: event.target.value,
-                                    source: current[card.serviceCode]?.source ?? "",
-                                  },
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="vse-catalog-field">
-                            <label htmlFor={`check-source-${card.serviceCode}`}>Источник прейскуранта</label>
-                            <input
-                              id={`check-source-${card.serviceCode}`}
-                              type="text"
-                              value={createMeta[card.serviceCode]?.source ?? ""}
-                              disabled={savePending}
-                              onChange={(event) =>
-                                setCreateMeta((current) => ({
-                                  ...current,
-                                  [card.serviceCode]: {
-                                    unit: current[card.serviceCode]?.unit ?? "",
-                                    source: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </div>
-                        </>
-                      ) : undefined
-                    }
-                    extraSummary="Данные новой записи (единица, источник)"
                     secondary={
                       card.tariff !== null && canEdit ? (
                         <Button

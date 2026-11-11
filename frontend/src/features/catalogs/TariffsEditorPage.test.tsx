@@ -42,6 +42,7 @@ function tariff(overrides: Partial<TariffView>): TariffView {
 
 let me: UserView;
 const putSpy = vi.fn();
+const postSpy = vi.fn();
 const tariffsSpy = vi.fn();
 
 const server = setupServer(
@@ -56,9 +57,37 @@ const server = setupServer(
     return HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 });
   }),
   http.get("*/api/v1/catalogs/readiness", () => HttpResponse.json({ missing: [] })),
+  http.get("*/api/v1/catalogs/methods", () =>
+    HttpResponse.json({
+      items: INDICATORS.map((indicator, index) => ({
+        id: `bbbbbbbb-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        laboratory_id: LAB,
+        product_species_id: SPECIES,
+        product_state_id: "cccccccc-0000-4000-8000-000000000001",
+        indicator_id: indicator.id,
+        version: 1,
+        result_schema: "DECIMAL",
+        unit_id: indicator.unit ?? "service",
+        rule: { type: "interval", lower: "0" },
+        source: { name: "методика" },
+        active: true,
+        revision: 1,
+      })),
+      total: INDICATORS.length,
+      page: 1,
+      page_size: 50,
+    }),
+  ),
   http.put("*/api/v1/catalogs/tariffs/:id", async ({ request }) => {
     putSpy((request.headers.get("if-match"), await request.clone().json()));
     return HttpResponse.json(tariff({ price: "150.00", revision: 4 }));
+  }),
+  http.post("*/api/v1/catalogs/tariffs", async ({ request }) => {
+    const body = (await request.clone().json()) as Record<string, unknown>;
+    postSpy(body);
+    return HttpResponse.json(tariff({ service_code: String(body.service_code), price: String(body.price) }), {
+      status: 201,
+    });
   }),
 );
 
@@ -78,6 +107,7 @@ beforeEach(() => {
     revision: 1,
   };
   putSpy.mockClear();
+  postSpy.mockClear();
   tariffsSpy.mockClear();
   server.resetHandlers();
 });
@@ -132,6 +162,25 @@ describe("TariffsEditorPage", () => {
     const unsetInput = screen.getByLabelText(`Стоимость: ${trich.name}, ₽`);
     expect(unsetInput).toHaveValue("");
     expect(screen.getAllByText("Не настроено").length).toBeGreaterThan(0);
+  });
+
+  it("creates a missing price without technical user fields", async () => {
+    const act = userEvent.setup();
+    renderEditor();
+    const input = await screen.findByLabelText(`Стоимость: ${organoleptic.name}, ₽`);
+    expect(screen.queryByText("Данные новой записи (единица, источник)")).toBeNull();
+    expect(screen.queryByLabelText("Единица измерения")).toBeNull();
+    expect(screen.queryByLabelText("Источник прейскуранта")).toBeNull();
+    await act.type(input, "125,50");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
+    expect(postSpy.mock.calls[0][0]).toMatchObject({
+      service_code: organoleptic.id,
+      unit_id: "service",
+      price: "125.50",
+      version: 1,
+      source: { name: "Ручная настройка справочника" },
+    });
   });
 
   it("saves only dirty cards with a comma accepted and dot wire form", async () => {

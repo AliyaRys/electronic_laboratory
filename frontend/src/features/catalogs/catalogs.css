@@ -232,3 +232,428 @@
   text-align: left;
   padding: 4px 10px;
 }
+
+/* --- Editor pages (ТЗ-DR6 §8): shared geometry of the three mockups ------- */
+
+.vse-catalog-title {
+  margin-bottom: 28px;
+}
+
+.vse-catalog-title h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.vse-catalog-lead {
+  margin: 8px 0 0;
+  color: var(--app-muted, #668087);
+}
+
+.vse-catalog-editor form {
+  display: grid;
+  gap: 18px;
+}
+
+.vse-catalog-section-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 21px;
+}
+
+.vse-catalog-section-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.vse-catalog-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.vse-catalog-card {
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 13px;
+  padding: 16px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.vse-catalog-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 13px;
+}
+
+.vse-catalog-card-head h3 {
+  font-size: 14px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vse-catalog-card-secondary {
+  flex: 0 0 auto;
+}
+
+.vse-catalog-card-secondary .app-button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.vse-catalog-req {
+  color: #bd3d48;
+  font-weight: 800;
+}
+
+.vse-catalog-price-field {
+  display: grid;
+  gap: 7px;
+  margin-top: auto;
+}
+
+.vse-catalog-price-label {
+  font-weight: 690;
+  font-size: 13px;
+}
+
+.vse-catalog-price-control {
+  position: relative;
+}
+
+.vse-catalog-price-control input {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid #cbdadb;
+  border-radius: 9px;
+  padding: 0 38px 0 12px;
+  background: #fff;
+  transition:
+    border 0.15s,
+    box-shadow 0.15s;
+}
+
+.vse-catalog-price-control input:hover {
+  border-color: #a6c4c5;
+}
+
+.vse-catalog-price-control input:focus-visible {
+  border-color: var(--app-teal, #146c73);
+  outline: none;
+  box-shadow: 0 0 0 3px #1b8b9130;
+}
+
+.vse-catalog-price-control input:disabled {
+  background: #f5f8f8;
+  color: #687d81;
+}
+
+.vse-catalog-price-control span {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--app-muted, #668087);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.vse-catalog-unset {
+  margin: 0;
+  color: #687d81;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.vse-catalog-details {
+  margin-top: 8px;
+}
+
+.vse-catalog-details summary {
+  color: var(--app-muted, #668087);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vse-catalog-details > *:not(summary) {
+  margin-top: 8px;
+}
+
+/* Sticky bottom actions (§8.1): translucent white bar with border + blur. */
+.vse-catalog-actions {
+  position: sticky;
+  bottom: 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 15px 18px;
+  background: #ffffffed;
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 15px;
+  box-shadow: 0 12px 36px #274e501c;
+  margin-top: 18px;
+  z-index: 5;
+}
+
+/* Compact role context selector above the form (§6.3). */
+.vse-catalog-context {
+  margin-bottom: 16px;
+}
+
+.vse-catalog-context-note {
+  margin: 0 0 16px;
+  color: var(--app-muted, #668087);
+  font-size: 13px;
+}
+
+/* Norm rows (§11.2): [info] [Норма от + unit] [Норма до + unit]. */
+.vse-catalog-norm-list {
+  display: grid;
+  gap: 12px;
+}
+
+.vse-catalog-norm-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 180px 180px;
+  gap: 12px;
+  align-items: end;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 13px;
+  background: #fff;
+  padding: 16px;
+}
+
+.vse-catalog-norm-info {
+  align-self: start;
+  min-width: 0;
+}
+
+.vse-catalog-norm-name {
+  font-weight: 760;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.vse-catalog-norm-meta {
+  color: var(--app-muted, #668087);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.vse-catalog-field {
+  display: grid;
+  gap: 7px;
+}
+
+.vse-catalog-field > label {
+  color: var(--app-muted, #668087);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vse-catalog-field input,
+.vse-catalog-field select {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid #cbdadb;
+  border-radius: 9px;
+  padding: 0 12px;
+  background: #fff;
+  transition:
+    border 0.15s,
+    box-shadow 0.15s;
+}
+
+.vse-catalog-field input:hover,
+.vse-catalog-field select:hover {
+  border-color: #a6c4c5;
+}
+
+.vse-catalog-field input:focus-visible,
+.vse-catalog-field select:focus-visible {
+  border-color: var(--app-teal, #146c73);
+  outline: none;
+  box-shadow: 0 0 0 3px #1b8b9130;
+}
+
+.vse-catalog-field input:disabled,
+.vse-catalog-field select:disabled {
+  background: #f5f8f8;
+  color: #687d81;
+}
+
+.vse-catalog-unit {
+  position: relative;
+}
+
+.vse-catalog-unit input {
+  padding-right: 54px;
+}
+
+.vse-catalog-unit span {
+  position: absolute;
+  right: 12px;
+  bottom: 11px;
+  color: var(--app-muted, #668087);
+  font-weight: 760;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.vse-catalog-norm-secondary {
+  margin-top: 8px;
+}
+
+.vse-catalog-norm-secondary .app-button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+/* Qualitative block (§11.3): [Вариант результата] [Оценка] [−]. */
+.vse-catalog-qual {
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 13px;
+  background: #fff;
+  padding: 16px;
+}
+
+.vse-catalog-qual-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 13px;
+}
+
+.vse-catalog-qual-head h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+
+.vse-catalog-qual-head p {
+  margin: 3px 0 0;
+  color: var(--app-muted, #668087);
+  font-size: 13px;
+}
+
+.vse-catalog-qual-list {
+  display: grid;
+  gap: 9px;
+}
+
+.vse-catalog-qual-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 170px 43px;
+  gap: 10px;
+  align-items: end;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+.vse-catalog-qual-row .vse-catalog-field {
+  min-width: 0;
+}
+
+.vse-catalog-qual-row input[readonly] {
+  background: #f5f8f8;
+  color: #4d676d;
+}
+
+.vse-catalog-qual-row .app-button {
+  min-height: 43px;
+  padding: 0;
+  width: 43px;
+  justify-content: center;
+}
+
+/* Honest save summary (§12). */
+.vse-catalog-summary {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  background: #f5f9f8;
+  font-size: 13px;
+}
+
+.vse-catalog-summary ul {
+  margin: 6px 0 0 18px;
+}
+
+.vse-catalog-summary-success {
+  border-color: #b9dcd2;
+  background: #eef7f2;
+}
+
+.vse-catalog-summary-error,
+.vse-catalog-summary-partial {
+  border-color: #e2c2c6;
+  background: #fbf2f3;
+}
+
+/* Honest diagnostic row for a record outside the shared registry. */
+.vse-catalog-diag {
+  border: 1px solid #b58900;
+  border-radius: 13px;
+  background: #fffaef;
+  padding: 14px 16px;
+  font-size: 13px;
+}
+
+.vse-catalog-diag code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .vse-catalog-norm-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .vse-catalog-norm-info {
+    grid-column: 1 / -1;
+  }
+  .vse-catalog-qual-row {
+    grid-template-columns: 1fr 150px 43px;
+  }
+}
+
+@media (max-width: 800px) {
+  .vse-catalog-title {
+    margin-bottom: 20px;
+  }
+  .vse-catalog-title h1 {
+    font-size: 27px;
+  }
+  .vse-catalog-section {
+    padding: 18px;
+  }
+  .vse-catalog-section-head-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .vse-catalog-cards,
+  .vse-catalog-norm-row,
+  .vse-catalog-qual-row {
+    grid-template-columns: 1fr;
+  }
+  .vse-catalog-actions {
+    bottom: 8px;
+    gap: 7px;
+    padding: 11px;
+  }
+}

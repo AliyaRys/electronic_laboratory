@@ -1,9 +1,9 @@
 /**
- * Catalogs overview (DR4 §7): without a selected tab the route is the
- * directories.html composition — three cards in the mockup order, each with
- * only the REAL action (no fake delete). Unknown tabs fall back to the safe
- * overview; the deep-link paths /catalogs/methods and /catalogs/tariffs keep
- * opening their sections.
+ * Catalogs overview + editor routing (DR6 §7): without a tab the route is the
+ * directories.html composition; each editor tab renders its dedicated editor
+ * page and the scope stays in the query. A HEAD without an assigned
+ * laboratory gets the honest blocking configuration state, never a silent
+ * first laboratory.
  */
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -56,6 +56,7 @@ function renderCatalogs(path: string): void {
       },
       { path: "/catalogs/methods", element: <CatalogsPage /> },
       { path: "/catalogs/tariffs", element: <CatalogsPage /> },
+      { path: "/catalogs/check-services", element: <CatalogsPage /> },
       { path: "/login", element: <p>Вход</p> },
       { path: "*", element: <p>Не найдено</p> },
     ],
@@ -86,17 +87,9 @@ describe("CatalogsPage overview", () => {
   it("an unknown tab is the safe overview fallback", async () => {
     renderCatalogs("/catalogs?tab=unknown");
     await waitFor(() => expect(screen.getByTestId("catalog-overview")).toBeInTheDocument());
-    expect(screen.queryByRole("table")).toBeNull();
   });
 
-  it("the deep-link path opens the methods section with the active pill", async () => {
-    renderCatalogs("/catalogs/methods");
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Справочники" })).toBeInTheDocument());
-    expect(screen.getByRole("link", { name: "Нормы исследований" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByText("Выберите лабораторию и вид продукции.")).toBeInTheDocument();
-  });
-
-  it("«Редактировать» keeps the scope in the query and opens the editor", async () => {
+  it("«Редактировать» keeps the scope in the query and opens the editor page", async () => {
     const act = userEvent.setup();
     const LAB = "11111111-2222-4333-8444-555555555555";
     const SPECIES = "33333333-3333-4333-8333-333333333333";
@@ -105,14 +98,33 @@ describe("CatalogsPage overview", () => {
     await act.click(
       within(screen.getByTestId("catalog-card-tariffs")).getByRole("button", { name: "Редактировать" }),
     );
-    expect(screen.getByRole("heading", { name: "Справочники" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Стоимость исследований" })).toHaveAttribute(
-      "aria-current",
-      "page",
+    // The dedicated editor page of DR6 (no pill tabs), with its mockup title.
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Стоимость исследований ВСЭ" })).toBeInTheDocument(),
     );
+    expect(screen.queryByRole("link", { name: "Нормы исследований" })).toBeNull();
     // The real navigation URL keeps both scope identifiers and sets the tab.
     expect(screen.getByTestId("route-probe")).toHaveTextContent(
       new RegExp(`^/catalogs\\?laboratory_id=${LAB}&product_species_id=${SPECIES}&tab=tariffs$`),
     );
+  });
+
+  it("a HEAD without any assigned laboratory gets the honest blocking state", async () => {
+    renderCatalogs("/catalogs?tab=methods");
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Рабочая область не назначена. Обратитесь к администратору, чтобы назначить лабораторию и тип продукции.",
+        ),
+      ).toBeInTheDocument(),
+    );
+    // No laboratory selector and no fake data are shown.
+    expect(screen.queryByLabelText("Лаборатория")).toBeNull();
+  });
+
+  it("no pill-tab strip is rendered on the editor pages", async () => {
+    renderCatalogs("/catalogs?tab=check-services");
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Платные услуги" })).toBeInTheDocument());
+    expect(screen.queryByRole("list", { name: "Разделы справочников" })).toBeNull();
   });
 });

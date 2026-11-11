@@ -96,8 +96,29 @@ class UserWrite(BaseModel):
 
 
 class ScopeView(BaseModel):
+    """Available context (API-02). ``laboratory_name``/``territory_name`` are
+    the additive read-model labels (ТЗ-DR6 §6.4): human-readable names for the
+    allowed scope only; the authorization, write and data-scope rules stay
+    untouched. ``product_scope_id`` has no local dictionary yet, so its label
+    stays empty instead of a shortened UUID."""
+
     laboratory_id: uuid.UUID | None = None
     product_scope_id: uuid.UUID | None = None
+    territory_id: uuid.UUID | None = None
+    laboratory_name: str | None = None
+    territory_name: str | None = None
+
+
+class LaboratoryOptionView(BaseModel):
+    """One allowed laboratory of the context read model (ТЗ-DR6 §6.4).
+
+    The scoped read endpoint behind it serves ONLY the already allowed
+    laboratory list with its names; no ids outside the caller's scope and no
+    write capability are added.
+    """
+
+    laboratory_id: uuid.UUID
+    name: str
     territory_id: uuid.UUID | None = None
 
 

@@ -75,10 +75,16 @@ test.describe("DR5 real incoming document", () => {
     await expect(page.getByText("8").first()).toBeVisible();
     await expect(page.getByText("500.0").first()).toBeVisible();
     await noHorizontalOverflow(page);
-    await page.screenshot({ path: "docs/implementation/evidence/DR5-reconciliation-1440.png", fullPage: true });
+    await page.screenshot({
+      path: "docs/implementation/evidence/DR5-reconciliation-1440.png",
+      fullPage: true,
+    });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await noHorizontalOverflow(page);
-    await page.screenshot({ path: "docs/implementation/evidence/DR5-reconciliation-390.png", fullPage: true });
+    await page.screenshot({
+      path: "docs/implementation/evidence/DR5-reconciliation-390.png",
+      fullPage: true,
+    });
   });
 });

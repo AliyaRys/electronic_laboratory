@@ -51,6 +51,7 @@ from backend.src.modules.identity.schemas import (
     LoginResponse,
     ReadyResponse,
     ResetPasswordRequest,
+    LaboratoryOptionView,
     ScopeView,
     UserEventView,
     UserView,
@@ -260,6 +261,24 @@ async def contexts(
     await authorizer.authorize(db, user.id, "context:list", None)
     response.headers["Cache-Control"] = "no-store"
     return await _contexts(db, user)
+
+
+@router.get("/contexts/laboratories", response_model=list[LaboratoryOptionView])
+async def context_laboratories(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> list[LaboratoryOptionView]:
+    """Allowed laboratories with names (ТЗ-DR6 §6.4 scoped read endpoint).
+
+    Read-only and scoped exactly like ``context:list``: the same permission,
+    the same allowed set — only the human-readable labels are added.
+    """
+    _, user = principal
+    await authorizer.authorize(db, user.id, "context:list", None)
+    response.headers["Cache-Control"] = "no-store"
+    return await queries.laboratory_options(db, user)
 
 
 @router.post("/me/change-password", status_code=204)

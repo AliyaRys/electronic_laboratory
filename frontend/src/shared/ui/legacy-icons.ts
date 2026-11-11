@@ -174,6 +174,16 @@ export const ICON_DEFINITIONS: Readonly<Record<string, readonly IconPart[]>> = O
     ["path", { d: "M6 12h.01" }],
     ["path", { d: "M18 12h.01" }],
   ],
+  "directory-price": [
+    ["circle", { cx: "10.5", cy: "10.5", r: "6.5" }],
+    ["path", { d: "M15.5 15.5 21 21" }],
+  ],
+  "directory-norms": [
+    ["path", { d: "M4 18h16" }],
+    ["path", { d: "M6 14l4-4 3 3 5-7" }],
+    ["path", { d: "M18 6h-4" }],
+    ["path", { d: "M18 6v4" }],
+  ],
   "arrival-plus": [
     ["path", { d: "M12 5v14" }],
     ["path", { d: "M5 12h14" }],

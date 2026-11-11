@@ -9,13 +9,14 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.identity.commands import PAGE_SIZE
-from backend.src.modules.identity.models import DelegationGrant, Laboratory, User, UserEvent, UserRole, UserScope
+from backend.src.modules.identity.models import DelegationGrant, Laboratory, Territory, User, UserEvent, UserRole, UserScope
 from backend.src.modules.identity.policies import PERMISSION_MATRIX
-from backend.src.modules.identity.schemas import ScopeView, UserEventView, UserView
+from backend.src.modules.identity.schemas import LaboratoryOptionView, ScopeView, UserEventView, UserView
 
 __all__ = [
     "PAGE_SIZE",
     "user_contexts",
+    "laboratory_options",
     "capabilities_for",
     "build_user_view",
     "user_page",
@@ -24,14 +25,73 @@ __all__ = [
 
 
 async def user_contexts(db: AsyncSession, user: User) -> list[ScopeView]:
-    """Available working/administrative contexts (API-02)."""
-    if UserRole(user.role) == UserRole.ADMIN:
-        rows = await db.execute(select(DelegationGrant).where(DelegationGrant.target_id == user.id))
-        return [ScopeView(territory_id=item.territory_id) for item in rows.scalars().all()]
-    scope_rows = await db.execute(select(UserScope).where(UserScope.user_id == user.id))
+    """Available working/administrative contexts (API-02).
+
+    The names are the additive read-model labels (ТЗ-DR6 §6.4): resolved from
+    the same rows the scope already contains — no additional laboratory or
+    territory becomes visible.
+    """
+    role = UserRole(user.role)
+    if role == UserRole.ADMIN:
+        rows = await db.execute(
+            select(DelegationGrant.territory_id, Territory.name)
+            .join(Territory, Territory.id == DelegationGrant.territory_id)
+            .where(DelegationGrant.target_id == user.id)
+        )
+        return [
+            ScopeView(territory_id=territory_id, territory_name=name)
+            for territory_id, name in rows.all()
+        ]
+    scope_rows = await db.execute(
+        select(UserScope.laboratory_id, UserScope.product_scope_id, Laboratory.name)
+        .join(Laboratory, Laboratory.id == UserScope.laboratory_id)
+        .where(UserScope.user_id == user.id)
+    )
+    names: dict[uuid.UUID, str] = {}
+    result: list[ScopeView] = []
+    for laboratory_id, product_scope_id, name in scope_rows.all():
+        names[laboratory_id] = name
+        result.append(
+            ScopeView(
+                laboratory_id=laboratory_id,
+                product_scope_id=product_scope_id,
+                laboratory_name=name,
+            )
+        )
+    return result
+
+
+async def laboratory_options(db: AsyncSession, user: User) -> list[LaboratoryOptionView]:
+    """Allowed laboratories with names (ТЗ-DR6 §6.4 scoped read endpoint).
+
+    VET/HEAD/ANALYST: the laboratories of the user scopes. ADMIN: every
+    laboratory of the delegated territories — the same predicate the catalog
+    read/write authorization applies, so no laboratory leaves the allowed
+    scope. Read-only and additive; write rules are unchanged.
+    """
+    role = UserRole(user.role)
+    if role == UserRole.ADMIN:
+        grants = (
+            await db.execute(select(DelegationGrant.territory_id).where(DelegationGrant.target_id == user.id))
+        ).scalars().all()
+        if len(grants) == 0:
+            return []
+        rows = await db.execute(
+            select(Laboratory.id, Laboratory.name, Laboratory.territory_id)
+            .where(Laboratory.territory_id.in_(grants))
+            .order_by(Laboratory.name, Laboratory.id)
+        )
+        return [
+            LaboratoryOptionView(laboratory_id=lid, name=name, territory_id=tid) for lid, name, tid in rows.all()
+        ]
+    rows = await db.execute(
+        select(Laboratory.id, Laboratory.name, Laboratory.territory_id)
+        .join(UserScope, UserScope.laboratory_id == Laboratory.id)
+        .where(UserScope.user_id == user.id)
+        .order_by(Laboratory.name, Laboratory.id)
+    )
     return [
-        ScopeView(laboratory_id=item.laboratory_id, product_scope_id=item.product_scope_id)
-        for item in scope_rows.scalars().all()
+        LaboratoryOptionView(laboratory_id=lid, name=name, territory_id=tid) for lid, name, tid in rows.all()
     ]
 
 

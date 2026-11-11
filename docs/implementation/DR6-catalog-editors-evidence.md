@@ -19,7 +19,7 @@ geometry instead of the old single Overview pane:
   qualitative indicator blocks.
 
 `CatalogsPage` keeps the overview and routes each tab to its editor page.
-No pill-tab strip on the edit pages (R-DR6-7).
+No pill-tab strip on the edit pages (R-DR6-4).
 
 ## Reused / extended components
 
@@ -68,6 +68,43 @@ No pill-tab strip on the edit pages (R-DR6-7).
 Tariff rows are filtered by exact `service_code` (PRODUCT_IDENTIFICATION,
 TRANSPORT_INSPECTION); CheckServiceRule rows are a separate read model and are
 not touched by price saves (confirmed by CheckServicesEditorPage tests).
+
+## Fix round 1 (review needs-fixes)
+
+- ADMIN/ANALYST selector now built from the purpose-built scoped endpoint
+  `GET /api/v1/contexts/laboratories` (`use-catalog-context.ts`): the
+  `/contexts` rows of ADMIN carry only territories, so the old build produced
+  an empty selector and a false blocking error. `/contexts` stays the source
+  of the role/context facts and the product pair; a problem answer from the
+  endpoint falls back to the older `/contexts` shape. MSW fixtures mirror the
+  REAL contract (territory-only rows for ADMIN in `/contexts`; laboratory
+  options only from the endpoint) and a unit test asserts a valid ADMIN gets a
+  non-empty named selector.
+- 409 (§12.6): after the fresh revision loads, the card shows the explicit
+  conflict state — server's current value vs the user's draft with two
+  choices: «Сохранить моё значение» (retry with If-Match of the fresh
+  revision) and «Взять значение сервера» (draft dropped, no save). A second
+  «Сохранить справочник» never re-submits a conflicted card silently.
+  Implemented for the price cards (tariffs/check-services) and the norm rows;
+  unit tests cover both choice paths.
+- e2e `catalogs.spec.ts` and `catalogs-profile-visual.spec.ts` rewritten to
+  the dedicated editor pages (editor heading/eyebrow, diagnostic cards, bulk
+  command «Применить стоимость к лабораториям», selector switch, return to
+  overview). Both specs re-run GREEN on the seeded isolated stack
+  (vse-pg-c02 55441 / vse-redis-c02 56391 / backend 8001, seed_identity.py):
+  4 passed. Full suite with the seeded stack: 64 passed / 6 failed — all six
+  pre-existing environmental ones (arrivals×2, dr5-real-browser×2,
+  examinations×2; they need arrivals/examinations/eVSD domain fixtures that
+  seed_identity does not create; identical failures before DR6). The
+  identity.spec failures of the unseeded baseline are gone on the seeded
+  stack.
+- Discovered during the re-run (pre-existing, app-wide, NOT fixed here):
+  `queryClient.invalidateQueries({ queryKey: <prefix> })` never refetches in
+  this app (verified with an isolated react-query probe). The DR6 editor
+  pages now refresh with a direct `refetch()` after create/delete/bulk and
+  conflict resolution; the older dialogs elsewhere still rely on the broken
+  prefix invalidation and need the same treatment later.
+- Evidence slip corrected: R-DR6-7 → R-DR6-4.
 
 ## Screenshots
 

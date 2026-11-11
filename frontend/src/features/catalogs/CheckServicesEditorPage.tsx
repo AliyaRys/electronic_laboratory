@@ -64,6 +64,8 @@ export function CheckServicesEditorPage(): React.ReactElement {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [createMeta, setCreateMeta] = useState<Record<string, { unit: string; source: string }>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** Active 409 states (§12.6): the fresh revision is loaded, the draft stays. */
+  const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState<SaveSummaryState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ card: CheckServiceCard; tariff: TariffView } | null>(
     null,
@@ -91,8 +93,12 @@ export function CheckServicesEditorPage(): React.ReactElement {
     if (laboratoryId === null || productSpeciesId === null) return;
     const failures: string[] = [];
     let saved = 0;
+    let conflicted = false;
     for (const card of cards) {
       const draft = drafts[card.serviceCode];
+      // A conflicted card waits for the explicit §12.6 choice; a second
+      // «Сохранить» never re-submits the stale draft.
+      if (conflicts[card.serviceCode] === true) continue;
       if (draft === undefined || normalizeMoneyInput(draft) === (card.tariff?.price ?? "")) continue;
       const price = normalizeMoneyInput(draft);
       const fail = (message: string): void => {
@@ -155,6 +161,10 @@ export function CheckServicesEditorPage(): React.ReactElement {
           `"${tariff.revision}"`,
         );
         if ("code" in result) {
+          if (result.code === "REVISION_CONFLICT") {
+            conflicted = true;
+            setConflicts((current) => ({ ...current, [card.serviceCode]: true }));
+          }
           fail(result.detail);
           continue;
         }
@@ -180,8 +190,10 @@ export function CheckServicesEditorPage(): React.ReactElement {
         details: failures,
       });
     }
-    if (saved > 0) {
-      await queryClient.invalidateQueries({ queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"] });
+    if (saved > 0 || conflicted) {
+      // The fresh revision of the conflicted cards is loaded BEFORE the
+      // §12.6 choice is shown.
+      await tariffs.refetch();
     }
   }
 
@@ -241,6 +253,10 @@ export function CheckServicesEditorPage(): React.ReactElement {
             <div className="vse-catalog-cards">
               {cards.map((card) => {
                 const draft = drafts[card.serviceCode];
+                const conflict =
+                  conflicts[card.serviceCode] === true && draft !== undefined
+                    ? { serverValue: card.tariff?.price ?? "", draftValue: draft }
+                    : undefined;
                 return (
                   <PriceCard
                     key={card.serviceCode}
@@ -251,6 +267,9 @@ export function CheckServicesEditorPage(): React.ReactElement {
                     error={errors[card.serviceCode]}
                     busy={savePending}
                     readOnly={!canEdit}
+                    conflict={conflict}
+                    onKeepMine={conflict !== undefined ? () => void keepMine(card) : undefined}
+                    onTakeServer={conflict !== undefined ? () => takeServer(card.serviceCode) : undefined}
                     onChange={(next) => {
                       setDrafts((current) => ({ ...current, [card.serviceCode]: next }));
                       setSummary(null);
@@ -362,6 +381,67 @@ export function CheckServicesEditorPage(): React.ReactElement {
     setSavePending(false);
   }
 
+  /** §12.6 «Сохранить моё значение»: retry the draft against the FRESH
+   * revision (If-Match of the current server state). */
+  async function keepMine(card: CheckServiceCard): Promise<void> {
+    if (card.tariff === null) return;
+    const draft = drafts[card.serviceCode];
+    if (draft === undefined) return;
+    const price = normalizeMoneyInput(draft);
+    if (price === "" || !MONEY.test(price)) return;
+    const tariff = card.tariff;
+    setSavePending(true);
+    const result = await updateTariff(
+      tariff.id,
+      {
+        laboratory_id: tariff.laboratory_id,
+        product_species_id: tariff.product_species_id,
+        service_code: tariff.service_code,
+        unit_id: tariff.unit_id,
+        price,
+        version: tariff.version,
+        source: tariff.source as { name: string },
+      },
+      `"${tariff.revision}"`,
+    );
+    setSavePending(false);
+    if ("code" in result) {
+      setConflicts((current) => ({ ...current, [card.serviceCode]: true }));
+      setErrors((current) => ({
+        ...current,
+        [card.serviceCode]:
+          result.detail !== "" ? result.detail : "Запись снова изменена другим пользователем.",
+      }));
+      await tariffs.refetch();
+      return;
+    }
+    clearConflict(card.serviceCode);
+    await tariffs.refetch();
+  }
+
+  /** §12.6 «Взять значение сервера»: the draft is dropped, no save runs. */
+  function takeServer(key: string): void {
+    clearConflict(key);
+  }
+
+  function clearConflict(key: string): void {
+    setConflicts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
   async function runDelete(): Promise<void> {
     if (deleteTarget === null) return;
     setDeleteBusy(true);
@@ -376,7 +456,7 @@ export function CheckServicesEditorPage(): React.ReactElement {
       return;
     }
     setDeleteTarget(null);
-    await queryClient.invalidateQueries({ queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"] });
+    await tariffs.refetch();
   }
 
   function pickLaboratory(id: string): void {

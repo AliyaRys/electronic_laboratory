@@ -113,6 +113,8 @@ export function TariffsEditorPage(): React.ReactElement {
   /** Extra create inputs (unit/source) for not-yet-configured cards. */
   const [createMeta, setCreateMeta] = useState<Record<string, { unit: string; source: string }>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** Active 409 states (§12.6): the fresh revision is loaded, the draft stays. */
+  const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState<SaveSummaryState | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -144,11 +146,16 @@ export function TariffsEditorPage(): React.ReactElement {
     if (savePending || laboratoryId === null || productSpeciesId === null) return;
     const failures: { key: string; message: string }[] = [];
     let saved = 0;
+    let conflicted = false;
     // Sequential per-card sends (§12): the actual answer of each changed
     // record is awaited; successes never mask failures.
     for (let index = 0; index < cards.length; index += 1) {
       const card = cards[index];
       const key = card.tariff?.id ?? `new-${index}`;
+      // A conflicted card waits for the explicit §12.6 choice; a second
+      // «Сохранить» never re-submits the stale draft against the fresh
+      // revision.
+      if (conflicts[key] === true) continue;
       const draft = drafts[key];
       if (draft === undefined || normalizeMoneyInput(draft) === (card.tariff?.price ?? "")) continue;
       const price = normalizeMoneyInput(draft);
@@ -188,6 +195,10 @@ export function TariffsEditorPage(): React.ReactElement {
           crypto.randomUUID(),
         );
         if ("code" in result) {
+          if (result.code === "REVISION_CONFLICT") {
+            conflicted = true;
+            setConflicts((current) => ({ ...current, [key]: true }));
+          }
           fail(result.detail);
           continue;
         }
@@ -211,6 +222,10 @@ export function TariffsEditorPage(): React.ReactElement {
           `"${tariff.revision}"`,
         );
         if ("code" in result) {
+          if (result.code === "REVISION_CONFLICT") {
+            conflicted = true;
+            setConflicts((current) => ({ ...current, [key]: true }));
+          }
           fail(result.detail);
           continue;
         }
@@ -236,8 +251,11 @@ export function TariffsEditorPage(): React.ReactElement {
         details: failures.map((item) => item.message),
       });
     }
-    if (saved > 0) {
-      await queryClient.invalidateQueries({ queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"] });
+    if (saved > 0 || conflicted) {
+      // The fresh revision of the conflicted cards is loaded BEFORE the
+      // §12.6 choice is shown: the comparison is always against the real
+      // current server value.
+      await tariffs.refetch();
     }
   };
 
@@ -322,6 +340,10 @@ export function TariffsEditorPage(): React.ReactElement {
                   );
                 }
                 const draft = drafts[key];
+                const conflict =
+                  conflicts[key] === true && draft !== undefined
+                    ? { serverValue: card.tariff?.price ?? "", draftValue: draft }
+                    : undefined;
                 return (
                   <PriceCard
                     key={key}
@@ -332,6 +354,9 @@ export function TariffsEditorPage(): React.ReactElement {
                     error={errors[key]}
                     busy={savePending}
                     readOnly={!canEdit}
+                    conflict={conflict}
+                    onKeepMine={conflict !== undefined ? () => void keepMine(card, key) : undefined}
+                    onTakeServer={conflict !== undefined ? () => takeServer(key) : undefined}
                     onChange={(next) => {
                       setDrafts((current) => ({ ...current, [key]: next }));
                       setSummary(null);
@@ -436,9 +461,10 @@ export function TariffsEditorPage(): React.ReactElement {
             productSpeciesId={productSpeciesId ?? ""}
             onSaved={() => {
               setAddOpen(false);
-              void queryClient.invalidateQueries({
-                queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"],
-              });
+              // A direct refetch: the prefix-key invalidateQueries never
+              // re-runs the query in this app (verified), so the new record
+              // would stay invisible until a remount.
+              void tariffs.refetch();
             }}
             onClose={() => setAddOpen(false)}
           />
@@ -475,9 +501,7 @@ export function TariffsEditorPage(): React.ReactElement {
             productSpeciesId={productSpeciesId ?? ""}
             onClose={() => {
               setBulkOpen(false);
-              void queryClient.invalidateQueries({
-                queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"],
-              });
+              void tariffs.refetch();
             }}
           />
         </Dialog>
@@ -489,6 +513,65 @@ export function TariffsEditorPage(): React.ReactElement {
     setSavePending(true);
     await save();
     setSavePending(false);
+  }
+
+  /** §12.6 «Сохранить моё значение»: retry the draft against the FRESH
+   * revision (If-Match of the current server state, never the stale one). */
+  async function keepMine(card: CardMeta, key: string): Promise<void> {
+    if (card.tariff === null) return;
+    const draft = drafts[key];
+    if (draft === undefined) return;
+    const price = normalizeMoneyInput(draft);
+    if (price === "" || !MONEY.test(price)) return;
+    setSavePending(true);
+    const result = await updateTariff(
+      card.tariff.id,
+      {
+        laboratory_id: card.tariff.laboratory_id,
+        product_species_id: card.tariff.product_species_id,
+        service_code: card.tariff.service_code,
+        unit_id: card.tariff.unit_id,
+        price,
+        version: card.tariff.version,
+        source: card.tariff.source as { name: string },
+      },
+      `"${card.tariff.revision}"`,
+    );
+    setSavePending(false);
+    if ("code" in result) {
+      setConflicts((current) => ({ ...current, [key]: true }));
+      setErrors((current) => ({
+        ...current,
+        [key]: result.detail !== "" ? result.detail : "Запись снова изменена другим пользователем.",
+      }));
+      await tariffs.refetch();
+      return;
+    }
+    clearConflict(key);
+    await tariffs.refetch();
+  }
+
+  /** §12.6 «Взять значение сервера»: the draft is dropped, no save runs. */
+  function takeServer(key: string): void {
+    clearConflict(key);
+  }
+
+  function clearConflict(key: string): void {
+    setConflicts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
   }
 
   async function runDelete(): Promise<void> {
@@ -505,7 +588,7 @@ export function TariffsEditorPage(): React.ReactElement {
       return;
     }
     setDeleteTarget(null);
-    await queryClient.invalidateQueries({ queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"] });
+    await tariffs.refetch();
   }
 
   function pickLaboratory(id: string): void {

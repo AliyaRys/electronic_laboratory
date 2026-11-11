@@ -109,10 +109,16 @@ const methods = [
 
 export const catalogEditorHandlers: HttpHandler[] = [
   http.get("*/api/v1/me", () => HttpResponse.json(me)),
+  // Real contract (§6.4): HEAD gets its scope rows WITH laboratory_id here;
+  // ADMIN would get territory-only rows. Laboratory options come ONLY from
+  // /contexts/laboratories, never fabricated inside /contexts.
   http.get("*/api/v1/contexts", () =>
     HttpResponse.json([
       { laboratory_id: LAB, product_scope_id: SPECIES, laboratory_name: "Лаборатория №1 г. Казань" },
     ]),
+  ),
+  http.get("*/api/v1/contexts/laboratories", () =>
+    HttpResponse.json([{ laboratory_id: LAB, name: "Лаборатория №1 г. Казань", territory_id: null }]),
   ),
   http.get("*/api/v1/catalogs/tariffs", () =>
     HttpResponse.json({ items: tariffs, total: tariffs.length, page: 1, page_size: 50 }),
@@ -129,4 +135,35 @@ export const catalogEditorHandlers: HttpHandler[] = [
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json({ ...body, revision: 2 });
   }),
+];
+
+/** The REAL ADMIN shape: /contexts carries only territory rows; laboratory
+ * options come exclusively from the scoped /contexts/laboratories endpoint. */
+const adminMe = {
+  ...me,
+  login: "admin-stories",
+  full_name: "Андрей Администратор",
+  email: "admin@example.test",
+  role: "ADMIN",
+  scopes: [],
+};
+
+const TERRITORY = "44444444-4444-4333-8444-444444444444";
+const LAB_B = "66666666-6666-4333-8444-666666666666";
+
+export const adminCatalogEditorHandlers: HttpHandler[] = [
+  http.get("*/api/v1/me", () => HttpResponse.json(adminMe)),
+  http.get("*/api/v1/contexts", () =>
+    HttpResponse.json([{ territory_id: TERRITORY, territory_name: "Набережные Челны" }]),
+  ),
+  http.get("*/api/v1/contexts/laboratories", () =>
+    HttpResponse.json([
+      { laboratory_id: LAB, name: "Лаборатория №1 г. Казань", territory_id: TERRITORY },
+      { laboratory_id: LAB_B, name: "Лаборатория №2 с. Азнакаево", territory_id: TERRITORY },
+    ]),
+  ),
+  ...catalogEditorHandlers.filter(
+    (handler) =>
+      !String(handler.info.path).includes("/me") && !String(handler.info.path).includes("/contexts"),
+  ),
 ];

@@ -109,6 +109,60 @@ export function CatalogContextSelector({
   );
 }
 
+/* --- Revision conflict choice ------------------------------------------------- */
+
+export interface ConflictChoiceProps {
+  /** The server's current value after the fresh revision was loaded. */
+  serverValue: string;
+  /** The user's unsent draft value. */
+  draftValue: string;
+  /** Retry with the fresh revision (If-Match), keeping the user's value. */
+  onKeepMine: () => void;
+  /** Replace the draft with the server's value; no save is attempted. */
+  onTakeServer: () => void;
+  disabled?: boolean | undefined;
+}
+
+/**
+ * The explicit revision-conflict resolution (§12.6): after a 409 the fresh
+ * revision is on the card as a read-only comparison and the user chooses —
+ * «Сохранить моё значение» retries with the fresh revision, «Взять значение
+ * сервера» replaces the draft. A second silent overwrite never happens.
+ */
+export function ConflictChoice({
+  serverValue,
+  draftValue,
+  onKeepMine,
+  onTakeServer,
+  disabled = false,
+}: ConflictChoiceProps): React.ReactElement {
+  return (
+    <div className="vse-catalog-conflict" data-testid="catalog-conflict">
+      <p className="vse-catalog-conflict-title" role="alert">
+        Запись изменена другим пользователем. Выберите, какое значение оставить.
+      </p>
+      <dl className="vse-catalog-conflict-values">
+        <div>
+          <dt>Актуальное значение сервера</dt>
+          <dd>{serverValue === "" ? "Не настроено" : serverValue}</dd>
+        </div>
+        <div>
+          <dt>Ваше значение</dt>
+          <dd>{draftValue === "" ? "Не настроено" : draftValue}</dd>
+        </div>
+      </dl>
+      <div className="vse-catalog-conflict-actions">
+        <Button type="button" variant="primary" onClick={onKeepMine} disabled={disabled}>
+          Сохранить моё значение
+        </Button>
+        <Button type="button" variant="secondary" onClick={onTakeServer} disabled={disabled}>
+          Взять значение сервера
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /* --- Price card ------------------------------------------------------------ */
 
 export interface PriceCardProps {
@@ -127,6 +181,10 @@ export interface PriceCardProps {
   extraSummary?: string | undefined;
   /** Calm secondary action of the card head (e.g. «Удалить», §9.3). */
   secondary?: React.ReactNode | undefined;
+  /** Active 409 resolution state (§12.6): server value vs the user's draft. */
+  conflict?: { serverValue: string; draftValue: string } | undefined;
+  onKeepMine?: (() => void) | undefined;
+  onTakeServer?: (() => void) | undefined;
 }
 
 /** One decimal price card of the mockup (§9.2/§10.2): name, ₽-suffixed input. */
@@ -142,6 +200,9 @@ export function PriceCard({
   extra,
   extraSummary = "Данные новой записи",
   secondary,
+  conflict,
+  onKeepMine,
+  onTakeServer,
 }: PriceCardProps): React.ReactElement {
   const inputId = useId();
   const errorId = useId();
@@ -192,6 +253,15 @@ export function PriceCard({
             {extra}
           </details>
         ) : null}
+        {conflict !== undefined && onKeepMine !== undefined && onTakeServer !== undefined ? (
+          <ConflictChoice
+            serverValue={conflict.serverValue}
+            draftValue={conflict.draftValue}
+            onKeepMine={onKeepMine}
+            onTakeServer={onTakeServer}
+            disabled={busy}
+          />
+        ) : null}
       </div>
     </article>
   );
@@ -214,6 +284,10 @@ export interface NormRowProps {
   details?: React.ReactNode | undefined;
   /** Calm secondary action of the row (e.g. «Удалить норму», §11.5). */
   secondary?: React.ReactNode | undefined;
+  /** Active 409 resolution state (§12.6): server values vs the user's draft. */
+  conflict?: { serverValue: string; draftValue: string } | undefined;
+  onKeepMine?: (() => void) | undefined;
+  onTakeServer?: (() => void) | undefined;
 }
 
 /** One interval row of the norms mockup (§11.2): [name] [от] [до]. */
@@ -230,6 +304,9 @@ export function NormRow({
   readOnly = false,
   details,
   secondary,
+  conflict,
+  onKeepMine,
+  onTakeServer,
 }: NormRowProps): React.ReactElement {
   const lowerId = useId();
   const upperId = useId();
@@ -265,6 +342,15 @@ export function NormRow({
             <summary>Методика и версия</summary>
             {details}
           </details>
+        ) : null}
+        {conflict !== undefined && onKeepMine !== undefined && onTakeServer !== undefined ? (
+          <ConflictChoice
+            serverValue={conflict.serverValue}
+            draftValue={conflict.draftValue}
+            onKeepMine={onKeepMine}
+            onTakeServer={onTakeServer}
+            disabled={busy}
+          />
         ) : null}
         {secondary !== undefined ? <div className="vse-catalog-norm-secondary">{secondary}</div> : null}
       </div>

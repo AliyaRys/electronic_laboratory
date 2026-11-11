@@ -5,8 +5,9 @@
  *   is never rendered and a query override is ignored. 0/2+ laboratories is
  *   an honest blocking configuration error, never a silent first pick.
  * - ADMIN/ANALYST: a compact selector of the allowed laboratories only,
- *   human-readable names from the §6.4 read model, the chosen laboratory in
- *   the URL for a restorable deep link.
+ *   built from the purpose-built scoped endpoint GET /contexts/laboratories
+ *   (the /contexts rows of ADMIN carry only territories), the chosen
+ *   laboratory in the URL for a restorable deep link.
  * - VET: the assigned laboratory, read-only.
  * - Raw UUIDs are never shown as names; unknown ids keep the honest
  *   «название недоступно» wording.
@@ -14,7 +15,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useLocation } from "react-router";
-import { fetchContexts } from "../identity/api";
+import { fetchContexts, fetchLaboratoryOptions } from "../identity/api";
 import { PRODUCTS } from "../../shared/ui/AppHeader";
 import { useMe } from "../../shared/api/me";
 import { useContextScope } from "../../features/context/SwitchContext";
@@ -73,9 +74,24 @@ export function useCatalogContext(): CatalogContext {
     queryFn: ({ signal }) => fetchContexts(signal),
     enabled: me !== null,
   });
+  // The selector options of ADMIN/ANALYST come from the purpose-built scoped
+  // endpoint (§6.4): for ADMIN the /contexts rows carry ONLY territories
+  // (laboratory_id null), so they can never fill the selector.
+  const rolePre = me !== null ? (me.role as string) : null;
+  const needsLaboratoryOptions = rolePre === "ADMIN" || rolePre === "ANALYST";
+  const laboratoryOptions = useQuery({
+    queryKey: [null, null, null, "/contexts/laboratories", null],
+    queryFn: ({ signal }) => fetchLaboratoryOptions(signal),
+    enabled: me !== null && needsLaboratoryOptions,
+  });
 
   return useMemo(() => {
-    if (loading || me === null || contexts.isLoading) {
+    if (
+      loading ||
+      me === null ||
+      contexts.isLoading ||
+      (needsLaboratoryOptions && laboratoryOptions.isLoading)
+    ) {
       return {
         loading: true,
         role: null,
@@ -210,11 +226,23 @@ export function useCatalogContext(): CatalogContext {
       };
     }
 
-    // ADMIN / ANALYST: the selector covers only the server-allowed set.
+    // ADMIN / ANALYST: the selector covers only the server-allowed set. The
+    // options come from the scoped /contexts/laboratories endpoint with
+    // human-readable names; the /contexts rows are the fallback only when the
+    // endpoint answers with a problem (older backend before the §6.4 deploy).
+    const optionRows = laboratoryOptions.data;
+    const optionsFromEndpoint =
+      optionRows !== undefined && optionRows !== null && !("code" in optionRows)
+        ? optionRows.map((option) => ({ id: option.laboratory_id, name: nameOrHonest(option.name) }))
+        : null;
     const byId = new Map<string, string>();
-    for (const scope of rows) {
-      if (scope.laboratory_id == null) continue;
-      byId.set(scope.laboratory_id, nameOrHonest(scope.laboratory_name));
+    if (optionsFromEndpoint !== null) {
+      for (const option of optionsFromEndpoint) byId.set(option.id, option.name);
+    } else {
+      for (const scope of rows) {
+        if (scope.laboratory_id == null) continue;
+        byId.set(scope.laboratory_id, nameOrHonest(scope.laboratory_name));
+      }
     }
     const laboratories = Array.from(byId, ([id, name]) => ({ id, name }));
     const params = new URLSearchParams(location.search);
@@ -271,5 +299,15 @@ export function useCatalogContext(): CatalogContext {
       needsSelection: false,
       allowedToSwitch: true,
     };
-  }, [loading, me, contexts.isLoading, contexts.data, scopeStore, productType, location.search]);
+  }, [
+    loading,
+    me,
+    contexts.isLoading,
+    contexts.data,
+    laboratoryOptions.isLoading,
+    laboratoryOptions.data,
+    scopeStore,
+    productType,
+    location.search,
+  ]);
 }

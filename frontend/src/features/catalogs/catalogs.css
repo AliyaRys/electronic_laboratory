@@ -620,6 +620,46 @@
   overflow-wrap: anywhere;
 }
 
+/* Revision conflict choice (§12.6): read-only comparison + explicit pick. */
+.vse-catalog-conflict {
+  border: 1px solid #f0b6b6;
+  border-radius: 10px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: #fff8f8;
+}
+
+.vse-catalog-conflict-title {
+  color: #a4342c;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.vse-catalog-conflict-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 8px 0 10px;
+}
+
+.vse-catalog-conflict-values dt {
+  color: #57706c;
+  font-size: 12px;
+}
+
+.vse-catalog-conflict-values dd {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.vse-catalog-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
 @media (max-width: 900px) {
   .vse-catalog-norm-row {
     grid-template-columns: 1fr 1fr;

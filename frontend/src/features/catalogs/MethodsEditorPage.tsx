@@ -53,6 +53,51 @@ export interface MethodDraft {
   extra: string[];
 }
 
+/** The update payload of one interval draft against the current rule (§12). */
+export function intervalPayload(
+  rule: MethodRuleTyped,
+  draft: MethodDraft,
+): Parameters<typeof updateMethod>[1] {
+  return {
+    laboratory_id: rule.laboratory_id,
+    product_species_id: rule.product_species_id,
+    indicator_id: rule.indicator_id,
+    product_state_id: rule.product_state_id,
+    result_schema: rule.result_schema as never,
+    unit_id: rule.unit_id,
+    version: rule.version,
+    rule: {
+      type: "interval" as const,
+      ...(draft.lower !== "" ? { lower: draft.lower } : {}),
+      ...(draft.upper !== "" ? { upper: draft.upper } : {}),
+      lower_inclusive: draft.lowerInclusive,
+      upper_inclusive: draft.upperInclusive,
+    },
+    source: rule.source as { name: string },
+    ...(rule.effective_from != null ? { effective_from: rule.effective_from } : {}),
+  };
+}
+
+/** The update payload of one qualitative draft against the current rule. */
+export function qualitativePayload(
+  rule: MethodRuleTyped,
+  draft: MethodDraft,
+): Parameters<typeof updateMethod>[1] {
+  const accepted = [...draft.accepted, ...draft.extra.filter((value) => !draft.accepted.includes(value))];
+  return {
+    laboratory_id: rule.laboratory_id,
+    product_species_id: rule.product_species_id,
+    indicator_id: rule.indicator_id,
+    product_state_id: rule.product_state_id,
+    result_schema: rule.result_schema as never,
+    unit_id: rule.unit_id,
+    version: rule.version,
+    rule: { type: "qualitative" as const, accepted_values: accepted },
+    source: rule.source as { name: string },
+    ...(rule.effective_from != null ? { effective_from: rule.effective_from } : {}),
+  };
+}
+
 interface RowModel {
   key: string;
   rule: MethodRuleTyped;
@@ -110,6 +155,8 @@ export function MethodsEditorPage(): React.ReactElement {
 
   const [drafts, setDrafts] = useState<Record<string, MethodDraft>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** Active 409 states (§12.6): the fresh revision is loaded, the draft stays. */
+  const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState<{
     state: "success" | "partial" | "error";
     text: string;
@@ -177,6 +224,10 @@ export function MethodsEditorPage(): React.ReactElement {
     let conflicted = false;
     for (const row of rows) {
       const draft = drafts[row.key];
+      // A conflicted row waits for the explicit §12.6 choice; a second
+      // «Сохранить» never re-submits the stale draft against the fresh
+      // revision.
+      if (conflicts[row.key] === true) continue;
       if (draft === undefined) continue;
       const fail = (message: string): void => {
         const text = message === "" ? "Не удалось сохранить норму." : message;
@@ -208,27 +259,16 @@ export function MethodsEditorPage(): React.ReactElement {
           draft.lowerInclusive === (rule.lower_inclusive ?? true) &&
           draft.upperInclusive === (rule.upper_inclusive ?? true);
         if (unchanged) continue;
-        const payload = {
-          laboratory_id: row.rule.laboratory_id,
-          product_species_id: row.rule.product_species_id,
-          indicator_id: row.rule.indicator_id,
-          product_state_id: row.rule.product_state_id,
-          result_schema: row.rule.result_schema as never,
-          unit_id: row.rule.unit_id,
-          version: row.rule.version,
-          rule: {
-            type: "interval" as const,
-            ...(draft.lower !== "" ? { lower: draft.lower } : {}),
-            ...(draft.upper !== "" ? { upper: draft.upper } : {}),
-            lower_inclusive: draft.lowerInclusive,
-            upper_inclusive: draft.upperInclusive,
-          },
-          source: row.rule.source as { name: string },
-          ...(row.rule.effective_from != null ? { effective_from: row.rule.effective_from } : {}),
-        };
-        const result = await updateMethod(row.rule.id, payload, `"${row.rule.revision}"`);
+        const result = await updateMethod(
+          row.rule.id,
+          intervalPayload(row.rule, draft),
+          `"${row.rule.revision}"`,
+        );
         if ("code" in result) {
-          conflicted = conflicted || result.code === "REVISION_CONFLICT";
+          if (result.code === "REVISION_CONFLICT") {
+            conflicted = true;
+            setConflicts((current) => ({ ...current, [row.key]: true }));
+          }
           fail(result.detail);
           continue;
         }
@@ -245,21 +285,16 @@ export function MethodsEditorPage(): React.ReactElement {
         const qualitative = row.rule.rule;
         if (qualitative.type !== "qualitative") continue;
         if (accepted.join("\u0001") === qualitative.accepted_values.join("\u0001")) continue;
-        const payload = {
-          laboratory_id: row.rule.laboratory_id,
-          product_species_id: row.rule.product_species_id,
-          indicator_id: row.rule.indicator_id,
-          product_state_id: row.rule.product_state_id,
-          result_schema: row.rule.result_schema as never,
-          unit_id: row.rule.unit_id,
-          version: row.rule.version,
-          rule: { type: "qualitative" as const, accepted_values: accepted },
-          source: row.rule.source as { name: string },
-          ...(row.rule.effective_from != null ? { effective_from: row.rule.effective_from } : {}),
-        };
-        const result = await updateMethod(row.rule.id, payload, `"${row.rule.revision}"`);
+        const result = await updateMethod(
+          row.rule.id,
+          qualitativePayload(row.rule, draft),
+          `"${row.rule.revision}"`,
+        );
         if ("code" in result) {
-          conflicted = conflicted || result.code === "REVISION_CONFLICT";
+          if (result.code === "REVISION_CONFLICT") {
+            conflicted = true;
+            setConflicts((current) => ({ ...current, [row.key]: true }));
+          }
           fail(result.detail);
           continue;
         }
@@ -288,8 +323,79 @@ export function MethodsEditorPage(): React.ReactElement {
       });
     }
     if (saved > 0 || conflicted) {
-      await queryClient.invalidateQueries({ queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"] });
+      // The fresh revision of the conflicted rows is loaded BEFORE the
+      // §12.6 choice is shown.
+      await methods.refetch();
     }
+  }
+
+  /** §12.6 «Сохранить моё значение»: retry the draft against the FRESH
+   * revision (If-Match of the current server state, never the stale one). */
+  async function keepMine(row: RowModel): Promise<void> {
+    const draft = drafts[row.key];
+    if (draft === undefined) return;
+    if (row.rule.rule.type === "interval") {
+      if (draft.lower !== "" && draft.upper !== "" && Number(draft.lower) > Number(draft.upper)) return;
+    } else {
+      const accepted = [...draft.accepted, ...draft.extra.filter((value) => !draft.accepted.includes(value))];
+      if (accepted.length === 0) return;
+    }
+    setSavePending(true);
+    const payload =
+      row.rule.rule.type === "interval"
+        ? intervalPayload(row.rule, draft)
+        : qualitativePayload(row.rule, draft);
+    const result = await updateMethod(row.rule.id, payload, `"${row.rule.revision}"`);
+    setSavePending(false);
+    if ("code" in result) {
+      setConflicts((current) => ({ ...current, [row.key]: true }));
+      setErrors((current) => ({
+        ...current,
+        [row.key]: result.detail !== "" ? result.detail : "Запись снова изменена другим пользователем.",
+      }));
+      await methods.refetch();
+      return;
+    }
+    clearConflict(row.key);
+    await methods.refetch();
+  }
+
+  /** §12.6 «Взять значение сервера»: the draft is reset to the server state,
+   * no save runs. */
+  function takeServer(row: RowModel): void {
+    if (row.rule.rule.type === "interval") {
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[row.key];
+        return next;
+      });
+    } else {
+      setDrafts((current) => ({
+        ...current,
+        [row.key]: {
+          lower: "",
+          upper: "",
+          lowerInclusive: true,
+          upperInclusive: true,
+          accepted: [...(row.rule.rule.type === "qualitative" ? row.rule.rule.accepted_values : [])],
+          extra: [],
+        },
+      }));
+    }
+    clearConflict(row.key);
+  }
+
+  function clearConflict(key: string): void {
+    setConflicts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
   }
 
   if (context.loading) {
@@ -370,6 +476,12 @@ export function MethodsEditorPage(): React.ReactElement {
               {intervalRows.map((row) => {
                 const draft = draftFor(row);
                 const source = row.rule.source as { name?: string; edition?: string };
+                const interval = row.rule.rule;
+                const serverValue =
+                  interval.type === "interval" && (interval.lower != null || interval.upper != null)
+                    ? `от ${interval.lower ?? "—"} до ${interval.upper ?? "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`
+                    : "Не настроено";
+                const draftValue = `от ${draft.lower || "—"} до ${draft.upper || "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`;
                 const metadata = (
                   <div className="vse-catalog-field">
                     <label>
@@ -436,6 +548,13 @@ export function MethodsEditorPage(): React.ReactElement {
                     busy={savePending}
                     readOnly={!canEdit}
                     details={metadata}
+                    conflict={
+                      conflicts[row.key] === true && drafts[row.key] !== undefined
+                        ? { serverValue, draftValue }
+                        : undefined
+                    }
+                    onKeepMine={conflicts[row.key] === true ? () => void keepMine(row) : undefined}
+                    onTakeServer={conflicts[row.key] === true ? () => takeServer(row) : undefined}
                     secondary={
                       canEdit ? (
                         <Button
@@ -605,9 +724,10 @@ export function MethodsEditorPage(): React.ReactElement {
             productSpeciesId={productSpeciesId ?? ""}
             onSaved={() => {
               setAddOpen(false);
-              void queryClient.invalidateQueries({
-                queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"],
-              });
+              // A direct refetch: the prefix-key invalidateQueries never
+              // re-runs the query in this app (verified), so the new rule
+              // would stay invisible until a remount.
+              void methods.refetch();
             }}
             onClose={() => setAddOpen(false)}
           />
@@ -651,7 +771,7 @@ export function MethodsEditorPage(): React.ReactElement {
       return;
     }
     setDeleteTarget(null);
-    await queryClient.invalidateQueries({ queryKey: [laboratoryId, productSpeciesId, null, "/catalogs"] });
+    await methods.refetch();
   }
 
   function pickLaboratory(id: string): void {

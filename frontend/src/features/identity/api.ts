@@ -100,6 +100,29 @@ export async function fetchContexts(signal?: AbortSignal | null): Promise<ScopeV
   return "problem" in settled ? settled.problem : (settled.data ?? []);
 }
 
+/** One allowed laboratory of the scoped read endpoint (ТЗ-DR6 §6.4). */
+export interface LaboratoryOption {
+  laboratory_id: string;
+  name: string;
+}
+
+/**
+ * The purpose-built additive endpoint for the laboratory selector: it returns
+ * the SAME allowed set as `context:list` (scope-restricted server-side) with
+ * the human-readable names. For ADMIN the /contexts rows carry only
+ * territories, so the selector options MUST come from here.
+ */
+export async function fetchLaboratoryOptions(
+  signal?: AbortSignal | null,
+): Promise<LaboratoryOption[] | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/contexts/laboratories", { signal: signal ?? null }) as Promise<
+      RawResult<LaboratoryOption[]>
+    >,
+  );
+  return "problem" in settled ? settled.problem : (settled.data ?? []);
+}
+
 export interface ChangePasswordInput {
   current_password: string;
   new_password: string;

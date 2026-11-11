@@ -184,12 +184,12 @@ describe("TariffsEditorPage", () => {
           failFirst = false;
           return HttpResponse.json(
             {
-              code: "REVISION_CONFLICT",
-              title: "Revision conflict",
-              detail: "Запись была изменена другим пользователем.",
+              code: "VALUE_NOT_ACCEPTED",
+              title: "Value rejected",
+              detail: "Значение отклонено сервером.",
               errors: [],
             },
-            { status: 409 },
+            { status: 422 },
           );
         }
         return HttpResponse.json(tariff({ price: body.price, revision: 5 }));
@@ -208,6 +208,8 @@ describe("TariffsEditorPage", () => {
     );
     // The succeeded card keeps its saved value; the failed one stays dirty.
     expect(putSpy).toHaveBeenCalledTimes(2);
+    // The refetch of the fresh state finishes before the next save.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeEnabled());
     await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
     await waitFor(() =>
       expect(screen.getByTestId("catalog-save-summary")).toHaveTextContent("Справочник сохранён."),
@@ -215,6 +217,101 @@ describe("TariffsEditorPage", () => {
     // Only the failed card was re-sent (the succeeded card is not repeated).
     expect(putSpy).toHaveBeenCalledTimes(3);
     expect(putSpy.mock.calls[2][0]).toBe("150.50");
+  });
+
+  it("a 409 conflict shows the server value and the explicit choice, never a silent overwrite", async () => {
+    const act = userEvent.setup();
+    let otherUserSaved = false;
+    server.use(
+      http.get("*/api/v1/catalogs/tariffs", () =>
+        HttpResponse.json({
+          items: [tariff({ price: otherUserSaved ? "120.00" : "100.00", revision: otherUserSaved ? 5 : 3 })],
+          total: 1,
+          page: 1,
+          page_size: 50,
+        }),
+      ),
+      http.put("*/api/v1/catalogs/tariffs/:id", async ({ request }) => {
+        const body = (await request.clone().json()) as { price: string };
+        const ifMatch = request.headers.get("if-match") ?? "";
+        putSpy(`${body.price}|${ifMatch}`);
+        // The OTHER user saves in between: the fresh revision is 5 @ 120.00.
+        otherUserSaved = true;
+        // Any send against the stale revisions answers 409; the explicit
+        // «Сохранить моё значение» uses the FRESH revision and succeeds.
+        if (ifMatch === '"3"' || ifMatch === '"4"') {
+          return HttpResponse.json(
+            {
+              code: "REVISION_CONFLICT",
+              title: "Revision conflict",
+              detail: "Запись была изменена другим пользователем.",
+              errors: [],
+            },
+            { status: 409 },
+          );
+        }
+        return HttpResponse.json(tariff({ price: body.price, revision: 6 }));
+      }),
+    );
+    renderEditor();
+    const input = await screen.findByLabelText(`Стоимость: ${organoleptic.name}, ₽`);
+    await act.clear(input);
+    await act.type(input, "150,50");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    // The §12.6 conflict state appears with BOTH values after the fresh
+    // revision is loaded.
+    const panel = await screen.findByTestId("catalog-conflict");
+    expect(panel).toHaveTextContent("Актуальное значение сервера");
+    expect(panel).toHaveTextContent("Ваше значение");
+    // The refetched server value (the other user's edit) is shown next to
+    // the user's draft.
+    await waitFor(() => expect(panel).toHaveTextContent("120.00"));
+    expect(panel).toHaveTextContent("150,50");
+    // A second «Сохранить справочник» does NOT re-submit the stale draft.
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    expect(putSpy).toHaveBeenCalledTimes(1);
+    // «Сохранить моё значение» retries with the FRESH revision.
+    await act.click(screen.getByRole("button", { name: "Сохранить моё значение" }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalledTimes(2));
+    expect(putSpy.mock.calls[1][0]).toBe('150.50|"5"');
+    await waitFor(() => expect(screen.queryByTestId("catalog-conflict")).not.toBeInTheDocument());
+  });
+
+  it("the conflict «Взять значение сервера» drops the draft without a save", async () => {
+    const act = userEvent.setup();
+    server.use(
+      http.get("*/api/v1/catalogs/tariffs", () =>
+        HttpResponse.json({
+          items: [tariff({ price: "100.00", revision: 3 })],
+          total: 1,
+          page: 1,
+          page_size: 50,
+        }),
+      ),
+      http.put("*/api/v1/catalogs/tariffs/:id", () => {
+        putSpy("conflict");
+        return HttpResponse.json(
+          {
+            code: "REVISION_CONFLICT",
+            title: "Revision conflict",
+            detail: "Запись была изменена другим пользователем.",
+            errors: [],
+          },
+          { status: 409 },
+        );
+      }),
+    );
+    renderEditor();
+    const input = await screen.findByLabelText(`Стоимость: ${organoleptic.name}, ₽`);
+    await act.clear(input);
+    await act.type(input, "150,50");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await screen.findByTestId("catalog-conflict");
+    await act.click(screen.getByRole("button", { name: "Взять значение сервера" }));
+    await waitFor(() => expect(screen.queryByTestId("catalog-conflict")).not.toBeInTheDocument());
+    // The card now shows the server value; no further PUT was sent.
+    expect(await screen.findByLabelText(`Стоимость: ${organoleptic.name}, ₽`)).toHaveValue("100.00");
+    expect(putSpy).toHaveBeenCalledTimes(1);
   });
 
   it("the bulk command is ADMIN/ANALYST-only and absent for HEAD", async () => {

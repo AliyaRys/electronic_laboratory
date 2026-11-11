@@ -66,12 +66,29 @@ function renderEditor(search: string): void {
 }
 
 describe("catalog context (§6)", () => {
-  it("ADMIN sees only the allowed laboratories with human-readable names and honors the deep link", async () => {
+  it("ADMIN builds a non-empty selector from /contexts/laboratories when /contexts carries only territories", async () => {
+    // The REAL backend shape: ADMIN /contexts rows have laboratory_id null
+    // (territories only); the selector options exist ONLY on the purpose-built
+    // scoped endpoint. A fabricated /contexts laboratory row would have hidden
+    // this defect.
     me = { ...me, role: "ADMIN", scopes: [] };
-    contexts = [
-      { laboratory_id: LAB, product_scope_id: SPECIES, laboratory_name: "Лаборатория №1 г. Казань" },
-      { laboratory_id: LAB_B, product_scope_id: SPECIES, laboratory_name: "Лаборатория №2 с. Азнакаево" },
-    ];
+    contexts = [{ territory_id: "44444444-4444-4333-8444-444444444444", territory_name: "Набережные Челны" }];
+    server.use(
+      http.get("*/api/v1/contexts/laboratories", () =>
+        HttpResponse.json([
+          {
+            laboratory_id: LAB,
+            name: "Лаборатория №1 г. Казань",
+            territory_id: "44444444-4444-4333-8444-444444444444",
+          },
+          {
+            laboratory_id: LAB_B,
+            name: "Лаборатория №2 с. Азнакаево",
+            territory_id: "44444444-4444-4333-8444-444444444444",
+          },
+        ]),
+      ),
+    );
     renderEditor(`/catalogs?tab=tariffs&laboratory_id=${LAB_B}`);
     const selector = (await screen.findByLabelText("Лаборатория")) as HTMLSelectElement;
     expect(selector.value).toBe(LAB_B);
@@ -81,11 +98,35 @@ describe("catalog context (§6)", () => {
     expect(options.join(" ")).not.toMatch(new RegExp(LAB.slice(0, 8)));
   });
 
-  it("a foreign ADMIN deep link shows no foreign data and keeps the safe pick state", async () => {
+  it("an ADMIN selector falls back to the /contexts rows when the laboratory endpoint answers with a problem", async () => {
+    // Older backend before the §6.4 endpoint deploy: the scoped endpoint is
+    // absent and the /contexts rows still carry the laboratory ids.
+    me = { ...me, role: "ADMIN", scopes: [] };
+    contexts = [
+      { laboratory_id: LAB, product_scope_id: SPECIES, laboratory_name: "Лаборатория №1 г. Казань" },
+    ];
+    server.use(
+      http.get("*/api/v1/contexts/laboratories", () =>
+        HttpResponse.json({ code: "NOT_FOUND", detail: "Нет маршрута.", status: 404 }, { status: 404 }),
+      ),
+    );
+    renderEditor("/catalogs?tab=tariffs");
+    const selector = await screen.findByLabelText("Лаборатория");
+    expect(selector).toBeInTheDocument();
+  });
+
+  it("a foreign ANALYST deep link shows no foreign data and keeps the safe pick state", async () => {
+    // The endpoint answers with a problem, so the /contexts rows are the
+    // fallback source of the allowed set (older backend shape).
     me = { ...me, role: "ANALYST", scopes: [] };
     contexts = [
       { laboratory_id: LAB, product_scope_id: SPECIES, laboratory_name: "Лаборатория №1 г. Казань" },
     ];
+    server.use(
+      http.get("*/api/v1/contexts/laboratories", () =>
+        HttpResponse.json({ code: "NOT_FOUND", detail: "Нет маршрута.", status: 404 }, { status: 404 }),
+      ),
+    );
     renderEditor(`/catalogs?tab=tariffs&laboratory_id=${FOREIGN}`);
     const selector = (await screen.findByLabelText("Лаборатория")) as HTMLSelectElement;
     expect(selector.value).toBe("");

@@ -645,7 +645,15 @@ async def test_me_unchanged_when_viewing_other(admin_env: SimpleNamespace) -> No
         assert after == before, "текущий пользователь не меняется при просмотре другого"
         contexts = (await http.get("/api/v1/contexts")).json()
         assert contexts == [
-            {"laboratory_id": None, "product_scope_id": None, "territory_id": str(admin_env.district.id)}
+            {
+                "laboratory_id": None,
+                "product_scope_id": None,
+                "territory_id": str(admin_env.district.id),
+                # Additive read-model labels (ТЗ-DR6 §6.4): the name resolves
+                # for the delegated territory; no other scope row appeared.
+                "territory_name": "Первый район",
+                "laboratory_name": None,
+            }
         ]
 
 

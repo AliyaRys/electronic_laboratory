@@ -146,6 +146,16 @@
       ['path', { d: 'M6 12h.01' }],
       ['path', { d: 'M18 12h.01' }],
     ],
+    'directory-price': [
+      ['circle', { cx: '10.5', cy: '10.5', r: '6.5' }],
+      ['path', { d: 'M15.5 15.5 21 21' }],
+    ],
+    'directory-norms': [
+      ['path', { d: 'M4 18h16' }],
+      ['path', { d: 'M6 14l4-4 3 3 5-7' }],
+      ['path', { d: 'M18 6h-4' }],
+      ['path', { d: 'M18 6v4' }],
+    ],
     'chevron-left': [['path', { d: 'm15 18-6-6 6-6' }]],
     'chevron-right': [['path', { d: 'm9 18 6-6-6-6' }]],
     'arrival-plus': [['path', { d: 'M12 5v14' }], ['path', { d: 'M5 12h14' }]],
@@ -174,6 +184,8 @@
 
   const directoryIcons = Object.freeze({
     'directory-paid-services': 'Платные услуги',
+    'directory-price': 'Стоимость исследований',
+    'directory-norms': 'Нормы исследований',
   });
 
   const checkActions = Object.freeze([

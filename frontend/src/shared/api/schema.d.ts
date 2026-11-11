@@ -77,6 +77,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/contexts/laboratories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Context Laboratories
+         * @description Allowed laboratories with names (ТЗ-DR6 §6.4 scoped read endpoint).
+         *
+         *     Read-only and scoped exactly like ``context:list``: the same permission,
+         *     the same allowed set — only the human-readable labels are added.
+         */
+        get: operations["context_laboratories_api_v1_contexts_laboratories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/change-password": {
         parameters: {
             query?: never;
@@ -1653,6 +1676,25 @@ export interface components {
             otherText?: string | null;
         };
         /**
+         * LaboratoryOptionView
+         * @description One allowed laboratory of the context read model (ТЗ-DR6 §6.4).
+         *
+         *     The scoped read endpoint behind it serves ONLY the already allowed
+         *     laboratory list with its names; no ids outside the caller's scope and no
+         *     write capability are added.
+         */
+        LaboratoryOptionView: {
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /** Name */
+            name: string;
+            /** Territory Id */
+            territory_id?: string | null;
+        };
+        /**
          * LiveResponse
          * @description Liveness probe — carries no secrets (API-09).
          */
@@ -2554,7 +2596,14 @@ export interface components {
             /** Product Scope Id */
             product_scope_id?: string | null;
         };
-        /** ScopeView */
+        /**
+         * ScopeView
+         * @description Available context (API-02). ``laboratory_name``/``territory_name`` are
+         *     the additive read-model labels (ТЗ-DR6 §6.4): human-readable names for the
+         *     allowed scope only; the authorization, write and data-scope rules stay
+         *     untouched. ``product_scope_id`` has no local dictionary yet, so its label
+         *     stays empty instead of a shortened UUID.
+         */
         ScopeView: {
             /** Laboratory Id */
             laboratory_id?: string | null;
@@ -2562,6 +2611,10 @@ export interface components {
             product_scope_id?: string | null;
             /** Territory Id */
             territory_id?: string | null;
+            /** Laboratory Name */
+            laboratory_name?: string | null;
+            /** Territory Name */
+            territory_name?: string | null;
         };
         /**
          * ServiceItem
@@ -2894,6 +2947,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScopeView"][];
+                };
+            };
+        };
+    };
+    context_laboratories_api_v1_contexts_laboratories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LaboratoryOptionView"][];
                 };
             };
         };

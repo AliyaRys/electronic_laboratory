@@ -1,0 +1,151 @@
+/**
+ * «Платные услуги» editor page (ТЗ-DR6 §17.3): exactly two price cards with
+ * the fixed CHECK service codes, read/create/update through the tariff API
+ * of the selected scope, no CheckServiceRule editor, no CheckServiceRule
+ * request on save, absence shown as «Не настроено», no bulk command.
+ */
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createQueryClient } from "../../app/providers";
+import type { UserView } from "../../shared/api/me";
+import type { TariffView } from "./api";
+import { CheckServicesEditorPage } from "./CheckServicesEditorPage";
+
+const LAB = "11111111-2222-4333-8444-555555555555";
+const SPECIES = "33333333-3333-4333-8333-333333333333";
+const PRODUCT_IDENTIFICATION = "PRODUCT_IDENTIFICATION";
+const TRANSPORT_INSPECTION = "TRANSPORT_INSPECTION";
+
+const me: UserView = {
+  id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+  full_name: "Ольга Заведующая",
+  login: "head",
+  email: "head@lab.tatar",
+  position: null,
+  role: "HEAD",
+  active: true,
+  scopes: [{ laboratory_id: LAB, product_scope_id: SPECIES }],
+  capabilities: ["catalog:create", "catalog:update", "catalog:delete"],
+  revision: 1,
+};
+
+function tariff(overrides: Partial<TariffView>): TariffView {
+  return {
+    id: "aaaaaaaa-0000-4000-8000-000000000001",
+    laboratory_id: LAB,
+    product_species_id: SPECIES,
+    service_code: PRODUCT_IDENTIFICATION,
+    unit_id: "услуга",
+    price: "40.00",
+    version: 1,
+    source: { name: "прейскурант" },
+    revision: 2,
+    ...overrides,
+  };
+}
+
+const putSpy = vi.fn();
+const checkRulesSpy = vi.fn();
+
+const server = setupServer(
+  http.get("*/api/v1/me", () => HttpResponse.json(me)),
+  http.get("*/api/v1/contexts", () =>
+    HttpResponse.json([
+      { laboratory_id: LAB, product_scope_id: SPECIES, laboratory_name: "Лаборатория №1 г. Казань" },
+    ]),
+  ),
+  http.get("*/api/v1/catalogs/tariffs", () =>
+    HttpResponse.json({
+      items: [
+        tariff({}),
+        tariff({
+          id: "aaaaaaaa-0000-4000-8000-000000000002",
+          service_code: TRANSPORT_INSPECTION,
+          price: "94.00",
+        }),
+      ],
+      total: 2,
+      page: 1,
+      page_size: 50,
+    }),
+  ),
+  http.get("*/api/v1/catalogs/check-services", () => {
+    checkRulesSpy();
+    return HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 });
+  }),
+  http.put("*/api/v1/catalogs/tariffs/:id", async ({ request }) => {
+    putSpy(await request.clone().json());
+    return HttpResponse.json(tariff({ price: "55.00", revision: 3 }));
+  }),
+);
+
+beforeAll(() => server.listen());
+afterAll(() => server.close());
+beforeEach(() => {
+  putSpy.mockClear();
+  checkRulesSpy.mockClear();
+  server.resetHandlers();
+});
+
+function renderEditor(): void {
+  const router = createMemoryRouter(
+    [
+      { path: "/catalogs", element: <CheckServicesEditorPage /> },
+      { path: "*", element: <p>Не найдено</p> },
+    ],
+    { initialEntries: [`/catalogs?tab=check-services&laboratory_id=${LAB}`] },
+  );
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+}
+
+const NAME_1 = "Идентификация продукции по наименованию и визуальным осмотром";
+const NAME_2 = "Ветеринарно-санитарная оценка и идентификация транспорта";
+
+describe("CheckServicesEditorPage", () => {
+  it("shows exactly the two CHECK price cards and never the rule editor", async () => {
+    renderEditor();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Платные услуги" })).toBeInTheDocument());
+    expect(await screen.findByLabelText(`Стоимость: ${NAME_1}, ₽`)).toHaveValue("40.00");
+    expect(screen.getByLabelText(`Стоимость: ${NAME_2}, ₽`)).toHaveValue("94.00");
+    expect(checkRulesSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Применить стоимость к лабораториям" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Добавить правило" })).toBeNull();
+  });
+
+  it("saves the price through the tariff API only (no CheckServiceRule write)", async () => {
+    const act = userEvent.setup();
+    renderEditor();
+    const input = await screen.findByLabelText(`Стоимость: ${NAME_1}, ₽`);
+    await act.clear(input);
+    await act.type(input, "55,00");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalledTimes(1));
+    const payload = putSpy.mock.calls[0][0] as { service_code: string; price: string };
+    expect(payload.service_code).toBe(PRODUCT_IDENTIFICATION);
+    expect(payload.price).toBe("55.00");
+    expect(checkRulesSpy).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByTestId("catalog-save-summary")).toHaveTextContent("Справочник сохранён."),
+    );
+  });
+
+  it("an absent CHECK price is a configuration gap shown as «Не настроено»", async () => {
+    server.use(
+      http.get("*/api/v1/catalogs/tariffs", () =>
+        HttpResponse.json({ items: [tariff({})], total: 1, page: 1, page_size: 50 }),
+      ),
+    );
+    renderEditor();
+    expect(await screen.findByLabelText(`Стоимость: ${NAME_2}, ₽`)).toHaveValue("");
+    expect(screen.getByText("Не настроено")).toBeInTheDocument();
+  });
+});

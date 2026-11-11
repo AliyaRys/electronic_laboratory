@@ -11,6 +11,7 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BulkPriceDialog, bulkPriceSchema } from "./BulkPriceDialog";
+import { INDICATORS } from "../examinations/indicators";
 
 const server = setupServer();
 beforeAll(() => server.listen());
@@ -33,8 +34,8 @@ function renderDialog(onClose = vi.fn(), onApplied = vi.fn()): void {
       <BulkPriceDialog
         laboratories={labs}
         productSpeciesId={SPECIES}
-        serviceCode="trichinelloscopy"
-        unitId="kg"
+        serviceCode={INDICATORS[0]?.id}
+        unitsByServiceCode={{ [INDICATORS[0]?.id ?? ""]: "service" }}
         onClose={onClose}
         onApplied={onApplied}
       />
@@ -51,6 +52,10 @@ describe("BulkPriceDialog", () => {
     expect((coverage as HTMLFieldSetElement).querySelectorAll("input[type=checkbox]").length).toBe(2);
     expect(screen.getByTestId("bulk-coverage").textContent).toContain("Лаборатория");
     expect(document.body.textContent).toContain("наследования между лабораториями нет");
+    expect(screen.getByLabelText("Исследование")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Вид продукции (UUID)")).toBeNull();
+    expect(screen.queryByLabelText("Код услуги")).toBeNull();
+    expect(screen.queryByLabelText("Единица измерения")).toBeNull();
   });
 
   it("submits the whole-set intent and polls per-target results", async () => {

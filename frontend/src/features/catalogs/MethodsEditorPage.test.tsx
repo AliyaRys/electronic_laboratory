@@ -125,16 +125,19 @@ function renderEditor(): void {
 const normLabel = (indicatorName: string, bound: "от" | "до"): string => `Норма ${bound}: ${indicatorName}`;
 
 describe("MethodsEditorPage", () => {
-  it("renders interval rows with the unit and keeps metadata in the fold", async () => {
+  it("renders interval rows with the unit and only business boundary settings", async () => {
     renderEditor();
     const lower = await screen.findByLabelText(normLabel(microscopy.name, "от"));
     expect(lower).toHaveValue("0");
     expect(screen.getByLabelText(normLabel(microscopy.name, "до"))).toHaveValue("10");
     // The unit suffix of the row.
     expect(screen.getAllByText("ед.").length).toBeGreaterThan(0);
-    // Metadata area is folded but available: version + source.
-    const details = screen.getAllByText("Методика и версия");
+    // Boundary inclusivity stays available without exposing source/version.
+    const details = screen.getAllByText("Настройка границ");
     expect(details.length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Версия записи/)).toBeNull();
+    expect(screen.queryByText(/источник:/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
   });
 
   it("a null upper boundary stays empty and is sent as null (not 0)", async () => {

@@ -280,7 +280,7 @@ export interface NormRowProps {
   error?: string | undefined;
   busy?: boolean | undefined;
   readOnly?: boolean | undefined;
-  /** Metadata details (version/source/inclusivity): never lost, only folded. */
+  /** Optional business details of the norm (currently boundary inclusivity). */
   details?: React.ReactNode | undefined;
   /** Calm secondary action of the row (e.g. «Удалить норму», §11.5). */
   secondary?: React.ReactNode | undefined;
@@ -339,7 +339,7 @@ export function NormRow({
         ) : null}
         {details !== undefined ? (
           <details className="vse-catalog-details">
-            <summary>Методика и версия</summary>
+            <summary>Настройка границ</summary>
             {details}
           </details>
         ) : null}

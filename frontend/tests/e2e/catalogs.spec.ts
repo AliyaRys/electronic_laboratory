@@ -21,6 +21,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { INDICATORS } from "../../src/features/examinations/indicators";
 
 interface Seed {
   admin: { login: string; password: string };
@@ -57,9 +58,11 @@ test.describe("catalogs", () => {
     await expect(page.getByRole("heading", { name: "Нормы исследований" })).toBeVisible();
     await expect(page.getByText("Редактирование справочника")).toBeVisible();
 
-    // Readiness reports the missing REAL configuration inputs (C01 seam).
-    await expect(page.getByTestId("catalog-readiness")).toBeVisible();
-    await expect(page.getByTestId("catalog-readiness")).toContainText("Раздел не готов к расчёту");
+    // ТЗ business-fields §5.6: the full-readiness summary is NOT shown inside
+    // the price/norm editors any more — it mixed independent settings; a
+    // concrete calculation error stays blocking at VSE creation time.
+    await expect(page.getByTestId("catalog-readiness")).toHaveCount(0);
+    await expect(page.getByText("Раздел не готов к расчёту")).toHaveCount(0);
     await shot(page, "head-methods-1440");
 
     // The fixed research catalogue is not extended with arbitrary UUIDs from
@@ -105,10 +108,13 @@ test.describe("catalogs", () => {
     // The FULL coverage is listed before the confirmation.
     await expect(coverage.locator("input[type=checkbox]")).toHaveCount(2);
     await coverage.locator("label", { hasText: labBName }).locator("input").uncheck();
-    await expect(page.getByLabel("Исследование")).toBeVisible();
+    await expect(page.getByLabel("Исследование", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Код услуги")).toHaveCount(0);
     await expect(page.getByLabel("Единица измерения")).toHaveCount(0);
-    await page.getByLabel("Исследование").selectOption({ index: 0 });
+    // No silent default: the service must be chosen explicitly.
+    await page
+      .getByLabel("Исследование", { exact: true })
+      .selectOption({ label: INDICATORS[0].name });
     await page.locator("#bulk-price").fill("100.00");
     await shot(page, "bulk-coverage-before-confirm");
     await page.getByRole("button", { name: "Отмена" }).click();

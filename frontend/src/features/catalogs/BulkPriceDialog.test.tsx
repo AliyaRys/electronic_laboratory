@@ -149,6 +149,49 @@ describe("BulkPriceDialog", () => {
     expect(keys[0]).not.toBe("");
   });
 
+  it("shows a visible error when the product scope is missing (ADMIN path)", async () => {
+    const posts = vi.fn();
+    server.use(http.post("*/api/v1/catalogs/bulk-prices", () => posts()));
+    const client = new QueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <BulkPriceDialog
+          laboratories={[]}
+          productSpeciesId=""
+          serviceCode={INDICATORS[0]?.id}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    const labsInput = document.querySelector<HTMLInputElement>("#bulk-labs-text");
+    expect(labsInput).toBeTruthy();
+    await user.type(labsInput as HTMLInputElement, LAB_A);
+    await user.type(screen.getByLabelText("Новая цена, ₽"), "100.00");
+    await user.click(screen.getByRole("button", { name: "Применить цену" }));
+    // The missing product UUID has a VISIBLE validation message near the
+    // action — never a silent failed submit.
+    expect(await screen.findByText("Укажите корректный UUID вида продукции.")).toBeTruthy();
+    expect(posts).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit service selection — no silent INDICATORS[0] default", async () => {
+    const posts = vi.fn();
+    server.use(http.post("*/api/v1/catalogs/bulk-prices", () => posts()));
+    const client = new QueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <BulkPriceDialog laboratories={labs} productSpeciesId={SPECIES} serviceCode="" onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    expect(screen.getByLabelText("Исследование").textContent).toContain("Выберите исследование…");
+    await user.type(screen.getByLabelText("Новая цена, ₽"), "100.00");
+    await user.click(screen.getByRole("button", { name: "Применить цену" }));
+    expect(await screen.findByText("Укажите код услуги.")).toBeTruthy();
+    expect(posts).not.toHaveBeenCalled();
+  });
+
   it("validates the payload before sending", () => {
     expect(
       bulkPriceSchema.safeParse({

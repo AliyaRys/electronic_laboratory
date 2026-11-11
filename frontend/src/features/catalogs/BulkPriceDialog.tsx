@@ -86,7 +86,10 @@ export function BulkPriceDialog({
   } = useForm<BulkPriceValues>({
     defaultValues: {
       product_species_id: productSpeciesId,
-      service_code: serviceCode || INDICATORS[0]?.id || "",
+      // No implicit default: the service must be chosen explicitly (or arrive
+      // preselected from the scope) — a silent INDICATORS[0] changed the
+      // meaning of the bulk command.
+      service_code: serviceCode,
       unit_id: "RUB",
       price: "",
       laboratory_ids: laboratories.map((item) => item.id),
@@ -220,6 +223,11 @@ export function BulkPriceDialog({
             </p>
           ) : null}
           <input type="hidden" {...register("product_species_id")} />
+          {errors.product_species_id !== undefined ? (
+            <p className="app-field-message app-field-error" role="alert">
+              {errors.product_species_id.message}
+            </p>
+          ) : null}
           <div className="app-field">
             <div className="app-field-heading">
               <label htmlFor="bulk-code">Исследование</label>
@@ -230,6 +238,7 @@ export function BulkPriceDialog({
               aria-invalid={errors.service_code !== undefined ? "true" : undefined}
               {...register("service_code")}
             >
+              {serviceCode === "" ? <option value="">Выберите исследование…</option> : null}
               {INDICATORS.map((indicator) => (
                 <option key={indicator.id} value={indicator.id}>
                   {indicator.name}

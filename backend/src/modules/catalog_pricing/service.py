@@ -409,9 +409,9 @@ async def _price_check(uow: UnitOfWork, request: PricingRequest) -> list[Pricing
                     "amount": amount,
                     "method_snapshot": {
                         "service_code": code,
-                        "method_version": rule.version if rule is not None else 1,
-                        "multiplier_basis": rule.multiplier_basis if rule is not None else "ONE_SERVICE",
-                        "source": rule.source if rule is not None else {"name": "Базовое правило услуги"},
+                        "method_version": rule.version if rule is not None else None,
+                        "multiplier_basis": rule.multiplier_basis if rule is not None else None,
+                        "source": rule.source if rule is not None else {"name": "Правило услуги не задано"},
                     },
                     "evaluation": {"status": "PERFORMED"},
                 }

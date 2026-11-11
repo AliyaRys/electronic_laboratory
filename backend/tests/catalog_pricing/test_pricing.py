@@ -540,6 +540,38 @@ async def test_check_delivered_quantity_basis(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.integration
+async def test_check_without_rule_records_honest_snapshot(db_session: AsyncSession) -> None:
+    """An absent CheckServiceRule keeps the default math but records an honest
+    lineage marker — no invented version/basis (DR7 fix round)."""
+    env = await _seed(db_session)
+    species = uuid.uuid4()
+    db_session.add(_tariff(env.lab.id, species, "PRODUCT_IDENTIFICATION", "50.00"))
+    await db_session.commit()
+
+    request = PricingRequest.model_validate(
+        {
+            "party_id": str(uuid.uuid4()),
+            "laboratory_id": str(env.lab.id),
+            "context": "CHECK",
+            "performed": ["PRODUCT_IDENTIFICATION"],
+            "results": [],
+            "fair": False,
+            "product_species_id": str(species),
+            "decision": "ACCEPT_ALL",
+        }
+    )
+    snapshot = await evaluate_and_price(UnitOfWork(db_session), request, None)
+    line = snapshot.lines[0]
+    # The amount/quantity math is unchanged (one service, tariff price).
+    assert line.quantity == "1"
+    assert line.amount == "50.00"
+    assert line.method_snapshot is not None
+    assert line.method_snapshot["multiplier_basis"] is None
+    assert line.method_snapshot["method_version"] is None
+    assert line.method_snapshot["source"]["name"] == "Правило услуги не задано"
+
+
+@pytest.mark.integration
 async def test_check_inapplicable_decision_and_unit_block(db_session: AsyncSession) -> None:
     env = await _seed(db_session)
     species = uuid.uuid4()

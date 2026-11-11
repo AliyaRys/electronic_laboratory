@@ -46,12 +46,12 @@ from backend.src.modules.identity.passwords import (
 from backend.src.modules.identity.schemas import (
     ChangePasswordRequest,
     CsrfResponse,
+    LaboratoryOptionView,
     LiveResponse,
     LoginRequest,
     LoginResponse,
     ReadyResponse,
     ResetPasswordRequest,
-    LaboratoryOptionView,
     ScopeView,
     UserEventView,
     UserView,

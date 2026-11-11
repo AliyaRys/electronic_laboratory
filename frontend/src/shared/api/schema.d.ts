@@ -1288,6 +1288,14 @@ export interface components {
             problem?: string | null;
             /** Updated At */
             updated_at?: string | null;
+            /** Pages Done */
+            pages_done?: number | null;
+            /** Imported */
+            imported?: number | null;
+            /** Diagnostics */
+            diagnostics?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * Comparison

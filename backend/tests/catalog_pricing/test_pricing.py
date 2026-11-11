@@ -166,7 +166,9 @@ async def test_three_units_at_100_10(db_session: AsyncSession) -> None:
     env = await _seed(db_session)
     species, state, indicator = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     db_session.add(_rule(env.lab.id, species, state, indicator))
-    db_session.add(_tariff(env.lab.id, species, str(indicator), "100.10"))
+    # The method measures a result in kg while the independently configured
+    # monetary tariff carries RUB. Pricing joins them by stable service code.
+    db_session.add(_tariff(env.lab.id, species, str(indicator), "100.10", unit="RUB"))
     await db_session.commit()
 
     snapshot = await evaluate_and_price(
@@ -552,6 +554,7 @@ async def test_check_inapplicable_decision_and_unit_block(db_session: AsyncSessi
         )
     )
     db_session.add(_tariff(env.lab.id, species, "PRODUCT_IDENTIFICATION", "50.00", unit="piece"))
+    db_session.add(_tariff(env.lab.id, species, "TRANSPORT_INSPECTION", "70.00", unit="RUB"))
     await db_session.commit()
 
     base = {
@@ -575,11 +578,11 @@ async def test_check_inapplicable_decision_and_unit_block(db_session: AsyncSessi
         await evaluate_and_price(UnitOfWork(db_session), request, None)
     assert excinfo.value.code == "CONFIGURATION_MISSING"
 
-    # A performed CHECK service without a configured rule at all also blocks.
+    # Without an optional multiplier rule the paid service is charged once.
     request = PricingRequest.model_validate({**base, "performed": ["TRANSPORT_INSPECTION"]})
-    with pytest.raises(ProblemError) as excinfo:
-        await evaluate_and_price(UnitOfWork(db_session), request, None)
-    assert excinfo.value.code == "CONFIGURATION_MISSING"
+    snapshot = await evaluate_and_price(UnitOfWork(db_session), request, None)
+    assert snapshot.lines[0].quantity == "1"
+    assert snapshot.lines[0].amount == "70.00"
 
 
 # --- HTTP layer -------------------------------------------------------------------
@@ -864,8 +867,8 @@ async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace) -
 
 
 @pytest.mark.integration
-async def test_readiness_tariff_unit_must_match_pricing(api_env: SimpleNamespace) -> None:
-    """A tariff in the wrong unit must not let readiness claim ready (finding 4)."""
+async def test_readiness_and_pricing_do_not_bind_money_to_measurement_unit(api_env: SimpleNamespace) -> None:
+    """A RUB tariff is valid for a method whose measured result uses another unit."""
     from backend.src.modules.catalog_pricing.mandatory import MANDATORY_INDICATOR_IDS
 
     async with _client_for(api_env) as http:
@@ -904,13 +907,12 @@ async def test_readiness_tariff_unit_must_match_pricing(api_env: SimpleNamespace
             }
 
         indicators = sorted(MANDATORY_INDICATOR_IDS, key=str)
-        wrong_unit = indicators[0]
         for indicator in indicators:
             code = str(indicator)
             await http.post("/api/v1/catalogs/methods", json=method_payload(code), headers=_csrf_headers(api_env))
             await http.post(
                 "/api/v1/catalogs/tariffs",
-                json=tariff_payload(code, "piece" if indicator == wrong_unit else "kg"),
+                json=tariff_payload(code, "RUB"),
                 headers=_csrf_headers(api_env),
             )
         ready = (
@@ -918,10 +920,8 @@ async def test_readiness_tariff_unit_must_match_pricing(api_env: SimpleNamespace
                 "/api/v1/catalogs/readiness", params={"laboratory_id": lab_id, "product_species_id": species}
             )
         ).json()
-        assert ready["ready"] is False
-        assert any(item["input_id"] == f"tariff:{wrong_unit}" for item in ready["missing"])
-        for indicator in indicators[1:]:
-            assert not any(item["input_id"] == f"tariff:{indicator}" for item in ready["missing"])
+        assert ready["ready"] is True
+        assert ready["missing"] == []
 
 
 @pytest.mark.integration

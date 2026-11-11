@@ -171,12 +171,13 @@ describe("TariffsEditorPage", () => {
     expect(screen.queryByText("Данные новой записи (единица, источник)")).toBeNull();
     expect(screen.queryByLabelText("Единица измерения")).toBeNull();
     expect(screen.queryByLabelText("Источник прейскуранта")).toBeNull();
+    expect(screen.queryByText("Раздел не готов к расчёту:")).toBeNull();
     await act.type(input, "125,50");
     await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
     await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
     expect(postSpy.mock.calls[0][0]).toMatchObject({
       service_code: organoleptic.id,
-      unit_id: "service",
+      unit_id: "RUB",
       price: "125.50",
       version: 1,
       source: { name: "Ручная настройка справочника" },

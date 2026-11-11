@@ -19,14 +19,7 @@ import { INDICATORS } from "../examinations/indicators";
 import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
-import {
-  deleteMethod,
-  fetchMethods,
-  fetchReadiness,
-  updateMethod,
-  type MethodRuleTyped,
-  type Problem,
-} from "./api";
+import { deleteMethod, fetchMethods, updateMethod, type MethodRuleTyped, type Problem } from "./api";
 import {
   CatalogEditorPage,
   CatalogSectionHeader,
@@ -144,11 +137,6 @@ export function MethodsEditorPage(): React.ReactElement {
   const methods = useQuery({
     queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/methods", "methods"],
     queryFn: ({ signal }) => fetchMethods(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
-    enabled: scoped,
-  });
-  const readiness = useQuery({
-    queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/readiness", "methods"],
-    queryFn: ({ signal }) => fetchReadiness(laboratoryId ?? "", productSpeciesId ?? "", signal),
     enabled: scoped,
   });
 
@@ -420,7 +408,6 @@ export function MethodsEditorPage(): React.ReactElement {
   }
 
   const problem = methods.data !== undefined && "code" in methods.data ? (methods.data as Problem) : null;
-  const readinessData = readiness.data !== undefined && !("code" in readiness.data) ? readiness.data : null;
 
   const intervalRows = rows.filter((row) => row.kind === "interval");
   const qualitativeRows = rows.filter((row) => row.kind === "qualitative");
@@ -431,16 +418,6 @@ export function MethodsEditorPage(): React.ReactElement {
       description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
     >
       <CatalogContextSlot context={context} onPick={allowedToSwitch ? pickLaboratory : null} />
-      {scoped && readinessData !== null && readinessData.missing.length > 0 ? (
-        <div className="vse-catalog-missing" data-testid="catalog-readiness">
-          <strong>Раздел не готов к расчёту:</strong>
-          <ul>
-            {readinessData.missing.map((item) => (
-              <li key={item.input_id}>{item.message}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
       {summary !== null ? (
         <SaveSummary state={summary.state} text={summary.text} details={summary.details} />
       ) : null}

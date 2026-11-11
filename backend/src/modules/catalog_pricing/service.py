@@ -163,12 +163,22 @@ async def _active_rule(
     return (await uow.session.execute(statement)).scalar_one_or_none()
 
 
-async def _tariff_for(uow: UnitOfWork, laboratory_id: UUID, species: UUID, code: str, unit_id: str) -> Tariff | None:
-    statement = select(Tariff).where(
-        Tariff.laboratory_id == laboratory_id,
-        Tariff.product_species_id == species,
-        Tariff.service_code == code,
-        Tariff.unit_id == unit_id,
+async def _tariff_for(uow: UnitOfWork, laboratory_id: UUID, species: UUID, code: str) -> Tariff | None:
+    """Return the current monetary tariff independently from result units.
+
+    ``MethodRule.unit_id`` describes a measured result (for example °C), while
+    a tariff price is always money.  Older rows may still carry the historical
+    measurement unit; ordering keeps them readable while new UI rows use RUB.
+    """
+    statement = (
+        select(Tariff)
+        .where(
+            Tariff.laboratory_id == laboratory_id,
+            Tariff.product_species_id == species,
+            Tariff.service_code == code,
+        )
+        .order_by(Tariff.version.desc(), Tariff.rev.desc(), Tariff.id.desc())
+        .limit(1)
     )
     return (await uow.session.execute(statement)).scalar_one_or_none()
 
@@ -268,7 +278,7 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
         tariff = (
             None
             if pinned is not None or request.fair
-            else await _tariff_for(uow, laboratory_id, species, str(indicator), snapshot_rule.unit_id)
+            else await _tariff_for(uow, laboratory_id, species, str(indicator))
         )
         unit_price = _price_from_prev_or_tariff(pinned, tariff, fair=request.fair, indicator=indicator)
         price_decimal = parse_decimal(unit_price) if unit_price != "0.00" else Decimal("0.00")
@@ -342,16 +352,16 @@ async def _price_check(uow: UnitOfWork, request: PricingRequest) -> list[Pricing
             await uow.session.execute(select(CheckServiceRule).where(CheckServiceRule.service_code == code))
         ).scalar_one_or_none()
         if rule is None:
-            raise configuration_missing(
-                "Отсутствует правило применимости услуги сверки.", path=f"performed.{code}", field_id="CHECK"
-            )
-        if request.decision is None or request.decision not in rule.applicable_decisions:
+            # The two paid reconciliation services are priced once per
+            # performed service by default. An optional CheckServiceRule may
+            # refine the multiplier, but its absence must not make an entered
+            # RUB price unusable.
+            quantity, unit_id = Decimal("1"), "service"
+        elif request.decision is None or request.decision not in rule.applicable_decisions:
             raise configuration_missing(
                 "Решение сверки не входит в применимые для услуги.", path=f"performed.{code}", field_id="CHECK"
             )
-        quantity: Decimal
-        unit_id: str | None
-        if rule.multiplier_basis == "ONE_SERVICE":
+        elif rule.multiplier_basis == "ONE_SERVICE":
             quantity, unit_id = Decimal("1"), rule.unit_id
         else:
             raw = (
@@ -369,7 +379,7 @@ async def _price_check(uow: UnitOfWork, request: PricingRequest) -> list[Pricing
                 request.accepted_unit_id if rule.multiplier_basis == "ACCEPTED_QUANTITY" else request.delivered_unit_id
             )
             quantity = parse_decimal(raw)
-        if not isinstance(unit_id, str) or unit_id != rule.unit_id:
+        if rule is not None and (not isinstance(unit_id, str) or unit_id != rule.unit_id):
             raise configuration_missing(
                 "Единица количества партии не совпадает с единицей услуги сверки.",
                 path=f"performed.{code}",
@@ -379,7 +389,7 @@ async def _price_check(uow: UnitOfWork, request: PricingRequest) -> list[Pricing
             unit_price = "0.00"
             amount = "0.00"
         else:
-            tariff = await _tariff_for(uow, _lab_id(request), species, code, rule.unit_id)
+            tariff = await _tariff_for(uow, _lab_id(request), species, code)
             if tariff is None:
                 raise configuration_missing(
                     "Для услуги сверки нет тарифа в прейскуранте.",
@@ -393,15 +403,15 @@ async def _price_check(uow: UnitOfWork, request: PricingRequest) -> list[Pricing
                 {
                     "service_code": code,
                     "name": CHECK_SERVICE_NAMES.get(code, code),
-                    "unit_id": rule.unit_id,
+                    "unit_id": unit_id,
                     "quantity": str(quantity),
                     "unit_price": unit_price,
                     "amount": amount,
                     "method_snapshot": {
                         "service_code": code,
-                        "method_version": rule.version,
-                        "multiplier_basis": rule.multiplier_basis,
-                        "source": rule.source,
+                        "method_version": rule.version if rule is not None else 1,
+                        "multiplier_basis": rule.multiplier_basis if rule is not None else "ONE_SERVICE",
+                        "source": rule.source if rule is not None else {"name": "Базовое правило услуги"},
                     },
                     "evaluation": {"status": "PERFORMED"},
                 }

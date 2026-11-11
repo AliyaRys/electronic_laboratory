@@ -35,7 +35,6 @@ function renderDialog(onClose = vi.fn(), onApplied = vi.fn()): void {
         laboratories={labs}
         productSpeciesId={SPECIES}
         serviceCode={INDICATORS[0]?.id}
-        unitsByServiceCode={{ [INDICATORS[0]?.id ?? ""]: "service" }}
         onClose={onClose}
         onApplied={onApplied}
       />

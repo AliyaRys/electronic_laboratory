@@ -231,21 +231,20 @@ async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: U
                     message="Отсутствует действующая методика и норма обязательного показателя.",
                 )
             )
-        # Readiness applies the same tariff matching as pricing: the lookup is
-        # unit-aware (the rule's unit), so a mismatched-unit tariff cannot let
-        # readiness claim ready while pricing would fail on configuration.
-        tariff = None
-        if rule is not None:
-            tariff = (
-                await db.execute(
-                    select(Tariff).where(
-                        Tariff.laboratory_id == laboratory_id,
-                        Tariff.product_species_id == product_species_id,
-                        Tariff.service_code == str(indicator),
-                        Tariff.unit_id == rule.unit_id,
-                    )
+        # Price is independent from the clinical norm and its measurement
+        # unit. A tariff can be configured before the methodologist supplies
+        # INPUT-02, and pricing later resolves it by the stable service code.
+        tariff = (
+            await db.execute(
+                select(Tariff.id)
+                .where(
+                    Tariff.laboratory_id == laboratory_id,
+                    Tariff.product_species_id == product_species_id,
+                    Tariff.service_code == str(indicator),
                 )
-            ).scalar_one_or_none()
+                .limit(1)
+            )
+        ).scalar_one_or_none()
         if tariff is None:
             missing.append(
                 ReadinessMissing(

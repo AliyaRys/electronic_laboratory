@@ -151,7 +151,7 @@ describe("CheckServicesEditorPage", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Платные услуги" })).toBeInTheDocument());
     expect(await screen.findByLabelText(`Стоимость: ${NAME_1}, ₽`)).toHaveValue("40.00");
     expect(screen.getByLabelText(`Стоимость: ${NAME_2}, ₽`)).toHaveValue("94.00");
-    expect(checkRulesSpy).toHaveBeenCalled();
+    expect(checkRulesSpy).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Применить стоимость к лабораториям" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Добавить правило" })).toBeNull();
   });
@@ -167,7 +167,7 @@ describe("CheckServicesEditorPage", () => {
     const payload = putSpy.mock.calls[0][0] as { service_code: string; price: string };
     expect(payload.service_code).toBe(PRODUCT_IDENTIFICATION);
     expect(payload.price).toBe("55.00");
-    expect(checkRulesSpy).toHaveBeenCalled();
+    expect(checkRulesSpy).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.getByTestId("catalog-save-summary")).toHaveTextContent("Справочник сохранён."),
     );
@@ -201,7 +201,7 @@ describe("CheckServicesEditorPage", () => {
     await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
     expect(postSpy.mock.calls[0][0]).toMatchObject({
       service_code: PRODUCT_IDENTIFICATION,
-      unit_id: "service",
+      unit_id: "RUB",
       price: "45",
       version: 1,
       source: { name: "Ручная настройка справочника" },

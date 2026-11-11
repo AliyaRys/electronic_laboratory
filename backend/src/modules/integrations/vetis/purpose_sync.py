@@ -10,8 +10,9 @@ page view and never per document. Rules proven by
   never corrupts the previously stored dictionary;
 - records that disappeared from a full actual list stay in the table but are
   marked ``active=false``/``is_last=false`` (no physical deletion);
-- overlap protection: one sync per contour at a time (transaction advisory
-  lock);
+- overlap protection: one sync per contour at a time — the advisory lock is held
+  for the ENTIRE run (gate, the paginated fetch, the apply) inside one
+  transaction, so a second due worker can never reach the fetch phase;
 - ≥14 days between full passes; fresh checkpoint never triggers the network;
 - logs carry only counters/contour/problem code — no credentials, no SOAP XML.
 """
@@ -115,29 +116,67 @@ async def run_purpose_sync(
             state.updated_at = current
         await db.commit()
 
-    # --- the full paginated pass (failures leave the checkpoint untouched) ------
+    # --- the full paginated pass + atomic apply (failures leave the checkpoint) --
+    # One transaction holds the xact advisory lock across BOTH the network pass
+    # and the apply, so the whole run is the overlap-protected section.
     collected: dict[str, dict[str, object]] = {}
     total = 0
     pages = 0
     offset = 0
+    total_unknown = False
     try:
-        while True:
-            response_xml = await transport.get_purpose_list_page(offset=offset, count=page_count)
-            records, page_total = parse_purpose_list(response_xml)
-            total = max(total, page_total)
-            pages += 1
-            for record in records:
-                collected[str(record["guid"])] = record
-            offset += len(records)
-            if not records or offset >= total:
-                break
-        if pages > 1 and offset < total:
-            raise ProblemError(
-                status=502,
-                code="VETIS_PURPOSE_LIST_INCOMPLETE",
-                title="VetIS purpose list incomplete",
-                detail="Полный проход списка назначений не завершён; контрольная точка не изменена.",
+        async with factory() as db:
+            if not await _acquire_lock(db, contour):
+                _PURPOSE_LOG.info("purpose_sync_skipped_overlap", extra={"contour": contour})
+                return {"result": "SKIPPED_OVERLAP"}
+            while True:
+                response_xml = await transport.get_purpose_list_page(offset=offset, count=page_count)
+                records, page_total = parse_purpose_list(response_xml)
+                if not page_total and records:
+                    # A defensive reading: the provider omitted the total. The
+                    # pass continues until an empty page and the checkpoint is
+                    # NOT allowed to deactivate rows missing from this page.
+                    total_unknown = True
+                total = max(total, page_total)
+                pages += 1
+                for record in records:
+                    collected[str(record["guid"])] = record
+                offset += len(records)
+                if not records or (offset >= total and not total_unknown):
+                    break
+            if pages > 1 and offset < total:
+                raise ProblemError(
+                    status=502,
+                    code="VETIS_PURPOSE_LIST_INCOMPLETE",
+                    title="VetIS purpose list incomplete",
+                    detail="Полный проход списка назначений не завершён; контрольная точка не изменена.",
+                )
+            if total_unknown:
+                _PURPOSE_LOG.warning(
+                    "purpose_sync_total_unknown",
+                    extra={"contour": contour, "problem": "VETIS_PURPOSE_TOTAL_UNKNOWN"},
+                )
+            applied = await _apply_pass(
+                db, contour, collected, source="GetPurposeList", deactivate_missing=not total_unknown
             )
+            state = (
+                await db.execute(
+                    select(MercuryPurposeSyncState)
+                    .where(MercuryPurposeSyncState.contour == contour)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if state is None:
+                state = MercuryPurposeSyncState(contour=contour)
+                db.add(state)
+            state.last_success = current
+            state.last_attempt = current
+            state.failures = 0
+            state.problem_code = None
+            state.records = len(collected)
+            state.pages = pages
+            state.updated_at = current
+            await db.commit()
     except ProblemError as problem:
         await _record_failure(factory, contour, problem.code, current)
         raise
@@ -146,29 +185,6 @@ async def run_purpose_sync(
         await _record_failure(factory, contour, code, current)
         raise ProblemError(status=502, code=code, title="VetIS purpose sync failed", detail=str(exc)) from exc
 
-    # --- atomic apply + checkpoint ----------------------------------------------
-    async with factory() as db:
-        if not await _acquire_lock(db, contour):
-            return {"result": "SKIPPED_OVERLAP"}
-        applied = await _apply_pass(db, contour, collected, source="GetPurposeList")
-        state = (
-            await db.execute(
-                select(MercuryPurposeSyncState)
-                .where(MercuryPurposeSyncState.contour == contour)
-                .with_for_update()
-            )
-        ).scalar_one_or_none()
-        if state is None:
-            state = MercuryPurposeSyncState(contour=contour)
-            db.add(state)
-        state.last_success = current
-        state.last_attempt = current
-        state.failures = 0
-        state.problem_code = None
-        state.records = len(collected)
-        state.pages = pages
-        state.updated_at = current
-        await db.commit()
     _PURPOSE_LOG.info(
         "purpose_sync_completed",
         extra={"contour": contour, "records": len(collected), "pages": pages, "duration_hint": None},
@@ -209,9 +225,18 @@ async def _record_failure(
 
 
 async def _apply_pass(
-    db: AsyncSession, contour: str, collected: dict[str, dict[str, object]], *, source: str
+    db: AsyncSession,
+    contour: str,
+    collected: dict[str, dict[str, object]],
+    *,
+    source: str,
+    deactivate_missing: bool = True,
 ) -> dict[str, int]:
-    """Upsert the full actual list; missing rows become inactive (never deleted)."""
+    """Upsert the full actual list; missing rows become inactive (never deleted).
+
+    ``deactivate_missing=False`` keeps every row when the provider omitted the
+    total (an unknown-complete page set must never wipe the dictionary).
+    """
     upserted = 0
     unchanged = 0
     from sqlalchemy import select
@@ -257,12 +282,13 @@ async def _apply_pass(
             row.synchronized_at = values["synchronized_at"]
             unchanged += 1
     deactivated = 0
-    for guid_text, row in existing.items():
-        if guid_text not in collected and (row.active or row.is_last):
-            row.active = False
-            row.is_last = False
-            row.synchronized_at = datetime.now(UTC)
-            deactivated += 1
+    if deactivate_missing:
+        for guid_text, row in existing.items():
+            if guid_text not in collected and (row.active or row.is_last):
+                row.active = False
+                row.is_last = False
+                row.synchronized_at = datetime.now(UTC)
+                deactivated += 1
     return {"upserted": upserted, "deactivated": deactivated, "unchanged": unchanged}
 
 

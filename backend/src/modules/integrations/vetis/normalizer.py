@@ -347,7 +347,9 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
         )
 
     volume = batch.get("volume")
-    package_quantity_value = entry.package_quantity or batch.get("quantity")
+    # §5.2: source quantity comes ONLY from the package list of the top packing
+    # level; `vd:batch/vd:quantity` is never substituted (no fallback at all).
+    package_quantity_value = entry.package_quantity
     package_entries = []
     for package in entry.packages:
         packing = package.get("packingType") or {}

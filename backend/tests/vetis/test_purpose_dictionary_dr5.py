@@ -299,6 +299,76 @@ async def test_disappeared_records_are_marked_not_deleted(test_db_engine: AsyncE
         assert gone.active is False and gone.is_last is False
 
 
+async def test_concurrent_due_workers_cannot_both_fetch(test_db_engine: AsyncEngine) -> None:
+    """The lock covers the ENTIRE run: a second due worker mid-fetch is skipped.
+
+    The first worker holds the advisory lock while the network pass runs, so
+    the second worker's transport must receive zero page calls.
+    """
+    import asyncio
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class SlowTransport:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def get_purpose_list_page(self, *, offset: int, count: int) -> str:
+            self.calls += 1
+            started.set()
+            await release.wait()
+            return purpose_page([{"guid": str(uuid.UUID(int=1)), "name": "один"}], total=1, offset=0)
+
+    slow = SlowTransport()
+    factory = _factory(test_db_engine)
+    first = asyncio.create_task(run_purpose_sync("PILOT", transport=slow, session_factory=factory))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=10)
+        # The first worker is mid-fetch with the lock held; a second due worker
+        # must skip BEFORE its transport is ever called.
+        second_transport = SlowTransport()
+        second = await run_purpose_sync(
+            "PILOT", transport=second_transport, session_factory=_factory(test_db_engine)
+        )
+        assert second["result"] == "SKIPPED_OVERLAP"
+        assert second_transport.calls == 0
+    finally:
+        release.set()
+    first_result = await asyncio.wait_for(first, timeout=30)
+    assert first_result["result"] == "SUCCESS"
+
+
+async def test_unknown_total_never_deactivates_missing_rows(test_db_engine: AsyncEngine) -> None:
+    """A provider without the total never wipes rows missing from its pages."""
+    first = purpose_page(
+        [
+            {"guid": str(uuid.UUID(int=1)), "name": "один"},
+            {"guid": str(uuid.UUID(int=2)), "name": "два"},
+        ],
+        total=2,
+        offset=0,
+    )
+    await run_purpose_sync("PILOT", transport=SpyPurposeTransport([first]), session_factory=_factory(test_db_engine))
+    # Second pass: the provider reports no total but returns one record.
+    second = purpose_page([{"guid": str(uuid.UUID(int=1)), "name": "один"}], total=0, offset=0)
+    empty = purpose_page([], total=0, offset=1)
+    result = await run_purpose_sync(
+        "PILOT",
+        transport=SpyPurposeTransport([second, empty]),
+        session_factory=_factory(test_db_engine),
+        force=True,
+    )
+    assert result["deactivated"] == 0
+    assert result["result"] == "SUCCESS"
+    factory = _factory(test_db_engine)
+    async with factory() as db:
+        survivor = (
+            await db.execute(select(MercuryPurposeGuid).where(MercuryPurposeGuid.guid == uuid.UUID(int=2)))
+        ).scalar_one()
+        assert survivor.active is True and survivor.is_last is True
+
+
 async def test_overlap_protection_single_sync_per_contour(test_db_engine: AsyncEngine) -> None:
     page = purpose_page([{"guid": str(uuid.UUID(int=1)), "name": "один"}], total=1, offset=0)
     # Hold the contour lock: a parallel run must skip, not duplicate.

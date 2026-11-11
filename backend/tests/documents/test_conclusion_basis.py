@@ -370,7 +370,9 @@ async def test_no_demo_signatures_or_foreign_requisites(db_session: AsyncSession
     assert view.fields["signature"] == ""
     assert view.fields["organization"] == "ГБУ «Ветлаб»"
     assert view.fields["laboratory"] == "Лаборатория №1"
-    assert view.fields["evsd"] == "ЭВСД-120"
+    # DR5: the printed conclusion shows the top-level eVSD UUID, not issueNumber.
+    incoming = await db_session.get(IncomingDocument, party.incoming_document_id)
+    assert view.fields["evsd"] == str(incoming.evsd_uuid)
     assert view.fields["owner"] == "ИП Владелец"
     assert view.fields["product"] == "Говядина охлаждённая"
     assert view.fields["unit"] == str(UNIT)

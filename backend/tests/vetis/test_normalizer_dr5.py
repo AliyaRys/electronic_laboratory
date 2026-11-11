@@ -163,6 +163,17 @@ def test_quantity_never_falls_back_to_volume() -> None:
     assert snapshot.vd_document.batch.quantity is None
 
 
+def test_batch_quantity_is_never_a_package_fallback() -> None:
+    """§5.2: even a present `vd:batch/vd:quantity` never becomes the source quantity."""
+    doc = REAL_DOC.split("<vd:packageList>")[0] + "<vd:quantity>3</vd:quantity>" + REAL_DOC.split(
+        "</vd:packageList>"
+    )[1]
+    entry = parse_one(doc)
+    assert entry.package_quantity is None
+    snapshot = normalize_snapshot(entry)
+    assert snapshot.vd_document.batch.quantity is None
+
+
 # --- edge cases (§5.2) -----------------------------------------------------------
 
 

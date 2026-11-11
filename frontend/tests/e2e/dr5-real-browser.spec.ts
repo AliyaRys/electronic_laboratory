@@ -2,19 +2,32 @@
  * DR5 browser check on the REAL local incoming eVSD (read-only; ТЗ §15).
  *
  * Run against the local install (backend :8111, vite :4173) with the
- * diagnostic user `dr5-browser-check`. The spec performs NO write actions:
- * no receipt, no sync POST, no hide mutation — only reads and screenshots.
+ * diagnostic user from the gitignored `tests/e2e/dr5-real-browser.local.json`
+ * (same channel as identity-seed.local.json — no credentials in Git). The
+ * spec performs NO write actions: no receipt, no sync POST, no hide mutation
+ * — only reads and screenshots.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-const LAB = "2812e437-facc-432f-9242-5162c9d9f49f";
-const PARTY = "c584f24a-63d0-4d47-bdce-d7b8c727f3e2";
-const UUID_VSD = "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac";
+const seedPath = resolve(process.cwd(), "tests/e2e/dr5-real-browser.local.json");
+const seed = JSON.parse(readFileSync(seedPath, "utf8")) as {
+  laboratoryId: string;
+  partyId: string;
+  uuidVsd: string;
+  user: string;
+  password: string;
+};
+
+const LAB = seed.laboratoryId;
+const PARTY = seed.partyId;
+const UUID_VSD = seed.uuidVsd;
 
 async function login(page: Page): Promise<void> {
   await page.goto("/login");
-  await page.getByLabel("Логин").fill("dr5-browser-check");
-  await page.getByLabel("Пароль").fill("dr5-browser-check-password-1");
+  await page.getByLabel("Логин").fill(seed.user);
+  await page.getByLabel("Пароль").fill(seed.password);
   await page.getByRole("button", { name: /Войти/ }).click();
   await expect(page).toHaveURL(/\/labs\//, { timeout: 15000 });
 }

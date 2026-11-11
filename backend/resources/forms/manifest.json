@@ -5,7 +5,7 @@
       "version": "1",
       "date": "2026-11-07",
       "template": "conclusion-local.html",
-      "template_sha256": "1EEA6CFB64A1042EFF38004DC704849B5DB99CB2B21C322138110C8A63B690BA",
+      "template_sha256": "A4BDAC90D77DAA5953367F960ADA37E7CE090873296DA5E72DE9C542556FF58D",
       "official": false,
       "title": "Ветеринарное заключение (местная ВСЭ)",
       "required_fields": [
@@ -45,7 +45,7 @@
       "version": "1",
       "date": "2026-11-07",
       "template": "conclusion-previous.html",
-      "template_sha256": "5ACE908CFC0563578D4B682DB1AF99CF04F52B43292B8809EA2945E1AD4839AF",
+      "template_sha256": "5BB1C00F1ED0EE584CC7F77B3B249B8EF0602139F19E92DE1F06F2B8302E7559",
       "official": false,
       "title": "Ветеринарное заключение (ВСЭ убойного пункта)",
       "required_fields": [

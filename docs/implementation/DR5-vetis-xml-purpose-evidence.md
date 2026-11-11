@@ -1,7 +1,7 @@
 # DR5 — разбор входящих XML эВСД и справочник назначений: подтверждение реализации
 
 Ветка: `feature/DR5-vetis-xml-purpose`
-Спецификация: `dorabotka/2026-11-11-vetis-incoming-xml-fields-and-purpose-dictionary.md` (не коммитится)
+Спецификация: `dorabotka/2026-11-11-vetis-incoming-xml-fields-and-purpose-dictionary.md` (закоммичена в `b1b1d85`; диапазон DR5 включает `0af9d98` и `9bbb07a`)
 Дата: 2026-11-11
 
 ## Что сделано

@@ -56,6 +56,10 @@ class IncomingPage(BaseModel):
     # обезличенные счётчики локальных фильтров предиката (receiver/transport/
     # status/product_type); never external credentials or operational UUIDs.
     filtered: dict[str, int] = Field(default_factory=dict)
+    # ТЗ DR9 §5: the filtered external UUIDs BY REASON — the full observed set
+    # (kept + filtered) is what a full successful pass compares against; no
+    # credentials and no SOAP payloads, identity UUIDs only.
+    filtered_documents: dict[str, list[str]] = Field(default_factory=dict)
     # The raw source XML per external UUID (ТЗ-10 V02 journal); keys are the
     # eVSD UUID strings of ``items``. XML never leaves the vetis package.
     raw_documents: dict[str, str] = Field(default_factory=dict)

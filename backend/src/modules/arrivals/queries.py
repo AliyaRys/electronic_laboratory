@@ -142,7 +142,10 @@ def _queue_condition(queue: str, exams_available: bool) -> Any:
     accepted = _conf_positive_exists()
     exam_done = _exam_done_exists() if exams_available else select(Party.id).where(sql_false()).exists()
     if queue == "EXPECTED":
-        return ~rec & ~conf
+        # ТЗ DR9 §6: EXPECTED requires an observed CURRENT_CONFIRMED source
+        # freshness — a stale document never re-enters the active queue even
+        # without a local reconciliation/confirmation.
+        return ~rec & ~conf & (IncomingDocument.source_presence == "CURRENT_CONFIRMED")
     if queue == "WORK":
         return (rec | conf) & ~(accepted & exam_done)
     if queue == "ACCEPTED":
@@ -402,6 +405,13 @@ async def build_incoming_view(
         queue=queue_label,
         examination_id=str(examination_id) if examination_id is not None else None,
         revision=party.rev,
+        # ТЗ DR9 §6: freshness is shown SEPARATELY from the local queue state;
+        # the list gate (arrival_page) already excludes stale rows from EXPECTED.
+        source_presence=cast(
+            Literal["CURRENT_CONFIRMED", "NOT_IN_CURRENT_CONFIRMED_LIST", "UNKNOWN"], document.source_presence
+        ),
+        last_seen_sync_at=document.last_seen_sync_at,
+        source_presence_reason=document.source_presence_reason,
     )
 
 

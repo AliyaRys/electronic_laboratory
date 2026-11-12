@@ -13,6 +13,11 @@ revocation keeps the previous checkpoint and never fabricates an empty
 success. A document missing from the source list is never annulled: the walk
 only upserts, it never deletes local rows or local facts.
 
+ТЗ DR9: a COMPLETE successful pass collects the FULL observed UUID set
+(kept + filtered) and — after the checkpoint moves — marks local documents
+missing from that set ``NOT_IN_CURRENT_CONFIRMED_LIST`` (never UTILIZED,
+never deleted) and re-confirms the observed ones ``CURRENT_CONFIRMED``.
+
 The write port is accepted as a seam for W01–W03, but while
 ``VETIS_WRITE_ENABLED=false`` it is never invoked — proven by the spy in
 ``backend/tests/vetis/test_sync.py::test_no_write_on_read_stage``.
@@ -34,6 +39,7 @@ from backend.src.core.contracts import CommandStateView
 from backend.src.core.database import get_session_factory
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.commands import upsert_incoming
+from backend.src.modules.arrivals.models import IncomingDocument
 from backend.src.modules.arrivals.schemas import IncomingDocument as IncomingDocumentDTO
 from backend.src.modules.identity.models import OutboxEntry
 from backend.src.modules.integrations.vetis.contracts import IncomingPage, VetisScope
@@ -352,7 +358,13 @@ async def run_sync(
     pages_done = 0
     imported = 0
     received = 0
+    new_documents = 0
+    updated_documents = 0
     filtered_totals: dict[str, int] = {}
+    # ТЗ DR9 §5: the FULL observed set of external UUIDs — kept + filtered
+    # (+ an import error names its UUID in the failure diagnostics). Only this
+    # full set of a COMPLETE successful pass may change freshness.
+    observed: set[str] = set()
     while True:
         async with factory() as db:
             operation = (await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id))).scalar_one()
@@ -389,8 +401,13 @@ async def run_sync(
                 return
             try:
                 for item in current_page.items:
+                    observed.add(str(item.evsd_uuid))
                     try:
-                        await _import_item(db, operation, item, current_page)
+                        created = await _import_item(db, operation, item, current_page)
+                        if created:
+                            new_documents += 1
+                        else:
+                            updated_documents += 1
                     except Exception as exc:  # noqa: BLE001 - one bad KEPT document is never silently dropped
                         await _fail_operation(
                             db,
@@ -401,6 +418,7 @@ async def run_sync(
                                 "received": received,
                                 "kept": imported,
                                 "filtered": dict(filtered_totals),
+                                "observed_uuids": len(observed),
                                 "last_failed_evsd_uuid": str(item.evsd_uuid),
                             },
                         )
@@ -413,6 +431,11 @@ async def run_sync(
             pages_done += 1
             imported += len(current_page.items)
             received += len(current_page.items) + sum(current_page.filtered.values())
+            # The filtered UUIDs join the observed set BY REASON (kept+filtered):
+            # a document present in the external answer was SEEN, whatever the
+            # local predicate decided about it (ТЗ DR9 §5).
+            for uuids in current_page.filtered_documents.values():
+                observed.update(uuids)
             for reason, count in current_page.filtered.items():
                 filtered_totals[reason] = filtered_totals.get(reason, 0) + count
             diagnostics = {
@@ -449,6 +472,93 @@ async def run_sync(
         operation = (await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id))).scalar_one()
         if operation.state != VetisOperationState.RUNNING:
             return
+        # ТЗ DR9 §5: freshness may change ONLY after a FULL successful pass
+        # with a VALID scope/contour — the binding is re-checked right here, so
+        # a revocation between the last page and the finalization never
+        # deactivates anything.
+        binding = await _active_binding(db, operation.laboratory_id)
+        if binding is None:
+            problem = _scope_revoked() if await _was_revoked(db, operation.laboratory_id) else _scope_missing()
+            await _fail_operation(db, operation, problem, now=datetime.now(UTC))
+            await db.commit()
+            return
+        contour = binding.contour
+        observed_uuids = sorted(
+            value for value in observed if _parseable_uuid(value)
+        )
+        # (1) Observed documents of this laboratory/contour: the observation
+        # timestamp refreshes EVERY pass (that is the §4 semantics of
+        # last_seen_sync_at; the freshness index columns stay untouched, so
+        # the write is cheap), but the STATE columns change only on a real
+        # transition back from a stale/unknown state (Fix round 1: no
+        # no-op state writes, no overwritten transition timestamps).
+        if observed_uuids:
+            observed_keys = [uuid.UUID(value) for value in observed_uuids]
+            await db.execute(
+                update(IncomingDocument)
+                .where(
+                    IncomingDocument.laboratory_id == operation.laboratory_id,
+                    IncomingDocument.contour == contour,
+                    IncomingDocument.evsd_uuid.in_(observed_keys),
+                    IncomingDocument.source_presence != "CURRENT_CONFIRMED",
+                )
+                .values(
+                    source_presence="CURRENT_CONFIRMED",
+                    source_presence_reason=None,
+                    last_seen_sync_at=checkpoint,
+                    presence_changed_at=checkpoint,
+                )
+            )
+            await db.execute(
+                update(IncomingDocument)
+                .where(
+                    IncomingDocument.laboratory_id == operation.laboratory_id,
+                    IncomingDocument.contour == contour,
+                    IncomingDocument.evsd_uuid.in_(observed_keys),
+                    IncomingDocument.source_presence == "CURRENT_CONFIRMED",
+                )
+                .values(last_seen_sync_at=checkpoint)
+            )
+        # (2) Local documents NOT in the full observed set are stale — never
+        # deleted: NOT_IN_CURRENT_CONFIRMED_LIST, never a fabricated UTILIZED
+        # (ТЗ DR9 §1/§5). A valid total=0 full pass deactivates everything of
+        # the (verified) scope; an errored run never reaches this code.
+        # Fix round 1: ONLY the transition is written — an already-stale row
+        # keeps its ORIGINAL deactivation timestamp (presence_changed_at) and
+        # is not touched again; marked_not_current counts transitions.
+        missing = (
+            await db.execute(
+                update(IncomingDocument)
+                .where(
+                    IncomingDocument.laboratory_id == operation.laboratory_id,
+                    IncomingDocument.contour == contour,
+                    ~IncomingDocument.evsd_uuid.in_([uuid.UUID(value) for value in observed_uuids]),
+                    IncomingDocument.source_presence != "NOT_IN_CURRENT_CONFIRMED_LIST",
+                )
+                .values(
+                    source_presence="NOT_IN_CURRENT_CONFIRMED_LIST",
+                    source_presence_reason="not_in_confirmed_list",
+                    presence_changed_at=checkpoint,
+                )
+            )
+        )
+        marked_not_current = int(missing.rowcount or 0)  # type: ignore[attr-defined]
+        diagnostics = {
+            "received": received,
+            "kept": imported,
+            "filtered": dict(filtered_totals),
+            # ТЗ DR9 §7: обезличенные counters of the full pass.
+            "external_total": received,
+            "pages": pages_done,
+            "observed_uuids": len(observed_uuids),
+            "filtered_receiver": filtered_totals.get("receiver", 0),
+            "filtered_transport": filtered_totals.get("transport", 0),
+            "filtered_status": filtered_totals.get("status", 0),
+            "filtered_product_type": filtered_totals.get("product_type", 0),
+            "new_documents": new_documents,
+            "updated_documents": updated_documents,
+            "marked_not_current": marked_not_current,
+        }
         await db.execute(
             update(VetisOperation)
             .where(VetisOperation.id == operation_id)
@@ -457,6 +567,7 @@ async def run_sync(
                 finished_at=checkpoint,
                 updated_at=checkpoint,
                 last_success=checkpoint,
+                diagnostics=diagnostics,
             )
         )
         # THE checkpoint: only a successful FULL pass moves it.
@@ -484,16 +595,39 @@ async def _was_revoked(db: AsyncSession, laboratory_id: uuid.UUID) -> bool:
     return row is not None
 
 
+def _parseable_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
 async def _import_item(
     db: AsyncSession, operation: VetisOperation, item: IncomingDocumentDTO, page: IncomingPage
-) -> None:
-    """Upsert one eVSD + journal its raw source XML (same transaction)."""
+) -> bool:
+    """Upsert one eVSD + journal its raw source XML (same transaction).
+
+    Returns whether the import CREATED the IncomingDocument (ТЗ DR9 §7
+    counters) or refreshed an existing one. The journaling pre-check below is
+    a DIFFERENT lookup (the raw source-document row) and never feeds this
+    counter.
+    """
+    existing_incoming = (
+        await db.execute(
+            select(IncomingDocument.id).where(
+                IncomingDocument.contour == str(item.contour),
+                IncomingDocument.evsd_uuid == item.evsd_uuid,
+            )
+        )
+    ).scalar_one_or_none()
+    created = existing_incoming is None
     await upsert_incoming(db, item)
     raw = page.raw_documents.get(str(item.evsd_uuid))
     if raw is None:
-        return
+        return created  # nothing journalled; the import still happened
     checksum = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    existing = (
+    existing_source = (
         await db.execute(
             select(VetisSourceDocument).where(
                 VetisSourceDocument.contour == str(item.contour),
@@ -501,7 +635,7 @@ async def _import_item(
             )
         )
     ).scalar_one_or_none()
-    if existing is None:
+    if existing_source is None:
         db.add(
             VetisSourceDocument(
                 contour=str(item.contour),
@@ -511,12 +645,13 @@ async def _import_item(
                 checksum=checksum,
             )
         )
-    elif existing.checksum != checksum:
+    elif existing_source.checksum != checksum:
         await db.execute(
             update(VetisSourceDocument)
-            .where(VetisSourceDocument.id == existing.id)
-            .values(raw_xml=raw, checksum=checksum, revision=existing.revision + 1, updated_at=datetime.now(UTC))
+            .where(VetisSourceDocument.id == existing_source.id)
+            .values(raw_xml=raw, checksum=checksum, revision=existing_source.revision + 1, updated_at=datetime.now(UTC))
         )
+    return created
 
 
 # --- the 15-minute scheduler ----------------------------------------------------

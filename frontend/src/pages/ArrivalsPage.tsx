@@ -229,9 +229,28 @@ function ArrivalsContent(): React.ReactElement {
     }
     return null;
   };
+  // ТЗ DR9 §7: the honest итог of a finished pass — how many were RECEIVED,
+  // suitable, imported and excluded from the active queue. An error stays an
+  // error and is never worded as «ВСД не найдены».
   const syncDiagnosticsText =
     syncState !== null && (syncDone || syncFailed)
       ? (() => {
+          const diagnostics = syncState.diagnostics ?? null;
+          if (diagnostics !== null && syncDone) {
+            const externalTotal = Number(diagnostics.external_total ?? 0);
+            const observed = Number(diagnostics.observed_uuids ?? 0);
+            const imported = Number(diagnostics.kept ?? syncState.imported ?? 0);
+            const marked = Number(diagnostics.marked_not_current ?? 0);
+            const pages = Number(diagnostics.pages ?? syncState.pages_done ?? 0);
+            const parts = [
+              `Получено документов: ${externalTotal}.`,
+              `Наблюдено во внешнем списке: ${observed}.`,
+              `Импортировано: ${imported}.`,
+            ];
+            if (marked > 0) parts.push(`Исключено из активной очереди: ${marked}.`);
+            parts.push(`Обработано страниц: ${pages}.`);
+            return parts.join(" ");
+          }
           const pages = syncState.pages_done ?? null;
           const imported = syncState.imported ?? null;
           if (pages === null && imported === null) return null;

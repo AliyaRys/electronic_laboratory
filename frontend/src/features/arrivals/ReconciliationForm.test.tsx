@@ -55,6 +55,7 @@ const party: IncomingView = {
   queue: "WORK",
   examination_id: null,
   revision: 1,
+  source_presence: "CURRENT_CONFIRMED",
 };
 
 /** The same document with a previous-ВСЭ record in the source projection. */
@@ -576,6 +577,7 @@ describe("repeat ВСЭ inputs (fix round 1)", () => {
         scopes: [{ laboratory_id: LAB, product_scope_id: null }],
         capabilities: [],
         revision: 1,
+        source_presence: "CURRENT_CONFIRMED",
       }),
     ),
     http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
@@ -645,6 +647,7 @@ describe("ТЗ DR8: unit, quantities and return reason", () => {
         scopes: [{ laboratory_id: LAB, product_scope_id: null }],
         capabilities: [],
         revision: 1,
+        source_presence: "CURRENT_CONFIRMED",
       }),
     ),
     http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {

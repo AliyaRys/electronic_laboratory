@@ -149,7 +149,7 @@ class VetisReadAdapter:
             xml_max_bytes=self._manifest.constraints.xml_max_bytes,
             xml_max_depth=self._manifest.constraints.xml_max_depth,
         )
-        kept, filtered = filter_entries(entries, scope)
+        kept, filtered, filtered_documents = filter_entries(entries, scope)
 
         items: list[IncomingDocumentDTO] = []
         page_seen: set[str] = set()
@@ -187,6 +187,9 @@ class VetisReadAdapter:
             next_cursor=next_cursor,
             complete=complete,
             filtered=filtered,
+            # ТЗ DR9 §5: the filtered external UUIDs BY REASON so the sync can
+            # build the FULL observed set (kept + filtered), not only imports.
+            filtered_documents=filtered_documents,
             raw_documents=extract_raw_documents(result_xml),
         )
 

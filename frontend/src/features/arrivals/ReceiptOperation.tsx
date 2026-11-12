@@ -10,6 +10,8 @@ import {
   fetchReceiptContext,
   previewReceipt,
   submitReceipt,
+  SOURCE_PRESENCE_STALE_TEXT,
+  isStaleSourcePresence,
   type IncomingView,
   type Problem,
   type ReceiptPreview,
@@ -161,6 +163,22 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
     setDialogOpen(false);
     setOperationId(result.operation_id);
     await queryClient.invalidateQueries({ queryKey: [party.laboratory_id, party.party_id] });
+  }
+
+  // ТЗ DR9 §6: a direct read of a stale document blocks the repeat гашение —
+  // the source no longer carries this eVSD in the current confirmed queue.
+  // The check is purely from the party read model and comes FIRST.
+  if (isStaleSourcePresence(party)) {
+    return (
+      <section className="vse-receipt-operation" aria-labelledby="receipt-operation-title">
+        <h2 id="receipt-operation-title">Гашение эВСД</h2>
+        <StatusView
+          state="forbidden"
+          title={SOURCE_PRESENCE_STALE_TEXT}
+          detail="Повторное гашение недоступно: документ отсутствует в текущем подтверждённом списке ВетИС."
+        />
+      </section>
+    );
   }
 
   if (contextQuery.isLoading) return <StatusView state="loading" title="Проверяем возможность гашения…" />;

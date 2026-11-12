@@ -25,6 +25,7 @@ const server = setupServer(
       scopes: [{ laboratory_id: LAB, product_scope_id: null }],
       capabilities: [],
       revision: 1,
+      source_presence: "CURRENT_CONFIRMED",
     }),
   ),
 );
@@ -65,6 +66,7 @@ const party: IncomingView = {
   queue: "WORK",
   examination_id: null,
   revision: 1,
+  source_presence: "CURRENT_CONFIRMED",
 };
 
 const emptyReconciliation: ReconciliationView = {

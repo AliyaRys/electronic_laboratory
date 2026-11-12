@@ -12,7 +12,16 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Numeric, String, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,6 +49,10 @@ class IncomingDocument(Base):
         UniqueConstraint("contour", "evsd_uuid", name="uq_incoming_contour_evsd"),
         CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="incoming_contour_valid"),
         CheckConstraint("rev >= 1", name="incoming_rev_positive"),
+        CheckConstraint(
+            "source_presence IN ('CURRENT_CONFIRMED','NOT_IN_CURRENT_CONFIRMED_LIST','UNKNOWN')",
+            name="incoming_source_presence_valid",
+        ),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -52,6 +65,15 @@ class IncomingDocument(Base):
     source_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
     content_hash: Mapped[str] = mapped_column(String(64))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Freshness of the external observation (ТЗ DR9 §4): the read model never
+    # asserts UTILIZED without external confirmation — a document missing from
+    # the last FULL successful pass becomes NOT_IN_CURRENT_CONFIRMED_LIST and
+    # keeps every local fact.
+    source_presence: Mapped[str] = mapped_column(String(32), default="UNKNOWN", server_default=text("'UNKNOWN'"))
+    source_presence_reason: Mapped[str | None] = mapped_column(String(64))
+    last_seen_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The sync at which the document stopped (or started) being observed.
+    presence_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     replaced_document_uuid: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     rev: Mapped[int] = mapped_column(BigInteger, default=1, server_default=text("1"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

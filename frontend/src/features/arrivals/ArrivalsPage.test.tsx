@@ -26,6 +26,7 @@ const server = setupServer(
       scopes: [{ laboratory_id: LAB, product_scope_id: null }],
       capabilities: [],
       revision: 1,
+      source_presence: "CURRENT_CONFIRMED",
     }),
   ),
 );
@@ -64,6 +65,7 @@ const view = {
   queue: "EXPECTED",
   examination_id: null,
   revision: 1,
+  source_presence: "CURRENT_CONFIRMED",
 };
 
 function renderPage(
@@ -306,6 +308,7 @@ describe("ArrivalsPage", () => {
           scopes: [{ laboratory_id: LAB, product_scope_id: null }],
           capabilities: [],
           revision: 1,
+          source_presence: "CURRENT_CONFIRMED",
         }),
       ),
     );
@@ -490,6 +493,86 @@ describe("ArrivalsPage", () => {
       { timeout: 5000 },
     );
     expect(screen.queryByText(/Поступления обновлены/)).toBeNull();
+    expect(screen.queryByText(/эВСД не найдены/)).toBeNull();
+    expect(screen.getByText("говядина")).toBeTruthy();
+  });
+
+  // --- ТЗ DR9 §7: the honest итог counters; §6: the stale EXPECTED gate --------
+
+  it("after a successful full pass the итог shows received/observed/imported/excluded", async () => {
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () =>
+        HttpResponse.json({
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000005",
+          state: "PENDING",
+          status_url: "/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000005",
+        }),
+      ),
+      http.get("*/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000005", () =>
+        HttpResponse.json({
+          id: "aaaaaaaa-0000-4000-8000-000000000005",
+          kind: "vetis.sync",
+          state: "SUCCESS",
+          updated_at: "2026-11-12T10:00:00Z",
+          pages_done: 2,
+          imported: 3,
+          diagnostics: {
+            external_total: 5,
+            observed_uuids: 4,
+            kept: 3,
+            new_documents: 1,
+            updated_documents: 2,
+            marked_not_current: 1,
+            pages: 2,
+          },
+        }),
+      ),
+    );
+    renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Получено документов: 5/)).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
+    const status = screen.getByRole("status").textContent ?? "";
+    expect(status).toContain("Наблюдено во внешнем списке: 4");
+    expect(status).toContain("Импортировано: 3");
+    expect(status).toContain("Исключено из активной очереди: 1");
+  });
+
+  it("a failed pass never words the error as «эВСД не найдены» and keeps rows", async () => {
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () =>
+        HttpResponse.json({
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000006",
+          state: "PENDING",
+          status_url: "/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000006",
+        }),
+      ),
+      http.get("*/api/v1/operations/aaaaaaaa-0000-4000-8000-000000000006", () =>
+        HttpResponse.json({
+          id: "aaaaaaaa-0000-4000-8000-000000000006",
+          kind: "vetis.sync",
+          state: "FAILED",
+          problem: "VETIS_TRANSPORT_ERROR",
+          updated_at: "2026-11-12T10:00:00Z",
+          pages_done: 1,
+          imported: 1,
+        }),
+      ),
+    );
+    renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Обновление не выполнено/)).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
     expect(screen.queryByText(/эВСД не найдены/)).toBeNull();
     expect(screen.getByText("говядина")).toBeTruthy();
   });

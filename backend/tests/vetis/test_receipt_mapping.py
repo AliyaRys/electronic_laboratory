@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -237,6 +238,53 @@ def test_discrepancy_report_carries_every_item() -> None:
     info = next(node.text for node in report if node.tag.rsplit("}", 1)[-1] == "info")
     assert "CHK-F01" in info and "CHK-F10" in info
     assert "120" in info and "А123ВС" in info
+
+
+SOURCE_XML_MULTI_PACKAGE = SOURCE_XML.replace(
+    "<vd:volume>120</vd:volume>",
+    """<vd:volume>120</vd:volume><dt:packageList>
+     <dt:package><dt:level>3</dt:level><dt:quantity>1</dt:quantity></dt:package>
+     <dt:package><dt:level>4</dt:level><dt:quantity>2</dt:quantity><dt:productMarks><bs:class>VAT</bs:class></dt:productMarks></dt:package>
+     <dt:package><dt:level>4</dt:level><dt:quantity>2</dt:quantity></dt:package>
+   </dt:packageList>""",
+)
+
+
+def test_two_top_level_packages_collapse_to_aggregate_places() -> None:
+    """ТЗ DR8 §5.2: the aggregate is the truth — sum of top-level quantities
+    written equals the intent quantity, never total×N; the reader-side
+    evidence extraction agrees."""
+    value = intent(mismatch=False, decision="PARTIALLY")
+    xml = build_process_incoming_application(value, source_xml=SOURCE_XML_MULTI_PACKAGE, service_id="s", issuer_id="i")
+    root = ET.fromstring(xml)
+    forward = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "delivery")
+    packages = [
+        (node, node.find(f"{DT}quantity"))
+        for node in forward.iter()
+        if node.tag.rsplit("}", 1)[-1] == "package"
+    ]
+    top = [
+        item
+        for item in packages
+        if item[0].find(f"{DT}level") is not None and item[0].find(f"{DT}level").text == "4"  # type: ignore[union-attr]
+    ]
+    assert len(top) == 1  # redundant max-level siblings omitted, marks preserved
+    total = sum(Decimal(node.text) for _, node in top if node is not None and node.text)
+    assert total == value.accepted_quantity
+    # The evidence reader extracts the SAME aggregate from the written XML.
+    consignment = _consignment(xml, returned=False)
+    assert consignment is not None
+    package_list = next(
+        (node for node in consignment if node.tag.rsplit("}", 1)[-1] == "packageList"), None
+    )
+    assert package_list is not None
+    batch = ET.Element(f"{VD}batch")
+    batch.append(copy.deepcopy(package_list))
+    from backend.src.modules.integrations.vetis.evidence import _places_of as _read_places
+
+    assert _read_places(batch) == value.accepted_quantity
+    marks = [mark.text for mark in root.iter() if (mark.tag.rsplit("}", 1)[-1] == "class" and mark.text)]
+    assert "VAT" in marks  # source packaging detail of the kept package is intact
 
 
 @pytest.mark.parametrize("mismatch", [False, True])

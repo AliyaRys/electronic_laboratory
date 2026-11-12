@@ -33,11 +33,14 @@ def _places_of(section: ET.Element) -> Decimal | None:
     """ТЗ DR8 §11: the places count from the batch/package entries.
 
     Only the maximal numeric ``dt:level`` packages are summed (never mixed
-    with the mass and never taken from ``volume``).
+    with the mass and never taken from ``volume``). A bare ``quantity`` child
+    (the compact sanitized fixture shape) counts only when the section carries
+    no package list of its own.
     """
-    direct = _first(section, "quantity")
-    if direct is not None:
-        return Decimal(direct)
+    if not _nodes(section, "packageList"):
+        direct = _first(section, "quantity")
+        if direct is not None:
+            return Decimal(direct)
     batches = _nodes(section, "batch")
     if not batches:
         return None

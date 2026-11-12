@@ -265,30 +265,37 @@ async def test_empty_vs_error(sync_env: SimpleNamespace) -> None:
     assert (await binding_row(env)).last_success is not None
 
 
-async def test_no_write_on_read_stage(sync_env: SimpleNamespace) -> None:
-    """The read stage never touches the write port while VETIS_WRITE_ENABLED=false."""
+async def test_no_write_on_read_stage(sync_env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The read stage never touches the write port, regardless of the ambient
+    ``VETIS_WRITE_ENABLED`` (the flag is the OWNER's UI switch; the read
+    stage's zero-write property is flag-independent)."""
     from backend.src.infrastructure.config.settings import get_settings
     from backend.src.modules.integrations.vetis.transport import SpyTransport
 
-    assert get_settings().vetis_write_enabled is False
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "false")
+    get_settings.cache_clear()  # type: ignore[attr-defined]
+    try:
+        assert get_settings().vetis_write_enabled is False
 
-    env = sync_env
-    evsd = uuid.uuid4()
-    spy = SpyTransport([page(1, 0, [doc(evsd, "1")])])
-    write_spy = SpyWritePort()
+        env = sync_env
+        evsd = uuid.uuid4()
+        spy = SpyTransport([page(1, 0, [doc(evsd, "1")])])
+        write_spy = SpyWritePort()
 
-    operation_id = await start(env)
-    await sync.run_sync(
-        operation_id,
-        adapter=make_adapter(env, spy),
-        session_factory=env.factory,
-        write_port=write_spy,
-    )
-    assert write_spy.calls == []  # spy submit_receipt never called
-    assert spy.write_calls == 0
-    assert spy.product_service_calls == 0
-    operation = await op_row(env, operation_id)
-    assert operation.state == "SUCCESS"
+        operation_id = await start(env)
+        await sync.run_sync(
+            operation_id,
+            adapter=make_adapter(env, spy),
+            session_factory=env.factory,
+            write_port=write_spy,
+        )
+        assert write_spy.calls == []  # spy submit_receipt never called
+        assert spy.write_calls == 0
+        assert spy.product_service_calls == 0
+        operation = await op_row(env, operation_id)
+        assert operation.state == "SUCCESS"
+    finally:
+        get_settings.cache_clear()  # type: ignore[attr-defined]
 
 
 # --- scheduler / dispatcher / outbox seams -------------------------------------

@@ -71,6 +71,14 @@ def _set_package_quantity(consignment: ET.Element, quantity: Decimal) -> None:
     The top-level (max numeric ``dt:level``) packages carry the transport
     quantity; a missing packageList is created honestly rather than writing
     the count into ``vd:volume``.
+
+    Distribution choice (§5.2 «не дублировать исходную упаковку без
+    необходимости»): the outgoing intent carries ONLY an aggregate places
+    count — a per-package split of the accepted/returned part is not known.
+    Writing the aggregate into EVERY top-level package would multiply it on
+    the reader side (sum = total×N). So the FIRST top-level package is kept
+    with the aggregate quantity and the redundant siblings of the same level
+    are omitted; the single package keeps its source packingType and marks.
     """
     package_list = _find_local(consignment, "packageList")
     if package_list is None:
@@ -85,11 +93,17 @@ def _set_package_quantity(consignment: ET.Element, quantity: Decimal) -> None:
         level_node = _find_local(package, "level")
         if level_node is not None and (level_node.text or "").strip().isdigit():
             levels.append((int(level_node.text), package))
-    targets = (
-        [package for level, package in levels if level == max(level for level, _ in levels)] if levels else packages
-    )
-    if not targets:
-        targets = [packages[0]] if packages else []
+    if levels:
+        top = max(level for level, _ in levels)
+        top_packages = [package for level, package in levels if level == top]
+        # Omit the redundant top-level siblings: the aggregate is the truth.
+        for package in top_packages[1:]:
+            package_list.remove(package)
+        targets = [top_packages[0]]
+    elif packages:
+        targets = [packages[0]]
+    else:
+        targets = []
     if not targets:
         package = ET.SubElement(package_list, f"{{{DICT_NS}}}package")
         targets = [package]
@@ -191,11 +205,12 @@ def validate_receipt_intent(intent: ReceiptIntent) -> None:
         intent.returned_mass_kg,
     )
     quantities = (
-        intent.documentary_quantity,
         intent.delivered_quantity,
         intent.accepted_quantity,
         intent.returned_quantity,
     )
+    if intent.documentary_quantity is not None and intent.documentary_quantity < 0:
+        raise _invalid("Количество продукции для гашения недействительно.")
     if any(value < 0 for value in (*masses, *quantities)) or intent.delivered_mass_kg <= 0:
         raise _invalid("Масса продукции для гашения недействительна.")
     # ТЗ DR8 §8: the conservation holds SEPARATELY for mass and for quantity.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -205,6 +206,32 @@ async def test_enabled_confirmation_freezes_one_intent_and_outbox(receipt_env: S
     assert same.id == operation.id
     assert operation.local_transaction_id != operation.application_id
     assert (await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))).scalar_one() == 1
+
+
+async def test_documentary_quantity_without_package_source_is_absent(
+    receipt_env: SimpleNamespace, monkeypatch
+) -> None:
+    """ТЗ DR8 §13: the intent keeps the documentary quantity ABSENT when the
+    source carries no package quantity — the mass is never a fallback."""
+    import copy as _copy
+
+    document = await receipt_env.db.get(IncomingDocument, receipt_env.party.incoming_document_id)
+    assert document is not None
+    snapshot = _copy.deepcopy(document.source_snapshot)
+    snapshot["vdDocument"]["batch"].pop("quantity", None)  # type: ignore[union-attr,index]
+    document.source_snapshot = snapshot
+    await receipt_env.db.commit()
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    assert preview.intent.documentary_quantity is None
+    assert preview.intent.documentary_mass_kg == Decimal("100")  # mass stays intact
 
 
 async def test_lost_submit_response_becomes_unknown_without_resubmit(receipt_env: SimpleNamespace, monkeypatch) -> None:

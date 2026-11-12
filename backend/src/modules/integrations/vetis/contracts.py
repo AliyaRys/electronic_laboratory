@@ -84,7 +84,9 @@ class ReceiptIntent(BaseModel):
     # ТЗ DR8 §5.2: the two dimensions travel SEPARATELY end-to-end. Mass
     # (``vd:volume``) is never substituted by the places count and vice versa.
     documentary_mass_kg: Decimal
-    documentary_quantity: Decimal
+    # The documentary places count stays ABSENT when the source carries none;
+    # it is never replaced by the mass (ТЗ DR8 §13).
+    documentary_quantity: Decimal | None
     delivered_mass_kg: Decimal
     delivered_quantity: Decimal
     accepted_mass_kg: Decimal

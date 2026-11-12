@@ -54,6 +54,18 @@ def _quantity(value: object) -> Decimal:
     return parsed
 
 
+def _documentary_quantity(batch: dict[str, object]) -> Decimal | None:
+    """The documentary places count from the source only — never the mass.
+
+    ТЗ DR8 §13: mass and quantity are separate dimensions; a snapshot without
+    a package quantity keeps it ABSENT (no fabricated ``0``, no mass fallback).
+    """
+    raw = batch.get("quantity")
+    if raw is None or str(raw).strip() == "":
+        return None
+    return _quantity(raw)
+
+
 def _dict(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
@@ -179,7 +191,10 @@ async def build_receipt_preview(
         "vet_inspection": vet_inspection,
         # ТЗ DR8 §5.2: both dimensions separately, from the frozen columns.
         "documentary_mass_kg": _quantity(batch.get("volume")),
-        "documentary_quantity": _quantity(batch.get("quantity") or batch.get("volume")),
+        # ТЗ DR8 §13: the documentary quantity comes ONLY from the package
+        # quantity source; the mass is never a fallback and an absent source
+        # quantity stays absent (like queries._quantity_set).
+        "documentary_quantity": _documentary_quantity(batch),
         "delivered_mass_kg": _quantity(reconciliation.delivered_mass_kg),
         "delivered_quantity": _quantity(reconciliation.delivered_quantity),
         "accepted_mass_kg": _quantity(reconciliation.accepted_mass_kg),

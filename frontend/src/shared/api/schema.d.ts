@@ -472,7 +472,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Tariffs */
+        /**
+         * List Tariffs
+         * @description Owner decision DR14: no species lists the laboratory-scoped CHECK tariffs.
+         */
         get: operations["list_tariffs_api_v1_catalogs_tariffs_get"];
         put?: never;
         /** Create Tariff */
@@ -2731,11 +2734,8 @@ export interface components {
              * Format: uuid
              */
             laboratory_id: string;
-            /**
-             * Product Species Id
-             * Format: uuid
-             */
-            product_species_id: string;
+            /** Product Species Id */
+            product_species_id: string | null;
             /** Service Code */
             service_code: string;
             /** Unit Id */
@@ -2754,6 +2754,10 @@ export interface components {
         /**
          * TariffWrite
          * @description Create/update payload for a tariff (INPUT-03): price is server-side data.
+         *
+         *     Owner decision DR14: the two CHECK services are laboratory-scoped only —
+         *     ``product_species_id`` is NOT sent (and is never persisted for them). VSE
+         *     service codes require the species.
          */
         TariffWrite: {
             /**
@@ -2761,11 +2765,8 @@ export interface components {
              * Format: uuid
              */
             laboratory_id: string;
-            /**
-             * Product Species Id
-             * Format: uuid
-             */
-            product_species_id: string;
+            /** Product Species Id */
+            product_species_id?: string | null;
             /** Service Code */
             service_code: string;
             /** Unit Id */
@@ -3867,7 +3868,7 @@ export interface operations {
         parameters: {
             query: {
                 laboratory_id: string;
-                product_species_id: string;
+                product_species_id?: string | null;
                 page?: number;
             };
             header?: never;

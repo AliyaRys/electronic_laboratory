@@ -113,13 +113,20 @@ export async function fetchMethods(
 
 export async function fetchTariffs(
   laboratoryId: string,
-  productSpeciesId: string,
+  productSpeciesId: string | null,
   page = 1,
   signal?: AbortSignal | null,
 ): Promise<CatalogPageData<TariffView> | Problem> {
+  // Owner decision DR14: without a species the call lists the
+  // laboratory-scoped CHECK tariffs (species IS NULL server-side).
+  const query: { laboratory_id: string; product_species_id?: string | null; page: number } = {
+    laboratory_id: laboratoryId,
+    page,
+  };
+  if (productSpeciesId !== null) query.product_species_id = productSpeciesId;
   const settled = await settle(
     apiClient.GET("/api/v1/catalogs/tariffs", {
-      params: { query: { laboratory_id: laboratoryId, product_species_id: productSpeciesId, page } },
+      params: { query },
       signal: signal ?? null,
     }) as Promise<RawResult<TariffsPage>>,
   );

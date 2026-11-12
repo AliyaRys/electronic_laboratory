@@ -87,7 +87,7 @@ def _rule(
     return MethodRule(**defaults)  # type: ignore[arg-type]
 
 
-def _tariff(lab: uuid.UUID, species: uuid.UUID, code: str, price: str, unit: str = "kg") -> Tariff:
+def _tariff(lab: uuid.UUID, species: uuid.UUID | None, code: str, price: str, unit: str = "kg") -> Tariff:
     return Tariff(
         laboratory_id=lab,
         product_species_id=species,
@@ -471,7 +471,6 @@ async def test_unknown_mandatory_blocks(db_session: AsyncSession) -> None:
 @pytest.mark.integration
 async def test_check_one_service_basis(db_session: AsyncSession) -> None:
     env = await _seed(db_session)
-    species = uuid.uuid4()
     db_session.add(
         CheckServiceRule(
             service_code="PRODUCT_IDENTIFICATION",
@@ -482,7 +481,8 @@ async def test_check_one_service_basis(db_session: AsyncSession) -> None:
             source={"name": "прейскурант"},
         )
     )
-    db_session.add(_tariff(env.lab.id, species, "PRODUCT_IDENTIFICATION", "50.00", unit="piece"))
+    # Owner decision DR14: the CHECK tariff is laboratory-scoped only.
+    db_session.add(_tariff(env.lab.id, None, "PRODUCT_IDENTIFICATION", "50.00", unit="piece"))
     await db_session.commit()
 
     request = PricingRequest.model_validate(
@@ -493,7 +493,6 @@ async def test_check_one_service_basis(db_session: AsyncSession) -> None:
             "performed": ["PRODUCT_IDENTIFICATION"],
             "results": [],
             "fair": False,
-            "product_species_id": str(species),
             "decision": "ACCEPT_ALL",
         }
     )
@@ -507,7 +506,6 @@ async def test_check_one_service_basis(db_session: AsyncSession) -> None:
 @pytest.mark.integration
 async def test_check_delivered_quantity_basis(db_session: AsyncSession) -> None:
     env = await _seed(db_session)
-    species = uuid.uuid4()
     db_session.add(
         CheckServiceRule(
             service_code="TRANSPORT_INSPECTION",
@@ -518,7 +516,7 @@ async def test_check_delivered_quantity_basis(db_session: AsyncSession) -> None:
             source={"name": "прейскурант"},
         )
     )
-    db_session.add(_tariff(env.lab.id, species, "TRANSPORT_INSPECTION", "10.00", unit="kg"))
+    db_session.add(_tariff(env.lab.id, None, "TRANSPORT_INSPECTION", "10.00", unit="kg"))
     await db_session.commit()
 
     request = PricingRequest.model_validate(
@@ -529,7 +527,6 @@ async def test_check_delivered_quantity_basis(db_session: AsyncSession) -> None:
             "performed": ["TRANSPORT_INSPECTION"],
             "results": [],
             "fair": False,
-            "product_species_id": str(species),
             "decision": "PARTIAL",
             "delivered_quantity": "2",
             "delivered_unit_id": "kg",
@@ -544,8 +541,7 @@ async def test_check_without_rule_records_honest_snapshot(db_session: AsyncSessi
     """An absent CheckServiceRule keeps the default math but records an honest
     lineage marker — no invented version/basis (DR7 fix round)."""
     env = await _seed(db_session)
-    species = uuid.uuid4()
-    db_session.add(_tariff(env.lab.id, species, "PRODUCT_IDENTIFICATION", "50.00"))
+    db_session.add(_tariff(env.lab.id, None, "PRODUCT_IDENTIFICATION", "50.00"))
     await db_session.commit()
 
     request = PricingRequest.model_validate(
@@ -556,7 +552,6 @@ async def test_check_without_rule_records_honest_snapshot(db_session: AsyncSessi
             "performed": ["PRODUCT_IDENTIFICATION"],
             "results": [],
             "fair": False,
-            "product_species_id": str(species),
             "decision": "ACCEPT_ALL",
         }
     )
@@ -574,7 +569,6 @@ async def test_check_without_rule_records_honest_snapshot(db_session: AsyncSessi
 @pytest.mark.integration
 async def test_check_inapplicable_decision_and_unit_block(db_session: AsyncSession) -> None:
     env = await _seed(db_session)
-    species = uuid.uuid4()
     db_session.add(
         CheckServiceRule(
             service_code="PRODUCT_IDENTIFICATION",
@@ -585,8 +579,8 @@ async def test_check_inapplicable_decision_and_unit_block(db_session: AsyncSessi
             source={"name": "прейскурант"},
         )
     )
-    db_session.add(_tariff(env.lab.id, species, "PRODUCT_IDENTIFICATION", "50.00", unit="piece"))
-    db_session.add(_tariff(env.lab.id, species, "TRANSPORT_INSPECTION", "70.00", unit="RUB"))
+    db_session.add(_tariff(env.lab.id, None, "PRODUCT_IDENTIFICATION", "50.00", unit="piece"))
+    db_session.add(_tariff(env.lab.id, None, "TRANSPORT_INSPECTION", "70.00", unit="RUB"))
     await db_session.commit()
 
     base = {
@@ -596,7 +590,6 @@ async def test_check_inapplicable_decision_and_unit_block(db_session: AsyncSessi
         "performed": ["PRODUCT_IDENTIFICATION"],
         "results": [],
         "fair": False,
-        "product_species_id": str(species),
         "decision": "RETURN_ALL",
         "accepted_quantity": "3",
         "accepted_unit_id": "piece",
@@ -750,12 +743,10 @@ async def test_method_version_turnover_keeps_one_active(api_env: SimpleNamespace
 async def test_tariff_and_check_service_and_classification_endpoints(api_env: SimpleNamespace) -> None:
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
-        species = str(uuid.uuid4())
         tariff = await http.post(
             "/api/v1/catalogs/tariffs",
             json={
                 "laboratory_id": lab_id,
-                "product_species_id": species,
                 "service_code": "PRODUCT_IDENTIFICATION",
                 "unit_id": "piece",
                 "price": "50.00",
@@ -766,11 +757,28 @@ async def test_tariff_and_check_service_and_classification_endpoints(api_env: Si
         )
         assert tariff.status_code == 201, tariff.text
         tariff_id = tariff.json()["id"]
+        # Owner decision DR14: a CHECK tariff is laboratory-scoped — the species
+        # is never persisted.
+        assert tariff.json()["product_species_id"] is None
 
-        listed = (
-            await http.get("/api/v1/catalogs/tariffs", params={"laboratory_id": lab_id, "product_species_id": species})
-        ).json()
+        listed = (await http.get("/api/v1/catalogs/tariffs", params={"laboratory_id": lab_id})).json()
         assert listed["total"] == 1
+
+        # A VSE code without a species is refused honestly.
+        vse_missing_species = await http.post(
+            "/api/v1/catalogs/tariffs",
+            json={
+                "laboratory_id": lab_id,
+                "service_code": str(uuid.uuid4()),
+                "unit_id": "piece",
+                "price": "50.00",
+                "version": 1,
+                "source": {"name": "прейскурант"},
+            },
+            headers=_csrf_headers(api_env),
+        )
+        assert vse_missing_species.status_code == 422
+        assert vse_missing_species.json()["code"] == "VALIDATION_ERROR"
 
         check_rule = await http.post(
             "/api/v1/catalogs/check-services",
@@ -1336,22 +1344,33 @@ async def test_missing_laboratory_or_species_scope_blocks(db_session: AsyncSessi
 
 
 @pytest.mark.integration
-async def test_check_without_species_blocks(db_session: AsyncSession) -> None:
+async def test_check_prices_without_species(db_session: AsyncSession) -> None:
+    """Owner decision DR14: the species is neither required nor consulted.
+
+    A CHECK tariff of the laboratory prices a reconciliation of any species —
+    including a party without a species at all.
+    """
     env = await _seed(db_session)
+    db_session.add(_tariff(env.lab.id, None, "PRODUCT_IDENTIFICATION", "50.00"))
+    db_session.add(_tariff(env.lab.id, None, "TRANSPORT_INSPECTION", "140.00"))
+    await db_session.commit()
     request = PricingRequest.model_validate(
         {
             "party_id": str(uuid.uuid4()),
             "laboratory_id": str(env.lab.id),
             "context": "CHECK",
-            "performed": ["PRODUCT_IDENTIFICATION"],
+            "performed": ["PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"],
             "results": [],
             "fair": False,
             "decision": "ACCEPT_ALL",
         }
     )
-    with pytest.raises(ProblemError) as excinfo:
-        await evaluate_and_price(UnitOfWork(db_session), request, None)
-    assert excinfo.value.code == "CONFIGURATION_MISSING"
+    snapshot = await evaluate_and_price(UnitOfWork(db_session), request, None)
+    assert snapshot.total == "190.00"
+    # A differing species value never changes the laboratory-scoped price.
+    other = request.model_copy(update={"product_species_id": uuid.uuid4()})
+    snapshot = await evaluate_and_price(UnitOfWork(db_session), other, None)
+    assert snapshot.total == "190.00"
 
 
 @pytest.mark.integration

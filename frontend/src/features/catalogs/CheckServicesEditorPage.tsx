@@ -1,17 +1,19 @@
 /**
  * «Платные услуги» editor page (ТЗ-DR6 §10, mockup
- * directory-paid-services-edit.html).
+ * directory-paid-services-edit.html; owner decision DR14).
  *
  * The page edits the prices of EXACTLY TWO check services of the current
- * laboratory/product scope through the existing tariff API:
+ * laboratory through the existing tariff API:
  *   PRODUCT_IDENTIFICATION  — «Идентификация продукции по наименованию и
  *                              визуальным осмотром»;
  *   TRANSPORT_INSPECTION    — «Ветеринарно-санитарная оценка и идентификация
  *                              транспорта».
- * The global CheckServiceRule table is not needed to save a monetary price;
- * its multiplier basis and applicable decisions are never edited or sent by
- * this page. A price save touches only Tariff records. There is no bulk
- * command here (§10.2).
+ * The directory is bound to the laboratory ONLY: no product species is shown,
+ * selected or sent, and a price applies to reconciliations of every product
+ * species. The global CheckServiceRule table is not needed to save a monetary
+ * price; its multiplier basis and applicable decisions are never edited or
+ * sent by this page. A price save touches only Tariff records. There is no
+ * bulk command here (§10.2).
  */
 import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
@@ -21,8 +23,13 @@ import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
 import { createTariff, deleteTariff, fetchTariffs, updateTariff, type Problem, type TariffView } from "./api";
-import { CatalogEditorPage, CatalogSectionHeader, PriceCard, SaveSummary } from "./editor-parts";
-import { CatalogContextSlot } from "./catalog-context-slot";
+import {
+  CatalogEditorPage,
+  CatalogContextSelector,
+  CatalogSectionHeader,
+  PriceCard,
+  SaveSummary,
+} from "./editor-parts";
 import { useCatalogContext } from "./use-catalog-context";
 import { useDirtyGuard } from "../context/SwitchContext";
 import { MONEY } from "./common";
@@ -55,15 +62,14 @@ export function CheckServicesEditorPage(): React.ReactElement {
   const context = useCatalogContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const { laboratoryId, productSpeciesId, productSpeciesValid, canEdit, allowedToSwitch } = context;
-  // ТЗ DR13: a scope without a real species (null or the legacy laboratory-id
-  // fallback) never opens the price editor — a laboratory UUID is not a
-  // species, and prices saved into it are unreachable for party pricing.
-  const scoped = laboratoryId !== null && productSpeciesId !== null && productSpeciesValid;
+  const { laboratoryId, canEdit, allowedToSwitch } = context;
+  // Owner decision DR14: the laboratory alone scopes the directory; a missing
+  // or odd product configuration never blocks this editor.
+  const scoped = laboratoryId !== null;
 
   const tariffs = useQuery({
-    queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/tariffs", "check-services"],
-    queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
+    queryKey: [laboratoryId, null, null, "/catalogs/tariffs", "check-services"],
+    queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", null, 1, signal),
     enabled: scoped,
   });
 
@@ -95,7 +101,7 @@ export function CheckServicesEditorPage(): React.ReactElement {
   useDirtyGuard(dirty, "Справочник платных услуг");
 
   async function save(): Promise<void> {
-    if (laboratoryId === null || productSpeciesId === null || !productSpeciesValid) return;
+    if (laboratoryId === null) return;
     const failures: string[] = [];
     let saved = 0;
     let conflicted = false;
@@ -123,7 +129,6 @@ export function CheckServicesEditorPage(): React.ReactElement {
         const result = await createTariff(
           {
             laboratory_id: laboratoryId,
-            product_species_id: productSpeciesId,
             service_code: card.serviceCode,
             unit_id: TARIFF_CURRENCY,
             price,
@@ -143,11 +148,11 @@ export function CheckServicesEditorPage(): React.ReactElement {
         }
         const tariff = card.tariff;
         // Only the Tariff price changes; the CheckServiceRule is NOT touched.
+        // No species is sent: the CHECK scope is laboratory only (DR14).
         const result = await updateTariff(
           tariff.id,
           {
             laboratory_id: tariff.laboratory_id,
-            product_species_id: tariff.product_species_id,
             service_code: tariff.service_code,
             unit_id: tariff.unit_id,
             price,
@@ -202,10 +207,7 @@ export function CheckServicesEditorPage(): React.ReactElement {
   }
   if (context.configError !== null) {
     return (
-      <CatalogEditorPage
-        title="Платные услуги"
-        description="Стоимость услуг сверки данных для выбранной продукции."
-      >
+      <CatalogEditorPage title="Платные услуги" description="Стоимость услуг сверки данных для лаборатории.">
         <StatusView state="no-scope" title={context.configError} />
         <div className="vse-catalog-actions">
           <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
@@ -221,14 +223,22 @@ export function CheckServicesEditorPage(): React.ReactElement {
   return (
     <CatalogEditorPage
       title="Платные услуги"
-      description={`Стоимость услуг сверки данных для ${context.productLabel.toLowerCase()}. Значения используются при расчёте стоимости услуг в журнале.`}
+      description="Стоимость услуг сверки данных для лаборатории. Значения используются при расчёте стоимости услуг в журнале для продукции всех видов."
     >
-      <CatalogContextSlot context={context} onPick={allowedToSwitch ? pickLaboratory : null} />
-      {/* ТЗ DR13: the species scope is always visible on the editor, with the
-          honest fallback wording when the dictionary name is not available. */}
-      <p className="vse-catalog-context-note" data-testid="check-services-species">
-        Вид продукции: {context.productSpeciesLabel}
-      </p>
+      <div className="vse-catalog-context" data-testid="catalog-context-info">
+        {allowedToSwitch ? (
+          <CatalogContextSelector
+            laboratories={context.laboratories}
+            value={laboratoryId ?? ""}
+            onChange={pickLaboratory}
+          />
+        ) : null}
+        {/* Owner decision DR14: the header shows only the laboratory — no
+            product species in this directory. */}
+        <p className="vse-catalog-context-note" data-testid="check-services-laboratory">
+          Лаборатория: {context.laboratoryName ?? "название недоступно"}
+        </p>
+      </div>
       {summary !== null ? (
         <SaveSummary state={summary.state} text={summary.text} details={summary.details} />
       ) : null}
@@ -237,7 +247,7 @@ export function CheckServicesEditorPage(): React.ReactElement {
           <CatalogSectionHeader
             icon="directory-paid-services"
             title="Услуги сверки данных"
-            description={`Укажите стоимость каждой услуги для ${context.productLabel.toLowerCase()}.`}
+            description="Укажите стоимость каждой услуги лаборатории: она применяется к сверкам продукции всех видов."
           />
           {tariffs.isLoading ? (
             <StatusView state="loading" title="Загрузка тарифов услуг сверки…" />
@@ -298,17 +308,7 @@ export function CheckServicesEditorPage(): React.ReactElement {
           )}
         </section>
       ) : null}
-      {!scoped ? (
-        laboratoryId !== null && !productSpeciesValid ? (
-          <StatusView
-            state="no-scope"
-            title="Вид продукции для этой лаборатории не настроен."
-            detail="Цены сохраняются для конкретного вида продукции. Обратитесь к администратору, чтобы назначить вид продукции, и повторите настройку."
-          />
-        ) : (
-          <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." />
-        )
-      ) : null}
+      {!scoped ? <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." /> : null}
       <div className="vse-catalog-actions">
         <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
           Отменить
@@ -332,7 +332,7 @@ export function CheckServicesEditorPage(): React.ReactElement {
             if (!open) setDeleteTarget(null);
           }}
           title="Удалить стоимость услуги?"
-          description="Новые платные операции этого вида будут заблокированы без настроенной цены. Сохранённые исторические снимки не изменяются."
+          description="Новые платные операции сверки этой лаборатории будут заблокированы без настроенной цены. Сохранённые исторические снимки не изменяются."
           confirmLabel="Удалить стоимость"
           danger
           busy={deleteBusy}
@@ -363,7 +363,6 @@ export function CheckServicesEditorPage(): React.ReactElement {
       tariff.id,
       {
         laboratory_id: tariff.laboratory_id,
-        product_species_id: tariff.product_species_id,
         service_code: tariff.service_code,
         unit_id: tariff.unit_id,
         price,

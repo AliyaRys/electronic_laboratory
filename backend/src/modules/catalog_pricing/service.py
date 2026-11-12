@@ -50,6 +50,10 @@ MANDATORY_INDICATOR_IDS = _mandatory.MANDATORY_INDICATOR_IDS
 
 CENT = Decimal("0.01")
 
+# Owner decision DR14: the two paid reconciliation services are scoped by the
+# laboratory only — a species is neither required nor consulted for them.
+CHECK_SERVICE_CODES = frozenset({"PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"})
+
 # ТЗ DR11 §6: the Russian names are unified across the catalog editor, the
 # backend snapshot, the reconciliation screen and the print/export.
 CHECK_SERVICE_NAMES = {
@@ -177,6 +181,25 @@ async def _tariff_for(uow: UnitOfWork, laboratory_id: UUID, species: UUID, code:
         .where(
             Tariff.laboratory_id == laboratory_id,
             Tariff.product_species_id == species,
+            Tariff.service_code == code,
+        )
+        .order_by(Tariff.version.desc(), Tariff.rev.desc(), Tariff.id.desc())
+        .limit(1)
+    )
+    return (await uow.session.execute(statement)).scalar_one_or_none()
+
+
+async def _tariff_for_check(uow: UnitOfWork, laboratory_id: UUID, code: str) -> Tariff | None:
+    """Owner decision DR14: a CHECK tariff matches laboratory + service code.
+
+    The species is neither required nor consulted; only NULL-species rows (the
+    CHECK scope) are read, so a VSE tariff can never be mistaken for one.
+    """
+    statement = (
+        select(Tariff)
+        .where(
+            Tariff.laboratory_id == laboratory_id,
+            Tariff.product_species_id.is_(None),
             Tariff.service_code == code,
         )
         .order_by(Tariff.version.desc(), Tariff.rev.desc(), Tariff.id.desc())
@@ -343,11 +366,8 @@ def _previous_lines_by_indicator(previous: PricingSnapshot | None) -> dict[UUID,
 
 
 async def _price_check(uow: UnitOfWork, request: PricingRequest) -> list[PricingLine]:
-    species = request.product_species_id
-    if species is None:
-        raise configuration_missing(
-            "Расчёт услуг сверки требует вид продукции партии.", path="product_species_id", field_id="CHECK"
-        )
+    # Owner decision DR14: the CHECK scope is laboratory only. A missing
+    # species never blocks the pricing of a reconciliation.
     lines: list[PricingLine] = []
     for code in request.performed:
         rule = (
@@ -391,7 +411,7 @@ async def _price_check(uow: UnitOfWork, request: PricingRequest) -> list[Pricing
             unit_price = "0.00"
             amount = "0.00"
         else:
-            tariff = await _tariff_for(uow, _lab_id(request), species, code)
+            tariff = await _tariff_for_check(uow, _lab_id(request), code)
             if tariff is None:
                 raise configuration_missing(
                     "Для услуги сверки нет тарифа в прейскуранте.",

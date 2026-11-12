@@ -197,12 +197,17 @@ class MethodRuleWrite(BaseModel):
 
 
 class TariffWrite(BaseModel):
-    """Create/update payload for a tariff (INPUT-03): price is server-side data."""
+    """Create/update payload for a tariff (INPUT-03): price is server-side data.
+
+    Owner decision DR14: the two CHECK services are laboratory-scoped only —
+    ``product_species_id`` is NOT sent (and is never persisted for them). VSE
+    service codes require the species.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     laboratory_id: UUID
-    product_species_id: UUID
+    product_species_id: UUID | None = None
     service_code: str = Field(min_length=1, max_length=128)
     unit_id: str = Field(min_length=1, max_length=64)
     price: MoneyStringType
@@ -363,7 +368,7 @@ class TariffView(BaseModel):
 
     id: UUID
     laboratory_id: UUID
-    product_species_id: UUID
+    product_species_id: UUID | None
     service_code: str
     unit_id: str
     price: MoneyStringType

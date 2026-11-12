@@ -54,7 +54,7 @@ const tariffs = [
   {
     id: "aaaaaaaa-0000-4000-8000-000000000003",
     laboratory_id: LAB,
-    product_species_id: SPECIES,
+    product_species_id: null,
     service_code: "PRODUCT_IDENTIFICATION",
     unit_id: "услуга",
     price: "40.00",
@@ -65,7 +65,7 @@ const tariffs = [
   {
     id: "aaaaaaaa-0000-4000-8000-000000000004",
     laboratory_id: LAB,
-    product_species_id: SPECIES,
+    product_species_id: null,
     service_code: "TRANSPORT_INSPECTION",
     unit_id: "услуга",
     price: "94.00",

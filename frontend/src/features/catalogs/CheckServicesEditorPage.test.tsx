@@ -1,8 +1,9 @@
 /**
- * «Платные услуги» editor page (ТЗ-DR6 §17.3): exactly two price cards with
- * the fixed CHECK service codes, read/create/update through the tariff API
- * of the selected scope, no CheckServiceRule editor, no CheckServiceRule
- * request on save, absence shown as «Не настроено», no bulk command.
+ * «Платные услуги» editor page (ТЗ-DR6 §17.3; owner decision DR14): exactly
+ * two price cards with the fixed CHECK service codes, read/create/update
+ * through the laboratory-scoped tariff API, NO product species anywhere,
+ * no CheckServiceRule editor, no CheckServiceRule request on save, absence
+ * shown as «Не настроено», no bulk command.
  */
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -38,7 +39,7 @@ function tariff(overrides: Partial<TariffView>): TariffView {
   return {
     id: "aaaaaaaa-0000-4000-8000-000000000001",
     laboratory_id: LAB,
-    product_species_id: SPECIES,
+    product_species_id: null,
     service_code: PRODUCT_IDENTIFICATION,
     unit_id: "услуга",
     price: "40.00",
@@ -208,17 +209,20 @@ describe("CheckServicesEditorPage", () => {
     });
   });
 
-  it("shows the species scope of the editor context (ТЗ DR13)", async () => {
+  it("shows only the laboratory context and no species anywhere (owner DR14)", async () => {
     renderEditor();
-    expect(await screen.findByTestId("check-services-species")).toHaveTextContent(
-      `Вид продукции (GUID: ${SPECIES})`,
+    expect(await screen.findByTestId("check-services-laboratory")).toHaveTextContent(
+      "Лаборатория: Лаборатория №1 г. Казань",
     );
+    expect(screen.queryByTestId("check-services-species")).toBeNull();
+    expect(screen.queryByText(/Вид продукции/)).toBeNull();
+    expect(screen.queryByText(/Продукция/)).toBeNull();
   });
 
-  it("blocks the editor when the scope carries no real species (ТЗ DR13)", async () => {
+  it("keeps the editor usable when the scope carries no real species (owner DR14)", async () => {
     // The legacy assignment fallback: the product scope holds the LABORATORY
-    // id. A laboratory UUID is never a species — the editor stays read-only
-    // instead of saving unreachable prices, and the save button is disabled.
+    // id. The CHECK directory ignores the species entirely — the editor stays
+    // usable and prices are saved into the laboratory scope.
     server.use(
       http.get("*/api/v1/contexts", () =>
         HttpResponse.json([
@@ -226,12 +230,40 @@ describe("CheckServicesEditorPage", () => {
         ]),
       ),
     );
+    const act = userEvent.setup();
     renderEditor();
-    expect(await screen.findByText("Вид продукции для этой лаборатории не настроен.")).toBeInTheDocument();
-    expect(screen.getByTestId("check-services-species")).toHaveTextContent("Вид продукции не настроен");
-    expect(screen.queryByLabelText(`Стоимость: ${NAME_1}, ₽`)).toBeNull();
-    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
-    expect(postSpy).not.toHaveBeenCalled();
-    expect(putSpy).not.toHaveBeenCalled();
+    const input = await screen.findByLabelText(`Стоимость: ${NAME_1}, ₽`);
+    await act.clear(input);
+    await act.type(input, "55,00");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalledTimes(1));
+    const payload = putSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.product_species_id).toBeUndefined();
+    await waitFor(() =>
+      expect(screen.getByTestId("catalog-save-summary")).toHaveTextContent("Справочник сохранён."),
+    );
+  });
+
+  it("saves the create payload without a species (owner DR14)", async () => {
+    const act = userEvent.setup();
+    server.use(
+      http.get("*/api/v1/catalogs/tariffs", () =>
+        HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 }),
+      ),
+    );
+    renderEditor();
+    const input = await screen.findByLabelText(`Стоимость: ${NAME_1}, ₽`);
+    await act.type(input, "45");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
+    expect(postSpy.mock.calls[0][0]).toMatchObject({
+      laboratory_id: LAB,
+      service_code: PRODUCT_IDENTIFICATION,
+      unit_id: "RUB",
+      price: "45",
+      version: 1,
+      source: { name: "Ручная настройка справочника" },
+    });
+    expect(postSpy.mock.calls[0][0]).not.toHaveProperty("product_species_id");
   });
 });

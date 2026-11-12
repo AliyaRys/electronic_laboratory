@@ -50,8 +50,15 @@ export function ReconciliationFeedback({
     return (
       <StatusView
         state={conflict ? "not-found" : "network-error"}
+        // ТЗ DR13: a revision conflict on an OPEN form means the SHOWN state
+        // was stale — the actual state is re-read automatically and the
+        // wording says what really happened, not «другой пользователь».
         title={
-          conflict ? "Сверка изменена или подтверждена другим пользователем." : "Не удалось сохранить сверку."
+          problem.code === "REVISION_CONFLICT"
+            ? "Данные обновлены, сверка перезагружена."
+            : conflict
+              ? "Сверка подтверждена внешним результатом и не меняется обычным сохранением."
+              : "Не удалось сохранить сверку."
         }
         detail={problem.detail}
         trace={problem.trace_id !== "" ? `trace_id: ${problem.trace_id}` : undefined}

@@ -13,7 +13,7 @@ from __future__ import annotations
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.core.problems import ProblemError
+from backend.src.core.problems import ProblemError, ProblemItem, validation_error
 from backend.src.modules.catalog_pricing.models import (
     CheckServiceRule,
     MethodRule,
@@ -50,8 +50,36 @@ def _already_exists(detail: str) -> ProblemError:
     return ProblemError(status=409, code="ALREADY_EXISTS", title="Already exists", detail=detail)
 
 
+def _species_scope_problem() -> ProblemError:
+    """ТЗ DR13: a laboratory UUID is never a product species.
+
+    The scope fallback of legacy assignments could seed ``product_species_id``
+    with the laboratory id; a tariff saved into that scope can never match a
+    real party species, so the write is refused honestly instead of storing a
+    price that is unreachable for pricing.
+    """
+    return validation_error(
+        [
+            ProblemItem(
+                path="product_species_id",
+                field_id="CHECK",
+                message=(
+                    "Вид продукции не может совпадать с лабораторией: выберите реальный вид продукции "
+                    "в контексте справочника."
+                ),
+            )
+        ]
+    )
+
+
+def _validate_species_scope(payload: TariffWrite | MethodRuleWrite) -> None:
+    if payload.product_species_id == payload.laboratory_id:
+        raise _species_scope_problem()
+
+
 async def create_method_rule(db: AsyncSession, payload: MethodRuleWrite) -> MethodRule:
     """Insert a new active version, retiring the previous active one."""
+    _validate_species_scope(payload)
     previous = await db.execute(
         select(MethodRule).where(
             MethodRule.laboratory_id == payload.laboratory_id,
@@ -89,6 +117,7 @@ async def load_method_rule(db: AsyncSession, rule_id: object, *, lock: bool = Fa
 
 async def update_method_rule(db: AsyncSession, row: MethodRule, payload: MethodRuleWrite) -> MethodRule:
     """Edit the row in place; the version history stays intact."""
+    _validate_species_scope(payload)
     row.result_schema = payload.result_schema.value
     row.unit_id = payload.unit_id
     row.rule = dict(payload.rule.model_dump())
@@ -105,6 +134,7 @@ async def delete_method_rule(db: AsyncSession, row: MethodRule) -> None:
 
 
 async def create_tariff(db: AsyncSession, payload: TariffWrite) -> Tariff:
+    _validate_species_scope(payload)
     existing = (
         await db.execute(
             select(Tariff).where(
@@ -139,6 +169,7 @@ async def load_tariff(db: AsyncSession, tariff_id: object, *, lock: bool = False
 
 
 async def update_tariff(db: AsyncSession, row: Tariff, payload: TariffWrite) -> Tariff:
+    _validate_species_scope(payload)
     conflict = (
         await db.execute(
             select(Tariff).where(

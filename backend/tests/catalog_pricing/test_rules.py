@@ -361,3 +361,51 @@ async def test_method_rules_are_lab_scoped(db_session) -> None:
     other = (await db_session.execute(select(MethodRule).where(MethodRule.laboratory_id == lab))).scalar_one()
     assert other.laboratory_id == lab
     assert other.indicator_id == indicator
+
+
+# --- ТЗ DR13: a laboratory UUID is never a product species (tariff scope) --------
+
+
+@pytest.mark.integration
+async def test_tariff_commands_reject_laboratory_uuid_as_species(db_session) -> None:
+    from backend.src.core.problems import ProblemError
+    from backend.src.modules.catalog_pricing import commands
+    from backend.src.modules.catalog_pricing.schemas import TariffWrite
+
+    lab = uuid.uuid4()
+    payload = TariffWrite.model_validate(
+        {
+            "laboratory_id": str(lab),
+            "product_species_id": str(lab),
+            "service_code": "PRODUCT_IDENTIFICATION",
+            "unit_id": "RUB",
+            "price": "110.00",
+            "version": 1,
+            "source": {"name": "Ручная настройка справочника"},
+        }
+    )
+    with pytest.raises(ProblemError) as created:
+        await commands.create_tariff(db_session, payload)
+    assert created.value.status == 422
+    assert created.value.code == "VALIDATION_ERROR"
+    assert any("Вид продукции" in item.message for item in created.value.errors)
+
+    row = Tariff(
+        laboratory_id=lab,
+        product_species_id=uuid.uuid4(),
+        service_code="PRODUCT_IDENTIFICATION",
+        unit_id="RUB",
+        price=parse_decimal("110.00"),
+        version=1,
+        source={"name": "Ручная настройка справочника"},
+    )
+    db_session.add(row)
+    await db_session.flush()
+    with pytest.raises(ProblemError) as updated:
+        await commands.update_tariff(
+            db_session,
+            row,
+            payload.model_copy(update={"product_species_id": lab}),
+        )
+    assert updated.value.status == 422
+    assert any("Вид продукции" in item.message for item in updated.value.errors)

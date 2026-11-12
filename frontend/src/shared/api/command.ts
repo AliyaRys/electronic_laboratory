@@ -35,6 +35,13 @@ export interface SubmitOptions {
   /** Client-side timeout in ms; aborts the request without retrying it. */
   timeoutMs?: number;
   /**
+   * Explicit idempotency key (ТЗ DR13): a form that replays the SAME
+   * payload against the SAME revision passes its stable session key so the
+   * server answers the saved state instead of creating a second command.
+   * When omitted the hook key rules apply (held through network ambiguity).
+   */
+  idempotencyKey?: string;
+  /**
    * Query key of the resource this command mutates. On REVISION_CONFLICT the
    * hook offers {@link Command.refresh} to re-read the actual state through
    * the normal query (API-01: 409 предлагает актуальное состояние без
@@ -156,7 +163,7 @@ export function useCommand<TData = unknown>(client?: QueryClient): Command<TData
   const submit = useCallback(
     async (run: CommandExecutor<TData>, options?: SubmitOptions): Promise<void> => {
       queryKeyRef.current = options?.queryKey ?? null;
-      const key = keyRef.current ?? newIdempotencyKey();
+      const key = options?.idempotencyKey ?? keyRef.current ?? newIdempotencyKey();
       await execute(run, key, options);
     },
     [execute],

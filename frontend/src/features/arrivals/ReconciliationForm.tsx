@@ -12,7 +12,7 @@
  */
 import "./reconciliation.css";
 import { z } from "zod";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useDirtyGuard } from "../context/SwitchContext";
 import { useCommand } from "../../shared/api/command";
@@ -33,8 +33,8 @@ import {
   participantOwner,
   pricingUnitLabel,
   previousVse,
+  reconciliationEtag,
   saveReconciliation,
-  revisionEtag,
   type Decision,
   type IncomingView,
   type ReceiptProblemItem,
@@ -246,6 +246,16 @@ const JOINT_TONES: Readonly<Record<string, string>> = Object.freeze({
 
 const QUANTITY_PARTS = ["delivered", "accepted", "returned"] as const;
 
+/** Idempotency key of one save session (ТЗ DR13): a stable key while the
+ * payload AND the shown revision stay unchanged, so a repeated identical
+ * «Сохранить сверку» lets the server replay the saved state; any edit or a
+ * moved revision starts a fresh key. */
+function newIdempotencyKey(): string {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFormProps): React.ReactElement {
   const compared = useMemo(() => comparedFields(party), [party]);
   const previous = useMemo(() => previousVse(party), [party]);
@@ -262,6 +272,21 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   const command = useCommand<ReconciliationView>();
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  /** The key + fingerprint of the save session (ТЗ DR13): reused while the
+   * payload and the shown revision stay unchanged, otherwise re-keyed. */
+  const sessionRef = useRef<{ key: string; fingerprint: string; etag: string } | null>(null);
+  const refresh = command.refresh;
+
+  // ТЗ DR13: a REVISION_CONFLICT never implies another user interfered with
+  // an editable OPEN form — the shown revision is simply stale. The actual
+  // state is re-read automatically (no merge, nothing resent); the feedback
+  // line stays honest about what happened.
+  const staleRevision = command.error?.code === "REVISION_CONFLICT";
+  useEffect(() => {
+    if (staleRevision) {
+      void refresh();
+    }
+  }, [staleRevision, refresh]);
 
   const submit = (event: React.FormEvent<HTMLFormElement>): void => {
     const formElement = event.currentTarget;
@@ -288,13 +313,22 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       }
       setFieldErrors({});
       setFormError("");
+      // ТЗ DR13: If-Match is the SHOWN reconciliation revision (the empty OPEN
+      // view carries the parent party revision, a saved view its own), and the
+      // idempotency key is stable while the payload and revision are
+      // unchanged — a repeated identical save replays the saved state.
+      const payload = toPayload(formValues, party);
+      const etag = reconciliationEtag(initial);
+      const fingerprint = JSON.stringify(payload);
+      const session = sessionRef.current;
+      const key =
+        session !== null && session.fingerprint === fingerprint && session.etag === etag
+          ? session.key
+          : newIdempotencyKey();
+      sessionRef.current = { key, fingerprint, etag };
       void command.submit(
         async (ctx) => {
-          const result = await saveReconciliation(
-            party.party_id,
-            toPayload(formValues, party),
-            revisionEtag(party),
-          )(ctx);
+          const result = await saveReconciliation(party.party_id, payload, etag)(ctx);
           if (result.response.ok && result.data !== undefined) {
             // The server returned the saved view: publish it and refresh the
             // form state (dirty flag clears with the confirmed facts).
@@ -303,7 +337,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
           }
           return result;
         },
-        { queryKey: [party.laboratory_id, party.party_id, "reconciliation"] },
+        { queryKey: [party.laboratory_id, party.party_id, "reconciliation"], idempotencyKey: key },
       );
     })(event);
   };
@@ -391,7 +425,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
     );
   };
 
-  const compareGrid = (block: "participants" | "transport" | "product"): React.ReactElement[] =>
+  const compareGrid = (block: "participants" | "transport" | "product" | "documents"): React.ReactElement[] =>
     compared.filter((field) => field.block === block).map((field) => compareField(field.fieldId));
 
   return (
@@ -419,7 +453,11 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
           <div className="vse-rec-participant-card" aria-labelledby="vse-rec-sender-title">
             <h3 id="vse-rec-sender-title">Сведения об отправителе</h3>
             {compared.some((field) => field.fieldId === "CHK-F05") ? compareField("CHK-F05") : null}
-            {senderOwner !== null ? (
+            {/* CHK-F06 (ТЗ DR13): the owner is a compared ground when the
+                source carries it; the reference card stays for absent data. */}
+            {compared.some((field) => field.fieldId === "CHK-F06") ? (
+              compareField("CHK-F06")
+            ) : senderOwner !== null ? (
               <div className="vse-rec-compare reference">
                 <span className="vse-rec-compare-name">Владелец продукции</span>
                 <span className="vse-rec-mercury-value vse-rec-owner-value">{senderOwner}</span>
@@ -429,7 +467,10 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
           <div className="vse-rec-participant-card" aria-labelledby="vse-rec-receiver-title">
             <h3 id="vse-rec-receiver-title">Сведения о получателе</h3>
             {compared.some((field) => field.fieldId === "CHK-F07") ? compareField("CHK-F07") : null}
-            {receiverOwner !== null ? (
+            {/* CHK-F08 (ТЗ DR13): the same compared-owner rule on the receiver. */}
+            {compared.some((field) => field.fieldId === "CHK-F08") ? (
+              compareField("CHK-F08")
+            ) : receiverOwner !== null ? (
               <div className="vse-rec-compare reference">
                 <span className="vse-rec-compare-name">Владелец продукции</span>
                 <span className="vse-rec-mercury-value vse-rec-owner-value">{receiverOwner}</span>
@@ -559,16 +600,21 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         </div>
       </CheckSectionCard>
 
-      {/* 5. Сопроводительные документы — honest empty state (no FT-ARR-05 id). */}
+      {/* 5. Сопроводительные документы — the compared requisites of the source
+          projection; without one the honest empty state stays (no FT-ARR-05 id). */}
       <CheckSectionCard
         sectionKey="documents"
         title={CHECK_SECTION_TITLES.documents}
         description={CHECK_SECTION_DESCRIPTIONS.documents}
       >
-        <p className="vse-rec-prior-note">
-          Отдельные реквизиты транспортного документа в эВСД этой партии не заполнены. Документ сверки — сам
-          транспортный эВСД, дополнительные серии не вводятся.
-        </p>
+        {compared.some((field) => field.block === "documents") ? (
+          <div className="vse-rec-compare-grid">{compareGrid("documents")}</div>
+        ) : (
+          <p className="vse-rec-prior-note">
+            Отдельные реквизиты транспортного документа в эВСД этой партии не заполнены. Документ сверки — сам
+            транспортный эВСД, дополнительные серии не вводятся.
+          </p>
+        )}
       </CheckSectionCard>
 
       {/* 6. Ранее проведённая ВСЭ. */}

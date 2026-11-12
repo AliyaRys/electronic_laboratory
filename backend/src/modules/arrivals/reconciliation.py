@@ -142,18 +142,26 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
     )
 
 
-def _quantities(row: Reconciliation) -> tuple[QuantitySet, QuantitySet, QuantitySet]:
+def _quantities(row: Reconciliation, source_unit_id: str = "") -> tuple[QuantitySet, QuantitySet, QuantitySet]:
+    """ТЗ DR10 §5: a stored EMPTY unit is safely normalized from the immutable
+    source snapshot for the view; a non-empty (even mismatching) GUID stays as
+    saved and surfaces as the clear parts-conflict of validate_receipt."""
+    unit_id_of = lambda saved: saved or source_unit_id  # noqa: E731
     return (
         QuantitySet(
             mass_kg=str(row.delivered_mass_kg),
             quantity=str(row.delivered_quantity),
-            unit_id=row.delivered_unit_id or "",
+            unit_id=unit_id_of(row.delivered_unit_id or ""),
         ),
         QuantitySet(
-            mass_kg=str(row.accepted_mass_kg), quantity=str(row.accepted_quantity), unit_id=row.accepted_unit_id or ""
+            mass_kg=str(row.accepted_mass_kg),
+            quantity=str(row.accepted_quantity),
+            unit_id=unit_id_of(row.accepted_unit_id or ""),
         ),
         QuantitySet(
-            mass_kg=str(row.returned_mass_kg), quantity=str(row.returned_quantity), unit_id=row.returned_unit_id or ""
+            mass_kg=str(row.returned_mass_kg),
+            quantity=str(row.returned_quantity),
+            unit_id=unit_id_of(row.returned_unit_id or ""),
         ),
     )
 
@@ -253,7 +261,7 @@ def build_reconciliation_view(
         )
     payload = row_to_payload(row)
     validation = validate_receipt(payload, source_projection(document_row, party), CAPABILITIES)
-    delivered, accepted, returned = _quantities(row)
+    delivered, accepted, returned = _quantities(row, _source_unit_id(document_row))
     return ReconciliationView(
         id=str(row.id),
         party_id=str(row.party_id),
@@ -372,22 +380,32 @@ async def save_reconciliation(
     document_row = (
         await db.execute(select(IncomingDocumentRow).where(IncomingDocumentRow.id == party.incoming_document_id))
     ).scalar_one()
-    validation = validate_receipt(payload, source_projection(document_row, party), CAPABILITIES)
+    # ТЗ DR8 R-DR8-1 / ТЗ DR10 §5: the source unit GUID is the canonical unit
+    # identity — a NEW reconciliation inherits it into all three QuantitySets
+    # (the client unit never overrides it) and an EXISTING one keeps a saved
+    # non-empty GUID but has an empty part safely normalized from the
+    # immutable source snapshot before validation.
+    saved = normalize_payload(payload)
+    source_unit_id = _source_unit_id(document_row)
+    if source_unit_id:
+
+        def _unit(part: str) -> QuantitySet:
+            value = getattr(saved, part)
+            unit_id = value.unit_id.strip() if row is not None else ""
+            return value.model_copy(update={"unit_id": unit_id or source_unit_id})
+
+        saved = saved.model_copy(
+            update={
+                "delivered": _unit("delivered"),
+                "accepted": _unit("accepted"),
+                "returned": _unit("returned"),
+            }
+        )
+    validation = validate_receipt(saved, source_projection(document_row, party), CAPABILITIES)
     if validation.blocking:
         raise validation_error(validation.blocking)
 
-    saved = normalize_payload(payload)
     if row is None:
-        # ТЗ DR8 R-DR8-1: a NEW reconciliation inherits the source unit GUID
-        # into all three QuantitySets; the client unit never overrides it.
-        source_unit_id = _source_unit_id(document_row)
-        saved = saved.model_copy(
-            update={
-                "delivered": saved.delivered.model_copy(update={"unit_id": source_unit_id}),
-                "accepted": saved.accepted.model_copy(update={"unit_id": source_unit_id}),
-                "returned": saved.returned.model_copy(update={"unit_id": source_unit_id}),
-            }
-        )
         row = Reconciliation(party_id=party.id, checks={}, services=[], actor_id=ctx.actor_id, state="OPEN")
         db.add(row)
     row.checks = _checks_storage(saved)  # type: ignore[assignment]

@@ -7,6 +7,7 @@
  * revision and later saves the reconciliation revision.
  */
 import "../features/arrivals/reconciliation.css";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router";
 import { RequireSession } from "./RequireSession";
@@ -46,6 +47,17 @@ function ReconciliationContent(): React.ReactElement {
     queryFn: ({ signal }) => fetchReconciliation(partyId ?? "", signal),
     enabled: partyId !== undefined,
   });
+  // ТЗ DR10 §6: when the incoming source snapshot changes (a refreshed party
+  // revision), the reconciliation is re-read from the server — no stale unit
+  // state is kept in local storage.
+  const partyRevision =
+    arrival.data !== undefined && !("code" in arrival.data) ? arrival.data.revision : null;
+  useEffect(() => {
+    if (partyRevision !== null) {
+      void queryClient.invalidateQueries({ queryKey: [labId, partyId, "reconciliation"] });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partyRevision]);
 
   if (labId === undefined || partyId === undefined) {
     return (

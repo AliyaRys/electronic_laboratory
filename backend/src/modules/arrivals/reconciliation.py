@@ -50,6 +50,8 @@ from backend.src.modules.arrivals.validation import (
     normalize_payload,
     validate_receipt,
 )
+from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot
+from backend.src.modules.catalog_pricing.service import configuration_missing, evaluate_and_price
 from backend.src.modules.integrations.vetis.status import status_label
 
 __all__ = ["save_reconciliation", "build_reconciliation_view", "load_reconciliation", "source_projection"]
@@ -59,6 +61,10 @@ CAPABILITIES = ReceiptCapabilities()
 # CHK IDs persisted inside the checks JSONB without a dedicated DATA-02 column.
 _INSPECTION_KEYS = ("CHK-F13", "CHK-F14")
 _REASON_KEY = "CHK-F35"
+
+# ТЗ DR11 §4.1: the exact codes of the two paid reconciliation services;
+# no Russian-name duplicates and no VSE research tariffs ever enter here.
+CHECK_SERVICE_CODES = ("PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION")
 
 
 def _ref_name(entry: object) -> str | None:
@@ -285,6 +291,9 @@ def build_reconciliation_view(
         ),
         fair=row.fair,
         services=[ServiceItem.model_validate(item) for item in row.services],
+        pricing=(
+            PricingSnapshot.model_validate(row.pricing_snapshot) if row.pricing_snapshot is not None else None
+        ),
         actor_id=str(row.actor_id),
         saved_at=row.saved_at,
         completed_at=row.completed_at,
@@ -294,6 +303,54 @@ def build_reconciliation_view(
         errors=validation.all_errors(),
         complete=validation.complete,
     )
+
+
+def _party_species_id(party: Party) -> UUID:
+    """ТЗ DR11 §4.2: the exact species scope of the party's tariffs.
+
+    The identity is the level-2 ``product.id`` of the stored classification
+    snapshot — the SAME species scope the working screens authorize with
+    (``_product_scope`` in examinations/documents) and the tariff catalog is
+    scoped by. A snapshot without a usable GUID cannot be priced honestly:
+    CONFIGURATION_MISSING, never a foreign-scope tariff and never a silent
+    zero.
+    """
+    snapshot = party.classification_snapshot if isinstance(party.classification_snapshot, dict) else {}
+    product = snapshot.get("product")
+    raw = product.get("id") if isinstance(product, dict) else None
+    try:
+        return UUID(str(raw))
+    except (ValueError, TypeError):
+        raise configuration_missing(
+            "Расчёт услуг сверки требует вид продукции партии; классификация эВСД не определила его.",
+            path="product_species_id",
+            field_id="CHECK",
+        ) from None
+
+
+async def _price_check_services(
+    work: UnitOfWork, party: Party, saved: ReconciliationWrite
+) -> PricingSnapshot:
+    """ТЗ DR11 §5: the server-side pricing of the two CHECK services.
+
+    Runs after the reconciliation validation, before any commit; the result is
+    stored atomically with the facts and returned in the view. The client
+    never supplies a tariff, an amount or a total (R-DR11-3).
+    """
+    request = PricingRequest(
+        party_id=party.id,
+        laboratory_id=party.laboratory_id,
+        context="CHECK",
+        performed=list(CHECK_SERVICE_CODES),
+        fair=saved.fair,
+        product_species_id=_party_species_id(party),
+        accepted_quantity=saved.accepted.quantity,
+        accepted_unit_id=saved.accepted.unit_id,
+        delivered_quantity=saved.delivered.quantity,
+        delivered_unit_id=saved.delivered.unit_id,
+        decision=saved.decision,
+    )
+    return await evaluate_and_price(work, request, None)
 
 
 def _checks_storage(payload: ReconciliationWrite) -> dict[str, dict[str, object]]:
@@ -403,6 +460,12 @@ async def save_reconciliation(
     if validation.blocking:
         raise validation_error(validation.blocking)
 
+    # ТЗ DR11 §5/R-DR11-3: a FULL valid reconciliation MUST be priced on the
+    # server before the commit; an incomplete started save stays without a
+    # snapshot (O-09). A missing rule/tariff raises CONFIGURATION_MISSING —
+    # the transaction aborts, nothing fake or zero is ever stored.
+    snapshot = await _price_check_services(work, party, saved) if validation.complete else None
+
     if row is None:
         row = Reconciliation(party_id=party.id, checks={}, services=[], actor_id=ctx.actor_id, state="OPEN")
         db.add(row)
@@ -420,6 +483,11 @@ async def save_reconciliation(
     # CHK-F33: the first authorship is preserved across later saves; the row is
     # new → the current actor is the author.
     row.rev = (row.rev or 0) + 1
+    if snapshot is not None:
+        # Frozen with the facts (ADR-020): a later tariff change never
+        # recalculates this stored snapshot; an incomplete re-save keeps the
+        # previously frozen value untouched.
+        row.pricing_snapshot = snapshot.model_dump(mode="json")  # type: ignore[assignment]
     await db.flush()
     await recorder.complete(work, record, row.id)
     return build_reconciliation_view(row, party, document_row)

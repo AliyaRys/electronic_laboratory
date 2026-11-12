@@ -50,9 +50,11 @@ MANDATORY_INDICATOR_IDS = _mandatory.MANDATORY_INDICATOR_IDS
 
 CENT = Decimal("0.01")
 
+# ТЗ DR11 §6: the Russian names are unified across the catalog editor, the
+# backend snapshot, the reconciliation screen and the print/export.
 CHECK_SERVICE_NAMES = {
-    "PRODUCT_IDENTIFICATION": "Идентификация продукции",
-    "TRANSPORT_INSPECTION": "Транспортный осмотр",
+    "PRODUCT_IDENTIFICATION": "Идентификация продукции по наименованию и визуальным осмотром",
+    "TRANSPORT_INSPECTION": "Ветеринарно-санитарная оценка и идентификация транспорта",
 }
 
 

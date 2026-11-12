@@ -7,6 +7,7 @@
  * the entered input.
  */
 import { render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
@@ -509,6 +510,211 @@ describe("ReconciliationForm", () => {
     expect(screen.getByText(/Стоимость будет рассчитана после сохранения/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("checkbox", { name: /Ярмарка/ }));
     expect(screen.getByRole("checkbox", { name: /Ярмарка/ })).toBeChecked();
+  });
+});
+
+/** ТЗ DR11: the invoice block renders the SAVED server pricing snapshot. */
+describe("ТЗ DR11: расчёт стоимости услуг", () => {
+  const pricingView: ReconciliationView = {
+    ...emptyView,
+    id: "d11e2d3a-1111-4222-8333-444444444444",
+    revision: 2,
+    pricing: {
+      lines: [
+        {
+          service_code: "PRODUCT_IDENTIFICATION",
+          name: "Идентификация продукции по наименованию и визуальным осмотром",
+          unit_id: "aaaaaaaa-1111-4111-8111-111111111111",
+          quantity: "1",
+          unit_price: "100.00",
+          amount: "100.00",
+        },
+        {
+          service_code: "TRANSPORT_INSPECTION",
+          name: "Ветеринарно-санитарная оценка и идентификация транспорта",
+          unit_id: "service",
+          quantity: "1",
+          unit_price: "130.00",
+          amount: "130.00",
+        },
+      ],
+      total: "230.00",
+      currency: "RUB",
+      fair: false,
+    },
+  };
+
+  it("replaces the empty state with the two saved lines after a save with pricing", async () => {
+    // The save command publishes the returned view into the page state; the
+    // same screen then shows the priced invoice without any reload.
+    const savedPayloads: unknown[] = [];
+    const server = setupServer(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+          full_name: "Ветврач",
+          login: "vet",
+          email: "vet@lab.test",
+          position: null,
+          role: "VET",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: [],
+          revision: 1,
+          source_presence: "CURRENT_CONFIRMED",
+        }),
+      ),
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+        savedPayloads.push(await request.json());
+        return HttpResponse.json(pricingView, { status: 200 });
+      }),
+    );
+    server.listen();
+    try {
+      function SaveFlow(): React.ReactElement {
+        const [view, setView] = useState<ReconciliationView>(emptyView);
+        return <ReconciliationForm party={party} initial={view} onSaved={setView} />;
+      }
+      render(
+        <MemoryRouter>
+          <SaveFlow />
+        </MemoryRouter>,
+      );
+      expect(screen.getByText(/Стоимость будет рассчитана после сохранения/)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(savedPayloads.length).toBeGreaterThan(0));
+      expect(
+        screen.getAllByText("Идентификация продукции по наименованию и визуальным осмотром").length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText("Ветеринарно-санитарная оценка и идентификация транспорта").length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByText("230,00 ₽")).toBeInTheDocument();
+      expect(screen.queryByText(/Стоимость будет рассчитана после сохранения/)).toBeNull();
+    } finally {
+      server.close();
+    }
+  });
+
+  it("shows the exact Russian names, quantity, unit, tariff and amount", () => {
+    renderForm({ initial: pricingView });
+    expect(screen.getByRole("columnheader", { name: "Услуга" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Единица расчёта" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Количество" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Тариф" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Сумма" })).toBeInTheDocument();
+    // The service name also titles a section, so the table cells are matched
+    // inside the invoice table only.
+    const invoice = document.querySelector(".vse-rec-invoice-table");
+    if (invoice === null) {
+      throw new Error("invoice table not found");
+    }
+    expect(invoice.textContent).toContain("Идентификация продукции по наименованию и визуальным осмотром");
+    expect(invoice.textContent).toContain("Ветеринарно-санитарная оценка и идентификация транспорта");
+    // The honest unit labels: the source GUID fallback and the lineage default.
+    expect(
+      screen.getByText("Единица из ВСД (GUID: aaaaaaaa-1111-4111-8111-111111111111)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 услуга")).toBeInTheDocument();
+    expect(screen.getAllByText("100,00 ₽").length).toBe(2);
+    expect(screen.getAllByText("130,00 ₽").length).toBe(2);
+    // The saved server total is displayed, never computed on the client.
+    expect(screen.getByText("230,00 ₽")).toBeInTheDocument();
+  });
+
+  it("names the missing service when the server returns CONFIGURATION_MISSING and keeps the input", async () => {
+    const server = setupServer(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+          full_name: "Ветврач",
+          login: "vet",
+          email: "vet@lab.test",
+          position: null,
+          role: "VET",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: [],
+          revision: 1,
+          source_presence: "CURRENT_CONFIRMED",
+        }),
+      ),
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Configuration missing",
+            status: 422,
+            code: "CONFIGURATION_MISSING",
+            detail: "Для услуги сверки нет тарифа в прейскуранте.",
+            trace_id: "trace-cfg-1",
+            errors: [
+              {
+                path: "performed.TRANSPORT_INSPECTION",
+                field_id: "CHECK",
+                message: "Для услуги сверки нет тарифа в прейскуранте.",
+              },
+            ],
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    server.listen();
+    try {
+      renderForm();
+      const weight = screen.getAllByLabelText("Вес, кг")[0];
+      await userEvent.clear(weight);
+      await userEvent.type(weight, "120");
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      expect(
+        await screen.findByText(
+          /не хватает настройки для услуги «Ветеринарно-санитарная оценка и идентификация транспорта»/,
+        ),
+      ).toBeInTheDocument();
+      // The entered reconciliation is never cleared by the pricing error.
+      expect(screen.getAllByLabelText("Вес, кг")[0]).toHaveValue("120");
+      expect(screen.getByText(/Стоимость будет рассчитана после сохранения/)).toBeInTheDocument();
+    } finally {
+      server.close();
+    }
+  });
+
+  it("shows the honest zeros for a fair reconciliation", () => {
+    renderForm({
+      initial: {
+        ...pricingView,
+        fair: true,
+        pricing: {
+          lines:
+            pricingView.pricing?.lines.map((line) => ({ ...line, unit_price: "0.00", amount: "0.00" })) ?? [],
+          total: "0.00",
+          currency: "RUB",
+          fair: true,
+        },
+      },
+    });
+    expect(screen.getAllByText("0,00 ₽").length).toBe(5); // two tariffs + two amounts + the total
+    expect(screen.getByText(/Ярмарка/)).toBeInTheDocument();
+  });
+
+  it("keeps the snapshot visible after a fresh load of the page", () => {
+    // The snapshot comes from the SAVED view (GET /reconciliation), the same
+    // object a page reload delivers — no client-side recompute happens.
+    renderForm({ initial: pricingView });
+    const rows = document.querySelectorAll(".vse-rec-invoice-table tbody tr");
+    expect(rows.length).toBe(2);
+    expect(screen.getByText("230,00 ₽")).toBeInTheDocument();
+  });
+
+  it("keeps the priced invoice readable without horizontal overflow on 390 px", () => {
+    window.innerWidth = 390;
+    try {
+      renderForm({ initial: pricingView });
+      expect(document.documentElement.scrollWidth <= window.innerWidth + 1).toBe(true);
+    } finally {
+      window.innerWidth = 1024;
+    }
   });
 });
 

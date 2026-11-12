@@ -629,6 +629,23 @@
   font-weight: 760;
 }
 
+/* ТЗ DR11 §7: on a narrow screen the two-line invoice stays readable inside
+   the card — the columns wrap instead of pushing the page width. */
+@media (max-width: 768px) {
+  .vse-rec-invoice-table {
+    min-width: 0;
+  }
+
+  .vse-rec-invoice-table th,
+  .vse-rec-invoice-table td {
+    white-space: normal;
+  }
+
+  .vse-rec-invoice-total {
+    font-size: 14px;
+  }
+}
+
 .vse-rec-invoice-total strong {
   font-family: "Segoe UI", Arial, sans-serif;
   font-size: 24px;

@@ -48,6 +48,7 @@ from backend.src.modules.arrivals.schemas import (
 )
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole
 from backend.src.modules.integrations.vetis.models import VetisContour
+from backend.tests.arrivals.check_pricing_seed import seed_check_pricing
 
 PILOT_BEEF = uuid.UUID("362aa885-9b9f-ae95-05d0-f9570f4fbdc6")  # «говядина» (0005 seed)
 UNKNOWN_PRODUCT = uuid.UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")
@@ -126,6 +127,10 @@ async def lab(db_session: AsyncSession) -> Laboratory:
     )
     db_session.add(laboratory)
     db_session.add(user)
+    await db_session.flush()
+    # ТЗ DR11: the shared lab fixture keeps the check-services tariff of the
+    # default beef scope configured, so full valid saves can price.
+    await seed_check_pricing(db_session, laboratory.id, PILOT_BEEF)
     await db_session.commit()
     return laboratory
 

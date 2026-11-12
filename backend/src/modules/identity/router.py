@@ -67,7 +67,7 @@ from backend.src.modules.identity.session import (
 
 # The Alembic head revision this build expects. Guarded by a test so it cannot
 # drift from the migration file.
-CURRENT_SCHEMA_REVISION = "0014_mercury_purpose"
+CURRENT_SCHEMA_REVISION = "0016_reconciliation_pricing"
 
 __all__ = ["router", "CURRENT_SCHEMA_REVISION"]
 

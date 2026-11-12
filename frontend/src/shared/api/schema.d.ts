@@ -2344,6 +2344,7 @@ export interface components {
             fair: boolean;
             /** Services */
             services: components["schemas"]["ServiceItem"][];
+            pricing?: components["schemas"]["PricingSnapshot"] | null;
             /** Actor Id */
             actor_id: string;
             /**

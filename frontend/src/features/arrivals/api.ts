@@ -206,6 +206,45 @@ export async function hideArrival(
   return "problem" in settled ? settled.problem : null;
 }
 
+/** Russian labels of the two CHECK services: ONE wording across the catalog
+ * editor, the backend snapshot, the reconciliation screen and the export. */
+export const CHECK_SERVICE_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  PRODUCT_IDENTIFICATION: "Идентификация продукции по наименованию и визуальным осмотром",
+  TRANSPORT_INSPECTION: "Ветеринарно-санитарная оценка и идентификация транспорта",
+});
+
+/**
+ * ТЗ DR11 §6: the money is a server decimal string — the screen formats the
+ * display only (a comma separator), it never computes or alters a value.
+ */
+export function moneyLabel(value: string): string {
+  return `${value.replace(".", ",")} ₽`;
+}
+
+/** The honest unit label of a pricing line: a source GUID stays a GUID
+ * fallback, the lineage «service» default reads as one service. */
+export function pricingUnitLabel(unitId: string): string {
+  if (UNIT_GUID_RE.test(unitId)) return `Единица из ВСД (GUID: ${unitId})`;
+  if (unitId === "service") return "1 услуга";
+  return unitId;
+}
+
+/**
+ * ТЗ DR11 §7: the user text of a server CONFIGURATION_MISSING — the exact
+ * missing service is carried by the problem item path
+ * (``performed.<SERVICE_CODE>``); the honest wording names it in Russian.
+ */
+export function configurationMissingText(problem: Problem): string {
+  const item = problem.errors?.find(
+    (entry) => typeof entry.path === "string" && entry.path.startsWith("performed."),
+  );
+  const code = typeof item?.path === "string" ? item.path.replace("performed.", "") : "";
+  const service = code !== "" ? (CHECK_SERVICE_NAMES[code] ?? code) : "";
+  return service !== ""
+    ? `Расчёт остановлен: не хватает настройки для услуги «${service}».`
+    : "Расчёт остановлен: не хватает настройки справочника платных услуг.";
+}
+
 /** `If-Match` wire form of the IncomingView party revision (SPEC-04). */
 export function revisionEtag(view: IncomingView): string {
   return `"${view.revision}"`;
@@ -215,6 +254,8 @@ export function revisionEtag(view: IncomingView): string {
 
 export type ReconciliationView = components["schemas"]["ReconciliationView"];
 export type ReconciliationWrite = components["schemas"]["ReconciliationWrite"];
+export type PricingSnapshot = components["schemas"]["PricingSnapshot"];
+export type PricingLine = PricingSnapshot["lines"][number];
 export type Comparison = components["schemas"]["Comparison"];
 export type ActPreview = components["schemas"]["ActPreview"];
 export type Decision = NonNullable<ReconciliationView["decision"]>;

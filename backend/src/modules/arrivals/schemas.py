@@ -19,6 +19,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from backend.src.core.problems import ProblemItem
+from backend.src.modules.catalog_pricing.schemas import PricingSnapshot
 from backend.src.modules.integrations.vetis.models import VetisContour
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "ActItem",
     "ActPreview",
     "ReconciliationView",
+    "PricingSnapshot",
     "DecimalString",
     "PackageEntry",
     "ProductMark",
@@ -343,6 +345,11 @@ class ReconciliationView(BaseModel):
     transaction: Transaction
     fair: bool
     services: list[ServiceItem]
+    # ТЗ DR11 §6: the frozen server-computed snapshot (context="CHECK"); NULL
+    # for a started incomplete reconciliation — never an empty or fictitious
+    # invoice. The client never sets it and a later tariff change does not
+    # recalculate the saved value.
+    pricing: PricingSnapshot | None = None
     actor_id: str
     saved_at: datetime
     completed_at: datetime | None

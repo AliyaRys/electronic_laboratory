@@ -55,8 +55,11 @@ export function CheckServicesEditorPage(): React.ReactElement {
   const context = useCatalogContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const { laboratoryId, productSpeciesId, canEdit, allowedToSwitch } = context;
-  const scoped = laboratoryId !== null && productSpeciesId !== null;
+  const { laboratoryId, productSpeciesId, productSpeciesValid, canEdit, allowedToSwitch } = context;
+  // ТЗ DR13: a scope without a real species (null or the legacy laboratory-id
+  // fallback) never opens the price editor — a laboratory UUID is not a
+  // species, and prices saved into it are unreachable for party pricing.
+  const scoped = laboratoryId !== null && productSpeciesId !== null && productSpeciesValid;
 
   const tariffs = useQuery({
     queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/tariffs", "check-services"],
@@ -92,7 +95,7 @@ export function CheckServicesEditorPage(): React.ReactElement {
   useDirtyGuard(dirty, "Справочник платных услуг");
 
   async function save(): Promise<void> {
-    if (laboratoryId === null || productSpeciesId === null) return;
+    if (laboratoryId === null || productSpeciesId === null || !productSpeciesValid) return;
     const failures: string[] = [];
     let saved = 0;
     let conflicted = false;
@@ -221,6 +224,11 @@ export function CheckServicesEditorPage(): React.ReactElement {
       description={`Стоимость услуг сверки данных для ${context.productLabel.toLowerCase()}. Значения используются при расчёте стоимости услуг в журнале.`}
     >
       <CatalogContextSlot context={context} onPick={allowedToSwitch ? pickLaboratory : null} />
+      {/* ТЗ DR13: the species scope is always visible on the editor, with the
+          honest fallback wording when the dictionary name is not available. */}
+      <p className="vse-catalog-context-note" data-testid="check-services-species">
+        Вид продукции: {context.productSpeciesLabel}
+      </p>
       {summary !== null ? (
         <SaveSummary state={summary.state} text={summary.text} details={summary.details} />
       ) : null}
@@ -290,7 +298,17 @@ export function CheckServicesEditorPage(): React.ReactElement {
           )}
         </section>
       ) : null}
-      {!scoped ? <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." /> : null}
+      {!scoped ? (
+        laboratoryId !== null && !productSpeciesValid ? (
+          <StatusView
+            state="no-scope"
+            title="Вид продукции для этой лаборатории не настроен."
+            detail="Цены сохраняются для конкретного вида продукции. Обратитесь к администратору, чтобы назначить вид продукции, и повторите настройку."
+          />
+        ) : (
+          <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." />
+        )
+      ) : null}
       <div className="vse-catalog-actions">
         <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
           Отменить

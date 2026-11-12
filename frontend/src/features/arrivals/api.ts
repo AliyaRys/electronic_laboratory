@@ -250,6 +250,15 @@ export function revisionEtag(view: IncomingView): string {
   return `"${view.revision}"`;
 }
 
+/**
+ * `If-Match` wire form of the SHOWN reconciliation revision (SPEC-04/ТЗ DR13):
+ * the empty OPEN view carries the parent party revision, a saved view its own
+ * — always the exact value the PUT endpoint compares against.
+ */
+export function reconciliationEtag(view: ReconciliationView): string {
+  return `"${view.revision}"`;
+}
+
 // --- Reconciliation (A02, API-04) -------------------------------------------------
 
 export type ReconciliationView = components["schemas"]["ReconciliationView"];
@@ -282,7 +291,7 @@ export function decisionLabel(decision: string | null): string {
 export interface ComparedField {
   fieldId: string;
   /** Canonical reconciliation-section key (components/icons/README.md map). */
-  block: "participants" | "transport" | "product";
+  block: "participants" | "transport" | "product" | "documents";
   label: string;
   source: string;
 }
@@ -352,8 +361,13 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   // The server projection names a field by its snapshot key; the mapping
   // tolerates both the CHK projection keys and the test fixtures so real
   // arrivals always surface their values (senderEnterprise/vehicleNumber).
-  const source = (...keys: (string | null | undefined)[]): string | null | undefined => {
+  // A numeric projection value (CHK-F15 productType) is shown as its decimal
+  // string — the honest source value, never an invented label.
+  const source = (...keys: (string | number | null | undefined)[]): string | null | undefined => {
     for (const key of keys) {
+      if (typeof key === "number") {
+        return String(key);
+      }
       if (typeof key === "string" && key !== "") {
         return key;
       }
@@ -376,13 +390,24 @@ export function comparedFields(view: IncomingView): ComparedField[] {
     "Отправитель — предприятие",
     source(external.consignor, external.senderEnterprise),
   );
+  // CHK-F06/F08/F15 (ТЗ DR13): the backend FieldSpec marks senderOwner,
+  // receiverOwner and productType as compared (inadmissible) grounds — the
+  // frontend list mirrors the backend COMPARABLE_SPECS ids one-to-one; an
+  // absent projection key stays absent (push omits it), never a fictitious
+  // mark.
+  push("CHK-F06", "participants", "Отправитель — владелец", source(external.senderOwner));
   push(
     "CHK-F07",
     "participants",
     "Получатель — предприятие",
     source(external.consignee, external.receiverEnterprise),
   );
+  push("CHK-F08", "participants", "Получатель — владелец", source(external.receiverOwner));
+  push("CHK-F09", "transport", "Вид транспорта", source(external.transportKind));
   push("CHK-F10", "transport", "Номер ТС", source(external.transportNumber, external.vehicleNumber));
+  push("CHK-F11", "transport", "Номер прицепа", source(external.trailerNumber));
+  push("CHK-F12", "transport", "Хранение", source(external.storage));
+  push("CHK-F15", "product", "Тип продукции", source(classification.productType, external.productType));
   push("CHK-F16", "product", "Продукция", source(classification.product?.name, external.product));
   push("CHK-F17", "product", "Вид продукции", source(classification.subProduct?.name, external.species));
   push(
@@ -391,8 +416,17 @@ export function comparedFields(view: IncomingView): ComparedField[] {
     "Название продукции",
     source(classification.productItem?.name, external.name, external.productItem),
   );
+  push("CHK-F19", "product", "Изготовитель", source(external.manufacturer));
   push("CHK-F20", "product", "Количество", source(view.documentary.quantity, external.quantity));
   push("CHK-F21", "product", "Вес, кг", source(view.documentary.mass_kg, external.massKg));
+  push("CHK-F22", "product", "Дата выработки", source(external.producedOn));
+  push("CHK-F23", "product", "Годен до", source(external.expiresOn));
+  // CHK-F25–27: the accompanying-document «act» grounds of the backend
+  // FieldSpec; the projection fills them only when the snapshot carries the
+  // requisites.
+  push("CHK-F25", "documents", "Тип транспортного документа", source(external.transportDocumentType));
+  push("CHK-F26", "documents", "Номер транспортного документа", source(external.transportDocumentNumber));
+  push("CHK-F27", "documents", "Дата транспортного документа", source(external.transportDocumentIssuedOn));
   return fields;
 }
 

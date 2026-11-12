@@ -41,6 +41,12 @@ export interface CatalogContext {
   laboratoryName: string | null;
   /** Product scope of the chosen laboratory (assigned context). */
   productSpeciesId: string | null;
+  /** Honest Russian label of the species scope (no local dictionary yet). */
+  productSpeciesLabel: string;
+  /** False when the scope carries no species or the legacy laboratory-id
+   * fallback (a laboratory UUID is never a species — ТЗ DR13): the tariff
+   * editors stay read-only instead of writing unreachable prices. */
+  productSpeciesValid: boolean;
   productLabel: string;
   /** Blocking honest configuration error (HEAD 0/2+ labs, no scope at all). */
   configError: string | null;
@@ -57,6 +63,18 @@ export function productTypeLabel(productType: ProductType | null): string {
 
 function nameOrHonest(name: string | null | undefined): string {
   return typeof name === "string" && name.trim() !== "" ? name : "Название лаборатории недоступно";
+}
+
+/**
+ * Honest Russian label of the species scope (ТЗ DR13): the local dictionary
+ * of Mercury species does not exist yet, so a real scope keeps its honest
+ * GUID wording; the legacy laboratory-id fallback is named as what it is —
+ * a missing species configuration, never a species.
+ */
+function speciesLabelOf(speciesId: string | null, laboratoryId: string | null): string {
+  if (speciesId === null) return "Вид продукции не выбран";
+  if (laboratoryId !== null && speciesId === laboratoryId) return "Вид продукции не настроен";
+  return `Вид продукции (GUID: ${speciesId})`;
 }
 
 /**
@@ -101,6 +119,8 @@ export function useCatalogContext(): CatalogContext {
         laboratoryId: null,
         laboratoryName: null,
         productSpeciesId: null,
+        productSpeciesLabel: speciesLabelOf(null, null),
+        productSpeciesValid: false,
         productLabel: productTypeLabel(productType),
         configError: null,
         needsSelection: false,
@@ -118,6 +138,8 @@ export function useCatalogContext(): CatalogContext {
         laboratoryId: null,
         laboratoryName: null,
         productSpeciesId: null,
+        productSpeciesLabel: speciesLabelOf(null, null),
+        productSpeciesValid: false,
         productLabel: productTypeLabel(productType),
         configError: "Раздел доступен заведующему, администратору и аналитику.",
         needsSelection: false,
@@ -134,6 +156,8 @@ export function useCatalogContext(): CatalogContext {
         laboratoryId: null,
         laboratoryName: null,
         productSpeciesId: null,
+        productSpeciesLabel: speciesLabelOf(null, null),
+        productSpeciesValid: false,
         productLabel: productTypeLabel(productType),
         configError: null,
         needsSelection: false,
@@ -163,6 +187,8 @@ export function useCatalogContext(): CatalogContext {
           laboratoryId: null,
           laboratoryName: null,
           productSpeciesId: null,
+          productSpeciesLabel: speciesLabelOf(null, null),
+          productSpeciesValid: false,
           productLabel: productTypeLabel(productType),
           configError:
             "Рабочая область не назначена. Обратитесь к администратору, чтобы назначить лабораторию и тип продукции.",
@@ -180,6 +206,8 @@ export function useCatalogContext(): CatalogContext {
           laboratoryId: null,
           laboratoryName: null,
           productSpeciesId: null,
+          productSpeciesLabel: speciesLabelOf(null, null),
+          productSpeciesValid: false,
           productLabel: productTypeLabel(productType),
           configError:
             "Учётная запись заведующего должна иметь ровно одну назначенную лабораторию. Обратитесь к администратору.",
@@ -198,6 +226,8 @@ export function useCatalogContext(): CatalogContext {
           laboratoryId: null,
           laboratoryName: null,
           productSpeciesId: null,
+          productSpeciesLabel: speciesLabelOf(null, null),
+          productSpeciesValid: false,
           productLabel: productTypeLabel(productType),
           configError: null,
           needsSelection: true,
@@ -219,6 +249,8 @@ export function useCatalogContext(): CatalogContext {
         laboratoryId: only.id,
         laboratoryName: only.name,
         productSpeciesId,
+        productSpeciesLabel: speciesLabelOf(productSpeciesId, only.id),
+        productSpeciesValid: productSpeciesId !== null && productSpeciesId !== only.id,
         productLabel: productTypeLabel(productType),
         configError: null,
         needsSelection: false,
@@ -258,6 +290,8 @@ export function useCatalogContext(): CatalogContext {
         laboratoryId: null,
         laboratoryName: null,
         productSpeciesId: null,
+        productSpeciesLabel: speciesLabelOf(null, null),
+        productSpeciesValid: false,
         productLabel: productTypeLabel(productType),
         configError: "Доступные лаборатории не назначены. Обратитесь к администратору.",
         needsSelection: false,
@@ -274,6 +308,8 @@ export function useCatalogContext(): CatalogContext {
         laboratoryId: null,
         laboratoryName: null,
         productSpeciesId: null,
+        productSpeciesLabel: speciesLabelOf(null, null),
+        productSpeciesValid: false,
         productLabel: productTypeLabel(productType),
         configError: null,
         needsSelection: true,
@@ -294,6 +330,8 @@ export function useCatalogContext(): CatalogContext {
       laboratoryId: allowed.id,
       laboratoryName: allowed.name,
       productSpeciesId,
+      productSpeciesLabel: speciesLabelOf(productSpeciesId, allowed.id),
+      productSpeciesValid: productSpeciesId !== null && productSpeciesId !== allowed.id,
       productLabel: productTypeLabel(productType),
       configError: null,
       needsSelection: false,

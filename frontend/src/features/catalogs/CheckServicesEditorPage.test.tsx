@@ -207,4 +207,31 @@ describe("CheckServicesEditorPage", () => {
       source: { name: "Ручная настройка справочника" },
     });
   });
+
+  it("shows the species scope of the editor context (ТЗ DR13)", async () => {
+    renderEditor();
+    expect(await screen.findByTestId("check-services-species")).toHaveTextContent(
+      `Вид продукции (GUID: ${SPECIES})`,
+    );
+  });
+
+  it("blocks the editor when the scope carries no real species (ТЗ DR13)", async () => {
+    // The legacy assignment fallback: the product scope holds the LABORATORY
+    // id. A laboratory UUID is never a species — the editor stays read-only
+    // instead of saving unreachable prices, and the save button is disabled.
+    server.use(
+      http.get("*/api/v1/contexts", () =>
+        HttpResponse.json([
+          { laboratory_id: LAB, product_scope_id: LAB, laboratory_name: "Лаборатория №1 г. Казань" },
+        ]),
+      ),
+    );
+    renderEditor();
+    expect(await screen.findByText("Вид продукции для этой лаборатории не настроен.")).toBeInTheDocument();
+    expect(screen.getByTestId("check-services-species")).toHaveTextContent("Вид продукции не настроен");
+    expect(screen.queryByLabelText(`Стоимость: ${NAME_1}, ₽`)).toBeNull();
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+    expect(postSpy).not.toHaveBeenCalled();
+    expect(putSpy).not.toHaveBeenCalled();
+  });
 });

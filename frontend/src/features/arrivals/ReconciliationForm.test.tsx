@@ -19,7 +19,7 @@ import { ReceiptDecision, type ReceiptDecisionValue } from "./ReceiptDecision";
 import { ActPreview } from "./ActPreview";
 import { ReconciliationActions } from "./ReconciliationActions";
 import { ReconciliationForm, type ReconciliationFormProps } from "./ReconciliationForm";
-import { computeAllowedDecisions } from "./api";
+import { comparedFields, computeAllowedDecisions } from "./api";
 import type { IncomingView, ReconciliationView } from "./api";
 import { useDirtyStore } from "../../entities/session/context";
 
@@ -1062,4 +1062,174 @@ describe("ТЗ DR10: source unit guid without dt:name", () => {
       documentary: { mass_kg: "500.0", quantity: "8", unit_id: "" },
     };
   }
+});
+
+/** ТЗ DR13: полнота сверки (CHK-F06/F15), If-Match сохранённой версии и
+ * честный 409 с автоматической перезагрузкой. */
+describe("ТЗ DR13: полнота сверки и повторное сохранение", () => {
+  /** The same party whose source projection carries the owner and the
+   * product-type values (the live data of the defect report). */
+  const partyComplete: IncomingView = {
+    ...party,
+    external: {
+      ...party.external,
+      fields: {
+        ...party.external.fields,
+        senderOwner: "СХПК «Заря»",
+        receiverOwner: "ИП Петров",
+      },
+    },
+    classification: { ...party.classification, productType: 1 },
+  };
+
+  it("mirrors the backend compared FieldSpec: CHK-F06/F15 appear with real sources and stay absent otherwise", () => {
+    const absent = comparedFields(party).map((field) => field.fieldId);
+    expect(absent).not.toContain("CHK-F06");
+    expect(absent).not.toContain("CHK-F15");
+    const fields = comparedFields(partyComplete);
+    expect(fields.find((field) => field.fieldId === "CHK-F06")).toMatchObject({
+      block: "participants",
+      label: "Отправитель — владелец",
+      source: "СХПК «Заря»",
+    });
+    // The numeric product type keeps its honest decimal string, never an
+    // invented Russian label.
+    expect(fields.find((field) => field.fieldId === "CHK-F15")).toMatchObject({
+      block: "product",
+      label: "Тип продукции",
+      source: "1",
+    });
+  });
+
+  it("sends the CHK-F06/F15 marks in the save payload", async () => {
+    const savedPayloads: { checks: Record<string, { matches: boolean }> }[] = [];
+    const server = setupServer(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+        savedPayloads.push((await request.json()) as { checks: Record<string, { matches: boolean }> });
+        return HttpResponse.json({ ...emptyView, revision: 2 }, { status: 200 });
+      }),
+    );
+    server.listen();
+    try {
+      renderForm({ party: partyComplete });
+      await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(savedPayloads.length).toBeGreaterThan(0));
+      expect(savedPayloads[0].checks["CHK-F06"]).toEqual({ matches: true });
+      expect(savedPayloads[0].checks["CHK-F15"]).toEqual({ matches: true });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("saves twice cleanly: If-Match follows the shown reconciliation revision", async () => {
+    const requests: { etag: string | null; key: string | null }[] = [];
+    const server = setupServer(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+        requests.push({
+          etag: request.headers.get("if-match"),
+          key: request.headers.get("idempotency-key"),
+        });
+        return HttpResponse.json({ ...emptyView, revision: requests.length + 1 }, { status: 200 });
+      }),
+    );
+    server.listen();
+    try {
+      function SaveFlow(): React.ReactElement {
+        const [view, setView] = useState<ReconciliationView>(emptyView);
+        return <ReconciliationForm party={party} initial={view} onSaved={setView} />;
+      }
+      render(
+        <MemoryRouter>
+          <SaveFlow />
+        </MemoryRouter>,
+      );
+      await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(requests.length).toBe(1));
+      expect(requests[0].etag).toBe('"1"');
+      await waitFor(() => expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeEnabled());
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(requests.length).toBe(2));
+      // The second save carries the ADOPTED revision, so the server never
+      // answers REVISION_CONFLICT for a stale If-Match.
+      expect(requests[1].etag).toBe('"2"');
+      expect(requests[1].key).not.toBeNull();
+      expect(requests[1].key).not.toBe(requests[0].key);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("reuses the idempotency key for a repeated identical save against the same revision", async () => {
+    const requests: { key: string | null }[] = [];
+    const server = setupServer(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+        const body = (await request.json()) as { checks: Record<string, unknown> };
+        requests.push({ key: request.headers.get("idempotency-key") });
+        // The server saves the checks and replays the same shown state, so
+        // the second identical click must reuse the session key instead of
+        // minting a new command.
+        return HttpResponse.json({ ...emptyView, checks: body.checks }, { status: 200 });
+      }),
+    );
+    server.listen();
+    try {
+      renderForm();
+      await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(requests.length).toBe(1));
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(requests.length).toBe(2));
+      expect(requests[1].key).toBe(requests[0].key);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("answers REVISION_CONFLICT with the honest reload message", async () => {
+    const server = setupServer(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", () =>
+        HttpResponse.json(
+          {
+            code: "REVISION_CONFLICT",
+            detail: "Версия записи не совпадает (If-Match).",
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    server.listen();
+    try {
+      renderForm();
+      await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      expect(await screen.findByText("Данные обновлены, сверка перезагружена.")).toBeInTheDocument();
+      expect(screen.queryByText(/другим пользователем/)).toBeNull();
+    } finally {
+      server.close();
+    }
+  });
+
+  it("keeps the frozen-state wording for STATE_CONFLICT", async () => {
+    const server = setupServer(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", () =>
+        HttpResponse.json(
+          { code: "STATE_CONFLICT", detail: "Сверка уже подтверждена внешним результатом." },
+          { status: 409 },
+        ),
+      ),
+    );
+    server.listen();
+    try {
+      renderForm();
+      await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      expect(
+        await screen.findByText(/Сверка подтверждена внешним результатом и не меняется обычным сохранением/),
+      ).toBeInTheDocument();
+    } finally {
+      server.close();
+    }
+  });
 });

@@ -423,6 +423,7 @@ export function comparedFields(view: IncomingView): ComparedField[] {
     "transport",
     "Способ хранения продукции при перевозке",
     source(external.storage, external.storageLabel),
+    "Фактический способ хранения",
   );
   push("CHK-F15", "product", "Тип продукции", source(classification.productType, external.productType));
   push("CHK-F16", "product", "Продукция", source(classification.product?.name, external.product));

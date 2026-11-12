@@ -21,6 +21,7 @@ import {
   syncIsTerminal,
   type ArrivalQueue,
   type ArrivalResult,
+  type ArrivalSort,
   type IncomingView,
   type Problem,
   type SyncAccepted,
@@ -42,15 +43,23 @@ interface Filters {
   result: string;
   q: string;
   page: number;
+  /** DR15 §5.1: the issue-date sort; the URL default is the server default. */
+  sort: ArrivalSort;
 }
+
+/** DR15 §6: the default sort matches the server default (desc = newest first). */
+const DEFAULT_SORT: ArrivalSort = "desc";
+const SORTS: readonly ArrivalSort[] = ["asc", "desc"];
 
 function filtersFromParams(params: URLSearchParams): Filters {
   const queue = (params.get("queue") ?? "EXPECTED").toUpperCase() as ArrivalQueue;
+  const sortParam = params.get("sort") as ArrivalSort | null;
   return {
     queue: QUEUES.includes(queue) ? queue : "EXPECTED",
     result: params.get("result") ?? "",
     q: params.get("q") ?? "",
     page: Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1),
+    sort: sortParam !== null && SORTS.includes(sortParam) ? sortParam : DEFAULT_SORT,
   };
 }
 
@@ -75,6 +84,8 @@ function ArrivalsContent(): React.ReactElement {
   const [hiddenColumns, setHiddenColumns] = useState<ReadonlySet<string>>(new Set());
 
   const arrivals = useQuery({
+    // DR15 §6: the sort is part of the query key so a stale answer never
+    // replaces the newly sorted page.
     queryKey: ["arrivals", labId ?? null, filters],
     queryFn: ({ signal }) =>
       fetchArrivals(
@@ -84,6 +95,7 @@ function ArrivalsContent(): React.ReactElement {
           result: filters.result === "" ? null : (filters.result as ArrivalResult),
           q: filters.q === "" ? null : filters.q,
           page: filters.page,
+          sort: filters.sort,
         },
         signal,
       ),
@@ -160,6 +172,10 @@ function ArrivalsContent(): React.ReactElement {
     search.set("queue", merged.queue.toLowerCase());
     if (merged.result !== "") search.set("result", merged.result.toLowerCase());
     if (merged.q !== "") search.set("q", merged.q);
+    // DR15 §5.1: the sort is URL-persistent; the non-default order is written
+    // explicitly while the absent param means the server default (desc) — the
+    // existing routes/landing URLs stay unchanged.
+    if (merged.sort !== DEFAULT_SORT) search.set("sort", merged.sort);
     if (merged.page > 1) search.set("page", String(merged.page));
     setParams(search);
   };
@@ -293,6 +309,8 @@ function ArrivalsContent(): React.ReactElement {
         onSearch={(q) => applyFilters({ q, page: 1 })}
         result={filters.result}
         onResultChange={(result) => applyFilters({ result, page: 1 })}
+        sort={filters.sort}
+        onSortChange={(sort) => applyFilters({ sort, page: 1 })}
         hiddenColumns={hiddenColumns}
         onToggleColumn={(id) =>
           setHiddenColumns((previous) => {

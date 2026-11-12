@@ -83,6 +83,16 @@
   color: #526b72;
   box-shadow: none;
 }
+/* ТЗ DR15 §4: hovering the ENABLED «Войти» button repeats the base state of
+   `.vse-auth .app-button.primary` — the shared working-button hover variants
+   (ui.css) never change the login button. No animation, no separate hover
+   colour; focus-visible/disabled/busy/error stay untouched. */
+.vse-auth .app-button.primary:hover:not(:disabled) {
+  border-color: var(--app-teal);
+  background: linear-gradient(135deg, var(--auth-teal), var(--auth-teal-dark));
+  color: #fff;
+  box-shadow: 0 14px 28px #146c7328;
+}
 .vse-auth-form {
   display: grid;
   gap: 15px;

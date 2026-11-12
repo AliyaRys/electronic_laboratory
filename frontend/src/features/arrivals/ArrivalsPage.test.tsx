@@ -576,4 +576,76 @@ describe("ArrivalsPage", () => {
     expect(screen.queryByText(/эВСД не найдены/)).toBeNull();
     expect(screen.getByText("говядина")).toBeTruthy();
   });
+
+  // --- ТЗ DR15 §5/§7: server-side issue-date sort of the EXPECTED queue -------
+
+  it("the EXPECTED queue shows the sort select with the exact mockup labels", async () => {
+    renderPage();
+    await screen.findByText("говядина");
+    expect(screen.getByLabelText("Сортировка")).toBeTruthy();
+    for (const option of ["Сначала оформленные раньше", "Сначала оформленные позже"]) {
+      expect(screen.getByRole("option", { name: option })).toBeTruthy();
+    }
+  });
+
+  it("choosing a sort order changes the URL and is sent to the API", async () => {
+    const { captured } = renderPage();
+    await screen.findByText("говядина");
+    await userEvent.selectOptions(screen.getByLabelText("Сортировка"), "asc");
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("sort=asc");
+    });
+    await userEvent.selectOptions(screen.getByLabelText("Сортировка"), "desc");
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).not.toContain("sort=asc");
+    });
+  });
+
+  it("changing the sort resets the page to 1", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=expected&page=3`);
+    await screen.findByText("говядина");
+    await userEvent.selectOptions(screen.getByLabelText("Сортировка"), "asc");
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("sort=asc");
+      expect(captured.at(-1)?.url).not.toContain("page=3");
+    });
+  });
+
+  it("renders the rows in SERVER order, never re-sorting the page items", async () => {
+    // The server deliberately answers with LATER issued dates first (a desc
+    // answer); the table must keep exactly that order.
+    const second = {
+      ...view,
+      party_id: "9c1b2d3e-2222-4222-8333-444444444444",
+      external: {
+        ...view.external,
+        evsd_uuid: "2f0e6d2a-1111-4222-8333-444444444444",
+        fields: { ...view.external.fields, issuedOn: "2026-08-10T08:40:00" },
+      },
+    };
+    renderPage(`/labs/${LAB}/arrivals?queue=expected&sort=desc`, (_request, items) => {
+      void items;
+      return HttpResponse.json({ items: [view, second], total: 2, page: 1, page_size: 20 });
+    });
+    await screen.findAllByText("говядина");
+    const dates = (await screen.findAllByRole("row"))
+      .filter((row) => row.querySelector("td"))
+      .map((row) => row.querySelector("td")?.textContent ?? "");
+    expect(dates).toEqual(["12.08.2026 08:40", "10.08.2026 08:40"]);
+  });
+
+  it("the sort select exists only on the EXPECTED stage", async () => {
+    renderPage(`/labs/${LAB}/arrivals?queue=work`);
+    await screen.findByText("говядина");
+    expect(screen.queryByLabelText("Сортировка")).toBeNull();
+  });
+
+  it("the sort select is keyboard-focusable and survives a URL with sort=asc", async () => {
+    renderPage(`/labs/${LAB}/arrivals?queue=expected&sort=asc`);
+    await screen.findByText("говядина");
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.value).toBe("asc");
+    select.focus();
+    expect(document.activeElement).toBe(select);
+  });
 });

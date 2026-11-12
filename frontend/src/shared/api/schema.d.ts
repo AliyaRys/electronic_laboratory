@@ -3415,6 +3415,7 @@ export interface operations {
                 result?: ("WAITING" | "RETURNED" | "COMPLETED") | null;
                 q?: string | null;
                 page?: number;
+                sort?: ("asc" | "desc") | null;
             };
             header?: never;
             path?: never;

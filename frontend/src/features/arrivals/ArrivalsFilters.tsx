@@ -8,10 +8,16 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../shared/ui/Icon";
-import { RESULT_LABELS, type ArrivalResult } from "./api";
+import { RESULT_LABELS, type ArrivalResult, type ArrivalSort } from "./api";
 
 const SEARCH_PLACEHOLDER = "UUID ВСД, хозяйство, продукция или ТС";
 const DEBOUNCE_MS = 300;
+
+/** DR15 §5.1: the two exact mockup labels of the EXPECTED sort filter. */
+export const SORT_LABELS: Readonly<Record<ArrivalSort, string>> = Object.freeze({
+  asc: "Сначала оформленные раньше",
+  desc: "Сначала оформленные позже",
+});
 
 export interface ArrivalsFiltersProps {
   /** Current committed search value (from the URL). */
@@ -20,6 +26,9 @@ export interface ArrivalsFiltersProps {
   /** Server-supported result filter of the accepted queue. */
   result?: string | undefined;
   onResultChange?: ((result: string) => void) | undefined;
+  /** DR15 §5.1: the issue-date sort of the EXPECTED queue. */
+  sort?: ArrivalSort | undefined;
+  onSortChange?: ((sort: ArrivalSort) => void) | undefined;
   /** Column chooser of the accepted queue (session-only preference). */
   columns?: React.ReactNode;
 }
@@ -29,6 +38,8 @@ export function ArrivalsFilters({
   onSearch,
   result,
   onResultChange,
+  sort,
+  onSortChange,
   columns,
 }: ArrivalsFiltersProps): React.ReactElement {
   const [value, setValue] = useState(q);
@@ -94,6 +105,19 @@ export function ArrivalsFilters({
                   {RESULT_LABELS[key]}
                 </option>
               ))}
+            </select>
+          </div>
+        ) : null}
+        {sort !== undefined && onSortChange !== undefined ? (
+          <div className="arrivals-filter-field">
+            <label htmlFor="sort-order">Сортировка</label>
+            <select
+              id="sort-order"
+              value={sort}
+              onChange={(event) => onSortChange(event.target.value as ArrivalSort)}
+            >
+              <option value="asc">{SORT_LABELS.asc}</option>
+              <option value="desc">{SORT_LABELS.desc}</option>
             </select>
           </div>
         ) : null}

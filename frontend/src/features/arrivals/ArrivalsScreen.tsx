@@ -14,7 +14,13 @@ import {
 import { ArrivalsFilters, ColumnsChooser } from "./ArrivalsFilters";
 import { ArrivalsPagination } from "./ArrivalsPagination";
 import { StageTabs, type StageCount } from "./StageTabs";
-import { STAGE_DESCRIPTIONS, type ArrivalQueue, type IncomingView, type Problem } from "./api";
+import {
+  STAGE_DESCRIPTIONS,
+  type ArrivalQueue,
+  type ArrivalSort,
+  type IncomingView,
+  type Problem,
+} from "./api";
 import { StatusView } from "../../shared/ui/StatusView";
 
 export interface ArrivalsScreenProps {
@@ -25,6 +31,9 @@ export interface ArrivalsScreenProps {
   onSearch: (q: string) => void;
   result: string;
   onResultChange: (result: string) => void;
+  /** DR15 §5.1: the issue-date sort of the EXPECTED queue only. */
+  sort: ArrivalSort;
+  onSortChange: (sort: ArrivalSort) => void;
   hiddenColumns: ReadonlySet<string>;
   onToggleColumn: (id: string) => void;
   labId: string;
@@ -56,6 +65,8 @@ export function ArrivalsScreen({
   onSearch,
   result,
   onResultChange,
+  sort,
+  onSortChange,
   hiddenColumns,
   onToggleColumn,
   labId,
@@ -102,7 +113,13 @@ export function ArrivalsScreen({
         }
       />
     ) : (
-      <ArrivalsFilters key={q} q={q} onSearch={onSearch} />
+      <ArrivalsFilters
+        key={q}
+        q={q}
+        onSearch={onSearch}
+        sort={queue === "EXPECTED" ? sort : undefined}
+        onSortChange={queue === "EXPECTED" ? onSortChange : undefined}
+      />
     );
 
   return (

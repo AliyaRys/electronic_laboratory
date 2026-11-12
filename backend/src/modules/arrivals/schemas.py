@@ -145,7 +145,22 @@ class VdDocument(StrictModel):
     consignee: ConsignorConsignee
     batch: Batch
     transport_number: str | None = Field(default=None, max_length=64)
+    # ТЗ DR17 §5.1: the trailer is a SEPARATE source fact, never merged with
+    # the vehicle number into one string.
+    trailer_number: str | None = Field(default=None, max_length=64)
     purpose: PurposeRef | None = None
+
+
+# ТЗ DR17 §1/§5.2: the agreed informational text published for an absent or
+# empty ``vd:trailerNumber``. It is a projection value only — never written
+# into the raw XML, never a fictive number, never «—» or «Не указано».
+ABSENT_TRAILER_TEXT = "Прицеп отсутствует"
+
+
+def trailer_projection(value: str | None) -> str:
+    """The published trailer field: the source number or the agreed text."""
+    text = (value or "").strip()
+    return text if text else ABSENT_TRAILER_TEXT
 
 
 class SourceSnapshot(StrictModel):

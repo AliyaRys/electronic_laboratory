@@ -294,6 +294,8 @@ export interface ComparedField {
   block: "participants" | "transport" | "product" | "documents";
   label: string;
   source: string;
+  /** ТЗ DR17 §6: the explicit placeholder of the mismatch fact input. */
+  actualPlaceholder?: string | undefined;
 }
 
 /** User-facing reconciliation section titles (mockup wording). */
@@ -379,9 +381,10 @@ export function comparedFields(view: IncomingView): ComparedField[] {
     block: ComparedField["block"],
     label: string,
     source: string | null | undefined,
+    actualPlaceholder?: string,
   ): void => {
     if (source !== null && source !== undefined && source !== "") {
-      fields.push({ fieldId, block, label, source });
+      fields.push({ fieldId, block, label, source, ...(actualPlaceholder ? { actualPlaceholder } : {}) });
     }
   };
   push(
@@ -405,7 +408,16 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   push("CHK-F08", "participants", "Получатель — владелец", source(external.receiverOwner));
   push("CHK-F09", "transport", "Вид транспорта", source(external.transportKind));
   push("CHK-F10", "transport", "Номер ТС", source(external.transportNumber, external.vehicleNumber));
-  push("CHK-F11", "transport", "Номер прицепа", source(external.trailerNumber));
+  // ТЗ DR17 §6: CHK-F11 sits between the vehicle number and the storage;
+  // an absent trailer arrives as the agreed text «Прицеп отсутствует»
+  // (an informational value, never an empty field and never «—»).
+  push(
+    "CHK-F11",
+    "transport",
+    "Номер прицепа/полуприцепа",
+    source(external.trailerNumber),
+    "Фактический номер прицепа/полуприцепа",
+  );
   push("CHK-F12", "transport", "Хранение", source(external.storage));
   push("CHK-F15", "product", "Тип продукции", source(classification.productType, external.productType));
   push("CHK-F16", "product", "Продукция", source(classification.product?.name, external.product));

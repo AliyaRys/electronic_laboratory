@@ -31,6 +31,7 @@ from backend.src.modules.arrivals.schemas import (
     ExternalFields,
     IncomingView,
     QuantitySet,
+    trailer_projection,
 )
 from backend.src.modules.integrations.vetis.models import VetisContour
 from backend.src.modules.integrations.vetis.queries import find_purpose_name
@@ -360,6 +361,10 @@ def _external_fields(
         "purposeGuid": purpose_guid,
         "purposeUuid": purpose_uuid,
         "transportNumber": document_payload.get("transportNumber") or None,
+        # ТЗ DR17 §5.2: the separate vehicle/trailer keys; an absent trailer
+        # publishes the agreed informational text «Прицеп отсутствует».
+        "vehicleNumber": document_payload.get("transportNumber") or None,
+        "trailerNumber": trailer_projection(document_payload.get("trailerNumber")),
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),
         "productItem": str(product_item.get("name") or "") if product_item is not None else None,

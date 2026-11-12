@@ -37,6 +37,7 @@ from typing import Literal
 
 from backend.src.core.problems import ProblemItem
 from backend.src.modules.arrivals.schemas import (
+    ABSENT_TRAILER_TEXT,
     ActItem,
     ActPreview,
     ClassificationView,
@@ -308,14 +309,20 @@ def validate_receipt(
         if not _present(source_value):
             continue  # informational absence never demands a fictitious mark
         mark = payload.checks.get(spec.field_id)
+        # ТЗ DR17 §7: an ABSENT trailer is published as the agreed
+        # informational text («Прицеп отсутствует»). The absence itself is
+        # never an error and never an automatic mismatch: «Совпадает» is an
+        # explicit mark that needs no actual input, and a mark is optional.
+        absent_trailer = spec.key == "trailerNumber" and source_value == ABSENT_TRAILER_TEXT
         if mark is None:
-            errors.append(
-                _item(
-                    f"checks.{spec.field_id}",
-                    spec.field_id,
-                    "Сравнение не отмечено: подтвердите совпадение или укажите факт.",
+            if not absent_trailer:
+                errors.append(
+                    _item(
+                        f"checks.{spec.field_id}",
+                        spec.field_id,
+                        "Сравнение не отмечено: подтвердите совпадение или укажите факт.",
+                    )
                 )
-            )
             continue
         if not mark.matches:
             grounds[spec.field_id] = mark

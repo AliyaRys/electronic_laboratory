@@ -1233,3 +1233,104 @@ describe("ТЗ DR13: полнота сверки и повторное сохр�
     }
   });
 });
+
+describe("ТЗ DR17: номер прицепа/полуприцепа (CHK-F11)", () => {
+  /** The same party whose source carries a real trailer number. */
+  const partyWithTrailer: IncomingView = {
+    ...party,
+    external: {
+      ...party.external,
+      fields: {
+        ...party.external.fields,
+        transportKind: "Автомобильный",
+        trailerNumber: "Т456РР116",
+        storage: "FROZEN",
+      },
+    },
+  };
+  /** The absent trailer: the backend publishes the agreed informational text. */
+  const partyAbsentTrailer: IncomingView = {
+    ...party,
+    external: {
+      ...party.external,
+      fields: { ...party.external.fields, trailerNumber: "Прицеп отсутствует" },
+    },
+  };
+
+  it("shows the trailer card in the transport block between the ТС number and storage", () => {
+    const fields = comparedFields(partyWithTrailer).filter((field) => field.block === "transport");
+    expect(fields.map((field) => field.fieldId)).toEqual(["CHK-F09", "CHK-F10", "CHK-F11", "CHK-F12"]);
+    expect(fields.find((field) => field.fieldId === "CHK-F11")).toMatchObject({
+      label: "Номер прицепа/полуприцепа",
+      source: "Т456РР116",
+    });
+  });
+
+  it("renders the trailer value from the fixture in the form", () => {
+    renderForm({ party: partyWithTrailer });
+    const card = screen.getByText("Номер прицепа/полуприцепа").closest("[data-field-id]");
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain("Т456РР116");
+  });
+
+  it("shows «Прицеп отсутствует» when the XML has no trailer node", () => {
+    renderForm({ party: partyAbsentTrailer });
+    const card = screen.getByText("Номер прицепа/полуприцепа").closest("[data-field-id]");
+    expect(card?.textContent).toContain("Прицеп отсутствует");
+  });
+
+  it("allows the explicit «Совпадает» mark for an absent trailer without any actual input", async () => {
+    const savedPayloads: { checks: Record<string, unknown> }[] = [];
+    const server = setupServer(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+        savedPayloads.push((await request.json()) as { checks: Record<string, unknown> });
+        return HttpResponse.json({ ...emptyView, revision: 2 }, { status: 200 });
+      }),
+    );
+    server.listen();
+    try {
+      renderForm({ party: partyAbsentTrailer });
+      const radio = screen.getByRole("radio", { name: "Совпадает: Номер прицепа/полуприцепа" });
+      expect(radio).toBeEnabled();
+      // No actual/reason inputs are required for the match mark.
+      expect(screen.queryByLabelText("Фактическое значение")).toBeNull();
+      await userEvent.click(radio);
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(savedPayloads.length).toBe(1));
+      expect(savedPayloads[0].checks["CHK-F11"]).toEqual({ matches: true });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("opens the fact inputs with the agreed placeholder for a mismatch", async () => {
+    renderForm({ party: partyWithTrailer });
+    await userEvent.click(screen.getByRole("radio", { name: "Не совпадает: Номер прицепа/полуприцепа" }));
+    const actual = screen.getByLabelText("Фактическое значение");
+    expect(actual.getAttribute("placeholder")).toBe("Фактический номер прицепа/полуприцепа");
+    expect(screen.getByLabelText("Причина несоответствия")).toBeInTheDocument();
+  });
+
+  it("restores the saved CHK-F11 mark on reopening", () => {
+    const withSavedMark: ReconciliationView = {
+      ...emptyView,
+      checks: { "CHK-F11": { matches: true, actual: null, reason: null } },
+    };
+    renderForm({ party: partyWithTrailer, initial: withSavedMark });
+    expect(
+      (screen.getByRole("radio", { name: "Совпадает: Номер прицепа/полуприцепа" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+  });
+
+  it("keeps the accessible radio semantics and focus for the trailer marks", async () => {
+    renderForm({ party: partyWithTrailer });
+    const match = screen.getByRole("radio", { name: "Совпадает: Номер прицепа/полуприцепа" });
+    const mismatch = screen.getByRole("radio", { name: "Не совпадает: Номер прицепа/полуприцепа" });
+    expect(match.getAttribute("type")).toBe("radio");
+    expect(mismatch.getAttribute("name")).toBe("checks.CHK-F11.matches");
+    expect(match.getAttribute("aria-label")).toBe("Совпадает: Номер прицепа/полуприцепа");
+    match.focus();
+    expect(document.activeElement).toBe(match);
+  });
+});

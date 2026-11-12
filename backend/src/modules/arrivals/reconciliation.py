@@ -143,10 +143,10 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
 
 
 def _quantities(row: Reconciliation, source_unit_id: str = "") -> tuple[QuantitySet, QuantitySet, QuantitySet]:
-    """ТЗ DR10 §5: a stored EMPTY unit is safely normalized from the immutable
-    source snapshot for the view; a non-empty (even mismatching) GUID stays as
-    saved and surfaces as the clear parts-conflict of validate_receipt."""
-    unit_id_of = lambda saved: saved or source_unit_id  # noqa: E731
+    """ТЗ DR10 §5: the view of a saved row shows the source GUID whenever the
+    snapshot carries one (the same normalization the save path persists); a
+    mismatching saved GUID never survives into the visible state."""
+    unit_id_of = lambda saved: source_unit_id or saved  # noqa: E731
     return (
         QuantitySet(
             mass_kg=str(row.delivered_mass_kg),
@@ -382,23 +382,21 @@ async def save_reconciliation(
     ).scalar_one()
     # ТЗ DR8 R-DR8-1 / ТЗ DR10 §5: the source unit GUID is the canonical unit
     # identity — a NEW reconciliation inherits it into all three QuantitySets
-    # (the client unit never overrides it) and an EXISTING one keeps a saved
-    # non-empty GUID but has an empty part safely normalized from the
-    # immutable source snapshot before validation.
+    # (the client unit never overrides it) and an EXISTING one is normalized
+    # from the immutable source snapshot before validation.
     saved = normalize_payload(payload)
     source_unit_id = _source_unit_id(document_row)
     if source_unit_id:
-
-        def _unit(part: str) -> QuantitySet:
-            value = getattr(saved, part)
-            unit_id = value.unit_id.strip() if row is not None else ""
-            return value.model_copy(update={"unit_id": unit_id or source_unit_id})
-
+        # ТЗ DR10 §5/R-DR10-3 (fix round 1): the immutable source snapshot is
+        # the single unit authority — an EMPTY, STALE or MISMATCHING unit in
+        # any part is safely normalized to the source GUID (never a conflict
+        # the user must guess); a save can never persist a unit that differs
+        # from the source, so an XML with an empty/wrong unit is impossible.
         saved = saved.model_copy(
             update={
-                "delivered": _unit("delivered"),
-                "accepted": _unit("accepted"),
-                "returned": _unit("returned"),
+                "delivered": saved.delivered.model_copy(update={"unit_id": source_unit_id}),
+                "accepted": saved.accepted.model_copy(update={"unit_id": source_unit_id}),
+                "returned": saved.returned.model_copy(update={"unit_id": source_unit_id}),
             }
         )
     validation = validate_receipt(saved, source_projection(document_row, party), CAPABILITIES)

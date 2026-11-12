@@ -14,7 +14,7 @@ from backend.src.modules.arrivals.commands import _entry
 from backend.src.modules.arrivals.models import IncomingDocument as IncomingDocumentRow
 from backend.src.modules.arrivals.models import Party
 from backend.src.modules.arrivals.queries import _quantity_set, _unit_name
-from backend.src.modules.arrivals.reconciliation import _source_unit_id, build_reconciliation_view
+from backend.src.modules.arrivals.reconciliation import build_reconciliation_view
 from backend.src.modules.arrivals.schemas import ExternalRef, ReconciliationWrite
 from backend.src.modules.integrations.vetis.models import VetisContour
 
@@ -100,13 +100,46 @@ def test_empty_reconciliation_with_source_guid_has_no_false_missing() -> None:
     assert all("не содержит единицу" not in item.message for item in view.errors)
 
 
-def test_stale_saved_reconciliation_is_normalized_from_source_snapshot() -> None:
-    """§5/R-DR10-3: a saved row with an empty unit is normalized from the
-    immutable source snapshot — never an XML with an empty unit."""
-    from backend.src.modules.arrivals.reconciliation import row_to_payload  # noqa: F401
+async def test_saved_reconciliation_units_are_normalized_at_save(db_session) -> None:
+    """Fix round 1 §5/R-DR10-3: through the REAL save path a stale/empty AND a
+    mismatching saved unit are normalized from the immutable source snapshot;
+    the persisted row can never keep a unit that differs from the source."""
+    from sqlalchemy import select
 
-    row = document_row()
-    assert _source_unit_id(row) == UNIT_GUID
+    from backend.src.core.contracts import CommandContext
+    from backend.src.modules.arrivals.models import Reconciliation
+    from backend.src.modules.arrivals.reconciliation import save_reconciliation
+    from backend.src.modules.identity.models import Laboratory, Territory, User
+
+    territory = Territory(name="Тестовая территория DR10")
+    db_session.add(territory)
+    await db_session.flush()
+    lab = Laboratory(
+        territory_id=territory.id,
+        name="Тестовая лаборатория DR10",
+        address="адрес",
+        organization="ГБУ",
+    )
+    db_session.add(lab)
+    await db_session.flush()
+    actor = User(
+        login=f"vet-{uuid.uuid4()}",
+        full_name="Ветеринар fixture",
+        email=f"{uuid.uuid4()}@example.test",
+        password_hash="fixture",
+        role="VET",
+    )
+    db_session.add(actor)
+    await db_session.flush()
+    document = document_row()
+    document.laboratory_id = lab.id
+    db_session.add(document)
+    await db_session.flush()
+    owner = party()
+    owner.laboratory_id = lab.id
+    owner.incoming_document_id = document.id
+    db_session.add(owner)
+    await db_session.flush()
     payload = ReconciliationWrite.model_validate(
         {
             "checks": {},
@@ -119,14 +152,29 @@ def test_stale_saved_reconciliation_is_normalized_from_source_snapshot() -> None
             "services": [],
         }
     )
-    saved = payload.model_copy(
-        update={
-            "delivered": payload.delivered.model_copy(update={"unit_id": _source_unit_id(row)}),
-            "accepted": payload.accepted.model_copy(update={"unit_id": _source_unit_id(row)}),
-            "returned": payload.returned.model_copy(update={"unit_id": _source_unit_id(row)}),
-        }
-    )
-    assert row_to_payload is not None  # the save path uses this normalization
-    assert saved.delivered.unit_id == UNIT_GUID
-    assert saved.accepted.unit_id == UNIT_GUID
-    assert saved.returned.unit_id == UNIT_GUID
+    ctx = CommandContext(actor_id=actor.id, idempotency_key=str(uuid.uuid4()), expected_revision=owner.rev)
+    await save_reconciliation(ctx, owner.id, payload, uow=db_session)  # type: ignore[arg-type]
+    await db_session.commit()
+    row = (
+        await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == owner.id))
+    ).scalar_one()
+    # §8-3: an empty client unit is inherited from the source snapshot.
+    assert row.delivered_unit_id == UNIT_GUID
+    assert row.accepted_unit_id == UNIT_GUID
+    assert row.returned_unit_id == UNIT_GUID
+
+    # §5 fix round 1: a MISMATCHING saved GUID is normalized too.
+    wrong = "11111111-2222-4333-8444-555555555555"
+    row.accepted_unit_id = wrong
+    await db_session.commit()
+    ctx = CommandContext(actor_id=actor.id, idempotency_key=str(uuid.uuid4()), expected_revision=row.rev)
+    await save_reconciliation(ctx, owner.id, payload, uow=db_session)  # type: ignore[arg-type]
+    await db_session.commit()
+    row = (
+        await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == owner.id))
+    ).scalar_one()
+    assert row.delivered_unit_id == UNIT_GUID
+    assert row.accepted_unit_id == UNIT_GUID
+    assert row.returned_unit_id == UNIT_GUID
+    view = build_reconciliation_view(row, owner, document)  # type: ignore[arg-type]
+    assert view.accepted.unit_id == UNIT_GUID

@@ -7,6 +7,7 @@
  */
 import "./reconciliation.css";
 import { StatusView } from "../../shared/ui/StatusView";
+import { configurationMissingText } from "./api";
 import type { Problem } from "../../shared/api/problem";
 
 export interface ReconciliationFeedbackProps {
@@ -33,6 +34,18 @@ export function ReconciliationFeedback({
     return null;
   }
   if (problem.code !== "VALIDATION_ERROR") {
+    if (problem.code === "CONFIGURATION_MISSING") {
+      // ТЗ DR11 §7: the missing service/rule is named — never an empty
+      // invoice block and never a silent zero.
+      return (
+        <StatusView
+          state="no-scope"
+          title="Стоимость услуг не рассчитана."
+          detail={configurationMissingText(problem)}
+          trace={problem.trace_id !== "" ? `${problem.code}: ${problem.detail}` : undefined}
+        />
+      );
+    }
     const conflict = problem.code === "REVISION_CONFLICT" || problem.code === "STATE_CONFLICT";
     return (
       <StatusView

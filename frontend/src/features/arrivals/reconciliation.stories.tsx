@@ -248,6 +248,97 @@ export const Ярмарка = formStory({
   complete: true,
 });
 
+/** 10a. ТЗ DR11: рассчитанная стоимость двух услуг сверки (saved snapshot). */
+export const РасчетСтоимости: StoryObj<typeof ReconciliationForm> = formStory({
+  ...savedView,
+  checks: allMatchedChecks,
+  decision: "ACCEPT_ALL",
+  complete: true,
+  pricing: {
+    lines: [
+      {
+        service_code: "PRODUCT_IDENTIFICATION",
+        name: "Идентификация продукции по наименованию и визуальным осмотром",
+        unit_id: "aaaaaaaa-1111-4111-8111-111111111111",
+        quantity: "1",
+        unit_price: "100.00",
+        amount: "100.00",
+      },
+      {
+        service_code: "TRANSPORT_INSPECTION",
+        name: "Ветеринарно-санитарная оценка и идентификация транспорта",
+        unit_id: "service",
+        quantity: "1",
+        unit_price: "130.00",
+        amount: "130.00",
+      },
+    ],
+    total: "230.00",
+    currency: "RUB",
+    fair: false,
+  },
+});
+
+/** 10b. ТЗ DR11: ярмарка — обе услуги выполнены, сохранённый итог 0,00 ₽. */
+export const ЯрмаркаБезОплаты: StoryObj<typeof ReconciliationForm> = formStory({
+  ...savedView,
+  checks: allMatchedChecks,
+  decision: "ACCEPT_ALL",
+  fair: true,
+  complete: true,
+  pricing: {
+    lines: [
+      {
+        service_code: "PRODUCT_IDENTIFICATION",
+        name: "Идентификация продукции по наименованию и визуальным осмотром",
+        unit_id: "service",
+        quantity: "1",
+        unit_price: "0.00",
+        amount: "0.00",
+      },
+      {
+        service_code: "TRANSPORT_INSPECTION",
+        name: "Ветеринарно-санитарная оценка и идентификация транспорта",
+        unit_id: "service",
+        quantity: "1",
+        unit_price: "0.00",
+        amount: "0.00",
+      },
+    ],
+    total: "0.00",
+    currency: "RUB",
+    fair: true,
+  },
+});
+
+/** 10c. ТЗ DR11: отсутствующая конфигурация — названа конкретная услуга. */
+const configurationProblem: Problem = {
+  type: "about:blank",
+  code: "CONFIGURATION_MISSING",
+  title: "Configuration missing",
+  status: 422,
+  detail: "Для услуги сверки нет тарифа в прейскуранте.",
+  trace_id: "trace-config-1",
+  errors: [
+    {
+      path: "performed.TRANSPORT_INSPECTION",
+      field_id: "CHECK",
+      message: "Для услуги сверки нет тарифа в прейскуранте.",
+    },
+  ],
+};
+export const КонфигурацияОтсутствует: StoryObj = {
+  render: () => (
+    <div style={{ maxWidth: 1180, padding: 16 }}>
+      <ReconciliationFeedback
+        problem={configurationProblem}
+        onRefresh={() => undefined}
+        onRetry={() => undefined}
+      />
+    </div>
+  ),
+};
+
 /** 11. Акт несоответствия (в секции результатов). */
 export const АктНесоответствия = formStory({
   ...savedView,

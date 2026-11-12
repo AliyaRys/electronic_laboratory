@@ -15,7 +15,8 @@ from backend.src.modules.arrivals import commands
 from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine, get_authorizer
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole, UserScope
 from backend.src.modules.identity.session import SessionTransport, get_session_transport
-from backend.tests.arrivals.test_import_and_queues import document
+from backend.tests.arrivals.check_pricing_seed import seed_check_pricing
+from backend.tests.arrivals.test_import_and_queues import PILOT_BEEF, document
 from backend.tests.identity.test_sessions import MemoryRedis, TestClock
 
 PLAYER = "correct horse battery"
@@ -68,6 +69,10 @@ async def vet_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespace:
     db_session.add(vet)
     await db_session.flush()
     db_session.add(UserScope(user_id=vet.id, laboratory_id=own.id, product_scope_id=uuid.uuid4()))
+    # ТЗ DR11: the default arrivals fixtures keep the check-services tariff of
+    # the default beef scope configured, so full valid saves can price.
+    await seed_check_pricing(db_session, own.id, PILOT_BEEF)
+    await seed_check_pricing(db_session, foreign.id, PILOT_BEEF)
     await db_session.commit()
     return SimpleNamespace(
         db=db_session,

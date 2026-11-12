@@ -125,6 +125,10 @@ class Reconciliation(Base):
     transaction_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     fair: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     services: Mapped[dict[str, object]] = mapped_column(JSONB)
+    # ТЗ DR11 §5/§6: the frozen server-computed PricingSnapshot of the full
+    # valid save (context="CHECK"); an incomplete save keeps NULL and a
+    # later tariff change never recalculates the stored value (ADR-020).
+    pricing_snapshot: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     repeated_required: Mapped[bool | None] = mapped_column(nullable=True)
     repeat_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     repeat_act_number: Mapped[str | None] = mapped_column(String(64), nullable=True)

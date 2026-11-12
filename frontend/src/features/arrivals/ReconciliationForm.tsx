@@ -27,9 +27,11 @@ import {
   decisionLabel,
   documentFacts,
   hasSourceUnit,
+  moneyLabel,
   partyUnit,
   partyUnitLabel,
   participantOwner,
+  pricingUnitLabel,
   previousVse,
   saveReconciliation,
   revisionEtag,
@@ -670,13 +672,13 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         <ActPreview act={initial.act} decision={decision} problemItems={actErrors} />
       </CheckSectionCard>
 
-      {/* 8. Расчёт стоимости услуг — honest server state, the fair flag. */}
+      {/* 8. Расчёт стоимости услуг — the server-computed snapshot; the fair flag. */}
       <CheckSectionCard
         sectionKey="invoice"
         title={CHECK_SECTION_TITLES.invoice}
         description={CHECK_SECTION_DESCRIPTIONS.invoice}
       >
-        {initial.services.length === 0 ? (
+        {initial.pricing === undefined || initial.pricing === null ? (
           <p className="vse-rec-invoice-empty">
             Стоимость будет рассчитана после сохранения и подтверждения сверки.
           </p>
@@ -687,22 +689,29 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
               <thead>
                 <tr>
                   <th scope="col">Услуга</th>
+                  <th scope="col">Единица расчёта</th>
                   <th scope="col">Количество</th>
                   <th scope="col">Тариф</th>
                   <th scope="col">Сумма</th>
                 </tr>
               </thead>
               <tbody>
-                {initial.services.map((service) => (
-                  <tr key={service.code}>
-                    <td>{service.code}</td>
-                    <td>—</td>
-                    <td>—</td>
-                    <td>—</td>
+                {initial.pricing.lines.map((line) => (
+                  <tr key={line.service_code}>
+                    <td>{line.name}</td>
+                    <td>{pricingUnitLabel(line.unit_id)}</td>
+                    <td>{line.quantity}</td>
+                    <td>{moneyLabel(line.unit_price)}</td>
+                    <td>{moneyLabel(line.amount)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <p className="vse-rec-invoice-total">
+              <span>Итого</span>
+              {/* The total is the SAVED server value; the client never computes it. */}
+              <strong>{moneyLabel(initial.pricing.total)}</strong>
+            </p>
           </div>
         )}
         <label className="vse-rec-invoice-waiver">

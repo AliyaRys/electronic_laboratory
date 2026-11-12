@@ -486,26 +486,46 @@ async def run_sync(
         observed_uuids = sorted(
             value for value in observed if _parseable_uuid(value)
         )
-        # (1) Observed documents of this laboratory/contour are current again.
+        # (1) Observed documents of this laboratory/contour: the observation
+        # timestamp refreshes EVERY pass (that is the §4 semantics of
+        # last_seen_sync_at; the freshness index columns stay untouched, so
+        # the write is cheap), but the STATE columns change only on a real
+        # transition back from a stale/unknown state (Fix round 1: no
+        # no-op state writes, no overwritten transition timestamps).
         if observed_uuids:
+            observed_keys = [uuid.UUID(value) for value in observed_uuids]
             await db.execute(
                 update(IncomingDocument)
                 .where(
                     IncomingDocument.laboratory_id == operation.laboratory_id,
                     IncomingDocument.contour == contour,
-                    IncomingDocument.evsd_uuid.in_([uuid.UUID(value) for value in observed_uuids]),
+                    IncomingDocument.evsd_uuid.in_(observed_keys),
+                    IncomingDocument.source_presence != "CURRENT_CONFIRMED",
                 )
                 .values(
                     source_presence="CURRENT_CONFIRMED",
                     source_presence_reason=None,
                     last_seen_sync_at=checkpoint,
-                    presence_changed_at=None,
+                    presence_changed_at=checkpoint,
                 )
+            )
+            await db.execute(
+                update(IncomingDocument)
+                .where(
+                    IncomingDocument.laboratory_id == operation.laboratory_id,
+                    IncomingDocument.contour == contour,
+                    IncomingDocument.evsd_uuid.in_(observed_keys),
+                    IncomingDocument.source_presence == "CURRENT_CONFIRMED",
+                )
+                .values(last_seen_sync_at=checkpoint)
             )
         # (2) Local documents NOT in the full observed set are stale — never
         # deleted: NOT_IN_CURRENT_CONFIRMED_LIST, never a fabricated UTILIZED
         # (ТЗ DR9 §1/§5). A valid total=0 full pass deactivates everything of
         # the (verified) scope; an errored run never reaches this code.
+        # Fix round 1: ONLY the transition is written — an already-stale row
+        # keeps its ORIGINAL deactivation timestamp (presence_changed_at) and
+        # is not touched again; marked_not_current counts transitions.
         missing = (
             await db.execute(
                 update(IncomingDocument)
@@ -513,6 +533,7 @@ async def run_sync(
                     IncomingDocument.laboratory_id == operation.laboratory_id,
                     IncomingDocument.contour == contour,
                     ~IncomingDocument.evsd_uuid.in_([uuid.UUID(value) for value in observed_uuids]),
+                    IncomingDocument.source_presence != "NOT_IN_CURRENT_CONFIRMED_LIST",
                 )
                 .values(
                     source_presence="NOT_IN_CURRENT_CONFIRMED_LIST",
@@ -587,10 +608,12 @@ async def _import_item(
 ) -> bool:
     """Upsert one eVSD + journal its raw source XML (same transaction).
 
-    Returns whether the import CREATED the document (ТЗ DR9 §7 counters) or
-    refreshed an existing one.
+    Returns whether the import CREATED the IncomingDocument (ТЗ DR9 §7
+    counters) or refreshed an existing one. The journaling pre-check below is
+    a DIFFERENT lookup (the raw source-document row) and never feeds this
+    counter.
     """
-    existing = (
+    existing_incoming = (
         await db.execute(
             select(IncomingDocument.id).where(
                 IncomingDocument.contour == str(item.contour),
@@ -598,12 +621,13 @@ async def _import_item(
             )
         )
     ).scalar_one_or_none()
+    created = existing_incoming is None
     await upsert_incoming(db, item)
     raw = page.raw_documents.get(str(item.evsd_uuid))
     if raw is None:
-        return
+        return created  # nothing journalled; the import still happened
     checksum = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    existing = (
+    existing_source = (
         await db.execute(
             select(VetisSourceDocument).where(
                 VetisSourceDocument.contour == str(item.contour),
@@ -611,7 +635,7 @@ async def _import_item(
             )
         )
     ).scalar_one_or_none()
-    if existing is None:
+    if existing_source is None:
         db.add(
             VetisSourceDocument(
                 contour=str(item.contour),
@@ -621,13 +645,13 @@ async def _import_item(
                 checksum=checksum,
             )
         )
-    elif existing.checksum != checksum:
+    elif existing_source.checksum != checksum:
         await db.execute(
             update(VetisSourceDocument)
-            .where(VetisSourceDocument.id == existing.id)
-            .values(raw_xml=raw, checksum=checksum, revision=existing.revision + 1, updated_at=datetime.now(UTC))
+            .where(VetisSourceDocument.id == existing_source.id)
+            .values(raw_xml=raw, checksum=checksum, revision=existing_source.revision + 1, updated_at=datetime.now(UTC))
         )
-    return existing is None
+    return created
 
 
 # --- the 15-minute scheduler ----------------------------------------------------

@@ -188,10 +188,16 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
                 rev=existing.rev + 1,
                 # A re-imported (possibly re-appeared CONFIRMED) document is
                 # observed again; a stale mark is cleared without a second row.
+                # Fix round 1: the reactivation IS a transition and gets its
+                # own timestamp; an already-current document keeps its (empty) one.
                 source_presence="CURRENT_CONFIRMED",
                 source_presence_reason=None,
                 last_seen_sync_at=document.fetched_at,
-                presence_changed_at=None,
+                presence_changed_at=(
+                    document.fetched_at
+                    if existing.source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST"
+                    else None
+                ),
             )
         )
         await uow.execute(
@@ -214,10 +220,15 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
                 rev=existing.rev + 1,
                 # The same document observed again: a NOT_IN_CURRENT_CONFIRMED_LIST
                 # mark is cleared WITHOUT duplicating the party (ТЗ DR9 §4).
+                # Fix round 1: the reactivation is a transition (own timestamp).
                 source_presence="CURRENT_CONFIRMED",
                 source_presence_reason=None,
                 last_seen_sync_at=document.fetched_at,
-                presence_changed_at=None,
+                presence_changed_at=(
+                    document.fetched_at
+                    if existing.source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST"
+                    else None
+                ),
             )
         )
     return (await uow.execute(select(Party).where(Party.incoming_document_id == existing.id))).scalar_one()

@@ -7,6 +7,7 @@ flag-agnostic — see test_sync.py::test_no_write_on_read_stage).
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -19,7 +20,12 @@ from backend.src.modules.arrivals.models import HiddenIncoming, IncomingDocument
 from backend.src.modules.arrivals.queries import arrival_page
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole
 from backend.src.modules.integrations.vetis import sync
-from backend.src.modules.integrations.vetis.models import VetisBinding, VetisContour
+from backend.src.modules.integrations.vetis.contracts import VetisScope
+from backend.src.modules.integrations.vetis.models import (
+    VetisBinding,
+    VetisContour,
+    VetisSourceDocument,
+)
 from backend.tests.vetis.test_read_contract import FakeTransport, doc, page
 from backend.tests.vetis.test_sync import (
     FailOnLastPage,
@@ -78,7 +84,14 @@ async def run_pass(env: SimpleNamespace, transport) -> str:
     """One full sync pass; returns the operation id."""
     accepted = await sync.start_sync(env.db, actor_id=uuid.uuid4(), laboratory_id=env.lab.id)
     await env.db.commit()
-    adapter = make_adapter(env, transport)
+    await sync.run_sync(accepted.operation_id, adapter=make_adapter(env, transport), session_factory=env.factory)
+    return accepted.operation_id
+
+
+async def run_adapter(env: SimpleNamespace, adapter) -> str:
+    """One full sync pass with a READY adapter (no second wrapping)."""
+    accepted = await sync.start_sync(env.db, actor_id=uuid.uuid4(), laboratory_id=env.lab.id)
+    await env.db.commit()
     await sync.run_sync(accepted.operation_id, adapter=adapter, session_factory=env.factory)
     return accepted.operation_id
 
@@ -326,3 +339,92 @@ async def test_success_diagnostics_counters_of_the_full_pass(dr9_env: SimpleName
     assert failed.state == "FAILED"
     assert "external_total" not in diagnose(failed)
     assert "marked_not_current" not in diagnose(failed)
+
+
+# --- Fix round 1: honest import counters and transition-only timestamps --------
+
+
+class WithoutRawDocuments:
+    """A page adapter whose answers carry NO journalled raw XML (raw=None)."""
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    async def list_incoming(self, scope: VetisScope, cursor: str | None, initiator: str):
+        result = await self._inner.list_incoming(scope, cursor, initiator)
+        return result.model_copy(update={"raw_documents": {}})
+
+
+async def test_new_document_without_raw_xml_counts_as_new(dr9_env: SimpleNamespace) -> None:
+    """(a) raw=None on the page must NOT flip a created import into 'updated'."""
+    env = dr9_env
+    a = uuid.uuid4()
+    operation_id = await run_adapter(
+        env,
+        WithoutRawDocuments(make_adapter(env, FakeTransport([page(1, 0, [doc(a, "1")])]))),
+    )
+    operation = await op_row(env, operation_id)
+    assert operation.state == "SUCCESS", (operation.state, operation.problem_code)
+    counters = diagnose(operation)
+    assert counters["new_documents"] == 1, json.dumps(counters, ensure_ascii=False)
+    assert counters["updated_documents"] == 0
+    docs = await documents(env)
+    assert docs[str(a)].source_presence == "CURRENT_CONFIRMED"  # the import still happened
+
+    # The repeat import of the SAME document is an honest update.
+    second_id = await run_adapter(
+        env, WithoutRawDocuments(make_adapter(env, FakeTransport([page(1, 0, [doc(a, "1")])])))
+    )
+    counters = diagnose(await op_row(env, second_id))
+    assert counters["new_documents"] == 0
+    assert counters["updated_documents"] == 1
+
+
+async def test_missing_source_row_does_not_count_as_creation(dr9_env: SimpleNamespace) -> None:
+    """(b) Chosen semantics: the counter reflects the INCOMING document only.
+
+    An existing IncomingDocument whose VetisSourceDocument row is absent is a
+    refresh (updated_documents), never a creation — the journal gap is a raw-
+    storage fact, not a new arrival.
+    """
+    env = dr9_env
+    a = uuid.uuid4()
+    await run_pass(env, FakeTransport([page(1, 0, [doc(a, "1")])]))
+    async with env.factory() as session:
+        source = (await session.execute(select(VetisSourceDocument))).scalar_one()
+        await session.delete(source)
+        await session.commit()
+
+    operation_id = await run_pass(env, FakeTransport([page(1, 0, [doc(a, "1")])]))
+    counters = diagnose(await op_row(env, operation_id))
+    assert counters["updated_documents"] == 1
+    assert counters["new_documents"] == 0
+    # The source journal is repaired honestly by the same pass.
+    async with env.factory() as session:
+        assert (await session.execute(select(VetisSourceDocument))).scalars().one() is not None
+
+
+async def test_stale_transition_timestamp_set_once(dr9_env: SimpleNamespace) -> None:
+    """Two stale passes keep the ORIGINAL deactivation timestamp; recovery sets a new one."""
+    env = dr9_env
+    a, b = uuid.uuid4(), uuid.uuid4()
+    await run_pass(env, FakeTransport([page(2, 0, [doc(a, "1"), doc(b, "2")])]))
+    await run_pass(env, FakeTransport([page(1, 0, [doc(b, "2")])]))
+    docs = await documents(env)
+    first_change = docs[str(a)].presence_changed_at
+    assert first_change is not None
+
+    # The second full pass without A must NOT rewrite the timestamp.
+    await run_pass(env, FakeTransport([page(1, 0, [doc(b, "2")])]))
+    docs = await documents(env)
+    assert docs[str(a)].presence_changed_at == first_change
+    assert docs[str(a)].source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST"
+    # B (observed) refreshes its observation timestamp every pass.
+    assert docs[str(b)].last_seen_sync_at is not None
+
+    # Recovery: the reappearing CONFIRMED document gets a NEW transition timestamp.
+    await run_pass(env, FakeTransport([page(2, 0, [doc(a, "1"), doc(b, "2")])]))
+    docs = await documents(env)
+    assert docs[str(a)].source_presence == "CURRENT_CONFIRMED"
+    assert docs[str(a)].presence_changed_at is not None
+    assert docs[str(a)].presence_changed_at != first_change

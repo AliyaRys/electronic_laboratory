@@ -112,6 +112,14 @@ export const RESULT_LABELS: Readonly<Record<ArrivalResult, string>> = Object.fre
   COMPLETED: "Завершено",
 });
 
+/** ТЗ DR9 §4: the exact user text of the stale source-presence state. */
+export const SOURCE_PRESENCE_STALE_TEXT = "ВСД больше не входит в текущую очередь оформленных документов.";
+
+/** ТЗ DR9: true when the eVSD is absent from the current confirmed external list. */
+export function isStaleSourcePresence(view: IncomingView): boolean {
+  return view.source_presence === "NOT_IN_CURRENT_CONFIRMED_LIST";
+}
+
 /** API-04: the 202 SyncRun body (the accepted intent, never a confirmation). */
 export interface SyncAccepted {
   operation_id: string;

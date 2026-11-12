@@ -30,6 +30,7 @@ const server = setupServer(
       scopes: [{ laboratory_id: LAB, product_scope_id: null }],
       capabilities: [],
       revision: 1,
+      source_presence: "CURRENT_CONFIRMED",
     }),
   ),
 );
@@ -67,6 +68,7 @@ function arrival(examinationId: string): IncomingView {
     queue: "WORK",
     examination_id: examinationId,
     revision: 1,
+    source_presence: "CURRENT_CONFIRMED",
   };
 }
 

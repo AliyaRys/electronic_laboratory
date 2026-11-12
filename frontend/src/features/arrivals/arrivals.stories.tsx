@@ -48,6 +48,7 @@ const party = (over: Partial<IncomingView>): IncomingView => ({
   queue: "EXPECTED",
   examination_id: null,
   revision: 1,
+  source_presence: "CURRENT_CONFIRMED",
   ...over,
 });
 

@@ -118,6 +118,14 @@ async def build_receipt_preview(
         raise _problem(409, "SOURCE_CHECKSUM_MISMATCH", "Закреплённый исходный XML повреждён.")
     if document.external_status != "CONFIRMED":
         raise _problem(409, "STATE_CONFLICT", "Погасить можно только подтверждённый входящий эВСД.")
+    # ТЗ DR9 §6: a direct read of a stale document blocks the repeat гашение —
+    # the source no longer carries this eVSD in the current confirmed queue.
+    if document.source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST":
+        raise _problem(
+            409,
+            "SOURCE_PRESENCE_STALE",
+            "ВСД больше не входит в текущую очередь оформленных документов; повторное гашение недоступно.",
+        )
     payload = _dict(document.source_snapshot.get("vdDocument"))
     consignee = _dict(payload.get("consignee"))
     enterprise = _dict(consignee.get("enterprise"))

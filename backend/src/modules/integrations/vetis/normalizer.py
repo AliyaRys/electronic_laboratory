@@ -293,33 +293,42 @@ def _participant(raw: dict[str, Any]) -> dict[str, str | None]:
     }
 
 
-def filter_entries(entries: list[NormalizedEntry], scope: VetisScope) -> tuple[list[NormalizedEntry], dict[str, int]]:
-    """Apply the locally-enforced predicate; return (kept, per-reason counters).
+def filter_entries(
+    entries: list[NormalizedEntry], scope: VetisScope
+) -> tuple[list[NormalizedEntry], dict[str, int], dict[str, list[str]]]:
+    """Apply the locally-enforced predicate; return (kept, counters, filtered UUIDs).
 
     Unsuitable receiver / non-transport / non-CONFIRMED / ``productType != 1``
     (including a missing or unparseable type) are filtered before persisting.
+    The filtered external UUIDs are returned BY REASON (ТЗ DR9 §5): the sync
+    needs the FULL observed set (kept + filtered + errors), never only the
+    imported documents, so a full pass can honestly mark staleness.
     """
     kept: list[NormalizedEntry] = []
     filtered = {"receiver": 0, "transport": 0, "status": 0, "product_type": 0}
+    filtered_documents: dict[str, list[str]] = {}
     for entry in entries:
         consignee = _participant(entry.consignee)
         enterprise_guid = consignee.get("enterprise_guid")
+        reason: str | None = None
         if not enterprise_guid or enterprise_guid != scope.enterprise_id:
-            filtered["receiver"] += 1
-            continue
-        if entry.document_type != "TRANSPORT":
-            filtered["transport"] += 1
-            continue
-        if entry.document_status != "CONFIRMED":
-            filtered["status"] += 1
-            continue
-        batch = entry.batch
-        product_type = batch.get("productType")
-        if not isinstance(product_type, str) or product_type.strip() != "1":
-            filtered["product_type"] += 1
+            reason = "receiver"
+        elif entry.document_type != "TRANSPORT":
+            reason = "transport"
+        elif entry.document_status != "CONFIRMED":
+            reason = "status"
+        else:
+            batch = entry.batch
+            product_type = batch.get("productType")
+            if not isinstance(product_type, str) or product_type.strip() != "1":
+                reason = "product_type"
+        if reason is not None:
+            filtered[reason] += 1
+            if entry.evsd_uuid is not None:
+                filtered_documents.setdefault(reason, []).append(str(entry.evsd_uuid))
             continue
         kept.append(entry)
-    return kept, filtered
+    return kept, filtered, filtered_documents
 
 
 def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:

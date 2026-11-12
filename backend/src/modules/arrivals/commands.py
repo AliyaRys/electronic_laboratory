@@ -151,6 +151,13 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
             source_snapshot=snapshot_dict,
             content_hash=hash_value,
             fetched_at=document.fetched_at,
+            # The import IS an observation from the confirmed external list
+            # (ТЗ DR9 §4): a fresh import/re-import is CURRENT_CONFIRMED and
+            # never a fabricated UTILIZED.
+            source_presence="CURRENT_CONFIRMED",
+            source_presence_reason=None,
+            last_seen_sync_at=document.fetched_at,
+            presence_changed_at=None,
         )
         uow.add(row)
         await uow.flush()
@@ -179,6 +186,12 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
                 content_hash=hash_value,
                 fetched_at=document.fetched_at,
                 rev=existing.rev + 1,
+                # A re-imported (possibly re-appeared CONFIRMED) document is
+                # observed again; a stale mark is cleared without a second row.
+                source_presence="CURRENT_CONFIRMED",
+                source_presence_reason=None,
+                last_seen_sync_at=document.fetched_at,
+                presence_changed_at=None,
             )
         )
         await uow.execute(
@@ -196,7 +209,16 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
         await uow.execute(
             update(IncomingDocument)
             .where(IncomingDocument.id == existing.id)
-            .values(fetched_at=document.fetched_at, rev=existing.rev + 1)
+            .values(
+                fetched_at=document.fetched_at,
+                rev=existing.rev + 1,
+                # The same document observed again: a NOT_IN_CURRENT_CONFIRMED_LIST
+                # mark is cleared WITHOUT duplicating the party (ТЗ DR9 §4).
+                source_presence="CURRENT_CONFIRMED",
+                source_presence_reason=None,
+                last_seen_sync_at=document.fetched_at,
+                presence_changed_at=None,
+            )
         )
     return (await uow.execute(select(Party).where(Party.incoming_document_id == existing.id))).scalar_one()
 

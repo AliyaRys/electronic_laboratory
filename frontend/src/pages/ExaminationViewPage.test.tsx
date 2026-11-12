@@ -30,6 +30,7 @@ const server = setupServer(
       scopes: [{ laboratory_id: LAB, product_scope_id: null }],
       capabilities: [],
       revision: 1,
+      source_presence: "CURRENT_CONFIRMED",
     }),
   ),
   http.get(`*/api/v1/arrivals/${PARTY}`, () => HttpResponse.json(partyView)),
@@ -70,6 +71,7 @@ const partyView: IncomingView = {
   queue: "WORK",
   examination_id: EXAM,
   revision: 1,
+  source_presence: "CURRENT_CONFIRMED",
 };
 
 function card(overrides: Partial<ExaminationView>): ExaminationView {

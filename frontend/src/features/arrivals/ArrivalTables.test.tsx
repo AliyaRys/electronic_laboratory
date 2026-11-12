@@ -41,6 +41,7 @@ const base: IncomingView = {
   queue: "EXPECTED",
   examination_id: null,
   revision: 1,
+  source_presence: "CURRENT_CONFIRMED",
 };
 
 function withConfirmation(view: IncomingView): IncomingView {

@@ -225,6 +225,11 @@ class IncomingView(BaseModel):
     queue: Literal["EXPECTED", "WORK", "ACCEPTED"]
     examination_id: str | None
     revision: int
+    # ТЗ DR9 §6: the freshness diagnostics of the source observation, shown
+    # separately from the local queue state (never a fabricated UTILIZED).
+    source_presence: Literal["CURRENT_CONFIRMED", "NOT_IN_CURRENT_CONFIRMED_LIST", "UNKNOWN"] = "UNKNOWN"
+    last_seen_sync_at: datetime | None = None
+    source_presence_reason: str | None = None
 
 
 # --- Reconciliation write/read contracts (API-04) -------------------------------

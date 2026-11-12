@@ -42,6 +42,20 @@ function renderOperation(view: ReconciliationView = reconciliation): void {
 }
 
 describe("ReceiptOperation", () => {
+  // ТЗ DR9 §6: a direct read of a stale document blocks the repeat гашение.
+  it("a stale document shows the exact DR9 text and offers no submit", async () => {
+    const staleParty = { ...party, source_presence: "NOT_IN_CURRENT_CONFIRMED_LIST" } as IncomingView;
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ReceiptOperation party={staleParty} reconciliation={reconciliation} />
+      </QueryClientProvider>,
+    );
+    expect(
+      await screen.findByText("ВСД больше не входит в текущую очередь оформленных документов."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Подготовить гашение" })).toBeNull();
+  });
+
   it("explains the disabled installation and never offers submit", async () => {
     server.use(
       http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () =>

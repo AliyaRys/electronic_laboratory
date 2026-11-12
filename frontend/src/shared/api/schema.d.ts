@@ -1623,6 +1623,16 @@ export interface components {
             examination_id: string | null;
             /** Revision */
             revision: number;
+            /**
+             * Source Presence
+             * @default UNKNOWN
+             * @enum {string}
+             */
+            source_presence: "CURRENT_CONFIRMED" | "NOT_IN_CURRENT_CONFIRMED_LIST" | "UNKNOWN";
+            /** Last Seen Sync At */
+            last_seen_sync_at?: string | null;
+            /** Source Presence Reason */
+            source_presence_reason?: string | null;
         };
         /**
          * Inspection
@@ -2215,7 +2225,7 @@ export interface components {
             /** Documentary Mass Kg */
             documentary_mass_kg: string;
             /** Documentary Quantity */
-            documentary_quantity: string;
+            documentary_quantity: string | null;
             /** Delivered Mass Kg */
             delivered_mass_kg: string;
             /** Delivered Quantity */

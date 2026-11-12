@@ -50,7 +50,7 @@ const party: IncomingView = {
     productItem: { id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeee0002", name: "Отруба говяжьи" },
     unit: { id: "aaaaaaaa-1111-4111-8111-111111111111", name: "кг" },
   },
-  documentary: { mass_kg: "120.0", quantity: "4", unit_id: "u1" },
+  documentary: { mass_kg: "120.0", quantity: "4", unit_id: "aaaaaaaa-1111-4111-8111-111111111111" },
   confirmation: null,
   queue: "WORK",
   examination_id: null,
@@ -683,9 +683,9 @@ describe("ТЗ DR8: unit, quantities and return reason", () => {
     await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
     await waitFor(() => expect(savedPayloads.length).toBeGreaterThan(0));
     const payload = savedPayloads[savedPayloads.length - 1];
-    expect(payload.delivered.unit_id).toBe("u1");
-    expect(payload.accepted.unit_id).toBe("u1");
-    expect(payload.returned.unit_id).toBe("u1");
+    expect(payload.delivered.unit_id).toBe("aaaaaaaa-1111-4111-8111-111111111111");
+    expect(payload.accepted.unit_id).toBe("aaaaaaaa-1111-4111-8111-111111111111");
+    expect(payload.returned.unit_id).toBe("aaaaaaaa-1111-4111-8111-111111111111");
   });
 
   it("renders the §6.2 Russian reason labels and sends the exact code", async () => {
@@ -741,4 +741,119 @@ describe("ТЗ DR8: unit, quantities and return reason", () => {
     expect(part).not.toBeNull();
     expect(part?.textContent).toContain("Принято");
   });
+});
+
+/** ТЗ DR10: the canonical source unit GUID without dt:name. */
+describe("ТЗ DR10: source unit guid without dt:name", () => {
+  const UNIT_GUID = "21ed96c9-337b-4a27-8761-c6e6ad3c9f5b";
+  const savedView: ReconciliationView = {
+    ...emptyView,
+    id: "e10e2d3a-1111-4222-8333-444444444444",
+    revision: 2,
+  };
+  const savedPayloads: { delivered: { unit_id: string } }[] = [];
+
+  const server = setupServer(
+    http.get("*/api/v1/me", () =>
+      HttpResponse.json({
+        id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+        full_name: "Ветврач",
+        login: "vet",
+        email: "vet@lab.test",
+        position: null,
+        role: "VET",
+        active: true,
+        scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+        capabilities: [],
+        revision: 1,
+        source_presence: "CURRENT_CONFIRMED",
+      }),
+    ),
+    http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+      savedPayloads.push((await request.json()) as { delivered: { unit_id: string } });
+      return HttpResponse.json(savedView, { status: 200 });
+    }),
+  );
+
+  beforeAll(() => server.listen());
+  afterEach(() => {
+    server.resetHandlers();
+    savedPayloads.length = 0;
+  });
+  afterAll(() => server.close());
+
+  /** The fixture party of §8-1: the unit carries ONLY a GUID (no name). */
+  const partyGuidOnly: IncomingView = {
+    ...party,
+    classification: { ...party.classification, unit: { id: UNIT_GUID, name: null } },
+    documentary: { mass_kg: "120.0", quantity: "4", unit_id: UNIT_GUID },
+  };
+
+  it("shows no missing-unit warning when the GUID exists without a name", () => {
+    renderForm({ party: partyGuidOnly });
+    expect(screen.queryByText(/Исходный эВСД не содержит единицу измерения/)).toBeNull();
+    // The read-only GUID fallback label is shown instead (§6).
+    expect(screen.getByText(`Единица из ВСД (GUID: ${UNIT_GUID})`)).toBeInTheDocument();
+  });
+
+  it("saves a non-empty unit id in the payload when the name is absent", async () => {
+    renderForm({ party: partyGuidOnly });
+    const weight = screen.getAllByLabelText("Вес, кг")[0];
+    await userEvent.clear(weight);
+    await userEvent.type(weight, "120");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    await waitFor(() => expect(savedPayloads.length).toBeGreaterThan(0));
+    expect(savedPayloads[savedPayloads.length - 1].delivered.unit_id).toBe(UNIT_GUID);
+  });
+
+  it("shows the honest warning for a genuinely absent unit GUID", () => {
+    const partyWithoutUnit: IncomingView = {
+      ...partyGuidOnly,
+      classification: { ...partyGuidOnly.classification, unit: null },
+      documentary: { mass_kg: "120.0", quantity: "4", unit_id: "" },
+    };
+    renderForm({ party: partyWithoutUnit });
+    expect(screen.getByText(/Исходный эВСД не содержит единицу измерения/)).toBeInTheDocument();
+    expect(screen.queryByText(/Единица из ВСД \(GUID/)).toBeNull();
+  });
+
+  it("does not invent a unit from a mass, a place count or «кг»", () => {
+    const partyFakeUnit: IncomingView = {
+      ...partyWithoutUnitBase(),
+      documentary: { mass_kg: "500.0", quantity: "8", unit_id: "500.0" },
+    };
+    renderForm({ party: partyFakeUnit });
+    expect(screen.getByText(/Исходный эВСД не содержит единицу измерения/)).toBeInTheDocument();
+  });
+
+  it("binds a server UNIT_MISSING problem to the unit block, not only the banner", async () => {
+    server.use(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", () =>
+        HttpResponse.json(
+          {
+            code: "UNIT_MISSING",
+            detail: "Исходный эВСД не содержит единицу измерения; гашение недоступно.",
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    renderForm({ party: partyGuidOnly });
+    const weight = screen.getAllByLabelText("Вес, кг")[0];
+    await userEvent.clear(weight);
+    await userEvent.type(weight, "120");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    const messages = await screen.findAllByText(/не содержит единицу измерения/);
+    const block = messages.map((message) => message.closest(".vse-rec-quantities")).find(Boolean);
+    expect(block).not.toBeNull();
+    expect(block?.textContent).toContain("Единица измерения (из эВСД)");
+  });
+
+  function partyWithoutUnitBase(): IncomingView {
+    return {
+      ...partyGuidOnly,
+      classification: { ...partyGuidOnly.classification, unit: null },
+      documentary: { mass_kg: "500.0", quantity: "8", unit_id: "" },
+    };
+  }
 });

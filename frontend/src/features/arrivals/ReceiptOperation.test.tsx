@@ -231,4 +231,53 @@ describe("ReceiptOperation", () => {
     expect(dialog.textContent).toContain("Осмотры");
     expect(dialog.textContent).toContain("Маршрут после гашения");
   });
+
+  // ТЗ DR10 §8-4: «Подготовить гашение» is never blocked by an absent unit
+  // NAME — only the canonical GUID identity matters.
+  it("prepares гашение when the unit GUID exists without a name", async () => {
+    const UNIT_GUID = "21ed96c9-337b-4a27-8761-c6e6ad3c9f5b";
+    const partyGuidOnly = {
+      ...party,
+      documentary: { mass_kg: "100", quantity: "4", unit_id: UNIT_GUID },
+      classification: { product: { id: null, name: "Мясо" }, unit: { id: UNIT_GUID, name: null } },
+    } as unknown as IncomingView;
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () =>
+        HttpResponse.json({
+          write_enabled: true,
+          source_revision: 7,
+          reconciliation_revision: 3,
+          operation_id: null,
+          operation_state: null,
+        }),
+      ),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, () =>
+        HttpResponse.json({
+          intent: {
+            decision: "ACCEPT_ALL",
+            vet_inspection: "CORRESPONDS",
+            doc_inspection: "CORRESPONDS",
+            issue_date: "2026-11-09T09:00:00Z",
+            delivery_date: "2026-11-11T08:00:00Z",
+            source_revision: 7,
+            reconciliation_revision: 3,
+            discrepancy_items: [],
+            unit_id: UNIT_GUID,
+          },
+          application_xml: "<application />",
+          fingerprint: "d".repeat(64),
+        }),
+      ),
+    );
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ReceiptOperation party={partyGuidOnly} reconciliation={reconciliation} />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    const dialog = await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" });
+    expect(dialog.textContent).toContain(`Единица из ВСД (GUID: ${UNIT_GUID})`);
+  });
 });

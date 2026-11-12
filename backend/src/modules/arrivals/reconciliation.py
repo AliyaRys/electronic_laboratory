@@ -142,18 +142,26 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
     )
 
 
-def _quantities(row: Reconciliation) -> tuple[QuantitySet, QuantitySet, QuantitySet]:
+def _quantities(row: Reconciliation, source_unit_id: str = "") -> tuple[QuantitySet, QuantitySet, QuantitySet]:
+    """ТЗ DR10 §5: the view of a saved row shows the source GUID whenever the
+    snapshot carries one (the same normalization the save path persists); a
+    mismatching saved GUID never survives into the visible state."""
+    unit_id_of = lambda saved: source_unit_id or saved  # noqa: E731
     return (
         QuantitySet(
             mass_kg=str(row.delivered_mass_kg),
             quantity=str(row.delivered_quantity),
-            unit_id=row.delivered_unit_id or "",
+            unit_id=unit_id_of(row.delivered_unit_id or ""),
         ),
         QuantitySet(
-            mass_kg=str(row.accepted_mass_kg), quantity=str(row.accepted_quantity), unit_id=row.accepted_unit_id or ""
+            mass_kg=str(row.accepted_mass_kg),
+            quantity=str(row.accepted_quantity),
+            unit_id=unit_id_of(row.accepted_unit_id or ""),
         ),
         QuantitySet(
-            mass_kg=str(row.returned_mass_kg), quantity=str(row.returned_quantity), unit_id=row.returned_unit_id or ""
+            mass_kg=str(row.returned_mass_kg),
+            quantity=str(row.returned_quantity),
+            unit_id=unit_id_of(row.returned_unit_id or ""),
         ),
     )
 
@@ -253,7 +261,7 @@ def build_reconciliation_view(
         )
     payload = row_to_payload(row)
     validation = validate_receipt(payload, source_projection(document_row, party), CAPABILITIES)
-    delivered, accepted, returned = _quantities(row)
+    delivered, accepted, returned = _quantities(row, _source_unit_id(document_row))
     return ReconciliationView(
         id=str(row.id),
         party_id=str(row.party_id),
@@ -372,15 +380,18 @@ async def save_reconciliation(
     document_row = (
         await db.execute(select(IncomingDocumentRow).where(IncomingDocumentRow.id == party.incoming_document_id))
     ).scalar_one()
-    validation = validate_receipt(payload, source_projection(document_row, party), CAPABILITIES)
-    if validation.blocking:
-        raise validation_error(validation.blocking)
-
+    # ТЗ DR8 R-DR8-1 / ТЗ DR10 §5: the source unit GUID is the canonical unit
+    # identity — a NEW reconciliation inherits it into all three QuantitySets
+    # (the client unit never overrides it) and an EXISTING one is normalized
+    # from the immutable source snapshot before validation.
     saved = normalize_payload(payload)
-    if row is None:
-        # ТЗ DR8 R-DR8-1: a NEW reconciliation inherits the source unit GUID
-        # into all three QuantitySets; the client unit never overrides it.
-        source_unit_id = _source_unit_id(document_row)
+    source_unit_id = _source_unit_id(document_row)
+    if source_unit_id:
+        # ТЗ DR10 §5/R-DR10-3 (fix round 1): the immutable source snapshot is
+        # the single unit authority — an EMPTY, STALE or MISMATCHING unit in
+        # any part is safely normalized to the source GUID (never a conflict
+        # the user must guess); a save can never persist a unit that differs
+        # from the source, so an XML with an empty/wrong unit is impossible.
         saved = saved.model_copy(
             update={
                 "delivered": saved.delivered.model_copy(update={"unit_id": source_unit_id}),
@@ -388,6 +399,11 @@ async def save_reconciliation(
                 "returned": saved.returned.model_copy(update={"unit_id": source_unit_id}),
             }
         )
+    validation = validate_receipt(saved, source_projection(document_row, party), CAPABILITIES)
+    if validation.blocking:
+        raise validation_error(validation.blocking)
+
+    if row is None:
         row = Reconciliation(party_id=party.id, checks={}, services=[], actor_id=ctx.actor_id, state="OPEN")
         db.add(row)
     row.checks = _checks_storage(saved)  # type: ignore[assignment]

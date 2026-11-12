@@ -3,7 +3,7 @@ import {
   decisionLabel,
   documentFacts,
   formatRuDateTime,
-  partyUnit,
+  partyUnitLabel,
   returnReasonLabel,
   type IncomingView,
   type ReceiptPreview,
@@ -88,7 +88,7 @@ export function ReceiptConfirmationDialog({
         </div>
         <div>
           <dt>Единица измерения (из эВСД)</dt>
-          <dd>{preview?.intent.unit_id ? partyUnit(party) || "—" : "—"}</dd>
+          <dd>{preview?.intent.unit_id ? partyUnitLabel(party) : "—"}</dd>
         </div>
         <div>
           <dt>Дата поступления</dt>

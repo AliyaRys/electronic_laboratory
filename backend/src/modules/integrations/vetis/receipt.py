@@ -136,9 +136,14 @@ async def build_receipt_preview(
     unit = _dict(batch.get("unit"))
     unit_id = str(unit.get("guid") or "")
     if not unit_id:
-        # ТЗ DR8 R-DR8-1: without the source unit GUID the гашение is honestly
-        # blocked — a fictitious unit must never be invented for the request.
-        raise _problem(422, "VALIDATION_ERROR", "Исходный эВСД не содержит единицу измерения; гашение недоступно.")
+        # ТЗ DR8 R-DR8-1 / ТЗ DR10 §5: without the source unit GUID the
+        # гашение is honestly blocked with the UNIT_MISSING diagnostic —
+        # a fictitious unit must never be invented for the request.
+        raise _problem(
+            422,
+            "UNIT_MISSING",
+            "Исходный эВСД не содержит единицу измерения; гашение недоступно.",
+        )
     if (
         reconciliation.delivered_unit_id != unit_id
         or reconciliation.accepted_unit_id != unit_id

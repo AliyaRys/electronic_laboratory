@@ -26,7 +26,9 @@ import {
   computeAllowedDecisions,
   decisionLabel,
   documentFacts,
+  hasSourceUnit,
   partyUnit,
+  partyUnitLabel,
   participantOwner,
   previousVse,
   saveReconciliation,
@@ -146,9 +148,10 @@ export function initialValues(party: IncomingView, initial: ReconciliationView):
     comparisons[field.fieldId] =
       saved !== undefined ? fromComparison(saved) : { matches: null, actual: "", reason: "" };
   }
-  // ТЗ DR8 R-DR8-1: the source unit GUID is filled into all three QuantitySets
-  // automatically; the user never types a unit.
-  const sourceUnitId = party.documentary.unit_id;
+  // ТЗ DR8 R-DR8-1: the canonical source unit GUID is filled into all three
+  // QuantitySets automatically (allowed sources per ТЗ DR10 §4); the user
+  // never types a unit.
+  const sourceUnitId = partyUnit(party).id;
   const unitIdOf = (part: "delivered" | "accepted" | "returned"): string =>
     initial[part].unit_id !== "" ? initial[part].unit_id : sourceUnitId;
   return {
@@ -245,6 +248,9 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   const compared = useMemo(() => comparedFields(party), [party]);
   const previous = useMemo(() => previousVse(party), [party]);
   const unit = useMemo(() => partyUnit(party), [party]);
+  // ТЗ DR10 §6: the unit counts as present only with a valid canonical GUID;
+  // a missing display NAME never means a missing unit.
+  const hasUnit = useMemo(() => hasSourceUnit(party), [party]);
   const facts = useMemo(() => documentFacts(party), [party]);
   const senderOwner = participantOwner(party, "sender");
   const receiverOwner = participantOwner(party, "receiver");
@@ -331,6 +337,22 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   // The allowed decisions are recomputed from the CURRENT input (the same
   // rules the server applies); the server stays authoritative at save time
   // and any mismatch surfaces as its validation errors (FT-ARR-09).
+  // ТЗ DR10 §8.6: a server UNIT_MISSING (and a CHK-F20 problem the server
+  // sent without a resolvable part) is bound to the quantity/unit block of
+  // THIS form, not only to the common banner.
+  let unitError = "";
+  if (problem !== null && problem.code === "UNIT_MISSING") {
+    unitError = problem.detail;
+  } else if (
+    problem !== null &&
+    problem.code === "VALIDATION_ERROR" &&
+    Object.keys(quantityErrors).length === 0 &&
+    ((problem as unknown as { errors?: { field_id?: string | null }[] }).errors ?? []).some(
+      (item) => item.field_id === "CHK-F20",
+    )
+  ) {
+    unitError = "Единица измерения сверки не совпадает с исходным эВСД.";
+  }
   const allowed: Decision[] = computeAllowedDecisions(values.delivered, values.comparisons);
   const decision = values.decision;
   const actErrors: ReceiptProblemItem[] = problemItemsOf(problem);
@@ -483,12 +505,28 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         <div className="vse-rec-quantities" aria-label="Количества партии">
           <div className="vse-rec-quantities-unit">
             <span className="vse-rec-quantities-title">Единица измерения (из эВСД)</span>
-            <span className="vse-rec-mercury-value">{unit !== "" ? unit : "—"}</span>
+            {/* ТЗ DR10 §6: with a name the GUID stays an accessible tooltip;
+                without one the honest GUID fallback is the value itself. */}
+            {hasUnit ? (
+              <span
+                className="vse-rec-mercury-value"
+                title={unit.name !== "" ? `Единица из ВСД (GUID: ${unit.id})` : undefined}
+              >
+                {partyUnitLabel(party)}
+              </span>
+            ) : (
+              <span className="vse-rec-mercury-value">—</span>
+            )}
           </div>
-          {unit === "" ? (
+          {hasUnit ? null : (
             <p className="vse-rec-prior-note">
               Исходный эВСД не содержит единицу измерения: гашение будет недоступно, пока единица не появится
               в документе.
+            </p>
+          )}
+          {unitError !== "" ? (
+            <p className="app-field-message app-field-error" aria-live="polite">
+              {unitError}
             </p>
           ) : null}
           {QUANTITY_PARTS.map((part) => {
@@ -503,7 +541,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
                   onChange={(next) => form.setValue(`${part}.mass_kg`, next, { shouldDirty: true })}
                 />
                 <Field
-                  label={unit !== "" ? `Количество (${unit})` : "Количество"}
+                  label={unit.name !== "" ? `Количество (${unit.name})` : "Количество"}
                   value={values[part].quantity}
                   error={fieldErrors[`${part}.quantity`] ?? ""}
                   onChange={(next) => form.setValue(`${part}.quantity`, next, { shouldDirty: true })}

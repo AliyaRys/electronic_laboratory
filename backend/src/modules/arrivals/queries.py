@@ -313,6 +313,16 @@ def _quantity_set(batch: dict[str, object]) -> QuantitySet:
     )
 
 
+def _unit_name(batch: dict[str, object]) -> str | None:
+    """The optional display-only source unit name (ТЗ DR10 §5)."""
+    unit = batch.get("unit")
+    if not isinstance(unit, dict):
+        return None
+    name = unit.get("name")
+    text = str(name).strip() if name is not None else ""
+    return text or None
+
+
 def _external_fields(
     document: IncomingDocument,
     *,
@@ -348,6 +358,9 @@ def _external_fields(
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),
         "productItem": str(product_item.get("name") or "") if product_item is not None else None,
+        # ТЗ DR10 §5: the optional display name of the source unit; its
+        # absence does NOT mean the unit is missing (the GUID is the identity).
+        "unitName": _unit_name(batch),
         **previous_vse_fields(document.source_snapshot),
     }
     return ExternalFields(

@@ -386,13 +386,58 @@ export function participantOwner(view: IncomingView, side: "sender" | "receiver"
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
-/**
- * The read-only unit label of the party quantities: the NAME of the source
- * unit is the only thing the user sees (the GUID stays a technical identity,
- * R-DR8-1). Empty when the source eVSD carries no unit at all.
+/** Valid canonical unit identity: a non-empty source GUID (ТЗ DR10 §4).
+ *
+ * An empty string, null, a mass (``500.0``), a place count or the local
+ * display text «кг» NEVER count as a unit — only a real source GUID does.
  */
-export function partyUnit(view: IncomingView): string {
-  return view.classification?.unit?.name ?? "";
+const UNIT_GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** ТЗ DR10 §6: the canonical unit identity of the party quantities.
+ *
+ * The identity comes from the allowed sources in priority order:
+ * ``documentary.unit_id`` → ``classification.unit.id`` →
+ * ``external.fields.unitId`` (published by the backend as the SAME source
+ * GUID). The NAME is display-only and never an identity: a present
+ * ``unitId`` with an empty name still means the unit IS present.
+ */
+export interface PartyUnit {
+  /** Canonical source unit GUID («» when no allowed source carries one). */
+  id: string;
+  /** Display-only name («» when the source carries none — not a missing unit). */
+  name: string;
+}
+
+export function partyUnit(view: IncomingView): PartyUnit {
+  const candidates = [
+    view.documentary?.unit_id,
+    view.classification?.unit?.id ?? null,
+    (view.external?.fields?.unitId as string | null | undefined) ?? null,
+  ];
+  const id =
+    candidates.find((entry): entry is string => typeof entry === "string" && entry.trim() !== "") ?? "";
+  const names = [
+    (view.external?.fields?.unitName as string | null | undefined) ?? null,
+    view.classification?.unit?.name ?? null,
+  ];
+  const name = names.find((entry): entry is string => typeof entry === "string" && entry.trim() !== "") ?? "";
+  return { id: id.trim(), name: name.trim() };
+}
+
+/** ТЗ DR10 §6: the unit counts as present ONLY with a valid canonical GUID.
+ *
+ * An empty or non-GUID canonical unitId honestly shows the missing-unit
+ * warning; an absent display name never does.
+ */
+export function hasSourceUnit(view: IncomingView): boolean {
+  return UNIT_GUID_RE.test(partyUnit(view).id);
+}
+
+/** The read-only unit label: the name when the source carries one, otherwise
+ * the honest GUID fallback «Единица из ВСД (GUID: …)» (ТЗ DR10 §6). */
+export function partyUnitLabel(view: IncomingView): string {
+  const unit = partyUnit(view);
+  return unit.name !== "" ? unit.name : `Единица из ВСД (GUID: ${unit.id})`;
 }
 
 /** GET /arrivals/:party_id — the IncomingView of one party (API-04, party ETag).

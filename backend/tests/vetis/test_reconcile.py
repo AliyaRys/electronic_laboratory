@@ -6,31 +6,54 @@ from backend.src.modules.integrations.vetis.evidence import parse_receipt_result
 from backend.tests.vetis.test_receipt_mapping import intent
 
 
-def result_xml(source: str, receiver: str, accepted: str, returned: str, *, status: str = "COMPLETED") -> str:
+def result_xml(
+    source: str,
+    receiver: str,
+    accepted: str,
+    returned: str,
+    *,
+    status: str = "COMPLETED",
+    accepted_quantity: str = "4",
+    returned_quantity: str = "1",
+) -> str:
     return f"""<response><status>{status}</status><processIncomingConsignmentResponse>
       <sourceVetDocumentUuid>{source}</sourceVetDocumentUuid>
       <receiverEnterpriseGuid>{receiver}</receiverEnterpriseGuid>
-      <acceptedConsignment><volume>{accepted}</volume></acceptedConsignment>
-      <returnedDelivery><volume>{returned}</volume></returnedDelivery>
+      <acceptedConsignment><volume>{accepted}</volume><quantity>{accepted_quantity}</quantity></acceptedConsignment>
+      <returnedDelivery><volume>{returned}</volume><quantity>{returned_quantity}</quantity></returnedDelivery>
     </processIncomingConsignmentResponse></response>"""
 
 
 def test_complete_partial_evidence_confirms_frozen_composition() -> None:
     frozen = intent(mismatch=True, decision="PARTIALLY")
     result = parse_receipt_result(
-        result_xml(str(frozen.source_evsd_uuid), frozen.receiver_enterprise_id, "100", "20"),
+        result_xml(
+            str(frozen.source_evsd_uuid),
+            frozen.receiver_enterprise_id,
+            "100",
+            "20",
+            accepted_quantity="3",
+        ),
         frozen,
         application_id="app-fixture",
     )
     assert result.state == "CONFIRMED"
     assert result.detail is not None
-    assert result.detail["evidence"]["accepted_quantity"] == "100"  # type: ignore[index]
+    assert result.detail["evidence"]["accepted_mass_kg"] == "100"  # type: ignore[index]
+    assert result.detail["evidence"]["accepted_quantity"] == "3"  # type: ignore[index]
 
 
 def test_manual_partial_without_linked_composition_is_unknown() -> None:
     frozen = intent(mismatch=True, decision="PARTIALLY")
     result = parse_receipt_result(
-        result_xml(str(frozen.source_evsd_uuid), frozen.receiver_enterprise_id, "100", "0"),
+        result_xml(
+            str(frozen.source_evsd_uuid),
+            frozen.receiver_enterprise_id,
+            "100",
+            "0",
+            accepted_quantity="3",
+            returned_quantity="0",
+        ),
         frozen,
         application_id="app-fixture",
     )
@@ -40,12 +63,29 @@ def test_manual_partial_without_linked_composition_is_unknown() -> None:
         "links": {
             "source": True,
             "receiver": True,
-            "accepted": True,
-            "returned": False,
+            "accepted_mass": True,
+            "accepted_quantity": True,
+            "returned_mass": False,
+            "returned_quantity": False,
             "unit": True,
+            "quantity": True,
             "return_reason": True,
         },
     }
+
+
+def test_mass_without_places_count_is_unknown() -> None:
+    """ТЗ DR8 §11: mass and quantity are proven SEPARATELY by the evidence."""
+    frozen = intent(mismatch=True, decision="PARTIALLY")
+    xml = f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
+      <sourceVetDocumentUuid>{frozen.source_evsd_uuid}</sourceVetDocumentUuid>
+      <receiverEnterpriseGuid>{frozen.receiver_enterprise_id}</receiverEnterpriseGuid>
+      <acceptedConsignment><volume>100</volume><quantity>4</quantity></acceptedConsignment>
+      <returnedDelivery><volume>20</volume></returnedDelivery>
+    </processIncomingConsignmentResponse></response>"""
+    result = parse_receipt_result(xml, frozen, application_id="mass-only")
+    assert result.state == "UNKNOWN"
+    assert result.detail is not None and result.detail["links"]["returned_quantity"] is False  # type: ignore[index]
 
 
 def test_receiver_or_source_mismatch_never_confirms() -> None:
@@ -75,7 +115,7 @@ def test_full_return_does_not_require_absent_accepted_consignment() -> None:
     xml = f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
       <sourceVetDocumentUuid>{frozen.source_evsd_uuid}</sourceVetDocumentUuid>
       <receiverEnterpriseGuid>{frozen.receiver_enterprise_id}</receiverEnterpriseGuid>
-      <returnedDelivery><volume>120</volume></returnedDelivery>
+      <returnedDelivery><volume>120</volume><quantity>4</quantity></returnedDelivery>
     </processIncomingConsignmentResponse></response>"""
     result = parse_receipt_result(xml, frozen, application_id="full-return")
     assert result.state == "CONFIRMED"
@@ -86,7 +126,7 @@ def test_accept_all_does_not_require_absent_returned_delivery() -> None:
     xml = f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
       <sourceVetDocumentUuid>{frozen.source_evsd_uuid}</sourceVetDocumentUuid>
       <receiverEnterpriseGuid>{frozen.receiver_enterprise_id}</receiverEnterpriseGuid>
-      <acceptedConsignment><volume>100</volume></acceptedConsignment>
+      <acceptedConsignment><volume>100</volume><quantity>4</quantity></acceptedConsignment>
     </processIncomingConsignmentResponse></response>"""
     result = parse_receipt_result(xml, frozen, application_id="accept-all")
     assert result.state == "CONFIRMED"
@@ -95,15 +135,40 @@ def test_accept_all_does_not_require_absent_returned_delivery() -> None:
 def test_real_v2_stock_and_documents_prove_partial_receipt() -> None:
     frozen = intent(mismatch=True, decision="PARTIALLY")
     xml = f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
-      <stockEntry><batch><volume>100</volume><unit><guid>{frozen.unit_id}</guid></unit></batch></stockEntry>
+      <stockEntry><batch><volume>100</volume><unit><guid>{frozen.unit_id}</guid></unit>
+        <packageList><dt:package xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2">
+          <dt:level>1</dt:level><dt:quantity>3</dt:quantity></dt:package></packageList>
+        </batch></stockEntry>
       <vetDocument><uuid>{frozen.source_evsd_uuid}</uuid><vetDType>TRANSPORT</vetDType>
        <vetDStatus>UTILIZED</vetDStatus><certifiedConsignment><consignee><enterprise>
        <guid>{frozen.receiver_enterprise_id}</guid></enterprise></consignee></certifiedConsignment></vetDocument>
       <vetDocument><uuid>00000000-0000-0000-0000-000000000199</uuid><vetDType>RETURNABLE</vetDType>
        <vetDStatus>CONFIRMED</vetDStatus><certifiedConsignment><batch><volume>20</volume>
-       <unit><guid>{frozen.unit_id}</guid></unit></batch></certifiedConsignment>
-       <authentication><specialMarks>Причина возврата: OTHER_REASON fixture</specialMarks></authentication>
+        <unit><guid>{frozen.unit_id}</guid></unit>
+        <packageList><dt:package xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2">
+          <dt:level>1</dt:level><dt:quantity>1</dt:quantity></dt:package></packageList>
+        </batch></certifiedConsignment>
+       <authentication><specialMarks>OTHER_REASON</specialMarks>
+         <specialMarks>OTHER_REASON: Обезличенная причина возврата</specialMarks></authentication>
       </vetDocument>
     </processIncomingConsignmentResponse></response>"""
     result = parse_receipt_result(xml, frozen, application_id="real-v2")
     assert result.state == "CONFIRMED"
+
+
+def test_wrong_reason_code_in_return_document_is_unknown() -> None:
+    """ТЗ DR8 §6.2: the exact code, never the Russian label, proves the reason."""
+    frozen = intent(mismatch=True, decision="PARTIALLY")
+    xml = f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
+      <sourceVetDocumentUuid>{frozen.source_evsd_uuid}</sourceVetDocumentUuid>
+      <receiverEnterpriseGuid>{frozen.receiver_enterprise_id}</receiverEnterpriseGuid>
+      <acceptedConsignment><volume>100</volume><quantity>3</quantity></acceptedConsignment>
+      <returnedDelivery><volume>20</volume><quantity>1</quantity></returnedDelivery>
+      <vetDocument><uuid>00000000-0000-0000-0000-000000000199</uuid><vetDType>RETURNABLE</vetDType>
+       <vetDStatus>CONFIRMED</vetDStatus><authentication>
+         <specialMarks>Причина возврата: OTHER_REASON</specialMarks></authentication>
+      </vetDocument>
+    </processIncomingConsignmentResponse></response>"""
+    result = parse_receipt_result(xml, frozen, application_id="wrong-reason")
+    assert result.state == "UNKNOWN"
+    assert result.detail is not None and result.detail["links"]["return_reason"] is False  # type: ignore[index]

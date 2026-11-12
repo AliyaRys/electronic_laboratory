@@ -2212,16 +2212,31 @@ export interface components {
              * @enum {string}
              */
             vet_inspection: "CORRESPONDS" | "MISMATCH" | "UNSUPERVISED";
+            /** Documentary Mass Kg */
+            documentary_mass_kg: string;
             /** Documentary Quantity */
             documentary_quantity: string;
+            /** Delivered Mass Kg */
+            delivered_mass_kg: string;
             /** Delivered Quantity */
             delivered_quantity: string;
+            /** Accepted Mass Kg */
+            accepted_mass_kg: string;
             /** Accepted Quantity */
             accepted_quantity: string;
+            /** Returned Mass Kg */
+            returned_mass_kg: string;
             /** Returned Quantity */
             returned_quantity: string;
             /** Unit Id */
             unit_id: string;
+            /**
+             * Issue Date
+             * Format: date-time
+             */
+            issue_date: string;
+            /** Return Date */
+            return_date?: string | null;
             /** Discrepancy Items */
             discrepancy_items?: {
                 [key: string]: unknown;
@@ -2258,6 +2273,10 @@ export interface components {
             vet_inspection: "CORRESPONDS" | "MISMATCH" | "UNSUPERVISED";
             /** Delivery Date */
             delivery_date?: string | null;
+            /** Return Date */
+            return_date?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
         };
         /** ReceiptSubmitRequest */
         ReceiptSubmitRequest: {
@@ -2275,6 +2294,10 @@ export interface components {
              * Format: date-time
              */
             delivery_date: string;
+            /** Return Date */
+            return_date?: string | null;
+            /** Issue Date */
+            issue_date?: string | null;
             /** Fingerprint */
             fingerprint: string;
         };

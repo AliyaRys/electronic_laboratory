@@ -112,9 +112,7 @@ test.describe("catalogs", () => {
     await expect(page.getByLabel("Код услуги")).toHaveCount(0);
     await expect(page.getByLabel("Единица измерения")).toHaveCount(0);
     // No silent default: the service must be chosen explicitly.
-    await page
-      .getByLabel("Исследование", { exact: true })
-      .selectOption({ label: INDICATORS[0].name });
+    await page.getByLabel("Исследование", { exact: true }).selectOption({ label: INDICATORS[0].name });
     await page.locator("#bulk-price").fill("100.00");
     await shot(page, "bulk-coverage-before-confirm");
     await page.getByRole("button", { name: "Отмена" }).click();

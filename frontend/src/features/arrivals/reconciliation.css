@@ -394,6 +394,19 @@
   font-weight: 780;
 }
 
+/* ТЗ DR8 §7: the read-only source unit label above the quantity parts. */
+.vse-rec-quantities-unit {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: -4px;
+}
+
+.vse-rec-quantities-unit .vse-rec-mercury-value {
+  font-weight: 780;
+}
+
 /* --- prior ВСЭ ---------------------------------------------------------------------- */
 .vse-rec-prior-note {
   margin: 0;

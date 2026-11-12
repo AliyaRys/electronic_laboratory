@@ -103,6 +103,15 @@ afterEach(() => {
   useDirtyStore.getState().setDirty(false);
 });
 
+/** Captured PUT payloads of the DR8/repeat test suites. */
+interface SavedPayload {
+  delivered: { unit_id: string };
+  accepted: { unit_id: string };
+  returned: { unit_id: string };
+  returnReason?: { code: string; text?: string } | null;
+}
+const savedPayloads: SavedPayload[] = [];
+
 describe("ComparisonField", () => {
   it("marks a mismatch and reveals the actual/reason inputs", async () => {
     const onChange = vi.fn();
@@ -612,5 +621,121 @@ describe("repeat ВСЭ inputs (fix round 1)", () => {
 
   afterAll(() => {
     server.close();
+  });
+});
+
+/** ТЗ DR8: unit propagation, CHK-F20 binding, reason codes, OTHER_REASON. */
+describe("ТЗ DR8: unit, quantities and return reason", () => {
+  const savedView: ReconciliationView = {
+    ...emptyView,
+    id: "d8e2d3a4-1111-4222-8333-444444444444",
+    revision: 2,
+  };
+
+  const server = setupServer(
+    http.get("*/api/v1/me", () =>
+      HttpResponse.json({
+        id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+        full_name: "Ветврач",
+        login: "vet",
+        email: "vet@lab.test",
+        position: null,
+        role: "VET",
+        active: true,
+        scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+        capabilities: [],
+        revision: 1,
+      }),
+    ),
+    http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+      const body = (await request.json()) as {
+        delivered: { unit_id: string };
+        accepted: { unit_id: string };
+        returned: { unit_id: string };
+        returnReason: { code: string; text?: string } | null;
+      };
+      savedPayloads.push(body);
+      return HttpResponse.json(savedView, { status: 200 });
+    }),
+  );
+
+  beforeAll(() => server.listen());
+  afterEach(() => {
+    server.resetHandlers();
+    savedPayloads.length = 0;
+  });
+  afterAll(() => server.close());
+
+  it("shows the read-only source unit and fills all three QuantitySets", async () => {
+    renderForm();
+    expect(screen.getByText("Единица измерения (из эВСД)")).toBeInTheDocument();
+    expect(screen.getByText("кг")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Единица измерения/)).toBeNull();
+    const weight = screen.getAllByLabelText("Вес, кг")[0];
+    await userEvent.clear(weight);
+    await userEvent.type(weight, "120");
+    const quantity = screen.getAllByLabelText("Количество (кг)")[0];
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "4");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    await waitFor(() => expect(savedPayloads.length).toBeGreaterThan(0));
+    const payload = savedPayloads[savedPayloads.length - 1];
+    expect(payload.delivered.unit_id).toBe("u1");
+    expect(payload.accepted.unit_id).toBe("u1");
+    expect(payload.returned.unit_id).toBe("u1");
+  });
+
+  it("renders the §6.2 Russian reason labels and sends the exact code", async () => {
+    renderForm({ initial: { ...emptyView, decision: "PARTIAL", allowed_decisions: ["PARTIAL"] } });
+    const weight = screen.getAllByLabelText("Вес, кг")[0];
+    await userEvent.clear(weight);
+    await userEvent.type(weight, "100");
+    await userEvent.click(screen.getByRole("radio", { name: "Частичное гашение" }));
+    expect(screen.getByRole("option", { name: "Брак / товар ненадлежащего качества" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Отказ торговой точки / покупателя" })).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Причина возврата"), "CONSIGNOR_REJECTION");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    await waitFor(() => expect(savedPayloads.length).toBeGreaterThan(0));
+    expect(savedPayloads[savedPayloads.length - 1].returnReason).toEqual({ code: "CONSIGNOR_REJECTION" });
+  });
+
+  it("blocks an empty OTHER_REASON text and caps it at 240 characters", async () => {
+    renderForm({ initial: { ...emptyView, decision: "RETURN_ALL", allowed_decisions: ["RETURN_ALL"] } });
+    const weight = screen.getAllByLabelText("Вес, кг")[0];
+    await userEvent.clear(weight);
+    await userEvent.type(weight, "120");
+    await userEvent.click(screen.getByRole("radio", { name: "Полный возврат" }));
+    await userEvent.selectOptions(screen.getByLabelText("Причина возврата"), "OTHER_REASON");
+    const input = screen.getByLabelText("Текст иной причины") as HTMLInputElement;
+    expect(input).toHaveAttribute("maxlength", "240");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    expect(await screen.findByText(/обязателен текст причины возврата/)).toBeInTheDocument();
+    expect(savedPayloads.length).toBe(0);
+  });
+
+  it("binds the server CHK-F20 problem to the named quantity part", async () => {
+    server.use(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", () =>
+        HttpResponse.json(
+          {
+            code: "VALIDATION_ERROR",
+            detail: "Проверьте введённые данные.",
+            errors: [
+              { path: "accepted", field_id: "CHK-F20", message: "Единица измерения принята некорректно." },
+            ],
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    renderForm();
+    const weight = screen.getAllByLabelText("Вес, кг")[0];
+    await userEvent.clear(weight);
+    await userEvent.type(weight, "120");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    const messages = await screen.findAllByText("Единица измерения принята некорректно.");
+    const part = messages.map((message) => message.closest(".vse-rec-quantities-part")).find(Boolean);
+    expect(part).not.toBeNull();
+    expect(part?.textContent).toContain("Принято");
   });
 });

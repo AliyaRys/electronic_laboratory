@@ -18,6 +18,8 @@ export interface FieldProps {
   autoComplete?: string;
   required?: boolean;
   disabled?: boolean;
+  /** Optional input length limit (e.g. OTHER_REASON text ≤ 240, ТЗ DR8 §10). */
+  maxLength?: number;
   /** Persistent validation/server error from the parent. */
   error?: string;
   hint?: string;
@@ -34,6 +36,7 @@ export function Field({
   autoComplete,
   required = false,
   disabled = false,
+  maxLength,
   error = "",
   hint = "",
 }: FieldProps): React.ReactElement {
@@ -63,6 +66,7 @@ export function Field({
         autoComplete={autoComplete}
         required={required}
         disabled={disabled}
+        maxLength={maxLength}
         aria-invalid={showError ? "true" : undefined}
         aria-describedby={describedBy === "" ? undefined : describedBy}
         onChange={(event) => {

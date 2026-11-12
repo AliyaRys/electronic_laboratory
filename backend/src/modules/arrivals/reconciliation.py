@@ -53,6 +53,7 @@ from backend.src.modules.arrivals.validation import (
 from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
 from backend.src.modules.integrations.vetis.status import status_label
+from backend.src.modules.integrations.vetis.storage_types import storage_type_label
 
 __all__ = ["save_reconciliation", "build_reconciliation_view", "load_reconciliation", "source_projection"]
 
@@ -122,7 +123,12 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
         "transportKind": None,
         "vehicleNumber": text_of(payload.get("transportNumber")),
         "trailerNumber": None,
-        "storage": None,
+        # ТЗ DR16 §5.2: the raw source code and the Russian label are kept
+        # SEPARATE (R-DR16-1/3); an absent node stays absent (no fictitious
+        # mark), an unknown non-empty code keeps the source value present and
+        # demands an explicit comparison mark (never auto-matched).
+        "storageCode": text_of(payload.get("transportStorageType")),
+        "storage": storage_type_label(text_of(payload.get("transportStorageType"))),
         "productType": classification.product_type,
         "product": classification.product.name,
         "species": classification.sub_product.name if classification.sub_product is not None else None,

@@ -70,6 +70,8 @@ class NormalizedEntry(BaseModel):
     consignee: dict[str, Any]
     batch: dict[str, Any]
     transport_number: str | None
+    # DR16: the raw vd:certifiedConsignment/vd:transportStorageType code.
+    transport_storage_type: str | None = None
     purpose_guid: str | None = None
     purpose_uuid: str | None = None
     packages: list[dict[str, Any]] = Field(default_factory=list)
@@ -235,6 +237,7 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
             "packageList": packages,
         },
         transport_number=_transport_number(transport),
+        transport_storage_type=_text(_find(consignment, "vd:transportStorageType")),
         purpose_guid=_text(_find(purpose, "bs:guid")),
         purpose_uuid=_text(_find(purpose, "bs:uuid")),
         packages=packages,
@@ -407,6 +410,7 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
                 package_list=package_entries,
             ),
             transport_number=entry.transport_number,
+            transport_storage_type=entry.transport_storage_type,
             purpose=purpose if (purpose.guid or purpose.external_uuid) else None,
         ),
         vet_documents=[],

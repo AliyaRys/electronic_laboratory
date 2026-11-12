@@ -145,6 +145,10 @@ class VdDocument(StrictModel):
     consignee: ConsignorConsignee
     batch: Batch
     transport_number: str | None = Field(default=None, max_length=64)
+    # DR16: the raw vd:certifiedConsignment/vd:transportStorageType code; the
+    # Russian label is resolved at READ time by vetis.storage_types and never
+    # written into the snapshot.
+    transport_storage_type: str | None = Field(default=None, alias="transportStorageType", max_length=64)
     purpose: PurposeRef | None = None
 
 

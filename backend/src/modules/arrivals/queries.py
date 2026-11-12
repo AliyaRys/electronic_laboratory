@@ -35,6 +35,7 @@ from backend.src.modules.arrivals.schemas import (
 from backend.src.modules.integrations.vetis.models import VetisContour
 from backend.src.modules.integrations.vetis.queries import find_purpose_name
 from backend.src.modules.integrations.vetis.status import status_label
+from backend.src.modules.integrations.vetis.storage_types import storage_type_label
 
 __all__ = [
     "PAGE_SIZE",
@@ -360,6 +361,10 @@ def _external_fields(
         "purposeGuid": purpose_guid,
         "purposeUuid": purpose_uuid,
         "transportNumber": document_payload.get("transportNumber") or None,
+        # ТЗ DR16 §5.3: the raw storage code stays with the Russian label in
+        # the read model; old fields keep their meanings (R-DR16-4).
+        "storageCode": document_payload.get("transportStorageType") or None,
+        "storage": storage_type_label(document_payload.get("transportStorageType")),
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),
         "productItem": str(product_item.get("name") or "") if product_item is not None else None,

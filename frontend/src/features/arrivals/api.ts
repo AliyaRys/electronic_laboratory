@@ -406,7 +406,12 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   push("CHK-F09", "transport", "Вид транспорта", source(external.transportKind));
   push("CHK-F10", "transport", "Номер ТС", source(external.transportNumber, external.vehicleNumber));
   push("CHK-F11", "transport", "Номер прицепа", source(external.trailerNumber));
-  push("CHK-F12", "transport", "Хранение", source(external.storage));
+  push(
+    "CHK-F12",
+    "transport",
+    "Способ хранения продукции при перевозке",
+    source(external.storage, external.storageLabel),
+  );
   push("CHK-F15", "product", "Тип продукции", source(classification.productType, external.productType));
   push("CHK-F16", "product", "Продукция", source(classification.product?.name, external.product));
   push("CHK-F17", "product", "Вид продукции", source(classification.subProduct?.name, external.species));

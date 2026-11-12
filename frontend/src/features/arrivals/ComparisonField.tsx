@@ -24,6 +24,8 @@ export interface ComparisonFieldProps {
   block: string;
   source: string;
   value: ComparisonValue;
+  /** Optional placeholder of the mismatch «Фактическое значение» input. */
+  actualPlaceholder?: string | undefined;
   onChange?: ((next: ComparisonValue) => void) | undefined;
   disabled?: boolean;
   error?: string;
@@ -34,6 +36,7 @@ export function ComparisonField({
   label,
   source,
   value,
+  actualPlaceholder = "",
   onChange,
   disabled = false,
   error = "",
@@ -106,6 +109,7 @@ export function ComparisonField({
             label="Фактическое значение"
             name={`${name}.actual`}
             value={value.actual}
+            placeholder={actualPlaceholder}
             disabled={disabled}
             onChange={(actual) => change({ ...value, actual })}
           />

@@ -81,11 +81,23 @@ class ReceiptIntent(BaseModel):
     decision: Literal["ACCEPT_ALL", "PARTIALLY", "RETURN_ALL"]
     doc_inspection: Literal["CORRESPONDS", "MISMATCH"]
     vet_inspection: Literal["CORRESPONDS", "MISMATCH", "UNSUPERVISED"]
+    # ТЗ DR8 §5.2: the two dimensions travel SEPARATELY end-to-end. Mass
+    # (``vd:volume``) is never substituted by the places count and vice versa.
+    documentary_mass_kg: Decimal
     documentary_quantity: Decimal
+    delivered_mass_kg: Decimal
     delivered_quantity: Decimal
+    accepted_mass_kg: Decimal
     accepted_quantity: Decimal
+    returned_mass_kg: Decimal
     returned_quantity: Decimal
     unit_id: str
+    # ТЗ DR8 §9: three distinct dates. ``issue_date`` is the server time of the
+    # request formation, ``delivery_date`` the entered arrival date and
+    # ``return_date`` the entered return date of the returned delivery.
+    issue_date: datetime
+    delivery_date: datetime
+    return_date: datetime | None = None
     discrepancy_items: list[dict[str, object]] = Field(default_factory=list)
     return_reason_code: str | None = None
     return_reason_text: str | None = None

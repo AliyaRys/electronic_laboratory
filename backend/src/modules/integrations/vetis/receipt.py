@@ -73,6 +73,8 @@ async def build_receipt_preview(
     reconciliation_revision: int,
     vet_inspection: Literal["CORRESPONDS", "MISMATCH", "UNSUPERVISED"],
     delivery_date: datetime | None = None,
+    return_date: datetime | None = None,
+    issue_date: datetime | None = None,
     service_id: str = "mercury-vu.service:2.0",
     issuer_id: str = "preview-redacted",
 ) -> ReceiptPreview:
@@ -112,8 +114,16 @@ async def build_receipt_preview(
         raise _problem(422, "INTEGRATION_SCOPE_MISSING", "Получатель эВСД не совпадает с зарегистрированной площадкой.")
     batch = _dict(payload.get("batch"))
     unit = _dict(batch.get("unit"))
-    unit_id = str(unit.get("guid") or reconciliation.delivered_unit_id or "")
-    if not unit_id or unit_id != reconciliation.delivered_unit_id:
+    unit_id = str(unit.get("guid") or "")
+    if not unit_id:
+        # ТЗ DR8 R-DR8-1: without the source unit GUID the гашение is honestly
+        # blocked — a fictitious unit must never be invented for the request.
+        raise _problem(422, "VALIDATION_ERROR", "Исходный эВСД не содержит единицу измерения; гашение недоступно.")
+    if (
+        reconciliation.delivered_unit_id != unit_id
+        or reconciliation.accepted_unit_id != unit_id
+        or reconciliation.returned_unit_id != unit_id
+    ):
         raise _problem(422, "VALIDATION_ERROR", "Единица сверки не совпадает с исходным эВСД.")
 
     discrepancies: list[dict[str, object]] = []
@@ -128,6 +138,22 @@ async def build_receipt_preview(
     selected_delivery_date = delivery_date or datetime.now(UTC)
     if selected_delivery_date.tzinfo is None or selected_delivery_date > datetime.now(UTC):
         raise _problem(422, "VALIDATION_ERROR", "Дата поступления должна содержать часовой пояс и не быть в будущем.")
+    # ТЗ DR8 §9: the returned delivery carries the ENTERED return date, never
+    # the request date; PARTIAL/RETURN_ALL require it explicitly.
+    selected_return_date = return_date
+    if reconciliation.decision in ("PARTIAL", "RETURN_ALL"):
+        if selected_return_date is None:
+            raise _problem(422, "VALIDATION_ERROR", "Для частичного гашения и полного возврата нужна дата возврата.")
+        if selected_return_date.tzinfo is None or selected_return_date > datetime.now(UTC):
+            raise _problem(
+                422, "VALIDATION_ERROR", "Дата возврата должна содержать часовой пояс и не быть в будущем."
+            )
+    # `issueDate` is the server time of the request formation; the frozen
+    # timestamp may be echoed by the submit request so the fingerprint of the
+    # re-built preview stays identical (one frozen intent).
+    selected_issue_date = issue_date or datetime.now(UTC)
+    if selected_issue_date.tzinfo is None or selected_issue_date > datetime.now(UTC):
+        raise _problem(422, "VALIDATION_ERROR", "Дата формирования запроса некорректна.")
     operation_key = (
         f"vetis-receipt:{party.id}:{source.revision}:{reconciliation.rev}:"
         f"{vet_inspection}:{reconciliation.decision}"
@@ -145,13 +171,20 @@ async def build_receipt_preview(
         "business_member_id": binding.business_member_id or "",
         "initiator": binding.initiator or "",
         "delivery_date": selected_delivery_date,
+        "return_date": selected_return_date,
+        "issue_date": selected_issue_date,
         "reconciliation_revision": reconciliation.rev,
         "decision": _decision(reconciliation.decision),
         "doc_inspection": "MISMATCH" if discrepancies else "CORRESPONDS",
         "vet_inspection": vet_inspection,
+        # ТЗ DR8 §5.2: both dimensions separately, from the frozen columns.
+        "documentary_mass_kg": _quantity(batch.get("volume")),
         "documentary_quantity": _quantity(batch.get("quantity") or batch.get("volume")),
+        "delivered_mass_kg": _quantity(reconciliation.delivered_mass_kg),
         "delivered_quantity": _quantity(reconciliation.delivered_quantity),
+        "accepted_mass_kg": _quantity(reconciliation.accepted_mass_kg),
         "accepted_quantity": _quantity(reconciliation.accepted_quantity),
+        "returned_mass_kg": _quantity(reconciliation.returned_mass_kg),
         "returned_quantity": _quantity(reconciliation.returned_quantity),
         "unit_id": unit_id,
         "discrepancy_items": discrepancies,

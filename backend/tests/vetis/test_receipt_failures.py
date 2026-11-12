@@ -157,6 +157,7 @@ async def test_disabled_capability_creates_no_intent_or_outbox(receipt_env: Simp
         source_revision=3,
         reconciliation_revision=2,
         vet_inspection="UNSUPERVISED",
+        return_date=datetime.now(UTC),
     )
     with pytest.raises(ProblemError) as error:
         await queue_receipt(
@@ -180,6 +181,7 @@ async def test_enabled_confirmation_freezes_one_intent_and_outbox(receipt_env: S
         source_revision=3,
         reconciliation_revision=2,
         vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
     )
     repeated = await build_receipt_preview(
         receipt_env.db,
@@ -188,6 +190,8 @@ async def test_enabled_confirmation_freezes_one_intent_and_outbox(receipt_env: S
         reconciliation_revision=2,
         vet_inspection="CORRESPONDS",
         delivery_date=preview.intent.delivery_date,
+        return_date=preview.intent.return_date,
+        issue_date=preview.intent.issue_date,
     )
     assert repeated.fingerprint == preview.fingerprint
     confirmation = UserConfirmation(
@@ -222,6 +226,7 @@ async def test_lost_submit_response_becomes_unknown_without_resubmit(receipt_env
         source_revision=3,
         reconciliation_revision=2,
         vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
     )
     operation = await queue_receipt(
         receipt_env.db,
@@ -261,8 +266,8 @@ async def test_confirmed_result_is_idempotent_and_opens_gate_once(receipt_env: S
             return f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
               <sourceVetDocumentUuid>{self.source_uuid}</sourceVetDocumentUuid>
               <receiverEnterpriseGuid>{self.receiver}</receiverEnterpriseGuid>
-              <acceptedConsignment><volume>80</volume></acceptedConsignment>
-              <returnedDelivery><volume>20</volume></returnedDelivery>
+              <acceptedConsignment><volume>80</volume><quantity>80</quantity></acceptedConsignment>
+              <returnedDelivery><volume>20</volume><quantity>20</quantity></returnedDelivery>
             </processIncomingConsignmentResponse></response>"""
 
     monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
@@ -272,6 +277,7 @@ async def test_confirmed_result_is_idempotent_and_opens_gate_once(receipt_env: S
         source_revision=3,
         reconciliation_revision=2,
         vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
     )
     operation = await queue_receipt(
         receipt_env.db,
@@ -315,6 +321,7 @@ async def test_processing_timeout_becomes_unknown_without_network(receipt_env: S
         source_revision=3,
         reconciliation_revision=2,
         vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
     )
     operation = await queue_receipt(
         receipt_env.db,

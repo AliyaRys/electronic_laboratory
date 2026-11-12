@@ -87,6 +87,7 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
   const state = operation?.state ?? context?.operation_state ?? null;
   const [vetInspection, setVetInspection] = useState<VetInspection | "">("");
   const [deliveryDate, setDeliveryDate] = useState(nowLocal);
+  const [returnDate, setReturnDate] = useState("");
   const [preview, setPreview] = useState<ReceiptPreview | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -94,6 +95,11 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
   const submitted = useRef(false);
   const invalidatedTerminal = useRef<string | null>(null);
   const deliveryIso = useMemo(() => new Date(deliveryDate).toISOString(), [deliveryDate]);
+  const returnIso = useMemo(
+    () => (returnDate === "" ? null : new Date(returnDate).toISOString()),
+    [returnDate],
+  );
+  const isReturn = reconciliation.decision === "PARTIAL" || reconciliation.decision === "RETURN_ALL";
 
   useEffect(() => {
     if (state === null || !TERMINAL.has(state) || invalidatedTerminal.current === state) return;
@@ -107,6 +113,7 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
 
   async function prepare(): Promise<void> {
     if (context === null || vetInspection === "" || deliveryDate === "") return;
+    if (isReturn && returnIso === null) return;
     setProblem(null);
     setBusy(true);
     const result = await previewReceipt(party.party_id, {
@@ -114,6 +121,7 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
       reconciliation_revision: context.reconciliation_revision ?? -1,
       vet_inspection: vetInspection,
       delivery_date: deliveryIso,
+      return_date: returnIso,
     });
     setBusy(false);
     if ("code" in result) {
@@ -136,6 +144,10 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
         reconciliation_revision: context.reconciliation_revision ?? -1,
         vet_inspection: vetInspection,
         delivery_date: deliveryIso,
+        return_date: returnIso,
+        // ТЗ DR8 §9: the frozen server issue date is echoed so the re-built
+        // preview keeps the exact fingerprint (one frozen intent).
+        issue_date: preview.intent.issue_date,
         fingerprint: preview.fingerprint,
       },
       crypto.randomUUID(),
@@ -235,6 +247,18 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
           value={deliveryDate}
           onChange={(event) => setDeliveryDate(event.target.value)}
         />
+        {isReturn ? (
+          <>
+            <label htmlFor="receipt-return-date">Дата и время возврата</label>
+            <input
+              id="receipt-return-date"
+              type="datetime-local"
+              max={nowLocal()}
+              value={returnDate}
+              onChange={(event) => setReturnDate(event.target.value)}
+            />
+          </>
+        ) : null}
       </div>
       {!ready ? <p className="vse-receipt-blocked">Сначала полностью заполните и сохраните сверку.</p> : null}
       {problem !== null ? (
@@ -242,7 +266,7 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
       ) : null}
       <Button
         variant="primary"
-        disabled={!ready || vetInspection === "" || deliveryDate === ""}
+        disabled={!ready || vetInspection === "" || deliveryDate === "" || (isReturn && returnIso === null)}
         busy={busy}
         busyLabel="Подготавливаем…"
         onClick={() => void prepare()}

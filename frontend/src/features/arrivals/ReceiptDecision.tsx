@@ -103,6 +103,7 @@ export function ReceiptDecision({
               id="return-reason-text"
               label="Текст иной причины"
               value={value.return_reason_text}
+              maxLength={240}
               onChange={(text) => onChange({ ...value, return_reason_text: text })}
               error={errors.return_reason_text}
             />

@@ -49,6 +49,10 @@ class ReceiptPreviewRequest(BaseModel):
     reconciliation_revision: int
     vet_inspection: Literal["CORRESPONDS", "MISMATCH", "UNSUPERVISED"]
     delivery_date: datetime | None = None
+    # ТЗ DR8 §9: the ENTERED return date of the returned delivery (never the
+    # request date) and the frozen server issue date echoed on submit.
+    return_date: datetime | None = None
+    issue_date: datetime | None = None
 
 
 class ReceiptSubmitRequest(ReceiptPreviewRequest):
@@ -261,6 +265,8 @@ async def preview_receipt(
         reconciliation_revision=payload.reconciliation_revision,
         vet_inspection=payload.vet_inspection,
         delivery_date=payload.delivery_date,
+        return_date=payload.return_date,
+        issue_date=payload.issue_date,
     )
 
 
@@ -285,6 +291,8 @@ async def submit_receipt(
         reconciliation_revision=payload.reconciliation_revision,
         vet_inspection=payload.vet_inspection,
         delivery_date=payload.delivery_date,
+        return_date=payload.return_date,
+        issue_date=payload.issue_date,
     )
     operation = await queue_receipt(
         db,

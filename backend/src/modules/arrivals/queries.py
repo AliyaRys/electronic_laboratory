@@ -293,7 +293,10 @@ def _classification_view(snapshot: dict[str, object]) -> ClassificationView:
 def _quantity_set(batch: dict[str, object]) -> QuantitySet:
     unit_raw = batch.get("unit")
     unit = unit_raw if isinstance(unit_raw, dict) else None
-    unit_id = str(unit.get("id") or "") if unit is not None else ""
+    # ТЗ DR8 R-DR8-1: the canonical identity is the SOURCE unit GUID stored as
+    # an external reference in the normalized snapshot — never a local
+    # dictionary `unit.id` lookup.
+    unit_id = str(unit.get("guid") or "") if unit is not None else ""
     # The documentary quantity is the number of transport packages the source
     # carried (max-level packageList sum). An absent source quantity stays
     # ABSENT: the mass (`volume`) is a different entity and is NEVER

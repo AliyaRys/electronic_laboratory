@@ -95,6 +95,9 @@ const formSchema = z.object({
 
 export type FormValues = z.infer<typeof formSchema>;
 
+/** ТЗ DR8 §6.2/§10: OTHER_REASON demands its own text of 1–240 characters. */
+const OTHER_REASON_MAX = 240;
+
 const formSchemaWithComparisonFacts = formSchema.superRefine((values, ctx) => {
   // CHK-F44: the discrepancy act carries the reason, so a mismatch without
   // one is a client-side validation error of the comparison card (§7.3).
@@ -104,6 +107,25 @@ const formSchemaWithComparisonFacts = formSchema.superRefine((values, ctx) => {
         code: "custom",
         path: ["comparisons", fieldId],
         message: "Укажите причину несоответствия для отметки «Не совпадает».",
+      });
+    }
+  }
+  if (
+    (values.decision === "PARTIAL" || values.decision === "RETURN_ALL") &&
+    values.return_reason_code === "OTHER_REASON"
+  ) {
+    const text = values.return_reason_text.trim();
+    if (text === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["return_reason_text"],
+        message: "Для иной причины обязателен текст причины возврата.",
+      });
+    } else if (text.length > OTHER_REASON_MAX) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["return_reason_text"],
+        message: `Текст иной причины не должен превышать ${OTHER_REASON_MAX} символов.`,
       });
     }
   }
@@ -124,13 +146,18 @@ export function initialValues(party: IncomingView, initial: ReconciliationView):
     comparisons[field.fieldId] =
       saved !== undefined ? fromComparison(saved) : { matches: null, actual: "", reason: "" };
   }
+  // ТЗ DR8 R-DR8-1: the source unit GUID is filled into all three QuantitySets
+  // automatically; the user never types a unit.
+  const sourceUnitId = party.documentary.unit_id;
+  const unitIdOf = (part: "delivered" | "accepted" | "returned"): string =>
+    initial[part].unit_id !== "" ? initial[part].unit_id : sourceUnitId;
   return {
     decision: initial.decision,
     compartment: initial.inspection.compartment ?? null,
     joint_carriage: initial.inspection.jointCarriage ?? null,
-    delivered: { ...initial.delivered },
-    accepted: { ...initial.accepted },
-    returned: { ...initial.returned },
+    delivered: { ...initial.delivered, unit_id: unitIdOf("delivered") },
+    accepted: { ...initial.accepted, unit_id: unitIdOf("accepted") },
+    returned: { ...initial.returned, unit_id: unitIdOf("returned") },
     return_reason_code: initial.return_reason?.code ?? "",
     return_reason_text: initial.return_reason?.text ?? "",
     repeat_required: initial.repeat?.required ?? null,
@@ -274,14 +301,30 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   };
 
   const decisionErrors: Record<string, string> = {};
+  // ТЗ DR8 §10: CHK-F20 is bound to the unit/quantity block of the exact
+  // part the server named (path delivered/accepted/returned), not only to
+  // the common banner.
+  const quantityErrors: Record<string, string> = {};
   const problem = command.error;
   if (problem !== null && problem.code === "VALIDATION_ERROR") {
     const items =
-      (problem as unknown as { errors?: { field_id?: string | null; message: string }[] }).errors ?? [];
+      (
+        problem as unknown as {
+          errors?: { field_id?: string | null; path?: string | null; message: string }[];
+        }
+      ).errors ?? [];
     for (const item of items) {
       if (item.field_id === "CHK-F34") decisionErrors.decision = item.message;
       if (item.field_id === "CHK-F35" && item.message.includes("текст")) {
         decisionErrors.return_reason_text = item.message;
+      }
+      if (
+        item.field_id === "CHK-F20" &&
+        item.path !== null &&
+        item.path !== undefined &&
+        QUANTITY_PARTS.includes(item.path as (typeof QUANTITY_PARTS)[number])
+      ) {
+        quantityErrors[item.path] = item.message;
       }
     }
   }
@@ -438,6 +481,16 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       >
         <div className="vse-rec-compare-grid">{compareGrid("product")}</div>
         <div className="vse-rec-quantities" aria-label="Количества партии">
+          <div className="vse-rec-quantities-unit">
+            <span className="vse-rec-quantities-title">Единица измерения (из эВСД)</span>
+            <span className="vse-rec-mercury-value">{unit !== "" ? unit : "—"}</span>
+          </div>
+          {unit === "" ? (
+            <p className="vse-rec-prior-note">
+              Исходный эВСД не содержит единицу измерения: гашение будет недоступно, пока единица не появится
+              в документе.
+            </p>
+          ) : null}
           {QUANTITY_PARTS.map((part) => {
             const title = { delivered: "Доставлено", accepted: "Принято", returned: "Возвращается" }[part];
             return (
@@ -455,6 +508,11 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
                   error={fieldErrors[`${part}.quantity`] ?? ""}
                   onChange={(next) => form.setValue(`${part}.quantity`, next, { shouldDirty: true })}
                 />
+                {quantityErrors[part] !== undefined ? (
+                  <p className="app-field-message app-field-error" aria-live="polite">
+                    {quantityErrors[part]}
+                  </p>
+                ) : null}
               </div>
             );
           })}
@@ -564,7 +622,12 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             form.setValue("transaction_type", next.transaction_type, { shouldDirty: true });
           }}
           allowed={allowed}
-          errors={decisionErrors}
+          errors={{
+            ...decisionErrors,
+            ...(fieldErrors.return_reason_text !== undefined
+              ? { return_reason_text: fieldErrors.return_reason_text }
+              : {}),
+          }}
         />
         <ActPreview act={initial.act} decision={decision} problemItems={actErrors} />
       </CheckSectionCard>

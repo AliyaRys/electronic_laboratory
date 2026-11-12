@@ -124,7 +124,10 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
         "manufacturer": None,
         "quantity": text_of(batch.get("quantity")),
         "massKg": text_of(batch.get("volume")),
-        "unitId": _ref_name(unit),
+        # ТЗ DR8 R-DR8-1: the unit GUID is the identity published to the
+        # validator (CHK-F20), the NAME is the read-only UI label only.
+        "unitId": text_of(unit.get("guid")) if isinstance(unit, dict) else None,
+        "unitName": _ref_name(unit),
         "producedOn": None,
         "expiresOn": None,
         "transportDocumentType": None,
@@ -202,6 +205,16 @@ def _reason_view(row: Reconciliation) -> ReturnReason | None:
     return None
 
 
+def _source_unit_id(document_row: IncomingDocumentRow) -> str:
+    """ТЗ DR8 R-DR8-1: the source unit GUID of the normalized snapshot."""
+    payload = document_row.source_snapshot.get("vdDocument")
+    payload = payload if isinstance(payload, dict) else {}
+    batch = payload.get("batch")
+    batch = batch if isinstance(batch, dict) else {}
+    unit = batch.get("unit")
+    return str(unit.get("guid") or "") if isinstance(unit, dict) else ""
+
+
 def build_reconciliation_view(
     row: Reconciliation | None,
     party: Party,
@@ -210,6 +223,9 @@ def build_reconciliation_view(
     """The API-04 ``ReconciliationView``; a not-yet-created reconciliation is
     an empty ``OPEN`` view whose revision carries the parent (party) ETag."""
     if row is None:
+        # ТЗ DR8 R-DR8-1: a NEW reconciliation inherits the source unit GUID
+        # into all three QuantitySets; the user never types a unit.
+        unit_id = _source_unit_id(document_row)
         return ReconciliationView(
             id="",
             party_id=str(party.id),
@@ -217,9 +233,9 @@ def build_reconciliation_view(
             state="OPEN",
             checks={},
             inspection=Inspection(),
-            delivered=QuantitySet(mass_kg="0", quantity="0", unit_id=""),
-            accepted=QuantitySet(mass_kg="0", quantity="0", unit_id=""),
-            returned=QuantitySet(mass_kg="0", quantity="0", unit_id=""),
+            delivered=QuantitySet(mass_kg="0", quantity="0", unit_id=unit_id),
+            accepted=QuantitySet(mass_kg="0", quantity="0", unit_id=unit_id),
+            returned=QuantitySet(mass_kg="0", quantity="0", unit_id=unit_id),
             decision=None,
             return_reason=None,
             repeat=None,
@@ -362,6 +378,16 @@ async def save_reconciliation(
 
     saved = normalize_payload(payload)
     if row is None:
+        # ТЗ DR8 R-DR8-1: a NEW reconciliation inherits the source unit GUID
+        # into all three QuantitySets; the client unit never overrides it.
+        source_unit_id = _source_unit_id(document_row)
+        saved = saved.model_copy(
+            update={
+                "delivered": saved.delivered.model_copy(update={"unit_id": source_unit_id}),
+                "accepted": saved.accepted.model_copy(update={"unit_id": source_unit_id}),
+                "returned": saved.returned.model_copy(update={"unit_id": source_unit_id}),
+            }
+        )
         row = Reconciliation(party_id=party.id, checks={}, services=[], actor_id=ctx.actor_id, state="OPEN")
         db.add(row)
     row.checks = _checks_storage(saved)  # type: ignore[assignment]

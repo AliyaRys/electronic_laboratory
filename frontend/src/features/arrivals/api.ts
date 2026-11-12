@@ -263,22 +263,37 @@ export const CHECK_SECTION_DESCRIPTIONS: Readonly<Record<string, string>> = Obje
   invoice: "Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма.",
 });
 
+/** ТЗ DR8 §6.2: the exact Russian labels of the CHK-F35 reason dictionary. */
 export const RETURN_REASON_CODES: readonly { code: string; label: string }[] = Object.freeze([
-  { code: "DEFECTIVE_GOODS", label: "Недоброкачественная продукция" },
-  { code: "PACKAGING_DAMAGE", label: "Повреждение упаковки" },
-  { code: "FOREIGN_MATERIAL_OR_SAFETY_VIOLATION", label: "Посторонние включения / нарушение безопасности" },
-  { code: "LAB_TEST_MISMATCH", label: "Несоответствие лабораторных исследований" },
-  { code: "PRODUCTION_VSD_ERROR", label: "Ошибка производственного ВС" },
-  { code: "CRITICAL_EXPIRY_DATE", label: "Критичный срок годности" },
-  { code: "MARKING_ISSUES", label: "Проблемы маркировки" },
-  { code: "QUANTITY_DISCREPANCY", label: "Расхождение количества" },
-  { code: "PRODUCT_DATE_MISMATCH", label: "Несоответствие дат продукции" },
-  { code: "UNORDERED_PRODUCT", label: "Незаказанная продукция" },
-  { code: "WRONG_SPECIFICATION", label: "Несоответствие спецификации" },
-  { code: "CONSIGNOR_REJECTION", label: "Отказ отправителя" },
-  { code: "CONTRACT_VIOLATION", label: "Нарушение условий договора" },
-  { code: "OTHER_REASON", label: "Иная причина" },
+  { code: "DEFECTIVE_GOODS", label: "Брак / товар ненадлежащего качества" },
+  { code: "PACKAGING_DAMAGE", label: "Нарушение целостности упаковки" },
+  {
+    code: "FOREIGN_MATERIAL_OR_SAFETY_VIOLATION",
+    label: "Наличие посторонних включений / несоответствие безопасности",
+  },
+  {
+    code: "LAB_TEST_MISMATCH",
+    label: "Отсутствие, дублирование или несоответствие лабораторных исследований / ВСЭ",
+  },
+  { code: "PRODUCTION_VSD_ERROR", label: "Ошибки при оформлении производственного ВСД" },
+  { code: "CRITICAL_EXPIRY_DATE", label: "Короткий / критический / истекающий остаточный срок годности" },
+  { code: "MARKING_ISSUES", label: "Проблемы с маркировкой" },
+  { code: "QUANTITY_DISCREPANCY", label: "Расхождение по количеству" },
+  {
+    code: "PRODUCT_DATE_MISMATCH",
+    label: "Несоответствие даты выработки или срока годности в ВСД и на упаковке",
+  },
+  { code: "UNORDERED_PRODUCT", label: "Товар не по заявке / не заказывали / не по контракту" },
+  { code: "WRONG_SPECIFICATION", label: "Пересорт (по наименованию, дате, партии, размеру и др.)" },
+  { code: "CONSIGNOR_REJECTION", label: "Отказ торговой точки / покупателя" },
+  { code: "CONTRACT_VIOLATION", label: "Нарушение условий поставки / договора" },
+  { code: "OTHER_REASON", label: "Иное" },
 ]);
+
+/** Russian label of a saved CHK-F35 code (old codes render with new labels). */
+export function returnReasonLabel(code: string): string {
+  return RETURN_REASON_CODES.find((item) => item.code === code)?.label ?? code;
+}
 
 /** The viewed CHK source projection of one arrival (informational + compared). */
 export function comparedFields(view: IncomingView): ComparedField[] {
@@ -363,13 +378,13 @@ export function participantOwner(view: IncomingView, side: "sender" | "receiver"
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
-/** The unit name of the party quantities (ЧК quantities are unit-agnostic). */
+/**
+ * The read-only unit label of the party quantities: the NAME of the source
+ * unit is the only thing the user sees (the GUID stays a technical identity,
+ * R-DR8-1). Empty when the source eVSD carries no unit at all.
+ */
 export function partyUnit(view: IncomingView): string {
-  const external = view.external.fields;
-  if (typeof external.unitId === "string" && external.unitId.trim() !== "") {
-    return external.unitId;
-  }
-  return view.classification.unit?.name ?? "";
+  return view.classification?.unit?.name ?? "";
 }
 
 /** GET /arrivals/:party_id — the IncomingView of one party (API-04, party ETag).

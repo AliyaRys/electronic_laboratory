@@ -195,6 +195,7 @@ async def arrival_page(
     result: str | None,
     query: str | None,
     page: int,
+    sort: str | None = None,
 ) -> tuple[list[Party], list[IncomingDocument], int]:
     """A page of arrivals for one laboratory (API-01 paging semantics)."""
     exams_available = await _examinations_available(db)
@@ -217,11 +218,23 @@ async def arrival_page(
         (await db.execute(select(func.count()).select_from(Party).join(IncomingDocument).where(where))).scalar_one()
     )
     current = max(page, 1)
+    # DR15 §5.3: the sort is the ВСД issue date from the source snapshot (the
+    # same value the column «Дата оформления ВСД» shows) — never Party.created_at
+    # or a sync/fetched date. It runs in SQL BEFORE count/offset/limit; missing
+    # or malformed dates are SQL NULL (path traversal on non-object JSON never
+    # errors) and keep an explicit deterministic position at the END in both
+    # directions; the stable tie-breaker stays Party.created_at DESC / id DESC.
+    issue_date = IncomingDocument.source_snapshot["vdDocument"]["issueDate"].astext
+    order: list[Any] = [Party.created_at.desc(), Party.id.desc()]
+    if sort == "asc":
+        order.insert(0, issue_date.asc().nulls_last())
+    else:  # default (and explicit desc): the newest issued ВСД first.
+        order.insert(0, issue_date.desc().nulls_last())
     rows = await db.execute(
         select(Party, IncomingDocument)
         .join(IncomingDocument, IncomingDocument.id == Party.incoming_document_id)
         .where(where)
-        .order_by(Party.created_at.desc(), Party.id.desc())
+        .order_by(*order)
         .offset((current - 1) * PAGE_SIZE)
         .limit(PAGE_SIZE)
     )

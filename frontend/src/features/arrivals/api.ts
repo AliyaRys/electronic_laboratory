@@ -38,6 +38,8 @@ export type QuantitySet = components["schemas"]["QuantitySet"];
 
 export type ArrivalQueue = "EXPECTED" | "WORK" | "ACCEPTED";
 export type ArrivalResult = "WAITING" | "RETURNED" | "COMPLETED";
+/** DR15 §5.2: the issue-date sort order of the EXPECTED queue. */
+export type ArrivalSort = "asc" | "desc";
 
 export interface ArrivalsQuery {
   laboratory_id: string;
@@ -45,6 +47,8 @@ export interface ArrivalsQuery {
   result?: ArrivalResult | null;
   q?: string | null;
   page?: number;
+  /** DR15 §5.2: sent only when the user picked a non-default order. */
+  sort?: ArrivalSort | null;
 }
 
 export interface ArrivalsPage {
@@ -175,6 +179,9 @@ export async function fetchArrivals(
     result: query.result ?? null,
     q: query.q ?? null,
     page: query.page ?? 1,
+    // DR15 §6: only the explicitly chosen order is sent; the absent param
+    // keeps the server default (desc = the newest issued ВСД first).
+    sort: query.sort ?? null,
   };
   const settled = await settle(
     apiClient.GET("/api/v1/arrivals", {

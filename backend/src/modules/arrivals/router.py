@@ -110,6 +110,8 @@ async def list_arrivals(
     result: Literal["WAITING", "RETURNED", "COMPLETED"] | None = None,
     q: str | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
+    # DR15 §5.2: sort by the ВСД issue date; an unknown value is an honest 422.
+    sort: Literal["asc", "desc"] | None = None,
 ) -> Page[IncomingView]:
     """A scoped page of arrivals (queue/result filters, search, stable order)."""
     identity, actor = principal
@@ -121,6 +123,7 @@ async def list_arrivals(
         result=result,
         query=q,
         page=page,
+        sort=sort,
     )
     views: list[IncomingView] = []
     for party, document in zip(parties, documents, strict=True):

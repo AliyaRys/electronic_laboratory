@@ -141,6 +141,9 @@ const screenProps = {
   onSearch: () => {},
   result: "",
   onResultChange: () => {},
+  // DR15 §5.1: the storybook full pages show the EXPECTED sort control too.
+  sort: "desc" as const,
+  onSortChange: () => {},
   hiddenColumns: new Set<string>(),
   onToggleColumn: () => {},
   loading: false,

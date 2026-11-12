@@ -68,8 +68,14 @@ def set_presence(document_row: IncomingDocument, presence: str) -> None:
     document_row.presence_changed_at = datetime.now(UTC) if presence == STALE else None
 
 
-async def test_expected_excludes_stale_and_work_is_untouched(db_session: AsyncSession, dr9_lab: Laboratory) -> None:
-    """Item 1: stale is not EXPECTED; local WORK (started reconciliation) is intact."""
+async def test_expected_excludes_stale_and_open_reconciliation_stays_expected(
+    db_session: AsyncSession, dr9_lab: Laboratory
+) -> None:
+    """Item 1: stale is not EXPECTED; начатая сверка НЕ переводит документ в WORK.
+
+    Решение владельца 2026-11-12: «В работе» = только ВСД, погашенные через
+    систему. Начатая (OPEN) сверка продолжается из EXPECTED.
+    """
     stale_uuid, fresh_uuid = uuid.uuid4(), uuid.uuid4()
     await import_document(db_session, document(stale_uuid, dr9_lab.id))
     await import_document(db_session, document(fresh_uuid, dr9_lab.id))
@@ -82,8 +88,44 @@ async def test_expected_excludes_stale_and_work_is_untouched(db_session: AsyncSe
     )
     assert expected_total == 1  # only the fresh document
 
-    # A started reconciliation keeps the stale document in WORK — facts intact.
+    # A started (OPEN) reconciliation keeps the FRESH document in EXPECTED —
+    # reconciliation continues from EXPECTED, WORK stays empty.
     user = (await db_session.execute(select(User).where(User.login == "vet-dr9"))).scalar_one()
+    fresh_row = await document_of(db_session, fresh_uuid)
+    fresh_party = (
+        await db_session.execute(select(Party).where(Party.incoming_document_id == fresh_row.id))
+    ).scalar_one()
+    db_session.add(
+        Reconciliation(
+            party_id=fresh_party.id,
+            checks={},
+            services={},
+            delivered_mass_kg=Decimal("1"),
+            delivered_quantity=Decimal("1"),
+            delivered_unit_id=str(UNIT_KG),
+            accepted_mass_kg=Decimal("1"),
+            accepted_quantity=Decimal("1"),
+            accepted_unit_id=str(UNIT_KG),
+            returned_mass_kg=Decimal("0"),
+            returned_quantity=Decimal("0"),
+            returned_unit_id=str(UNIT_KG),
+            actor_id=user.id,
+            state="OPEN",
+        )
+    )
+    await db_session.commit()
+    _, _, expected_total = await queries.arrival_page(
+        db_session, laboratory_id=dr9_lab.id, queue="EXPECTED", result=None, query=None, page=1
+    )
+    _, _, work_total = await queries.arrival_page(
+        db_session, laboratory_id=dr9_lab.id, queue="WORK", result=None, query=None, page=1
+    )
+    assert expected_total == 1  # OPEN reconciliation did NOT move it to WORK
+    assert work_total == 0
+
+    # The stale document stays out of both active queues even with a started
+    # reconciliation: staleness still excludes EXPECTED, and without a local
+    # ReceiptConfirmation it is never WORK.
     stale_party = (
         await db_session.execute(select(Party).where(Party.incoming_document_id == stale_row.id))
     ).scalar_one()
@@ -109,7 +151,44 @@ async def test_expected_excludes_stale_and_work_is_untouched(db_session: AsyncSe
     _, _, work_total = await queries.arrival_page(
         db_session, laboratory_id=dr9_lab.id, queue="WORK", result=None, query=None, page=1
     )
-    assert work_total == 1
+    assert work_total == 0
+
+
+async def test_receipt_confirmation_moves_to_work(db_session: AsyncSession, dr9_lab: Laboratory) -> None:
+    """Решение владельца 2026-11-12: ReceiptConfirmation → WORK; до гашения — EXPECTED.
+
+    ACCEPTED is unchanged: положительное гашение + завершённая ВСЭ.
+    """
+    evsd = uuid.uuid4()
+    party = await import_document(db_session, document(evsd, dr9_lab.id))
+    _, _, work_total = await queries.arrival_page(
+        db_session, laboratory_id=dr9_lab.id, queue="WORK", result=None, query=None, page=1
+    )
+    assert work_total == 0  # no reconciliation and no confirmation yet
+
+    db_session.add(
+        ReceiptConfirmation(
+            party_id=party.id,
+            operation_id=uuid.uuid4(),
+            source_evsd_uuid=evsd,
+            fingerprint="fixture-fingerprint-dr12",
+            evidence={"fixture": True},
+            accepted_mass_kg=Decimal("2"),
+            accepted_quantity=Decimal("2"),
+            accepted_unit_id=str(UNIT_KG),
+            classification_snapshot={},
+        )
+    )
+    await db_session.commit()
+
+    _, _, work_total = await queries.arrival_page(
+        db_session, laboratory_id=dr9_lab.id, queue="WORK", result=None, query=None, page=1
+    )
+    assert work_total == 1  # гашено через систему → WORK
+
+    # The per-party view label agrees with the queue gate.
+    view = await queries.build_incoming_view(db_session, party, await document_of(db_session, evsd))
+    assert view.queue == "WORK"
 
 
 async def test_totals_after_freshness_and_scope(db_session: AsyncSession, dr9_lab: Laboratory) -> None:

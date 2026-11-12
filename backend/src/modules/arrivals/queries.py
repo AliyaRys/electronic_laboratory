@@ -137,17 +137,19 @@ async def _examinations_available(db: AsyncSession) -> bool:
 
 
 def _queue_condition(queue: str, exams_available: bool) -> Any:
-    rec = _rec_exists()
     conf = _conf_exists()
     accepted = _conf_positive_exists()
     exam_done = _exam_done_exists() if exams_available else select(Party.id).where(sql_false()).exists()
     if queue == "EXPECTED":
-        # ТЗ DR9 §6: EXPECTED requires an observed CURRENT_CONFIRMED source
-        # freshness — a stale document never re-enters the active queue even
-        # without a local reconciliation/confirmation.
-        return ~rec & ~conf & (IncomingDocument.source_presence == "CURRENT_CONFIRMED")
+        # ТЗ DR9 §6, уточнено решением владельца 2026-11-12: EXPECTED требует
+        # наблюдаемой свежести источника CURRENT_CONFIRMED — устаревший документ
+        # не возвращается в активную очередь. НАЧАТАЯ сверка (OPEN) НЕ выводит
+        # документ из EXPECTED: сверка продолжается из EXPECTED.
+        return ~conf & (IncomingDocument.source_presence == "CURRENT_CONFIRMED")
     if queue == "WORK":
-        return (rec | conf) & ~(accepted & exam_done)
+        # Решение владельца 2026-11-12: «В работе» = только ВСД, погашенные
+        # через систему (существует локальный ReceiptConfirmation).
+        return conf & ~(accepted & exam_done)
     if queue == "ACCEPTED":
         return accepted & exam_done
     raise ValueError(f"Unknown queue {queue}")
@@ -250,18 +252,21 @@ async def queue_of(
     has_reconciliation: bool,
     has_confirmation: bool,
 ) -> Literal["EXPECTED", "WORK", "ACCEPTED"]:
-    """The query-time queue label of one party (DATA-02)."""
+    """The query-time queue label of one party (DATA-02, owner decision 2026-11-12).
+
+    «В работе» = только ВСД, погашенные через систему: начатая сверка не
+    переводит документ в WORK — сверка продолжается из EXPECTED.
+    """
     exams_available = await _examinations_available(db)
-    if not has_reconciliation and not has_confirmation:
+    if not has_confirmation:
         return "EXPECTED"
-    if has_confirmation:
-        positive = await _scalar(
-            db, select(ReceiptConfirmation.accepted_quantity).where(ReceiptConfirmation.party_id == party.id)
-        )
-        if positive is not None and positive > 0:
-            if exams_available and await _exam_done(db, party.id):
-                return "ACCEPTED"
-            return "WORK"
+    positive = await _scalar(
+        db, select(ReceiptConfirmation.accepted_quantity).where(ReceiptConfirmation.party_id == party.id)
+    )
+    if positive is not None and positive > 0:
+        if exams_available and await _exam_done(db, party.id):
+            return "ACCEPTED"
+        return "WORK"
     return "WORK"
 
 

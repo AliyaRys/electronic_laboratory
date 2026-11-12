@@ -265,9 +265,10 @@ async def list_tariffs(
     principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
     laboratory_id: uuid.UUID,
-    product_species_id: uuid.UUID,
+    product_species_id: uuid.UUID | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
 ) -> Page[TariffView]:
+    """Owner decision DR14: no species lists the laboratory-scoped CHECK tariffs."""
     identity, _actor = principal
     await authorizer.authorize(
         db,
@@ -623,7 +624,9 @@ async def preview_pricing(
     identity, _ = principal
     if payload.laboratory_id is None:
         raise _problem(422, "VALIDATION_ERROR", "Расчёт требует лабораторию партии.")
-    if payload.product_species_id is None:
+    # Owner decision DR14: a species is required by VSE pricing only; the
+    # CHECK services are laboratory-scoped and never consult it.
+    if payload.context == "VSE" and payload.product_species_id is None:
         raise _problem(422, "VALIDATION_ERROR", "Расчёт требует вид продукции партии.")
     await authorizer.authorize(
         db,

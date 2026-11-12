@@ -187,27 +187,40 @@ async def test_missing_tariff_is_configuration_missing_with_service_name(vet_env
     assert row is None  # nothing was committed: no empty or fictive snapshot
 
 
-# --- §9-4: a foreign species/laboratory tariff is never used ----------------------
+# --- §9-4: a foreign scope tariff is never used -----------------------------------
 
 
 @pytest.mark.integration
 async def test_foreign_species_tariff_is_never_used(db_session: AsyncSession) -> None:
-    """A wrong product_species_id never picks another scope's tariff."""
+    """Only the laboratory-scoped (species NULL) CHECK rows answer.
+
+    Owner decision DR14: a tariff of the same laboratory that carries a
+    species (a VSE row) and a laboratory-scoped row of a FOREIGN laboratory
+    are never used for the CHECK pricing.
+    """
     laboratory_id = uuid.uuid4()
-    # Tariffs of the OTHER species (even the same laboratory) and of the
-    # foreign laboratory exist — none of them may answer.
-    for species, lab in ((uuid.uuid4(), laboratory_id), (SPECIES, uuid.uuid4())):
-        db_session.add(
-            Tariff(
-                laboratory_id=lab,
-                product_species_id=species,
-                service_code="PRODUCT_IDENTIFICATION",
-                unit_id="RUB",
-                price=Decimal("777.00"),
-                version=1,
-                source=TARIFF_SOURCE,
-            )
+    db_session.add(
+        Tariff(
+            laboratory_id=laboratory_id,
+            product_species_id=uuid.uuid4(),  # a species-set row of the same laboratory
+            service_code="PRODUCT_IDENTIFICATION",
+            unit_id="RUB",
+            price=Decimal("777.00"),
+            version=1,
+            source=TARIFF_SOURCE,
         )
+    )
+    db_session.add(
+        Tariff(
+            laboratory_id=uuid.uuid4(),  # a foreign laboratory
+            product_species_id=None,
+            service_code="PRODUCT_IDENTIFICATION",
+            unit_id="RUB",
+            price=Decimal("777.00"),
+            version=1,
+            source=TARIFF_SOURCE,
+        )
+    )
     await db_session.commit()
     request = PricingRequest.model_validate(
         {
@@ -216,13 +229,39 @@ async def test_foreign_species_tariff_is_never_used(db_session: AsyncSession) ->
             "context": "CHECK",
             "performed": ["PRODUCT_IDENTIFICATION"],
             "fair": False,
-            "product_species_id": str(SPECIES),  # the party's exact species
             "decision": "ACCEPT_ALL",
         }
     )
     with pytest.raises(ProblemError) as raised:
         await evaluate_and_price(UnitOfWork(db_session), request, None)
     assert raised.value.code == "CONFIGURATION_MISSING"
+
+
+@pytest.mark.integration
+async def test_party_species_differences_never_change_the_price(db_session: AsyncSession) -> None:
+    """Owner decision DR14: the price applies to reconciliations of EVERY
+    species — the lookup consults the laboratory only."""
+    from backend.tests.arrivals.check_pricing_seed import seed_check_pricing
+
+    laboratory_id = uuid.uuid4()
+    await seed_check_pricing(db_session, laboratory_id)
+    request = PricingRequest.model_validate(
+        {
+            "party_id": str(uuid.uuid4()),
+            "laboratory_id": str(laboratory_id),
+            "context": "CHECK",
+            "performed": ["PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"],
+            "fair": False,
+            "product_species_id": str(uuid.uuid4()),  # any species of the party
+            "decision": "ACCEPT_ALL",
+        }
+    )
+    snapshot = await evaluate_and_price(UnitOfWork(db_session), request, None)
+    assert [line["unit_price"] for line in snapshot.model_dump()["lines"]] == ["100.00", "130.00"]
+
+    without_species = request.model_copy(update={"product_species_id": None})
+    snapshot = await evaluate_and_price(UnitOfWork(db_session), without_species, None)
+    assert snapshot.total == "230.00"
 
 
 @pytest.mark.integration
@@ -321,7 +360,7 @@ async def test_multiplier_bases_multiply_correctly(
     db_session.add(
         Tariff(
             laboratory_id=laboratory_id,
-            product_species_id=SPECIES,
+            product_species_id=None,
             service_code="PRODUCT_IDENTIFICATION",
             unit_id="RUB",
             price=Decimal("100.00"),
@@ -338,7 +377,6 @@ async def test_multiplier_bases_multiply_correctly(
             "context": "CHECK",
             "performed": ["PRODUCT_IDENTIFICATION"],
             "fair": False,
-            "product_species_id": str(SPECIES),
             "decision": "ACCEPT_ALL",
             "accepted_quantity": "4",
             "accepted_unit_id": UNIT,
@@ -441,7 +479,7 @@ async def test_tariff_change_keeps_the_saved_snapshot(vet_env: object) -> None:
         await env.db.execute(  # type: ignore[attr-defined]
             select(Tariff).where(
                 Tariff.laboratory_id == env.own.id,  # type: ignore[attr-defined]
-                Tariff.product_species_id == SPECIES,
+                Tariff.product_species_id.is_(None),
                 Tariff.service_code == "PRODUCT_IDENTIFICATION",
             )
         )

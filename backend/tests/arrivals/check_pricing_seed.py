@@ -1,9 +1,12 @@
-"""Shared ТЗ DR11 seeding: tariffs of an exact scope + CheckServiceRule rows.
+"""Shared ТЗ DR11/DR14 seeding: tariffs of an exact scope + CheckServiceRule rows.
 
 Every helper is idempotent: the shared fixtures (``vet_env``, ``lab``) seed
 the default scope once, and a test may refine it further without violating
-the tariff unique key (laboratory, species, service code, unit) or the
-global rule uniqueness.
+the tariff unique key or the global rule uniqueness.
+
+Owner decision DR14: CHECK tariffs are scoped by the laboratory ONLY — the
+seeded CHECK tariffs carry NO product species (NULL), so a price applies to
+reconciliations of every species of the laboratory.
 """
 
 from __future__ import annotations
@@ -26,14 +29,16 @@ TRANSPORT_PRICE = "130.00"
 async def seed_check_pricing(
     db: AsyncSession,
     laboratory_id: uuid.UUID,
-    species: uuid.UUID,
+    species: uuid.UUID | None = None,
     *,
     identification_price: str | None = IDENTIFICATION_PRICE,
     transport_price: str | None = TRANSPORT_PRICE,
     rules: dict[str, dict[str, object]] | None = None,
 ) -> None:
-    """Tariffs of the EXACT party scope + the global CheckServiceRule rows.
+    """Laboratory-scoped CHECK tariffs + the global CheckServiceRule rows.
 
+    ``species`` is accepted for call-site compatibility and is NEVER persisted:
+    the CHECK scope is laboratory + service code only (owner decision DR14).
     ``rules`` maps a service code to its ``multiplier_basis`` /
     ``applicable_decisions`` / ``unit_id``; when None the rules are left
     unconfigured (the live default — the honest ONE_SERVICE lineage mark).
@@ -47,7 +52,7 @@ async def seed_check_pricing(
             await db.execute(
                 select(Tariff).where(
                     Tariff.laboratory_id == laboratory_id,
-                    Tariff.product_species_id == species,
+                    Tariff.product_species_id.is_(None),
                     Tariff.service_code == code,
                     Tariff.unit_id == "RUB",
                 )
@@ -57,7 +62,7 @@ async def seed_check_pricing(
             db.add(
                 Tariff(
                     laboratory_id=laboratory_id,
-                    product_species_id=species,
+                    product_species_id=None,
                     service_code=code,
                     unit_id="RUB",
                     price=Decimal(price),

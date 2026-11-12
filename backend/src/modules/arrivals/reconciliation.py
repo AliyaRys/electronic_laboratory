@@ -51,7 +51,7 @@ from backend.src.modules.arrivals.validation import (
     validate_receipt,
 )
 from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot
-from backend.src.modules.catalog_pricing.service import configuration_missing, evaluate_and_price
+from backend.src.modules.catalog_pricing.service import evaluate_and_price
 from backend.src.modules.integrations.vetis.status import status_label
 
 __all__ = ["save_reconciliation", "build_reconciliation_view", "load_reconciliation", "source_projection"]
@@ -305,37 +305,17 @@ def build_reconciliation_view(
     )
 
 
-def _party_species_id(party: Party) -> UUID:
-    """ТЗ DR11 §4.2: the exact species scope of the party's tariffs.
-
-    The identity is the level-2 ``product.id`` of the stored classification
-    snapshot — the SAME species scope the working screens authorize with
-    (``_product_scope`` in examinations/documents) and the tariff catalog is
-    scoped by. A snapshot without a usable GUID cannot be priced honestly:
-    CONFIGURATION_MISSING, never a foreign-scope tariff and never a silent
-    zero.
-    """
-    snapshot = party.classification_snapshot if isinstance(party.classification_snapshot, dict) else {}
-    product = snapshot.get("product")
-    raw = product.get("id") if isinstance(product, dict) else None
-    try:
-        return UUID(str(raw))
-    except (ValueError, TypeError):
-        raise configuration_missing(
-            "Расчёт услуг сверки требует вид продукции партии; классификация эВСД не определила его.",
-            path="product_species_id",
-            field_id="CHECK",
-        ) from None
-
-
 async def _price_check_services(
     work: UnitOfWork, party: Party, saved: ReconciliationWrite
 ) -> PricingSnapshot:
-    """ТЗ DR11 §5: the server-side pricing of the two CHECK services.
+    """ТЗ DR11 §5, owner decision DR14: pricing of the two CHECK services.
 
-    Runs after the reconciliation validation, before any commit; the result is
-    stored atomically with the facts and returned in the view. The client
-    never supplies a tariff, an amount or a total (R-DR11-3).
+    The CHECK tariffs are scoped by the party's laboratory ONLY; the party's
+    species is neither required nor consulted, so a reconciliation of any
+    product species prices the same laboratory directory. Runs after the
+    reconciliation validation, before any commit; the result is stored
+    atomically with the facts and returned in the view. The client never
+    supplies a tariff, an amount or a total (R-DR11-3).
     """
     request = PricingRequest(
         party_id=party.id,
@@ -343,7 +323,6 @@ async def _price_check_services(
         context="CHECK",
         performed=list(CHECK_SERVICE_CODES),
         fair=saved.fair,
-        product_species_id=_party_species_id(party),
         accepted_quantity=saved.accepted.quantity,
         accepted_unit_id=saved.accepted.unit_id,
         delivered_quantity=saved.delivered.quantity,

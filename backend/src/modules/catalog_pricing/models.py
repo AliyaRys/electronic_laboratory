@@ -107,17 +107,33 @@ class MethodRule(Base):
 
 
 class Tariff(Base):
-    """A priced service for one laboratory/product species and unit.
+    """A priced service for one laboratory (and, for VSE, product species).
 
     Money is ``NUMERIC(20,2)`` (SPEC-05); the price may be explicitly zero but
-    never negative. UNIQUE covers the whole pricing key (laboratory, species,
-    service code, unit).
+    never negative. Owner decision DR14: the two CHECK services are scoped by
+    the laboratory ONLY — their species is NULL, a price applies to every
+    species. VSE tariffs keep the full pricing key (laboratory, species,
+    service code, unit); the two partial unique indexes encode both scopes.
     """
 
     __tablename__ = "tariffs"
     __table_args__ = (
-        UniqueConstraint(
-            "laboratory_id", "product_species_id", "service_code", "unit_id", name="uq_tariff_scope_code_unit"
+        Index(
+            "uq_tariff_lab_code_unit_check",
+            "laboratory_id",
+            "service_code",
+            "unit_id",
+            unique=True,
+            postgresql_where=text("product_species_id IS NULL"),
+        ),
+        Index(
+            "uq_tariff_lab_species_code_unit",
+            "laboratory_id",
+            "product_species_id",
+            "service_code",
+            "unit_id",
+            unique=True,
+            postgresql_where=text("product_species_id IS NOT NULL"),
         ),
         CheckConstraint("price >= 0", name="price_nonnegative"),
         CheckConstraint("rev >= 1", name="rev_positive"),
@@ -126,7 +142,7 @@ class Tariff(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     laboratory_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    product_species_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    product_species_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     service_code: Mapped[str] = mapped_column(String(128))
     unit_id: Mapped[str] = mapped_column(String(64))
     price: Mapped[Decimal] = mapped_column(Numeric(20, 2))

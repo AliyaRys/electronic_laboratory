@@ -146,19 +146,30 @@ async def method_rule_page(
 
 
 async def tariff_page(
-    db: AsyncSession, laboratory_id: UUID, product_species_id: UUID, page: int
+    db: AsyncSession, laboratory_id: UUID, product_species_id: UUID | None, page: int
 ) -> tuple[list[TariffView], int]:
+    """Tariff page of one scope (API-03, owner decision DR14).
+
+    A species narrows the list to the VSE tariffs of that species; ``None``
+    lists the laboratory-scoped CHECK tariffs (species IS NULL) — the scope
+    of the «Платные услуги» directory.
+    """
+    species_term = (
+        Tariff.product_species_id.is_(None)
+        if product_species_id is None
+        else (Tariff.product_species_id == product_species_id)
+    )
     scope = (
         select(func.count())
         .select_from(Tariff)
-        .where(Tariff.laboratory_id == laboratory_id, Tariff.product_species_id == product_species_id)
+        .where(Tariff.laboratory_id == laboratory_id, species_term)
     )
     total = int((await db.execute(scope)).scalar_one())
     rows = (
         (
             await db.execute(
                 select(Tariff)
-                .where(Tariff.laboratory_id == laboratory_id, Tariff.product_species_id == product_species_id)
+                .where(Tariff.laboratory_id == laboratory_id, species_term)
                 .order_by(Tariff.service_code, Tariff.unit_id, Tariff.id)
                 .offset((page - 1) * PAGE_SIZE)
                 .limit(PAGE_SIZE)

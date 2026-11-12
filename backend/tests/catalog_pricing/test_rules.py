@@ -275,11 +275,12 @@ async def test_tariff_unique_scope_and_nonnegative_price(db_session) -> None:
 
     lab = uuid.uuid4()
     species = uuid.uuid4()
+    code = str(uuid.uuid4())  # a VSE indicator code, never a CHECK code
     db_session.add(
         Tariff(
             laboratory_id=lab,
             product_species_id=species,
-            service_code="PRODUCT_IDENTIFICATION",
+            service_code=code,
             unit_id="piece",
             price="50.00",
             version=1,
@@ -291,7 +292,7 @@ async def test_tariff_unique_scope_and_nonnegative_price(db_session) -> None:
         Tariff(
             laboratory_id=lab,
             product_species_id=species,
-            service_code="PRODUCT_IDENTIFICATION",
+            service_code=code,
             unit_id="piece",
             price="60.00",
             version=1,
@@ -305,7 +306,7 @@ async def test_tariff_unique_scope_and_nonnegative_price(db_session) -> None:
         Tariff(
             laboratory_id=lab,
             product_species_id=species,
-            service_code="PRODUCT_IDENTIFICATION",
+            service_code=code,
             unit_id="piece",
             price="-1.00",
             version=1,
@@ -315,6 +316,56 @@ async def test_tariff_unique_scope_and_nonnegative_price(db_session) -> None:
     with pytest.raises(IntegrityError):
         await db_session.flush()
     await db_session.rollback()
+
+
+@pytest.mark.integration
+async def test_check_tariff_lab_scope_unique(db_session) -> None:
+    """Owner decision DR14: one price per laboratory + CHECK code + unit.
+
+    A second NULL-species row of the same key is refused; a different unit or
+    code stays independent.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    lab = uuid.uuid4()
+    db_session.add(
+        Tariff(
+            laboratory_id=lab,
+            product_species_id=None,
+            service_code="PRODUCT_IDENTIFICATION",
+            unit_id="RUB",
+            price="110.00",
+            version=1,
+            source={"name": "Ручная настройка справочника"},
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        Tariff(
+            laboratory_id=lab,
+            product_species_id=None,
+            service_code="PRODUCT_IDENTIFICATION",
+            unit_id="RUB",
+            price="120.00",
+            version=1,
+            source={"name": "Ручная настройка справочника"},
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+    await db_session.rollback()
+    db_session.add(
+        Tariff(
+            laboratory_id=lab,
+            product_species_id=None,
+            service_code="PRODUCT_IDENTIFICATION",
+            unit_id="piece",
+            price="130.00",
+            version=1,
+            source={"name": "Ручная настройка справочника"},
+        )
+    )
+    await db_session.flush()
 
 
 @pytest.mark.integration
@@ -363,11 +414,41 @@ async def test_method_rules_are_lab_scoped(db_session) -> None:
     assert other.indicator_id == indicator
 
 
-# --- ТЗ DR13: a laboratory UUID is never a product species (tariff scope) --------
+# --- Owner decision DR14: CHECK tariffs are laboratory-scoped only ----------------
 
 
 @pytest.mark.integration
-async def test_tariff_commands_reject_laboratory_uuid_as_species(db_session) -> None:
+async def test_check_tariff_accepts_and_normalizes_missing_species(db_session) -> None:
+    from backend.src.modules.catalog_pricing import commands
+    from backend.src.modules.catalog_pricing.schemas import TariffWrite
+
+    lab = uuid.uuid4()
+    payload = TariffWrite.model_validate(
+        {
+            "laboratory_id": str(lab),
+            "service_code": "PRODUCT_IDENTIFICATION",
+            "unit_id": "RUB",
+            "price": "110.00",
+            "version": 1,
+            "source": {"name": "Ручная настройка справочника"},
+        }
+    )
+    row = await commands.create_tariff(db_session, payload)
+    assert row.product_species_id is None
+
+    # Any provided species is NORMALIZED to NULL for a CHECK code — a species
+    # is never persisted for the two paid reconciliation services.
+    updated = await commands.update_tariff(
+        db_session,
+        row,
+        payload.model_copy(update={"price": "120.00", "product_species_id": uuid.uuid4()}),
+    )
+    assert updated.product_species_id is None
+    assert updated.price == parse_decimal("120.00")
+
+
+@pytest.mark.integration
+async def test_vse_tariff_requires_species(db_session) -> None:
     from backend.src.core.problems import ProblemError
     from backend.src.modules.catalog_pricing import commands
     from backend.src.modules.catalog_pricing.schemas import TariffWrite
@@ -376,28 +457,81 @@ async def test_tariff_commands_reject_laboratory_uuid_as_species(db_session) -> 
     payload = TariffWrite.model_validate(
         {
             "laboratory_id": str(lab),
-            "product_species_id": str(lab),
-            "service_code": "PRODUCT_IDENTIFICATION",
-            "unit_id": "RUB",
-            "price": "110.00",
+            "service_code": str(uuid.uuid4()),  # a VSE indicator service code
+            "unit_id": "kg",
+            "price": "10.00",
             "version": 1,
-            "source": {"name": "Ручная настройка справочника"},
+            "source": {"name": "прейскурант"},
         }
     )
     with pytest.raises(ProblemError) as created:
         await commands.create_tariff(db_session, payload)
     assert created.value.status == 422
     assert created.value.code == "VALIDATION_ERROR"
-    assert any("Вид продукции" in item.message for item in created.value.errors)
+    assert any("вид продукции" in item.message.lower() for item in created.value.errors)
 
     row = Tariff(
         laboratory_id=lab,
         product_species_id=uuid.uuid4(),
-        service_code="PRODUCT_IDENTIFICATION",
-        unit_id="RUB",
-        price=parse_decimal("110.00"),
+        service_code=str(uuid.uuid4()),
+        unit_id="kg",
+        price=parse_decimal("10.00"),
         version=1,
-        source={"name": "Ручная настройка справочника"},
+        source={"name": "прейскурант"},
+    )
+    db_session.add(row)
+    await db_session.flush()
+    with pytest.raises(ProblemError) as updated:
+        await commands.update_tariff(
+            db_session,
+            row,
+            payload.model_copy(update={"service_code": row.service_code, "product_species_id": None}),
+        )
+    assert updated.value.status == 422
+    assert any("вид продукции" in item.message.lower() for item in updated.value.errors)
+
+
+@pytest.mark.integration
+async def test_vse_tariff_rejects_laboratory_uuid_as_species(db_session) -> None:
+    """DR13 restored (fix round 1): a laboratory UUID is never a product species.
+
+    A VSE tariff write whose species equals the laboratory is refused with a
+    Russian error naming the problem — on create and on update. A CHECK code
+    with the same payload stays accepted (its species normalizes to NULL).
+    """
+    from backend.src.core.problems import ProblemError
+    from backend.src.modules.catalog_pricing import commands
+    from backend.src.modules.catalog_pricing.schemas import TariffWrite
+
+    lab = uuid.uuid4()
+    code = str(uuid.uuid4())  # a VSE indicator service code
+    payload = TariffWrite.model_validate(
+        {
+            "laboratory_id": str(lab),
+            "product_species_id": str(lab),
+            "service_code": code,
+            "unit_id": "kg",
+            "price": "10.00",
+            "version": 1,
+            "source": {"name": "прейскурант"},
+        }
+    )
+    with pytest.raises(ProblemError) as created:
+        await commands.create_tariff(db_session, payload)
+    assert created.value.status == 422
+    assert created.value.code == "VALIDATION_ERROR"
+    assert any(
+        "Вид продукции не может совпадать с лабораторией" in item.message for item in created.value.errors
+    )
+
+    row = Tariff(
+        laboratory_id=lab,
+        product_species_id=uuid.uuid4(),
+        service_code=code,
+        unit_id="kg",
+        price=parse_decimal("10.00"),
+        version=1,
+        source={"name": "прейскурант"},
     )
     db_session.add(row)
     await db_session.flush()
@@ -408,4 +542,11 @@ async def test_tariff_commands_reject_laboratory_uuid_as_species(db_session) -> 
             payload.model_copy(update={"product_species_id": lab}),
         )
     assert updated.value.status == 422
-    assert any("Вид продукции" in item.message for item in updated.value.errors)
+    assert any(
+        "Вид продукции не может совпадать с лабораторией" in item.message for item in updated.value.errors
+    )
+
+    # The same laboratory-uuid species under a CHECK code normalizes to NULL:
+    check_payload = payload.model_copy(update={"service_code": "PRODUCT_IDENTIFICATION"})
+    check_row = await commands.create_tariff(db_session, check_payload)
+    assert check_row.product_species_id is None

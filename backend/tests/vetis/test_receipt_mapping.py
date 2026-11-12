@@ -93,6 +93,38 @@ def count(xml: str, local: str) -> int:
     return sum(node.tag.rsplit("}", 1)[-1] == local for node in root.iter())
 
 
+def _delivery_element(xml: str, returned: bool) -> ET.Element | None:
+    parent_local = "returnedDelivery" if returned else "delivery"
+    root = ET.fromstring(xml)
+    for node in root.iter():
+        if node.tag.rsplit("}", 1)[-1] == parent_local:
+            return node
+    return None
+
+
+def test_gashenie_keeps_source_trailer_number() -> None:
+    """ТЗ DR17 §7: the source trailerNumber stays a source requisite of the
+    гашение XML — the user's discrepancy fact never replaces it."""
+    source = SOURCE_XML.replace(
+        "<vd:transportInfo><vd:transportType>1</vd:transportType></vd:transportInfo>",
+        "<vd:transportInfo><vd:transportType>1</vd:transportType>"
+        "<vd:transportNumber><vd:vehicleNumber>А123АА116</vd:vehicleNumber>"
+        "<vd:trailerNumber>Т456РР116</vd:trailerNumber></vd:transportNumber></vd:transportInfo>",
+    )
+    xml = build_process_incoming_application(
+        intent(mismatch=False, decision="PARTIALLY"),
+        source_xml=source,
+        service_id="s",
+        issuer_id="i",
+    )
+    accepted = _delivery_element(xml, returned=False)
+    assert accepted is not None
+    trailer = accepted.find(f".//{VD}transportInfo/{VD}transportNumber/{VD}trailerNumber")
+    assert trailer is not None and trailer.text == "Т456РР116"
+    vehicle = accepted.find(f".//{VD}transportInfo/{VD}transportNumber/{VD}vehicleNumber")
+    assert vehicle is not None and vehicle.text == "А123АА116"
+
+
 VD = "{http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2}"
 BS = "{http://api.vetrf.ru/schema/cdm/base}"
 DT = "{http://api.vetrf.ru/schema/cdm/dictionary/v2}"
@@ -167,11 +199,7 @@ def test_reason_code_then_other_reason_text_in_special_marks() -> None:
         issuer_id="i",
     )
     root = ET.fromstring(xml)
-    marks = [
-        (node.text or "")
-        for node in root.iter()
-        if node.tag.rsplit("}", 1)[-1] == "specialMarks"
-    ]
+    marks = [(node.text or "") for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
     assert marks[0] == "OTHER_REASON"
     assert marks[1] == "OTHER_REASON: Обезличенная причина возврата"
 
@@ -259,9 +287,7 @@ def test_two_top_level_packages_collapse_to_aggregate_places() -> None:
     root = ET.fromstring(xml)
     forward = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "delivery")
     packages = [
-        (node, node.find(f"{DT}quantity"))
-        for node in forward.iter()
-        if node.tag.rsplit("}", 1)[-1] == "package"
+        (node, node.find(f"{DT}quantity")) for node in forward.iter() if node.tag.rsplit("}", 1)[-1] == "package"
     ]
     top = [
         item
@@ -274,9 +300,7 @@ def test_two_top_level_packages_collapse_to_aggregate_places() -> None:
     # The evidence reader extracts the SAME aggregate from the written XML.
     consignment = _consignment(xml, returned=False)
     assert consignment is not None
-    package_list = next(
-        (node for node in consignment if node.tag.rsplit("}", 1)[-1] == "packageList"), None
-    )
+    package_list = next((node for node in consignment if node.tag.rsplit("}", 1)[-1] == "packageList"), None)
     assert package_list is not None
     batch = ET.Element(f"{VD}batch")
     batch.append(copy.deepcopy(package_list))

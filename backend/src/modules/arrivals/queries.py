@@ -31,6 +31,7 @@ from backend.src.modules.arrivals.schemas import (
     ExternalFields,
     IncomingView,
     QuantitySet,
+    trailer_projection,
 )
 from backend.src.modules.integrations.vetis.models import VetisContour
 from backend.src.modules.integrations.vetis.queries import find_purpose_name
@@ -361,6 +362,10 @@ def _external_fields(
         "purposeGuid": purpose_guid,
         "purposeUuid": purpose_uuid,
         "transportNumber": document_payload.get("transportNumber") or None,
+        # ТЗ DR17 §5.2: the separate vehicle/trailer keys; an absent trailer
+        # publishes the agreed informational text «Прицеп отсутствует».
+        "vehicleNumber": document_payload.get("transportNumber") or None,
+        "trailerNumber": trailer_projection(document_payload.get("trailerNumber")),
         # ТЗ DR16 §5.3: the raw storage code stays with the Russian label in
         # the read model; old fields keep their meanings (R-DR16-4).
         "storageCode": document_payload.get("transportStorageType") or None,

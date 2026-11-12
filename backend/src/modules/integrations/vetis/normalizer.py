@@ -72,6 +72,7 @@ class NormalizedEntry(BaseModel):
     transport_number: str | None
     # DR16: the raw vd:certifiedConsignment/vd:transportStorageType code.
     transport_storage_type: str | None = None
+    trailer_number: str | None = None
     purpose_guid: str | None = None
     purpose_uuid: str | None = None
     packages: list[dict[str, Any]] = Field(default_factory=list)
@@ -106,14 +107,32 @@ def _ref(element: ET.Element | None) -> dict[str, Any]:
 
 
 def _transport_number(transport: ET.Element | None) -> str | None:
+    """The vehicle-branch number of the source (ТЗ DR17 R-DR17-1).
+
+    ``vd:trailerNumber`` is parsed SEPARATELY (``_trailer_number``) and is
+    NEVER merged into this value: the doctor must see the ТС and the trailer
+    as two independent source fields.
+    """
     number = _find(transport, "vd:transportNumber")
     if number is None:
         return None
-    for tag in ("vehicleNumber", "trailerNumber", "containerNumber", "wagonNumber", "shipName", "flightNumber"):
+    for tag in ("vehicleNumber", "containerNumber", "wagonNumber", "shipName", "flightNumber"):
         value = _text(_find(number, f"vd:{tag}"))
         if value:
             return value
     return _text(number)
+
+
+def _trailer_number(transport: ET.Element | None) -> str | None:
+    """The separate ``vd:transportNumber/vd:trailerNumber`` source fact.
+
+    Namespace-aware and independent from the vehicle number; an absent or
+    empty node stays ABSENT (the UI text is projected later, never stored).
+    """
+    number = _find(transport, "vd:transportNumber")
+    if number is None:
+        return None
+    return _text(_find(number, "vd:trailerNumber"))
 
 
 def _int_text(element: ET.Element | None) -> int | None:
@@ -238,6 +257,7 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
         },
         transport_number=_transport_number(transport),
         transport_storage_type=_text(_find(consignment, "vd:transportStorageType")),
+        trailer_number=_trailer_number(transport),
         purpose_guid=_text(_find(purpose, "bs:guid")),
         purpose_uuid=_text(_find(purpose, "bs:uuid")),
         packages=packages,
@@ -411,6 +431,7 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
             ),
             transport_number=entry.transport_number,
             transport_storage_type=entry.transport_storage_type,
+            trailer_number=entry.trailer_number,
             purpose=purpose if (purpose.guid or purpose.external_uuid) else None,
         ),
         vet_documents=[],

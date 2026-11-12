@@ -418,6 +418,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         label={field.label}
         block={field.block}
         source={field.source}
+        actualPlaceholder={field.actualPlaceholder}
         value={comparisonValue(field.fieldId)}
         actualPlaceholder={field.fieldId === "CHK-F12" ? "Фактический способ хранения" : undefined}
         onChange={comparisonChange(field.fieldId)}

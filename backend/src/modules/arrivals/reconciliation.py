@@ -42,6 +42,7 @@ from backend.src.modules.arrivals.schemas import (
     ServiceItem,
     SourceSnapshot,
     Transaction,
+    trailer_projection,
 )
 from backend.src.modules.arrivals.validation import (
     FIELD_REGISTRY,
@@ -122,7 +123,10 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
         "receiverOwner": _ref_name(consignee.get("businessEntity")),
         "transportKind": None,
         "vehicleNumber": text_of(payload.get("transportNumber")),
-        "trailerNumber": None,
+        # ТЗ DR17 §5.2: the separate trailer fact; an absent/empty source
+        # number publishes the agreed informational text (never «—», never a
+        # fictive number), so the UI can perform the explicit reconciliation.
+        "trailerNumber": trailer_projection(text_of(payload.get("trailerNumber"))),
         # ТЗ DR16 §5.2: the raw source code and the Russian label are kept
         # SEPARATE (R-DR16-1/3); an absent node stays absent (no fictitious
         # mark), an unknown non-empty code keeps the source value present and

@@ -10,7 +10,16 @@ Upgrade:
 - ``tariffs.product_species_id`` becomes nullable;
 - the data-fix NULLs the species of the two CHECK service codes — this repairs
   the mis-scoped live rows (species wrongly equal to the laboratory UUID);
-  nothing is deleted;
+- HONEST DELETION of superseded duplicates: the previous constraint allowed a
+  laboratory to hold CHECK tariffs under DIFFERENT species values; NULLing the
+  species would make such rows identical keys and the unique index creation
+  would abort mid-upgrade. BEFORE creating the index, within every
+  (laboratory_id, service_code, unit_id) group that would collide, exactly one
+  row SURVIVES — the newest (highest version, then rev, then id) — and the
+  others are DELETED. This deletes duplicate rows of the SAME tariff scope
+  (same laboratory, service, unit; superseded price entries), not business
+  data; saved reconciliation snapshots are frozen and never re-read the
+  deleted rows (ADR-020);
 - the single unique constraint is replaced by TWO partial unique indexes:
   CHECK rows (species IS NULL) are unique by (laboratory, service code, unit),
   VSE rows (species set) keep the previous full key.
@@ -41,6 +50,7 @@ CHECK_CODES = ("PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION")
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
     op.alter_column("tariffs", "product_species_id", existing_type=sa.UUID(), nullable=True)
     # The CHECK codes are the only rows whose species may be NULL; the data-fix
     # repairs the live mis-scoped CHECK rows (species == laboratory UUID).
@@ -48,6 +58,30 @@ def upgrade() -> None:
         op.execute(
             sa.text("UPDATE tariffs SET product_species_id = NULL WHERE service_code = :code").bindparams(code=code)
         )
+    # Safe resolution BEFORE the index: NULLing species can make previously
+    # distinct (laboratory, species, code, unit) rows identical. In every
+    # colliding group keep exactly ONE row — the newest (version DESC, rev
+    # DESC, id DESC) — and delete the superseded duplicates of the same tariff
+    # scope. Frozen reconciliation snapshots never re-read these rows, so no
+    # saved price history becomes unreadable.
+    deduplicated = bind.execute(
+        sa.text(
+            "WITH ranked AS ("
+            "  SELECT id, row_number() OVER ("
+            "    PARTITION BY laboratory_id, service_code, unit_id"
+            "    ORDER BY version DESC, rev DESC, id DESC"
+            "  ) AS position"
+            "  FROM tariffs"
+            "  WHERE product_species_id IS NULL"
+            "    AND service_code IN ('PRODUCT_IDENTIFICATION','TRANSPORT_INSPECTION')"
+            ")"
+            "DELETE FROM tariffs"
+            " WHERE id IN (SELECT id FROM ranked WHERE position > 1)"
+            " RETURNING id"
+        )
+    ).fetchall()
+    if deduplicated:
+        print(f"0017: deleted {len(deduplicated)} superseded CHECK tariff duplicate(s)")
     op.drop_constraint("uq_tariff_scope_code_unit", "tariffs", type_="unique")
     # CHECK rows: laboratory + service code + unit, species is NULL by definition.
     op.create_index(

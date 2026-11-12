@@ -99,12 +99,16 @@ def _tariff_species(payload: TariffWrite) -> UUID | None:
     CHECK codes (the two paid reconciliation services) never carry a species:
     an absent one is accepted and any provided species is NORMALIZED to NULL —
     a species is never persisted for a CHECK tariff. Every other service code
-    (VSE) requires the species as before.
+    (VSE) requires the species as before, and the DR13 rule stays honest: a
+    laboratory UUID is never a product species, so a VSE write with
+    ``product_species_id == laboratory_id`` is refused.
     """
     if payload.service_code in CHECK_SERVICE_CODES:
         return None
     if payload.product_species_id is None:
         raise _tariff_species_problem()
+    if payload.product_species_id == payload.laboratory_id:
+        raise _species_scope_problem()
     return payload.product_species_id
 
 

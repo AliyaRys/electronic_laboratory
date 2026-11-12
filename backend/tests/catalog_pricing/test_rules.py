@@ -489,3 +489,64 @@ async def test_vse_tariff_requires_species(db_session) -> None:
         )
     assert updated.value.status == 422
     assert any("вид продукции" in item.message.lower() for item in updated.value.errors)
+
+
+@pytest.mark.integration
+async def test_vse_tariff_rejects_laboratory_uuid_as_species(db_session) -> None:
+    """DR13 restored (fix round 1): a laboratory UUID is never a product species.
+
+    A VSE tariff write whose species equals the laboratory is refused with a
+    Russian error naming the problem — on create and on update. A CHECK code
+    with the same payload stays accepted (its species normalizes to NULL).
+    """
+    from backend.src.core.problems import ProblemError
+    from backend.src.modules.catalog_pricing import commands
+    from backend.src.modules.catalog_pricing.schemas import TariffWrite
+
+    lab = uuid.uuid4()
+    code = str(uuid.uuid4())  # a VSE indicator service code
+    payload = TariffWrite.model_validate(
+        {
+            "laboratory_id": str(lab),
+            "product_species_id": str(lab),
+            "service_code": code,
+            "unit_id": "kg",
+            "price": "10.00",
+            "version": 1,
+            "source": {"name": "прейскурант"},
+        }
+    )
+    with pytest.raises(ProblemError) as created:
+        await commands.create_tariff(db_session, payload)
+    assert created.value.status == 422
+    assert created.value.code == "VALIDATION_ERROR"
+    assert any(
+        "Вид продукции не может совпадать с лабораторией" in item.message for item in created.value.errors
+    )
+
+    row = Tariff(
+        laboratory_id=lab,
+        product_species_id=uuid.uuid4(),
+        service_code=code,
+        unit_id="kg",
+        price=parse_decimal("10.00"),
+        version=1,
+        source={"name": "прейскурант"},
+    )
+    db_session.add(row)
+    await db_session.flush()
+    with pytest.raises(ProblemError) as updated:
+        await commands.update_tariff(
+            db_session,
+            row,
+            payload.model_copy(update={"product_species_id": lab}),
+        )
+    assert updated.value.status == 422
+    assert any(
+        "Вид продукции не может совпадать с лабораторией" in item.message for item in updated.value.errors
+    )
+
+    # The same laboratory-uuid species under a CHECK code normalizes to NULL:
+    check_payload = payload.model_copy(update={"service_code": "PRODUCT_IDENTIFICATION"})
+    check_row = await commands.create_tariff(db_session, check_payload)
+    assert check_row.product_species_id is None

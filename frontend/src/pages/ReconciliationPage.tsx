@@ -12,8 +12,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router";
 import { RequireSession } from "./RequireSession";
 import {
+  NAME_POLL_INTERVAL_MS,
+  NAME_POLL_MAX_MS,
   fetchArrival,
   fetchReconciliation,
+  hasPendingParticipantNames,
   type Problem,
   type ReconciliationView,
 } from "../features/arrivals/api";
@@ -58,6 +61,30 @@ function ReconciliationContent(): React.ReactElement {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partyRevision]);
+
+  // ТЗ DR23 §6.2: while a participant name is still PENDING, the open screen
+  // re-reads the local read-model endpoints on a BOUNDED interval — refetch
+  // only while a PENDING state exists, stopping after RESOLVED/ERROR/MISSING
+  // or after 30 s, and never touching VetIS. The timer is cancelled with the
+  // screen; react-query aborts the in-flight GETs through the query signal.
+  const arrivalView = arrival.data !== undefined && !("code" in arrival.data) ? arrival.data : null;
+  const pendingNames = arrivalView !== null && hasPendingParticipantNames(arrivalView);
+  useEffect(() => {
+    if (!pendingNames) {
+      return undefined;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      if (Date.now() - startedAt >= NAME_POLL_MAX_MS) {
+        window.clearInterval(timer);
+        return;
+      }
+      void arrival.refetch();
+      void reconciliation.refetch();
+    }, NAME_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNames]);
 
   if (labId === undefined || partyId === undefined) {
     return (

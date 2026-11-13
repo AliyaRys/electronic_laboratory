@@ -360,17 +360,23 @@ def _parse_source_timestamp(value: object) -> datetime | None:
         return None
 
 
-async def _claim_due(db: AsyncSession, *, now: datetime, limit: int) -> list[VetisReferenceName]:
-    """Claim due rows with SKIP LOCKED (at most one job per key)."""
+async def _claim_due(
+    db: AsyncSession, *, now: datetime, limit: int, contour: str | None = None
+) -> list[VetisReferenceName]:
+    """Claim due rows with SKIP LOCKED (at most one job per key).
+
+    With a ``contour`` given (ТЗ DR23 §5.2) the tick NEVER reads or changes
+    another contour's rows: one manifest answers exactly its own contour.
+    """
+    query = select(VetisReferenceName).where(
+        VetisReferenceName.next_check_at.is_(None) | (VetisReferenceName.next_check_at <= now),
+        VetisReferenceName.status.in_(("PENDING", "ERROR", "RESOLVED")),
+    )
+    if contour is not None:
+        query = query.where(VetisReferenceName.contour == contour)
     rows = (
         await db.execute(
-            select(VetisReferenceName)
-            .where(
-                VetisReferenceName.next_check_at.is_(None)
-                | (VetisReferenceName.next_check_at <= now),
-                VetisReferenceName.status.in_(("PENDING", "ERROR", "RESOLVED")),
-            )
-            .order_by(VetisReferenceName.next_check_at.nulls_first())
+            query.order_by(VetisReferenceName.next_check_at.nulls_first())
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
@@ -441,15 +447,18 @@ async def resolve_due_reference_names(
     *,
     now: datetime | None = None,
     limit: int = 20,
+    contour: str | None = None,
 ) -> dict[str, int]:
     """Resolve due cache entries via the pinned read-only methods (§8).
 
     One tick claims due rows (SKIP LOCKED), performs the lookups OUTSIDE any
     transaction and applies each result in its own committed transaction.
+    With a ``contour`` given, only that contour's rows are claimed (ТЗ DR23
+    §5.2): one manifest never reads or changes another contour's rows.
     The never-delete rule holds: an error keeps the previous name.
     """
     current = now or datetime.now(UTC)
-    claimed = await _claim_due(db, now=current, limit=limit)
+    claimed = await _claim_due(db, now=current, limit=limit, contour=contour)
     keys = [(row.contour, row.entity_kind, row.guid) for row in claimed]
     await db.commit()
     resolved = 0

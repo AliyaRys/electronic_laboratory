@@ -30,6 +30,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
+import requests
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -53,7 +54,9 @@ from backend.src.modules.integrations.vetis.models import (
 )
 
 __all__ = [
+    "MAX_SYNC_ATTEMPTS",
     "SCHEDULE_INTERVAL",
+    "SYNC_RETRY_BACKOFF_S",
     "SyncAccepted",
     "VetisReadPort",
     "VetisWritePort",
@@ -69,6 +72,37 @@ __all__ = [
 SCHEDULE_INTERVAL = timedelta(minutes=15)
 _LEASE_STALE_AFTER = timedelta(hours=1)
 _OUTBOX_EVENT = "vetis.sync"
+
+# ТЗ DR22 §5.2: a transient READ failure is retried INSIDE the same operation.
+# Bounded backoff between the read attempts (2/5/10/30/60 s) and a bounded
+# attempt count (the first pass + one retry per backoff step = 6 attempts).
+SYNC_RETRY_BACKOFF_S: tuple[int, ...] = (2, 5, 10, 30, 60)
+MAX_SYNC_ATTEMPTS = 1 + len(SYNC_RETRY_BACKOFF_S)
+
+# ТЗ DR22 §5.1: problems no retry can fix without a configuration change —
+# integration configuration, scope, the initiator, schema pins/manifest,
+# credentials/permanent auth, the local import error (deterministic) and the
+# local validation of an opaque cursor. Everything else that surfaces from the
+# read boundary (transport errors, HTTP 5xx, temporary malformed/incomplete
+# application results) is retryable; the ORIGINAL problem code is always kept.
+_PERMANENT_PROBLEM_CODES = frozenset(
+    {
+        "INTEGRATION_NOT_CONFIGURED",
+        "INTEGRATION_SCOPE_MISSING",
+        "INTEGRATION_SCOPE_REVOKED",
+        "INTEGRATION_INITIATOR_MISSING",
+        "INTEGRATION_SCHEMA_IMPORT_REJECTED",
+        "INTEGRATION_SCHEMA_PIN_MISMATCH",
+        "INTEGRATION_CREDENTIALS_INVALID",
+        "VETIS_MANIFEST_INVALID",
+        "VETIS_AUTH_ERROR",
+        # A local import/persistence error is deterministic: repeating the read
+        # pass cannot fix it, so it fails honestly without a retry.
+        "VETIS_IMPORT_FAILED",
+        "VALIDATION_ERROR",
+    }
+)
+_PERMANENT_STATUSES = (400, 401, 403, 404, 409, 422)
 
 # The scheduled (15-minute) runs act as the platform service, never as a
 # person; the fixed UUID is a service actor (same convention as the audit
@@ -233,14 +267,62 @@ async def start_sync(
 
 
 def _transport_problem(exc: Exception) -> ProblemError:
-    if isinstance(exc, ProblemError):
-        return exc
+    """The safe problem of an unexpected transport failure (no credentials,
+    no raw SOAP: only the exception TYPE name and the HTTP status travel)."""
+    if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        if status >= 500:
+            return ProblemError(
+                status=502,
+                code="VETIS_SYNC_FAILED",
+                title="VetIS sync failed",
+                detail=f"Шлюз ВетИС вернул HTTP {status}; чтение может быть повторено.",
+            )
+        return ProblemError(
+            status=502,
+            code="VETIS_SYNC_FAILED",
+            title="VetIS sync failed",
+            detail=f"ВетИС отклонил запрос (HTTP {status}); повтор без изменения конфигурации невозможен.",
+        )
     return ProblemError(
         status=502,
         code="VETIS_SYNC_FAILED",
         title="VetIS sync failed",
-        detail="Обновление поступлений из ВетИС не завершено; контрольная точка не изменена.",
+        detail=f"Временная ошибка чтения ВетИС ({type(exc).__name__}).",
     )
+
+
+def _classify_failure(exc: Exception) -> tuple[bool, ProblemError]:
+    """ТЗ DR22 §5.1: is this read failure safely repeatable?
+
+    Retryable: timeout/connect errors, endpoint unavailability, HTTP
+    502/503/504, a temporary SOAP gateway fault, a temporary malformed or
+    incomplete application result (the read pass is idempotent, so a repeat is
+    always safe). NOT retryable: the configuration/scope/schema/auth problems
+    of ``_PERMANENT_PROBLEM_CODES``, any 4xx-class problem (the request itself
+    is wrong) and the honest local ``VETIS_IMPORT_FAILED``.
+    """
+    if isinstance(exc, ProblemError):
+        retryable = exc.code not in _PERMANENT_PROBLEM_CODES and exc.status not in _PERMANENT_STATUSES
+        return retryable, exc
+    problem = _transport_problem(exc)
+    if isinstance(exc, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
+        return True, problem
+    if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        if status in (401, 403):
+            # A permanent authorization failure: no retry can fix credentials.
+            return False, ProblemError(
+                status=403,
+                code="VETIS_AUTH_ERROR",
+                title="VetIS authorization failed",
+                detail=f"ВетИС отклонил доступ (HTTP {status}); проверьте учётные данные интеграции.",
+            )
+        # 5xx (gateway unavailable) → retryable; other 4xx → permanent.
+        return status >= 500, problem
+    # An unknown gateway fault (SOAP Fault, malformed envelope) is treated as
+    # a temporary failure — the retry budget keeps it bounded either way.
+    return True, problem
 
 
 def _import_problem(exc: Exception, *, evsd_uuid: str | None = None) -> ProblemError:
@@ -318,6 +400,80 @@ async def _fail_operation(
     )
 
 
+async def _schedule_retry(
+    db: AsyncSession,
+    operation: VetisOperation,
+    problem: ProblemError,
+    *,
+    now: datetime,
+    diagnostics: dict[str, object] | None = None,
+) -> None:
+    """ТЗ DR22 §5.2: keep the retry INSIDE this one operation.
+
+    The operation does NOT become a final ``FAILED``: it goes back to
+    ``PENDING`` with the attempt number and the next backoff moment, the
+    original problem code/detail are preserved, and the outbox lease is
+    released with ``next_attempt_at`` moved by the bounded backoff — the
+    worker re-runs THE SAME operation (same ``operation_id``, same
+    idempotency intent), never a new one. When the attempt budget is
+    exhausted, the operation fails with the ORIGINAL cause.
+    """
+    attempt = int(operation.poll_attempts or 0) + 1
+    retry_diagnostics: dict[str, object] = {
+        "attempt": attempt,
+        "problem": problem.code,
+    }
+    if diagnostics:
+        retry_diagnostics.update(diagnostics)
+    if attempt >= MAX_SYNC_ATTEMPTS:
+        # The budget is exhausted: the SAME operation fails with the ORIGINAL
+        # cause; the failed attempt is recorded in the counter.
+        await db.execute(
+            update(VetisOperation)
+            .where(VetisOperation.id == operation.id)
+            .values(poll_attempts=attempt, updated_at=now)
+        )
+        await _fail_operation(db, operation, problem, now=now, diagnostics=retry_diagnostics)
+        return
+    delay = SYNC_RETRY_BACKOFF_S[min(attempt - 1, len(SYNC_RETRY_BACKOFF_S) - 1)]
+    retry_at = now + timedelta(seconds=delay)
+    retry_diagnostics["backoff_s"] = delay
+    retry_diagnostics["next_retry_at"] = retry_at.isoformat()
+    await db.execute(
+        update(VetisOperation)
+        .where(VetisOperation.id == operation.id)
+        .values(
+            state=VetisOperationState.PENDING,
+            updated_at=now,
+            next_poll_at=retry_at,
+            poll_attempts=attempt,
+            problem_code=problem.code,
+            problem_detail=problem.detail,
+            diagnostics=retry_diagnostics,
+        )
+    )
+    # Release the lease so a worker can retry after the bounded backoff; the
+    # outbox row itself is NEVER duplicated (same operation, one row).
+    await db.execute(
+        update(OutboxEntry)
+        .where(
+            OutboxEntry.operation_id == operation.id,
+            OutboxEntry.event_type == _OUTBOX_EVENT,
+            OutboxEntry.delivered_at.is_(None),
+        )
+        .values(next_attempt_at=retry_at, lease_owner=None, lease_until=None)
+    )
+    write_structured_audit(
+        _AuditUow(db),
+        actor_id=operation.created_by or scheduled_sync_actor_id(),
+        action="VETIS.SYNC_RETRY_SCHEDULED",
+        object_uuid=operation.id,
+        result=problem.code,
+        trace_id=operation.trace_id,
+        operation_id=operation.id,
+    )
+
+
 async def run_sync(
     operation_id: uuid.UUID,
     *,
@@ -345,10 +501,13 @@ async def run_sync(
             raise not_found()
         if operation.state != VetisOperationState.PENDING:
             return  # already claimed/finished — the worker is idempotent
+        claim_values: dict[str, object] = {"state": VetisOperationState.RUNNING, "updated_at": now}
+        if operation.started_at is None:
+            claim_values["started_at"] = now  # the FIRST start is kept across retries
         claimed = await db.execute(
             update(VetisOperation)
             .where(VetisOperation.id == operation_id, VetisOperation.state == VetisOperationState.PENDING)
-            .values(state=VetisOperationState.RUNNING, started_at=now, updated_at=now)
+            .values(**claim_values)
         )
         if claimed.rowcount == 0:  # type: ignore[attr-defined]  # DML result carries rowcount
             return
@@ -395,8 +554,15 @@ async def run_sync(
                 current_page: IncomingPage = await adapter.list_incoming(
                     _binding_scope(binding), cursor, binding.initiator or ""
                 )
-            except Exception as exc:  # noqa: BLE001 - any failure is an honest FAILED run
-                await _fail_operation(db, operation, _transport_problem(exc), now=datetime.now(UTC))
+            except Exception as exc:  # noqa: BLE001 - §5.1: classified, then retried or failed honestly
+                retryable, problem = _classify_failure(exc)
+                if retryable:
+                    # ТЗ DR22 §5.2: a transient READ error is NOT final — the
+                    # same operation is retried with a bounded backoff.
+                    await _schedule_retry(db, operation, problem, now=datetime.now(UTC))
+                    await db.commit()
+                    return
+                await _fail_operation(db, operation, problem, now=datetime.now(UTC))
                 await db.commit()
                 return
             try:
@@ -442,6 +608,8 @@ async def run_sync(
                 "received": received,
                 "kept": imported,
                 "filtered": dict(filtered_totals),
+                # ТЗ DR22 §7: the safe attempt counter of the current pass.
+                "attempt": int(operation.poll_attempts or 0) + 1,
             }
             await db.execute(
                 update(VetisOperation)
@@ -457,8 +625,15 @@ async def run_sync(
             # carry a next cursor; otherwise re-entering the loop would restart
             # the walk forever with cursor=None. Fail honestly instead.
             if not current_page.complete and current_page.next_cursor is None:
-                await _fail_operation(
-                    db, operation, _cursor_contract_problem(), now=datetime.now(UTC), diagnostics=diagnostics
+                # ТЗ DR22 §5.1: a malformed/incomplete application result is a
+                # TEMPORARY gateway failure (the read pass is safely
+                # repeatable), so it is retried inside the same operation.
+                await _schedule_retry(
+                    db,
+                    operation,
+                    _cursor_contract_problem(),
+                    now=datetime.now(UTC),
+                    diagnostics=diagnostics,
                 )
                 await db.commit()
                 return
@@ -558,6 +733,8 @@ async def run_sync(
             "new_documents": new_documents,
             "updated_documents": updated_documents,
             "marked_not_current": marked_not_current,
+            # ТЗ DR22 §7: the safe attempt counter of the successful pass.
+            "attempt": int(operation.poll_attempts or 0) + 1,
         }
         await db.execute(
             update(VetisOperation)
@@ -567,6 +744,10 @@ async def run_sync(
                 finished_at=checkpoint,
                 updated_at=checkpoint,
                 last_success=checkpoint,
+                # A SUCCESS is clean: the transient problem of an earlier
+                # attempt never labels a completed pass.
+                problem_code=None,
+                problem_detail=None,
                 diagnostics=diagnostics,
             )
         )
@@ -749,11 +930,15 @@ async def recover_pending_operations(
             )
         ).scalar_one_or_none()
         if has_due is None:
+            # ТЗ DR22 §5.2: a restored retry-wait operation keeps its retry
+            # state — the fresh outbox row is due no earlier than the
+            # scheduled backoff moment, never immediately.
             db.add(
                 OutboxEntry(
                     operation_id=operation.id,
                     event_type=_OUTBOX_EVENT,
                     payload={"operation_id": str(operation.id), "laboratory_id": str(operation.laboratory_id)},
+                    next_attempt_at=operation.next_poll_at or current,
                 )
             )
         restored.append(operation.id)

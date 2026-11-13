@@ -154,15 +154,16 @@ function ArrivalsContent(): React.ReactElement {
   const page = arrivals.data !== undefined && !("code" in arrivals.data) ? arrivals.data : null;
   const pageCount = page !== null ? Math.max(1, Math.ceil(page.total / page.page_size)) : 1;
 
-  // DR7 §9: after a finished sync (and after a hide) the table and the stage
-  // counters are re-read DIRECTLY (refetch()) — the prefix invalidateQueries
-  // known defect does not reach the "arrivals-count" keys.
+  // ТЗ DR22 §6: after committed SUCCESS the table and the three stage counters
+  // are re-read DIRECTLY (refetch()). cancelRefetch drops a superseded in-flight
+  // read so a stale response can never replace the fresh one; every refetch is
+  // awaited, so the screen waits for the ACTUAL post-commit answer.
   const refreshAfterSync = async (): Promise<void> => {
     await Promise.all([
-      arrivals.refetch(),
-      expectedCount.refetch(),
-      workCount.refetch(),
-      acceptedCount.refetch(),
+      arrivals.refetch({ cancelRefetch: true }),
+      expectedCount.refetch({ cancelRefetch: true }),
+      workCount.refetch({ cancelRefetch: true }),
+      acceptedCount.refetch({ cancelRefetch: true }),
     ]);
   };
 
@@ -236,23 +237,48 @@ function ArrivalsContent(): React.ReactElement {
     syncState !== null && syncJob === null && syncError === "" && syncState.state === "SUCCESS";
   const syncFailed =
     syncState !== null && syncJob === null && syncError === "" && syncState.state === "FAILED";
-  // DR7 §6.3: an unconfigured integration is never dressed up as an empty
-  // result or a success; the honest problem code and the walk counters stay
-  // visible (pages processed, documents imported) — never credentials.
+  // ТЗ DR22 §7: a retryable failure BETWEEN attempts is a retry-wait — the
+  // operation is still pending, so NO final error is shown and the button
+  // stays disabled (the polling continues on the SAME operation).
+  const syncRetryWait = syncRunning && syncState?.state === "PENDING" && !!syncState.problem;
+  // DR7 §6.3 + ТЗ DR22 §7: an unconfigured integration / scope / auth problem
+  // is an ADMIN action — never an automatic retry, never a fake success and
+  // never worded as an empty result. Every other code keeps its honest cause.
   const syncProblemText = (state: SyncOperationState): string | null => {
-    if (state.problem === "INTEGRATION_NOT_CONFIGURED") {
-      return "Обновление из ВетИС недоступно: интеграция не настроена.";
+    switch (state.problem) {
+      case "INTEGRATION_NOT_CONFIGURED":
+        return "Обновление из ВетИС недоступно: интеграция не настроена. Обратитесь к администратору.";
+      case "INTEGRATION_SCOPE_MISSING":
+        return "Обновление из ВетИС недоступно: связь площадки с хозяйствующим субъектом не зарегистрирована. Обратитесь к администратору.";
+      case "INTEGRATION_SCOPE_REVOKED":
+        return "Обновление из ВетИС недоступно: доступ отозван. Обратитесь к администратору.";
+      case "INTEGRATION_INITIATOR_MISSING":
+        return "Обновление из ВетИС недоступно: не зарегистрирован инициатор чтения. Обратитесь к администратору.";
+      case "VETIS_AUTH_ERROR":
+        return "Обновление не выполнено: ВетИС отклонил доступ. Обратитесь к администратору.";
+      case "VETIS_TRANSPORT_ERROR":
+        return "Обновление не выполнено: сервис ВетИС временно недоступен. Повторите обновление позже.";
+      case "VETIS_CURSOR_CONTRACT_VIOLATED":
+        return "Обновление не выполнено: ответ ВетИС не соответствует контракту чтения. Повторите обновление позже.";
+      case "VETIS_IMPORT_FAILED":
+        return "Обновление не выполнено: документ не импортирован. Повторите обновление или обратитесь к администратору.";
+      default:
+        return null;
     }
-    return null;
   };
-  // ТЗ DR9 §7: the honest итог of a finished pass — how many were RECEIVED,
-  // suitable, imported and excluded from the active queue. An error stays an
-  // error and is never worded as «ВСД не найдены».
+  // ТЗ DR9 §7 + DR22 §7: the honest итог of a finished pass — how many were
+  // RECEIVED, suitable, imported and excluded from the active queue, plus the
+  // current attempt number. An error stays an error and is never worded as
+  // «ВСД не найдены».
   const syncDiagnosticsText =
-    syncState !== null && (syncDone || syncFailed)
+    syncState !== null && (syncDone || syncFailed || syncRetryWait)
       ? (() => {
           const diagnostics = syncState.diagnostics ?? null;
-          if (diagnostics !== null && syncDone) {
+          const attempt =
+            diagnostics !== null && diagnostics.attempt !== undefined && diagnostics.attempt !== null
+              ? Number(diagnostics.attempt)
+              : null;
+          if (diagnostics !== null && (syncDone || syncRetryWait)) {
             const externalTotal = Number(diagnostics.external_total ?? 0);
             const observed = Number(diagnostics.observed_uuids ?? 0);
             const imported = Number(diagnostics.kept ?? syncState.imported ?? 0);
@@ -265,19 +291,24 @@ function ArrivalsContent(): React.ReactElement {
             ];
             if (marked > 0) parts.push(`Исключено из активной очереди: ${marked}.`);
             parts.push(`Обработано страниц: ${pages}.`);
+            if (attempt !== null) parts.push(`Попытка: ${attempt}.`);
             return parts.join(" ");
           }
           const pages = syncState.pages_done ?? null;
           const imported = syncState.imported ?? null;
           if (pages === null && imported === null) return null;
-          return `Обработано страниц: ${pages ?? 0}; импортировано документов: ${imported ?? 0}.`;
+          const parts = [`Обработано страниц: ${pages ?? 0}; импортировано документов: ${imported ?? 0}.`];
+          if (attempt !== null) parts.push(`Попытка: ${attempt}.`);
+          return parts.join(" ");
         })()
       : null;
   const syncStatus =
     syncError !== ""
       ? syncError
       : syncRunning
-        ? "Обновление выполняется…"
+        ? syncRetryWait
+          ? "Повторяем обновление…"
+          : "Обновление выполняется…"
         : syncDone
           ? "Поступления обновлены из ВетИС."
           : syncFailed
@@ -341,7 +372,9 @@ function ArrivalsContent(): React.ReactElement {
                 onClick={() => void runSync()}
                 disabled={!canSync || syncRunning}
                 busy={syncRunning}
-                busyLabel="Обновление…"
+                // ТЗ DR22 §7: between attempts the busy label honestly says a
+                // retry is running — never a final error, never a fake success.
+                busyLabel={syncRetryWait ? "Повторяем обновление…" : "Обновление…"}
                 label="Обновить поступления из ВетИС"
               >
                 Обновить

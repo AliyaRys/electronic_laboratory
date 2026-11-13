@@ -648,4 +648,199 @@ describe("ArrivalsPage", () => {
     select.focus();
     expect(document.activeElement).toBe(select);
   });
+
+  // --- ТЗ DR22 §8 (frontend): one click, one operation, retry-wait, refetch ----
+
+  it("one click creates exactly ONE POST /arrivals/sync and polls THAT operation (ТЗ DR22 §8.1/2)", async () => {
+    const OPERATION = "aaaaaaaa-0000-4000-8000-0000000000d1";
+    const posts: string[] = [];
+    const polls: string[] = [];
+    let pollCount = 0;
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () => {
+        posts.push("post");
+        return HttpResponse.json({
+          operation_id: OPERATION,
+          state: "PENDING",
+          status_url: `/api/v1/operations/${OPERATION}`,
+        });
+      }),
+      http.get("*/api/v1/operations/:id", ({ params }) => {
+        polls.push(String(params.id));
+        pollCount += 1;
+        return HttpResponse.json({
+          id: String(params.id),
+          kind: "vetis.sync",
+          state: pollCount >= 3 ? "SUCCESS" : "RUNNING",
+          updated_at: "2026-11-13T10:00:00Z",
+        });
+      }),
+    );
+    renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+      },
+      { timeout: 8000 },
+    );
+    expect(posts.length).toBe(1); // ONE click → ONE sync command
+    expect(polls.length).toBeGreaterThan(0);
+    expect(new Set(polls)).toEqual(new Set([OPERATION])); // polling stays on the SAME operation
+    expect(screen.queryByText(/Повторяем обновление/)).toBeNull();
+  });
+
+  it("retry-wait shows «Повторяем обновление…», no final FAILED, and keeps the button disabled (ТЗ DR22 §8.3)", async () => {
+    const OPERATION = "aaaaaaaa-0000-4000-8000-0000000000d2";
+    let pollCount = 0;
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () =>
+        HttpResponse.json({
+          operation_id: OPERATION,
+          state: "PENDING",
+          status_url: `/api/v1/operations/${OPERATION}`,
+        }),
+      ),
+      http.get("*/api/v1/operations/:id", () => {
+        pollCount += 1;
+        // Between attempts the operation is PENDING with the retry problem;
+        // only later does the full pass succeed.
+        return HttpResponse.json({
+          id: OPERATION,
+          kind: "vetis.sync",
+          state: pollCount >= 3 ? "SUCCESS" : "PENDING",
+          problem: pollCount >= 3 ? null : "VETIS_TRANSPORT_ERROR",
+          updated_at: "2026-11-13T10:00:00Z",
+          diagnostics: { attempt: pollCount >= 3 ? 2 : 1, pages: 1, received: 2, kept: 1 },
+        });
+      }),
+    );
+    renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByRole("status").textContent).toContain("Повторяем обновление");
+      },
+      { timeout: 5000 },
+    );
+    const busy = screen.getByRole("button", { name: /Повторяем обновление/ }) as HTMLButtonElement;
+    expect(busy.hasAttribute("disabled")).toBe(true); // never re-enabled mid-operation
+    expect(screen.getByRole("status").textContent).not.toContain("Обновление не выполнено"); // NO final error between attempts
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+      },
+      { timeout: 10000 },
+    );
+  }, 20000);
+
+  it("after SUCCESS the table and the three counters refetch and show the new party (ТЗ DR22 §8.4)", async () => {
+    const OPERATION = "aaaaaaaa-0000-4000-8000-0000000000d3";
+    let pollCount = 0;
+    let synced = false;
+    const newParty = {
+      ...view,
+      party_id: "9c1b2d3e-3333-4222-8333-444444444444",
+      external: {
+        ...view.external,
+        evsd_uuid: "3f0e6d2a-1111-4222-8333-444444444444",
+        fields: { ...view.external.fields, productItem: "Свинина окорок" },
+      },
+      classification: {
+        ...view.classification,
+        product: { ...view.classification.product, name: "свинина" },
+      },
+    };
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () =>
+        HttpResponse.json({
+          operation_id: OPERATION,
+          state: "PENDING",
+          status_url: `/api/v1/operations/${OPERATION}`,
+        }),
+      ),
+      http.get("*/api/v1/operations/:id", () => {
+        pollCount += 1;
+        if (pollCount >= 2) synced = true;
+        return HttpResponse.json({
+          id: OPERATION,
+          kind: "vetis.sync",
+          state: synced ? "SUCCESS" : "RUNNING",
+          updated_at: "2026-11-13T10:00:00Z",
+          diagnostics: { attempt: 1, pages: 1, external_total: 2, observed_uuids: 2, kept: 2 },
+        });
+      }),
+    );
+    renderPage(`/labs/${LAB}/arrivals`, (request, items) => {
+      const queue = new URL(request.url).searchParams.get("queue") ?? "EXPECTED";
+      void queue;
+      const result = synced ? [view, newParty] : items;
+      return HttpResponse.json({ items: result, total: result.length, page: 1, page_size: 20 });
+    });
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+      },
+      { timeout: 8000 },
+    );
+    await screen.findByText("свинина"); // the new party appears AFTER committed SUCCESS
+    expect(screen.getByText("говядина")).toBeTruthy();
+  });
+
+  it("a final FAILED shows the understandable cause and a manual retry stays available (ТЗ DR22 §8.5)", async () => {
+    let posts = 0;
+    const stateById = new Map<string, { state: string; problem: string | null }>();
+    server.use(
+      http.post("*/api/v1/arrivals/sync", () => {
+        posts += 1;
+        const id = `aaaaaaaa-0000-4000-8000-0000000000d${posts}`;
+        stateById.set(id, { state: "FAILED", problem: "VETIS_TRANSPORT_ERROR" });
+        return HttpResponse.json({
+          operation_id: id,
+          state: "PENDING",
+          status_url: `/api/v1/operations/${id}`,
+        });
+      }),
+      http.get("*/api/v1/operations/:id", ({ params }) => {
+        const stored = stateById.get(String(params.id)) ?? { state: "FAILED", problem: null };
+        return HttpResponse.json({
+          id: String(params.id),
+          kind: "vetis.sync",
+          state: stored.state,
+          problem: stored.problem,
+          updated_at: "2026-11-13T10:00:00Z",
+        });
+      }),
+    );
+    renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    await waitFor(
+      () => {
+        expect(screen.getByText(/сервис ВетИС временно недоступен/)).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
+    expect(screen.queryByText(/эВСД не найдены/)).toBeNull(); // an error never becomes an empty list
+    const retry = screen.getByRole("button", { name: "Обновить" }) as HTMLButtonElement;
+    expect(retry.hasAttribute("disabled")).toBe(false); // manual retry is available
+    await userEvent.click(retry);
+    await waitFor(() => {
+      expect(posts).toBe(2); // the second manual command creates its own operation
+    });
+  });
+
+  it("loading, honest empty state and keyboard focus of the update action (ТЗ DR22 §8.6; real widths 1440/1024/768/390 need a real browser — jsdom discloses)", async () => {
+    renderPage(`/labs/${LAB}/arrivals`, () =>
+      HttpResponse.json({ items: [], total: 0, page: 1, page_size: 20 }),
+    );
+    await screen.findByText(/эВСД не найдены/); // the honest empty state
+    const update = screen.getByRole("button", { name: "Обновить" });
+    update.focus();
+    expect(document.activeElement).toBe(update); // the action is keyboard-reachable
+  });
 });

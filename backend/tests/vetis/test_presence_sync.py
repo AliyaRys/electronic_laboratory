@@ -33,6 +33,7 @@ from backend.tests.vetis.test_sync import (
     binding_row,
     make_adapter,
     op_row,
+    run_to_terminal,
 )
 
 ENTERPRISE = "00000000-0000-0000-0000-0000000000e1"
@@ -168,7 +169,7 @@ async def test_last_page_failure_never_touches_freshness(dr9_env: SimpleNamespac
         env,
         FailOnLastPage([page(2, 0, [doc(b, "2")]), page(2, 1, [doc(uuid.uuid4(), "3")])]),
     )
-    operation = await op_row(env, operation_id)
+    operation = await run_to_terminal(env, operation_id, make_adapter(env, FailOnLastPage([page(2, 0, [doc(b, "2")])])))
     assert operation.state == "FAILED"
     assert (await binding_row(env)).last_success == PAST
     docs = await documents(env)
@@ -178,7 +179,8 @@ async def test_last_page_failure_never_touches_freshness(dr9_env: SimpleNamespac
 
     # A transport failure is equally honest and equally inert.
     second_id = await run_pass(env, HttpErrorTransport())
-    assert (await op_row(env, second_id)).state == "FAILED"
+    second = await run_to_terminal(env, second_id, make_adapter(env, HttpErrorTransport()))
+    assert second.state == "FAILED"
     docs = await documents(env)
     assert docs[str(b)].source_presence == "CURRENT_CONFIRMED"
 
@@ -246,7 +248,8 @@ async def test_empty_correct_full_pass_deactivates_and_recovers(dr9_env: SimpleN
 
     # A failed/errored run NEVER empties the queue: an error is not an empty list.
     failed_id = await run_pass(env, HttpErrorTransport())
-    assert (await op_row(env, failed_id)).state == "FAILED"
+    failed = await run_to_terminal(env, failed_id, make_adapter(env, HttpErrorTransport()))
+    assert failed.state == "FAILED"
     docs = await documents(env)
     assert docs[str(a)].source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST"  # no further change
 
@@ -335,7 +338,7 @@ async def test_success_diagnostics_counters_of_the_full_pass(dr9_env: SimpleName
 
     # A FAILED run carries no full-pass counters at all.
     failed_id = await run_pass(env, HttpErrorTransport())
-    failed = await op_row(env, failed_id)
+    failed = await run_to_terminal(env, failed_id, make_adapter(env, HttpErrorTransport()))
     assert failed.state == "FAILED"
     assert "external_total" not in diagnose(failed)
     assert "marked_not_current" not in diagnose(failed)

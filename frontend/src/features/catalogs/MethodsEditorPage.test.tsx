@@ -6,7 +6,7 @@
  * createMethod() and real internal ids while no UUID is ever shown.
  */
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -418,6 +418,73 @@ describe("MethodsEditorPage", () => {
     const selects = screen.getAllByLabelText(/Оценка/);
     expect((selects[0] as HTMLSelectElement).value).toBe("norm");
     expect((selects[1] as HTMLSelectElement).value).toBe("deviation");
+  });
+
+  it("«Настроить» opens the MethodEditor create with the indicator pre-picked", async () => {
+    const act = userEvent.setup();
+    renderEditor();
+    await screen.findByRole("button", { name: "Добавить норму" });
+    const unsetRow = (await screen.findByText(temperature.name)).closest("article");
+    expect(unsetRow).not.toBeNull();
+    await act.click(within(unsetRow as HTMLElement).getByRole("button", { name: "Настроить" }));
+    // The editor opens in create mode with THAT indicator already picked; a
+    // raw UUID never appears.
+    const select = await screen.findByLabelText("Показатель");
+    expect(select).toHaveValue(temperature.id);
+    expect(screen.queryByText(/UUID/)).toBeNull();
+    // The canonical definition derived the type/unit — they are locked and
+    // prefilled, never retyped.
+    const schema = screen.getByLabelText("Тип результата") as HTMLSelectElement;
+    expect(schema.value).toBe("DECIMAL");
+    expect(schema).toBeDisabled();
+    expect(screen.getByLabelText("Единица измерения нормы")).toHaveValue("°C");
+    await act.type(screen.getByLabelText("Нижняя граница"), "0");
+    await act.type(screen.getByLabelText("Верхняя граница"), "6");
+    await act.type(screen.getByLabelText("Источник методики"), "методика");
+    await act.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
+    expect((postSpy.mock.calls[0][0] as Record<string, unknown>)["indicator_id"]).toBe(temperature.id);
+  });
+
+  it("marking a second variant «Норма» updates accepted_values on save", async () => {
+    const act = userEvent.setup();
+    const first = (cooking.options ?? [])[0] as { label: string };
+    const second = (cooking.options ?? [])[1] as { label: string };
+    activeRules = [
+      intervalRule({
+        id: "bbbbbbbb-0000-4000-8000-000000000003",
+        indicator_id: cooking.id,
+        result_schema: "ENUM",
+        unit_id: "",
+        rule: { type: "qualitative", accepted_values: [first.label] },
+      }),
+    ];
+    renderEditor();
+    await screen.findByRole("heading", { name: cooking.name });
+    expect((screen.getAllByLabelText(/Оценка/)[0] as HTMLSelectElement).value).toBe("norm");
+    await act.selectOptions(screen.getAllByLabelText(/Оценка/)[1], "norm");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalledTimes(1));
+    const payload = putSpy.mock.calls[0][0] as { rule: { accepted_values: string[] } };
+    expect(payload.rule.accepted_values).toEqual([first.label, second.label]);
+    expect(await screen.findByText("Справочник норм сохранён.")).toBeInTheDocument();
+  });
+
+  it("a reader without edit rights sees no create or configure actions", async () => {
+    me = {
+      ...me,
+      role: "VET",
+      full_name: "Игорь Ветеринар",
+      login: "vet",
+      capabilities: [],
+    };
+    renderEditor();
+    expect(await screen.findByText(/Продукция: Свинина/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Настроить" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Удалить норму" })).toBeNull();
+    const save = screen.getByRole("button", { name: "Сохранить справочник" });
+    expect(save).toBeDisabled();
   });
 
   it("an unknown indicator keeps the honest diagnostic without an invented name", async () => {

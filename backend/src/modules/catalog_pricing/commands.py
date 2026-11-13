@@ -78,6 +78,21 @@ def _species_scope_problem() -> ProblemError:
 def _validate_species_scope(payload: MethodRuleWrite) -> None:
     if payload.product_species_id == payload.laboratory_id:
         raise _species_scope_problem()
+    # ТЗ-DR28 §7: a real product_state_id is required — the applicability key
+    # never carries the laboratory UUID or the species id as a state.
+    if payload.product_state_id in (payload.laboratory_id, payload.product_species_id):
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="product_state_id",
+                    field_id="CHECK",
+                    message=(
+                        "Состояние продукции должно быть реальным значением классификатора "
+                        "и не может совпадать с лабораторией или видом продукции."
+                    ),
+                )
+            ]
+        )
 
 
 def _tariff_species_problem() -> ProblemError:

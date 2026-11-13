@@ -374,6 +374,13 @@
   font-weight: 650;
 }
 
+.vse-catalog-note {
+  margin: 0;
+  color: #687d81;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .vse-catalog-details {
   margin-top: 8px;
 }

@@ -18,6 +18,13 @@ export type MethodRuleWrite = components["schemas"]["MethodRuleWrite"];
 export type TariffWrite = components["schemas"]["TariffWrite"];
 export type CheckServiceRuleWrite = components["schemas"]["CheckServiceRuleWrite"];
 export type Readiness = components["schemas"]["Readiness"];
+export type MethodsContext = components["schemas"]["MethodsContext"];
+export type CatalogIndicator = components["schemas"]["CatalogIndicator"];
+export type CatalogScopeId = components["schemas"]["CatalogScopeId"];
+/** MethodsContext with the rules narrowed to the typed union. */
+export type MethodsContextTyped = Omit<MethodsContext, "active_rules"> & {
+  active_rules: MethodRuleTyped[];
+};
 export type BulkPriceWrite = components["schemas"]["BulkPriceWrite"];
 export type BulkAccepted = components["schemas"]["BulkAccepted"];
 export type BulkPriceJobView = components["schemas"]["BulkPriceJobView"];
@@ -109,6 +116,40 @@ export async function fetchMethods(
   );
   if ("problem" in settled) return settled.problem;
   return { ...settled.data, items: settled.data.items.map(typedMethodRule) };
+}
+
+/**
+ * The scoped editor read model of the methods catalog (ТЗ-DR28 §7 variant B).
+ *
+ * The page never sends a product_species_id of its own: the backend resolves
+ * the honest human-readable area onto the REAL internal pair, so the legacy
+ * laboratory-UUID fallback (DR13) can never reach the URL again. GUIDs stay
+ * internal — the caller only shows the Russian labels of the context.
+ */
+export async function fetchMethodsContext(
+  laboratoryId: string,
+  area: string,
+  productSpeciesId?: string | null,
+  productStateId?: string | null,
+  signal?: AbortSignal | null,
+): Promise<MethodsContextTyped | Problem> {
+  const query: {
+    laboratory_id: string;
+    area: string;
+    product_species_id?: string | null;
+    product_state_id?: string | null;
+  } = { laboratory_id: laboratoryId, area };
+  if (productSpeciesId != null) query.product_species_id = productSpeciesId;
+  if (productStateId != null) query.product_state_id = productStateId;
+  const settled = await settle(
+    apiClient.GET("/api/v1/catalogs/methods/context", {
+      params: { query },
+      signal: signal ?? null,
+    }) as Promise<RawResult<MethodsContext>>,
+  );
+  if ("problem" in settled) return settled.problem;
+  const data = settled.data;
+  return { ...data, active_rules: data.active_rules.map(typedMethodRule) };
 }
 
 export async function fetchTariffs(

@@ -8,11 +8,18 @@
 import "./catalogs.css";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Problem } from "../../shared/api/problem";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
-import { createMethod, deleteMethod, typedMethodRule, updateMethod, type MethodRuleTyped } from "./api";
+import {
+  createMethod,
+  deleteMethod,
+  typedMethodRule,
+  updateMethod,
+  type CatalogIndicator,
+  type MethodRuleTyped,
+} from "./api";
 import { isUuid, problemFieldErrors } from "./common";
 
 export const RESULT_SCHEMAS = [
@@ -120,6 +127,12 @@ export interface MethodEditorProps {
   mode: "create" | "edit";
   laboratoryId: string;
   productSpeciesId: string;
+  /** The canonical VSE-F18–F29 registry of the scoped context (ТЗ-DR28 §6.2).
+   * When provided in create mode the indicator is chosen by its Russian name
+   * and code — a raw UUID input is never shown — and the real species/state
+   * ids come from the resolved context pair (``productStateId``). */
+  indicators?: readonly CatalogIndicator[] | undefined;
+  productStateId?: string | undefined;
   rule?: MethodRuleTyped | null;
   busy?: boolean | undefined;
   onSaved: (rule: MethodRuleTyped) => void;
@@ -135,6 +148,8 @@ export function MethodEditor({
   mode,
   laboratoryId,
   productSpeciesId,
+  indicators,
+  productStateId,
   rule,
   busy = false,
   onSaved,
@@ -142,10 +157,14 @@ export function MethodEditor({
   onClose,
 }: MethodEditorProps): React.ReactElement {
   const defaults = methodEditorDefaults(rule);
+  if (mode === "create" && productStateId !== undefined && productStateId !== "") {
+    defaults.product_state_id = productStateId;
+  }
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<MethodEditorValues>({ defaultValues: defaults });
@@ -157,12 +176,37 @@ export function MethodEditor({
   // eslint-disable-next-line react-hooks/incompatible-library
   const ruleType = watch("rule_type");
   const pending = isSubmitting || busy || deleteBusy;
+  // Registry-driven create mode (§6.2): the user picks a named indicator, the
+  // canonical result schema/unit follow it and no UUID input appears.
+  const withRegistry = mode === "create" && indicators !== undefined && indicators.length > 0;
+  const indicatorId = watch("indicator_id");
+  const definition =
+    withRegistry && isUuid(indicatorId ?? "")
+      ? indicators?.find((item) => item.id === indicatorId)
+      : undefined;
+
+  useEffect(() => {
+    if (definition === undefined) return;
+    // The canonical definition owns the type/unit of the norm (§6.2): the
+    // editor derives them instead of asking the user to retype them.
+    setValue("result_schema", definition.result_schema as MethodEditorValues["result_schema"]);
+    setValue("unit_id", definition.unit_id ?? "");
+    const interval = ["DECIMAL", "INTEGER_NONNEGATIVE", "DOSIMETRY_PAIR"].includes(definition.result_schema);
+    setValue("rule_type", interval ? "interval" : "qualitative");
+    if (!interval) {
+      const options = definition.options ?? [];
+      if (options.length > 0) setValue("accepted_values", options.join(", "));
+    }
+  }, [definition, setValue]);
 
   const payload = (values: MethodEditorValues): Parameters<typeof createMethod>[0] => ({
     laboratory_id: laboratoryId,
     product_species_id: productSpeciesId,
     indicator_id: values.indicator_id.trim(),
-    product_state_id: values.product_state_id.trim(),
+    product_state_id:
+      mode === "create" && productStateId !== undefined && productStateId !== ""
+        ? productStateId
+        : values.product_state_id.trim(),
     result_schema: values.result_schema,
     unit_id: values.unit_id.trim(),
     version: Number(values.version),
@@ -241,48 +285,84 @@ export function MethodEditor({
     <>
       <form className="vse-auth-form vse-catalog-editor" onSubmit={submit} noValidate>
         {mode === "create" ? (
-          <>
-            <div className="app-field">
-              <div className="app-field-heading">
-                <label htmlFor="method-indicator">Показатель (UUID)</label>
+          withRegistry ? (
+            <>
+              <div className="app-field">
+                <div className="app-field-heading">
+                  <label htmlFor="method-indicator">Показатель</label>
+                </div>
+                <select
+                  id="method-indicator"
+                  disabled={pending}
+                  aria-invalid={errors.indicator_id !== undefined ? "true" : undefined}
+                  {...register("indicator_id")}
+                >
+                  <option value="">— выберите показатель —</option>
+                  {indicators?.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.code} — {item.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.indicator_id !== undefined ? (
+                  <p className="app-field-message app-field-error" role="alert">
+                    {errors.indicator_id.message}
+                  </p>
+                ) : null}
               </div>
-              <input
-                id="method-indicator"
-                type="text"
-                disabled={pending}
-                aria-invalid={errors.indicator_id !== undefined ? "true" : undefined}
-                {...register("indicator_id")}
-              />
-              {errors.indicator_id !== undefined ? (
-                <p className="app-field-message app-field-error" role="alert">
-                  {errors.indicator_id.message}
-                </p>
-              ) : null}
-            </div>
-            <div className="app-field">
-              <div className="app-field-heading">
-                <label htmlFor="method-state">Состояние продукции (UUID)</label>
+              <p className="vse-catalog-note" data-testid="method-scope-hint">
+                Вид и состояние продукции берутся из рабочей области справочника.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="app-field">
+                <div className="app-field-heading">
+                  <label htmlFor="method-indicator">Показатель (UUID)</label>
+                </div>
+                <input
+                  id="method-indicator"
+                  type="text"
+                  disabled={pending}
+                  aria-invalid={errors.indicator_id !== undefined ? "true" : undefined}
+                  {...register("indicator_id")}
+                />
+                {errors.indicator_id !== undefined ? (
+                  <p className="app-field-message app-field-error" role="alert">
+                    {errors.indicator_id.message}
+                  </p>
+                ) : null}
               </div>
-              <input
-                id="method-state"
-                type="text"
-                disabled={pending}
-                aria-invalid={errors.product_state_id !== undefined ? "true" : undefined}
-                {...register("product_state_id")}
-              />
-              {errors.product_state_id !== undefined ? (
-                <p className="app-field-message app-field-error" role="alert">
-                  {errors.product_state_id.message}
-                </p>
-              ) : null}
-            </div>
-          </>
+              <div className="app-field">
+                <div className="app-field-heading">
+                  <label htmlFor="method-state">Состояние продукции (UUID)</label>
+                </div>
+                <input
+                  id="method-state"
+                  type="text"
+                  disabled={pending}
+                  aria-invalid={errors.product_state_id !== undefined ? "true" : undefined}
+                  {...register("product_state_id")}
+                />
+                {errors.product_state_id !== undefined ? (
+                  <p className="app-field-message app-field-error" role="alert">
+                    {errors.product_state_id.message}
+                  </p>
+                ) : null}
+              </div>
+            </>
+          )
+        ) : null}
+        {withRegistry && definition !== undefined ? (
+          <p className="vse-catalog-note" data-testid="method-definition-hint">
+            Тип результата и единица измерения заданы каноническим определением показателя.
+          </p>
         ) : null}
         <div className="app-field">
           <div className="app-field-heading">
             <label htmlFor="method-result-schema">Тип результата</label>
           </div>
-          <select id="method-result-schema" disabled={pending} {...register("result_schema")}>
+          <select id="method-result-schema" disabled={pending || withRegistry} {...register("result_schema")}>
             {RESULT_SCHEMAS.map((value) => (
               <option key={value} value={value}>
                 {RESULT_SCHEMA_LABELS[value]}
@@ -294,7 +374,7 @@ export function MethodEditor({
           <div className="app-field-heading">
             <label htmlFor="method-unit">Единица измерения нормы</label>
           </div>
-          <input id="method-unit" type="text" disabled={pending} {...register("unit_id")} />
+          <input id="method-unit" type="text" disabled={pending || withRegistry} {...register("unit_id")} />
           {errors.unit_id !== undefined ? (
             <p className="app-field-message app-field-error" role="alert">
               {errors.unit_id.message}
@@ -305,7 +385,7 @@ export function MethodEditor({
           <div className="app-field-heading">
             <label htmlFor="method-rule-type">Тип нормы</label>
           </div>
-          <select id="method-rule-type" disabled={pending} {...register("rule_type")}>
+          <select id="method-rule-type" disabled={pending || withRegistry} {...register("rule_type")}>
             <option value="interval">Интервал</option>
             <option value="qualitative">Допустимые значения</option>
           </select>

@@ -152,6 +152,31 @@ def test_consignee_business_entity_does_not_break_receiver_match() -> None:
     assert business is not None and business.text == "business-entity-guid"
 
 
+def test_missing_accompanying_forms_synthesizes_vet_certificate() -> None:
+    """Live regression: a transport LIC2 eVSD carries no accompanyingForms.
+
+    Per docs/integration/mercury-test-integration-contract.md the electronic
+    certificate reference in delivery/accompanyingForms/vetCertificate is the
+    UUID of the source eVSD itself, so the builder synthesizes the block
+    instead of failing.
+    """
+    source = SOURCE_XML_CONSIGNEE_FULL.replace(
+        "<vd:accompanyingForms><vd:vetCertificate><bs:uuid>source</bs:uuid></vd:vetCertificate></vd:accompanyingForms>",
+        "",
+    )
+    assert "vetCertificate" not in source
+    xml = build_process_incoming_application(
+        intent(mismatch=False, decision="ACCEPT_ALL"),
+        source_xml=source,
+        service_id="s",
+        issuer_id="i",
+    )
+    delivery = _delivery_element(xml, returned=False)
+    assert delivery is not None
+    cert = delivery.find(f"{VD}accompanyingForms/{VD}vetCertificate/{BS}uuid")
+    assert cert is not None and cert.text == str(SOURCE_EVSD)
+
+
 def test_gashenie_keeps_source_trailer_number() -> None:
     """ТЗ DR17 §7: the source trailerNumber stays a source requisite of the
     гашение XML — the user's discrepancy fact never replaces it."""

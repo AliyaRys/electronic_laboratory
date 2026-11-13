@@ -165,7 +165,13 @@ def _delivery(
         _copy_named(delivery, source, child_name)
     certificate = _find_local(delivery, "vetCertificate")
     if certificate is None:
-        raise _invalid("Исходный XML не содержит электронный ветеринарный сертификат.")
+        # Live LIC2 transport eVSDs carry no accompanyingForms; per the
+        # integration contract the electronic certificate reference is the
+        # UUID of the source eVSD itself.
+        forms = ET.SubElement(delivery, f"{{{VD_NS}}}accompanyingForms")
+        cert = ET.SubElement(forms, f"{{{VD_NS}}}vetCertificate")
+        _text(cert, BASE_NS, "uuid", str(intent.source_evsd_uuid))
+        certificate = _find_local(delivery, "vetCertificate")
     if returned:
         for child in list(certificate):
             certificate.remove(child)

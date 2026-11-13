@@ -1089,7 +1089,7 @@ describe("ТЗ DR13: полнота сверки и повторное сохр�
     const fields = comparedFields(partyComplete);
     expect(fields.find((field) => field.fieldId === "CHK-F06")).toMatchObject({
       block: "participants",
-      label: "Отправитель — владелец",
+      label: "Хозяйствующий субъект",
       source: "СХПК «Заря»",
     });
     // The numeric product type keeps its honest decimal string, never an
@@ -1337,9 +1337,14 @@ describe("ТЗ DR17: номер прицепа/полуприцепа (CHK-F11)"
 
 describe("participant name fields (ТЗ DR18 §10)", () => {
   function partyWithNames(fields: Record<string, string>): IncomingView {
+    // ТЗ DR21: the legacy consignor/consignee projection keys are stripped —
+    // the participant names of the unified read model are the only source.
+    const stripped = { ...party.external.fields };
+    delete stripped.consignor;
+    delete stripped.consignee;
     return {
       ...party,
-      external: { ...party.external, fields: { ...party.external.fields, ...fields } },
+      external: { ...party.external, fields: { ...stripped, ...fields } },
     };
   }
 
@@ -1454,6 +1459,137 @@ describe("participant name fields (ТЗ DR18 §10)", () => {
       await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
       await waitFor(() => expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeEnabled());
       expect(externalRequests).toEqual([]);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+/** ТЗ DR21 §5/§7: the two participant objects of each card — «Предприятие»
+ * then «Хозяйствующий субъект» — resolved names as shared ComparisonField
+ * cards, unresolved names as the honest DR18 §10 fallback. */
+describe("participant enterprise/owner comparison cards (ТЗ DR21 §5)", () => {
+  const resolvedFields = {
+    senderOwner: "СХПК «Заря»",
+    senderEnterprise: "Предприятие «Мясопром»",
+    receiverOwner: "ИП Петров",
+    receiverEnterprise: "Лабораторный убойный пункт",
+    senderOwnerNameSource: "VETIS_LOOKUP",
+    senderEnterpriseNameSource: "SOURCE_XML",
+    receiverOwnerNameSource: "VETIS_LOOKUP",
+    receiverEnterpriseNameSource: "SOURCE_XML",
+  };
+
+  /** The base party WITHOUT the legacy consignor/consignee projection keys:
+   * the participant names are the only source of the four cards. */
+  function partyNamesOnly(fields: Record<string, string>): IncomingView {
+    const stripped = { ...party.external.fields };
+    delete stripped.consignor;
+    delete stripped.consignee;
+    return {
+      ...party,
+      external: { ...party.external, fields: { ...stripped, ...fields } },
+    };
+  }
+
+  function cardFieldIds(card: Element): string[] {
+    return [...card.querySelectorAll("[data-field-id]")].map(
+      (node) => node.getAttribute("data-field-id") ?? "",
+    );
+  }
+
+  function cardLabel(fieldId: string): string | null {
+    return document.querySelector(`[data-field-id="${fieldId}"] .vse-rec-compare-name`)?.textContent ?? null;
+  }
+
+  it("shows exactly two comparison cards per participant in the agreed order", () => {
+    renderForm({ party: partyNamesOnly(resolvedFields) });
+    const sender = document.querySelector('[aria-labelledby="vse-rec-sender-title"]');
+    const receiver = document.querySelector('[aria-labelledby="vse-rec-receiver-title"]');
+    expect(sender).not.toBeNull();
+    expect(receiver).not.toBeNull();
+    // Предприятие first, then Хозяйствующий субъект — on both cards.
+    expect(cardFieldIds(sender as Element)).toEqual(["CHK-F05", "CHK-F06"]);
+    expect(cardFieldIds(receiver as Element)).toEqual(["CHK-F07", "CHK-F08"]);
+    // No DR18 informational duplicate beside the comparison cards.
+    expect(sender?.querySelectorAll(".vse-rec-compare.reference")).toHaveLength(0);
+    expect(receiver?.querySelectorAll(".vse-rec-compare.reference")).toHaveLength(0);
+  });
+
+  it("labels CHK-F05/F07 «Предприятие» and CHK-F06/F08 «Хозяйствующий субъект»", () => {
+    renderForm({ party: partyNamesOnly(resolvedFields) });
+    expect(cardLabel("CHK-F05")).toBe("Предприятие");
+    expect(cardLabel("CHK-F06")).toBe("Хозяйствующий субъект");
+    expect(cardLabel("CHK-F07")).toBe("Предприятие");
+    expect(cardLabel("CHK-F08")).toBe("Хозяйствующий субъект");
+  });
+
+  it("all four cards share the same mark controls and are keyboard accessible", () => {
+    renderForm({ party: partyNamesOnly(resolvedFields) });
+    for (const fieldId of ["CHK-F05", "CHK-F06", "CHK-F07", "CHK-F08"]) {
+      const match = document.querySelector(
+        `[data-field-id="${fieldId}"] input[value="matches"]`,
+      ) as HTMLInputElement | null;
+      expect(match).not.toBeNull();
+      expect(match?.type).toBe("radio");
+      expect(match?.getAttribute("aria-label")).toBe(
+        `Совпадает: ${fieldId === "CHK-F05" || fieldId === "CHK-F07" ? "Предприятие" : "Хозяйствующий субъект"}`,
+      );
+      match?.focus();
+      expect(document.activeElement).toBe(match);
+    }
+  });
+
+  it("a mismatch opens the actual value and reason of the same shared contract", async () => {
+    renderForm({ party: partyNamesOnly(resolvedFields) });
+    const mismatches = screen.getAllByRole("radio", { name: "Не совпадает: Хозяйствующий субъект" });
+    await userEvent.click(mismatches[0]);
+    const actual = await screen.findAllByLabelText("Фактическое значение");
+    expect(actual.length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText("Причина несоответствия").length).toBeGreaterThan(0);
+  });
+
+  it("an unresolved name shows the honest fallback: no comparison card, no GUID, form working", () => {
+    renderForm({
+      party: partyNamesOnly({
+        senderOwnerNameSource: "MISSING",
+        senderEnterpriseNameSource: "PENDING",
+        receiverOwnerNameSource: "ERROR",
+        receiverEnterpriseNameSource: "MISSING",
+      }),
+    });
+    // No comparison card exists for an unresolved name — no fictive mark.
+    expect(document.querySelector('[data-field-id="CHK-F05"]')).toBeNull();
+    expect(document.querySelector('[data-field-id="CHK-F06"]')).toBeNull();
+    expect(document.querySelector('[data-field-id="CHK-F07"]')).toBeNull();
+    expect(document.querySelector('[data-field-id="CHK-F08"]')).toBeNull();
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Название не получено");
+    expect(text).toContain("Уточняем названия организаций…");
+    expect(text).toContain("Название временно недоступно");
+    expect(text.includes("0ed40ab2")).toBe(false);
+    expect(text.includes("d562919c")).toBe(false);
+    expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeEnabled();
+  });
+
+  it("a resolved name keeps the old CHK ids in the save payload (ID invariance)", async () => {
+    const savedPayloads: { checks: Record<string, { matches: boolean }> }[] = [];
+    const server = setupServer(
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", async ({ request }) => {
+        savedPayloads.push((await request.json()) as { checks: Record<string, { matches: boolean }> });
+        return HttpResponse.json({ ...emptyView, revision: 2 }, { status: 200 });
+      }),
+    );
+    server.listen();
+    try {
+      renderForm({ party: partyNamesOnly(resolvedFields) });
+      await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(savedPayloads.length).toBeGreaterThan(0));
+      // The CHK ids never changed — only the Russian labels did (R-DR21-3).
+      for (const fieldId of ["CHK-F05", "CHK-F06", "CHK-F07", "CHK-F08"]) {
+        expect(savedPayloads[0].checks[fieldId]).toEqual({ matches: true });
+      }
     } finally {
       server.close();
     }

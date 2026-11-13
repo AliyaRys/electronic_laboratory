@@ -150,6 +150,11 @@ BUSINESS_ENTITY_RESPONSE = (
 )
 
 
+def business_entity_response(guid: uuid.UUID) -> str:
+    """The pinned GetBusinessEntityByGUID answer shape for ONE guid."""
+    return BUSINESS_ENTITY_RESPONSE.replace(str(SENDER_BE), str(guid))
+
+
 # --- §11 tests -------------------------------------------------------------------
 
 
@@ -187,6 +192,91 @@ async def test_2_guid_only_creates_two_pending_kinds(db_session: AsyncSession) -
         assert row.source is None  # no name was ever observed
     kinds = {row.entity_kind for row in rows}
     assert kinds == {"BUSINESS_ENTITY", "ENTERPRISE"}
+
+
+async def test_dr21_enterprise_named_creates_job_only_for_business_entity(
+    db_session: AsyncSession,
+) -> None:
+    """ТЗ DR21 §7.1: an XML with an enterprise name and a nameless
+    businessEntity queues the resolution job ONLY for the businessEntity."""
+    from backend.src.modules.integrations.vetis.models import VetisReferenceName
+
+    mixed = {
+        "vdDocument": {
+            "consignor": {
+                "name": "",
+                "businessEntity": {"guid": str(SENDER_BE), "uuid": str(SENDER_BE)},
+                "enterprise": {
+                    "guid": str(SENDER_ENT),
+                    "uuid": str(SENDER_ENT),
+                    "name": "ХАЛЬФИН ФАНИС ФАНАВИЛЕВИЧ",
+                },
+            },
+            "consignee": {"name": "", "businessEntity": None, "enterprise": None},
+        }
+    }
+    counters = await upsert_reference_names(db_session, _PILOT, mixed)
+    await db_session.commit()
+    rows = {
+        row.entity_kind: row
+        for row in (await db_session.execute(select(VetisReferenceName))).scalars()
+    }
+    assert counters["created"] == 2 and set(rows) == {"BUSINESS_ENTITY", "ENTERPRISE"}
+    # The named enterprise never enters the queue: its name is honest SOURCE_XML.
+    enterprise = rows["ENTERPRISE"]
+    assert enterprise.name == "ХАЛЬФИН ФАНИС ФАНАВИЛЕВИЧ"
+    assert enterprise.source == "SOURCE_XML" and enterprise.status == "RESOLVED"
+    # The nameless businessEntity is the only queued job.
+    owner = rows["BUSINESS_ENTITY"]
+    assert owner.name is None
+    assert owner.status == "PENDING" and owner.next_check_at is not None
+    assert owner.source is None
+
+
+async def test_dr21_business_entity_lookup_reaches_the_read_model(
+    db_session: AsyncSession,
+    spy_enterprise,
+) -> None:
+    """ТЗ DR21 §7.2: after a successful GetBusinessEntityByGUID the read
+    model carries senderOwner/receiverOwner (and never a raw GUID)."""
+    from backend.src.modules.integrations.vetis.reference_names import (
+        participant_name_overrides,
+        resolve_participants,
+    )
+
+    owners_only = {
+        "vdDocument": {
+            "consignor": {
+                "name": "",
+                "businessEntity": {"guid": str(SENDER_BE), "uuid": str(SENDER_BE)},
+            },
+            "consignee": {
+                "name": "",
+                "businessEntity": {"guid": str(RECEIVER_BE), "uuid": str(RECEIVER_BE)},
+            },
+        }
+    }
+    await upsert_reference_names(db_session, _PILOT, owners_only)
+    await db_session.commit()
+    spy = spy_enterprise(
+        business_entity_responses=[
+            business_entity_response(SENDER_BE),
+            business_entity_response(RECEIVER_BE),
+        ]
+    )
+    counters = await resolve_due_reference_names(db_session, spy)
+    await db_session.commit()
+    assert counters["resolved"] == 2
+
+    # The read model of the imported document returns the resolved owner names.
+    participants = await resolve_participants(db_session, _PILOT, owners_only)
+    overrides = participant_name_overrides(participants)
+    assert overrides["senderOwner"] == "ОАО «Мясопром»"
+    assert overrides["receiverOwner"] == "ОАО «Мясопром»"
+    assert overrides["senderOwnerNameSource"] == "VETIS_LOOKUP"
+    assert overrides["senderEnterprise"] is None and overrides["receiverEnterprise"] is None
+    # A raw GUID/UUID never replaces a name in the read model.
+    assert str(SENDER_BE) not in (overrides["senderOwner"] or "")
 
 
 async def test_3_one_guid_two_documents_one_job(db_session: AsyncSession) -> None:

@@ -478,21 +478,40 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         <div className="vse-rec-participants">
           <div className="vse-rec-participant-card" aria-labelledby="vse-rec-sender-title">
             <h3 id="vse-rec-sender-title">Сведения об отправителе</h3>
-            {compared.some((field) => field.fieldId === "CHK-F05") ? compareField("CHK-F05") : null}
-            {/* CHK-F06 (ТЗ DR13): the owner is a compared ground when the
-                source carries it; the immutable name fields below always
-                show the resolved state (ТЗ DR18 §10). */}
-            {compared.some((field) => field.fieldId === "CHK-F06") ? compareField("CHK-F06") : null}
-            <ParticipantNameField label="Хозяйствующий субъект" field={senderOwner} />
-            <ParticipantNameField label="Предприятие" field={senderEnterprise} />
+            {/* ТЗ DR21 §5 (R-DR21-2): the two objects of the sender in the
+                agreed order — «Предприятие» then «Хозяйствующий субъект».
+                A RESOLVED name is an explicit comparison card (the same
+                shared ComparisonField and match/mismatch controls); an
+                unresolved name renders the honest DR18 §10 fallback instead —
+                never a raw GUID/UUID, never a fictive mark, the form stays
+                working. One mechanism per state: no duplication. */}
+            {compared.some((field) => field.fieldId === "CHK-F05") ? (
+              compareField("CHK-F05")
+            ) : (
+              <ParticipantNameField label="Предприятие" field={senderEnterprise} />
+            )}
+            {compared.some((field) => field.fieldId === "CHK-F06") ? (
+              compareField("CHK-F06")
+            ) : (
+              <ParticipantNameField label="Хозяйствующий субъект" field={senderOwner} />
+            )}
           </div>
           <div className="vse-rec-participant-card" aria-labelledby="vse-rec-receiver-title">
             <h3 id="vse-rec-receiver-title">Сведения о получателе</h3>
-            {compared.some((field) => field.fieldId === "CHK-F07") ? compareField("CHK-F07") : null}
-            {/* CHK-F08 (ТЗ DR13): the same compared-owner rule on the receiver. */}
-            {compared.some((field) => field.fieldId === "CHK-F08") ? compareField("CHK-F08") : null}
-            <ParticipantNameField label="Хозяйствующий субъект" field={receiverOwner} />
-            <ParticipantNameField label="Предприятие" field={receiverEnterprise} />
+            {/* ТЗ DR21 §5.2: the same two objects on the receiver — the
+                symmetric order and the same controls; an empty receiver card
+                is impossible while the read model carries a name or an
+                honest «Название не получено» state (§5). */}
+            {compared.some((field) => field.fieldId === "CHK-F07") ? (
+              compareField("CHK-F07")
+            ) : (
+              <ParticipantNameField label="Предприятие" field={receiverEnterprise} />
+            )}
+            {compared.some((field) => field.fieldId === "CHK-F08") ? (
+              compareField("CHK-F08")
+            ) : (
+              <ParticipantNameField label="Хозяйствующий субъект" field={receiverOwner} />
+            )}
           </div>
         </div>
       </CheckSectionCard>

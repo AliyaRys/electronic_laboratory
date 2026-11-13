@@ -144,7 +144,8 @@ async def test_no_dictionary_is_honest_configuration_missing(api_env: SimpleName
     """Scenario 1 (§5.1/R-DR28-1): the legacy laboratory-UUID fallback is never
     a product species — a context request with it answers with the honest
     CONFIGURATION_MISSING problem, never a catalog page and never fabricated
-    scope data."""
+    scope data. The meat dictionary is EMPTY here: the honest blocking
+    configuration state of a missing classification mapping."""
     async with _client_for(api_env) as http:
         response = await http.get(
             "/api/v1/catalogs/methods/context",
@@ -155,6 +156,96 @@ async def test_no_dictionary_is_honest_configuration_missing(api_env: SimpleName
         )
         assert response.status_code == 409
         assert response.json()["code"] == "CONFIGURATION_MISSING"
+
+
+@pytest.mark.integration
+async def test_species_equal_to_laboratory_uuid_is_refused(api_env: SimpleNamespace) -> None:
+    """Scenario 1, isolated UUID-equality branch (§8-1): with a NON-EMPTY meat
+    dictionary the species == laboratory_id request is refused by the explicit
+    context guard (mirror of commands.py), never answered with dictionary
+    data."""
+    db = api_env.db
+    db.add(_meat_record(uuid.uuid4(), "Свинина"))
+    await db.commit()
+    async with _client_for(api_env) as http:
+        response = await http.get(
+            "/api/v1/catalogs/methods/context",
+            params={
+                "laboratory_id": str(api_env.lab.id),
+                "area": "meat",
+                "product_species_id": str(api_env.lab.id),
+            },
+        )
+        assert response.status_code == 409
+        body = response.json()
+        assert body["code"] == "CONFIGURATION_MISSING"
+        # Never the dictionary data of the real species.
+        assert "species_options" not in body
+
+
+@pytest.mark.integration
+async def test_multiple_species_and_states_expose_options(api_env: SimpleNamespace) -> None:
+    """Multi-option path (§5.2/§5.3): with >1 species and >1 states the context
+    returns 200 with the typed human-readable options while the pair stays
+    unset until the user chooses — nothing is fabricated, no rule is guessed."""
+    db = api_env.db
+    species_a, species_b = uuid.uuid4(), uuid.uuid4()
+    state_a1, state_a2 = uuid.uuid4(), uuid.uuid4()
+    state_b1 = uuid.uuid4()
+    db.add(_meat_record(species_a, "Свинина", trichinella=True))
+    db.add(_meat_record(species_b, "Говядина"))
+    await _party(db, api_env.lab.id, species_a, state_a1)
+    await _party(db, api_env.lab.id, species_a, state_a2)
+    await _party(db, api_env.lab.id, species_b, state_b1)
+    await db.commit()
+
+    async with _client_for(api_env) as http:
+        base = {"laboratory_id": str(api_env.lab.id), "area": "meat"}
+
+        # No species chosen: both named species are offered, the pair is unset,
+        # no rules and no invented selection.
+        response = await http.get("/api/v1/catalogs/methods/context", params=base)
+        assert response.status_code == 200, response.text
+        context = response.json()
+        # The migration-owned dictionary rows are allowed; OUR seeded species
+        # are among the offered named options.
+        labels = [item["label"] for item in context["species_options"]]
+        assert "Говядина" in labels
+        assert "Свинина" in labels
+        assert len(labels) >= 2
+        assert all("id" in item for item in context["species_options"])
+        assert context["species_options"][1]["requires_trichinelloscopy"] is True
+        assert context["product_species"] is None
+        assert context["product_state"] is None
+        assert context["states"] == []
+        assert context["active_rules"] == []
+        assert [item["code"] for item in context["indicators"]] == [
+            f"VSE-F{number}" for number in range(18, 30)
+        ]
+
+        # One species chosen: its two observed states are offered, the state
+        # stays unset until chosen.
+        response = await http.get(
+            "/api/v1/catalogs/methods/context", params={**base, "product_species_id": str(species_a)}
+        )
+        assert response.status_code == 200, response.text
+        context = response.json()
+        # Both observed subProduct refs are exposed as typed options (distinct
+        # ids, human-readable labels), the state stays unset.
+        assert {item["id"] for item in context["states"]} == {str(state_a1), str(state_a2)}
+        assert all(item["label"] == "Охлаждённое" for item in context["states"])
+        assert context["product_state"] is None
+
+        # The full chosen pair resolves and returns ONLY its scoped rules.
+        state_id = context["states"][0]["id"]
+        response = await http.get(
+            "/api/v1/catalogs/methods/context",
+            params={**base, "product_species_id": str(species_a), "product_state_id": state_id},
+        )
+        assert response.status_code == 200, response.text
+        context = response.json()
+        assert context["product_species"]["id"] == str(species_a)
+        assert context["product_state"]["id"] == state_id
 
 
 @pytest.mark.integration

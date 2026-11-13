@@ -241,6 +241,10 @@ async def methods_context(
     laboratory = (await db.execute(select(Laboratory).where(Laboratory.id == laboratory_id))).scalar_one_or_none()
     if laboratory is None:
         raise configuration_missing("Лаборатория не найдена в системе.")
+    if product_species_id == laboratory_id:
+        # The legacy DR13 fallback: a laboratory UUID is NEVER a product
+        # species (§5.1, mirror of the commands.py write guard).
+        raise configuration_missing("Вид продукции не относится к назначенным областям лаборатории.")
 
     configured = await meat_area_configured(db)
     areas = [CatalogAreaOption(code=code, name=name, configured=configured) for code, name in AREAS.items()]

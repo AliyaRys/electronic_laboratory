@@ -1,4 +1,4 @@
-﻿/**
+/**
  * «Нормы исследований» editor page (ТЗ-DR6 §11 + ТЗ-DR28 §5/§6, mockup
  * directory-norms-edit.html).
  *
@@ -42,6 +42,13 @@ import { useDirtyGuard } from "../context/SwitchContext";
 import { DELETE_WARNING, MethodEditor } from "./MethodEditor";
 
 const NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
+
+/** The human-readable source label of a rule (§6.1 «источник»; never a UUID). */
+export function sourceLabel(source: unknown): string | undefined {
+  if (source === null || typeof source !== "object") return undefined;
+  const name = (source as Record<string, unknown>)["name"];
+  return typeof name === "string" && name.trim() !== "" ? name.trim() : undefined;
+}
 
 export interface MethodDraft {
   lower: string;
@@ -112,6 +119,10 @@ interface RowModel {
   /** Unknown to the shared registry: honest diagnostic, no invented name. */
   unknown: boolean;
 }
+
+/** Annotation of the conditionally mandatory F21 (spec §4, GUID list — never
+ * a per-species policy invented here). */
+const CONDITIONAL_NOTE = "Обязательно для указанных видов продукции";
 
 /**
  * The registry-driven rows (§6.1): every expected indicator of the context is
@@ -511,13 +522,6 @@ export function MethodsEditorPage(): React.ReactElement {
           detail={problem.detail}
           onRetry={() => void methods.refetch()}
         />
-      ) : scopedContext !== null && !scopedContextPairReady ? (
-        <StatusView
-          state="no-scope"
-          title="Вид продукции и состояние продукции не настроены для этой лаборатории."
-          detail="Требуется назначение рабочей области продукции ответственным администратором."
-          onRetry={() => void methods.refetch()}
-        />
       ) : scopedContext !== null ? (
         <section className="vse-catalog-section" aria-labelledby="methods-section-title">
           <CatalogSectionHeader
@@ -525,7 +529,7 @@ export function MethodsEditorPage(): React.ReactElement {
             title="Диапазоны нормы"
             description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
             actions={
-              canEdit ? (
+              canEdit && scopedContextPairReady ? (
                 <Button type="button" variant="primary" onClick={() => openCreate()}>
                   Добавить норму
                 </Button>
@@ -601,6 +605,17 @@ export function MethodsEditorPage(): React.ReactElement {
               </p>
             ) : null}
           </div>
+          {!scopedContextPairReady ? (
+            // Options exist but the pair is not resolved yet: the §5.2/§5.3
+            // selectors above are the way forward — never a misleading
+            // «not configured» screen (that one stays for genuinely zero
+            // options and the invalid laboratory-UUID scope).
+            <p className="vse-catalog-note" data-testid="methods-scope-hint">
+              {scopedContext.product_species === null
+                ? "Выберите вид продукции, чтобы открыть нормы."
+                : "Выберите состояние продукции, чтобы открыть нормы."}
+            </p>
+          ) : null}
           {scopedContextPairReady ? (
             <>
               {unsetRows.length > 0 ? (
@@ -610,6 +625,9 @@ export function MethodsEditorPage(): React.ReactElement {
                       <div className="vse-catalog-norm-info">
                         <div className="vse-catalog-norm-name">{row.name}</div>
                         <p className="vse-catalog-unset">Не настроено</p>
+                        {row.indicator?.conditional === true ? (
+                          <p className="vse-catalog-note">{CONDITIONAL_NOTE}</p>
+                        ) : null}
                       </div>
                       {canEdit ? (
                         <Button
@@ -672,7 +690,8 @@ export function MethodsEditorPage(): React.ReactElement {
                     <NormRow
                       key={row.key}
                       name={row.name}
-                      meta={row.meta}
+                      meta={row.meta ?? (row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined)}
+                      source={sourceLabel(rule.source)}
                       lower={draft.lower}
                       upper={draft.upper}
                       unit={row.unit}
@@ -772,14 +791,26 @@ export function MethodsEditorPage(): React.ReactElement {
                       key={row.key}
                       title={row.name}
                       description={
-                        indicator?.result_schema === "ENUM"
-                          ? "Укажите варианты результата и отметьте, считается ли вариант нормой."
-                          : undefined
+                        [
+                          indicator?.result_schema === "ENUM"
+                            ? "Укажите варианты результата и отметьте, считается ли вариант нормой."
+                            : undefined,
+                          row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined,
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || undefined
                       }
                       rows={rowsModel}
                       readOnly={!canEdit}
                       busy={savePending}
                       error={errors[row.key]}
+                      // §6.1: the source of the methodology stays visible on
+                      // the enum rows too («допустимые значения + какие норма»).
+                      details={
+                        sourceLabel(rule.source) !== undefined ? (
+                          <p>Источник: {sourceLabel(rule.source)}</p>
+                        ) : undefined
+                      }
                       secondary={
                         canEdit ? (
                           <Button

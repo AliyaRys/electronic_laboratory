@@ -20,7 +20,10 @@ import { MethodsEditorPage } from "./MethodsEditorPage";
 
 const LAB = "11111111-2222-4333-8444-555555555555";
 const SPECIES = "33333333-3333-4333-8333-333333333333";
+const BEEF = "33333333-3333-4333-8333-333333333334";
 const STATE = "cccccccc-0000-4000-8000-000000000001";
+
+type ScopeOption = { id: string; label: string; requires_trichinelloscopy: boolean };
 
 const microscopy = INDICATORS.find((item) => item.code === "VSE-F24") as (typeof INDICATORS)[number];
 const temperature = INDICATORS.find((item) => item.code === "VSE-F20") as (typeof INDICATORS)[number];
@@ -33,10 +36,11 @@ let activeRules: MethodRuleTyped[];
 let scopeMissing: boolean;
 /** The created rules (POST), served back on the context refetch. */
 let createdRules: MethodRuleTyped[];
-
-function contextRule(rule: MethodRuleTyped) {
-  return rule;
-}
+/** Allowed species/state options and the currently resolved pair. */
+let speciesOptions: ScopeOption[];
+let stateOptions: ScopeOption[];
+let resolvedSpecies: ScopeOption | null;
+let resolvedState: ScopeOption | null;
 
 function intervalRule(overrides: Partial<MethodRuleTyped>): MethodRuleTyped {
   return {
@@ -56,14 +60,14 @@ function intervalRule(overrides: Partial<MethodRuleTyped>): MethodRuleTyped {
   };
 }
 
-function contextFixture(): MethodsContextTyped {
+function contextFixture(overrides: Partial<MethodsContextTyped> = {}): MethodsContextTyped {
   return {
     laboratory: { id: LAB, name: "Лаборатория №1 г. Казань" },
     areas: [{ code: "meat", name: "Мясо и мясопродукты", configured: true }],
-    species_options: [{ id: SPECIES, label: "Свинина", requires_trichinelloscopy: true }],
-    states: [{ id: STATE, label: "Охлаждённое", requires_trichinelloscopy: false }],
-    product_species: { id: SPECIES, label: "Свинина", requires_trichinelloscopy: true },
-    product_state: { id: STATE, label: "Охлаждённое", requires_trichinelloscopy: false },
+    species_options: speciesOptions,
+    states: stateOptions,
+    product_species: resolvedSpecies,
+    product_state: resolvedState,
     indicators: INDICATORS.map((item) => ({
       id: item.id,
       code: item.code,
@@ -85,10 +89,11 @@ function contextFixture(): MethodsContextTyped {
       conditional: item.code === "VSE-F21",
       options: item.options ? item.options.map((option) => option.label) : null,
     })),
-    active_rules: [...activeRules, ...createdRules].map(contextRule),
+    active_rules: [...activeRules, ...createdRules],
     missing: INDICATORS.filter(
       (item) => ![...activeRules, ...createdRules].some((rule) => rule.indicator_id === item.id),
     ).map((item) => item.id),
+    ...overrides,
   };
 }
 
@@ -104,7 +109,7 @@ const server = setupServer(
       { laboratory_id: LAB, product_scope_id: SPECIES, laboratory_name: "Лаборатория №1 г. Казань" },
     ]),
   ),
-  http.get("*/api/v1/catalogs/methods/context", () => {
+  http.get("*/api/v1/catalogs/methods/context", ({ request }) => {
     contextRequests += 1;
     if (scopeMissing) {
       return HttpResponse.json(
@@ -115,7 +120,33 @@ const server = setupServer(
         { status: 409 },
       );
     }
-    return HttpResponse.json(contextFixture());
+    // The backend resolves the pair from the URL params, like the real
+    // endpoint: no pair → options without a fabricated selection.
+    const url = new URL(request.url);
+    const speciesId = url.searchParams.get("product_species_id");
+    const stateId = url.searchParams.get("product_state_id");
+    // Exactly one species is auto-selected (backend §5.2); >1 → pair unset.
+    const resolved =
+      speciesId != null
+        ? (speciesOptions.find((item) => item.id === speciesId) ?? null)
+        : speciesOptions.length === 1
+          ? speciesOptions[0]
+          : null;
+    const states = resolved != null ? stateOptions : [];
+    // Exactly one observed state is auto-selected (backend §5.3).
+    const state =
+      stateId != null
+        ? (stateOptions.find((item) => item.id === stateId) ?? null)
+        : states.length === 1
+          ? states[0]
+          : null;
+    return HttpResponse.json(
+      contextFixture({
+        product_species: resolved,
+        states,
+        product_state: state,
+      }),
+    );
   }),
   http.get("*/api/v1/catalogs/methods", () => {
     // The legacy scoped list must NEVER be called by the page (DR28 §5.1):
@@ -160,6 +191,10 @@ beforeEach(() => {
   activeRules = [];
   createdRules = [];
   scopeMissing = false;
+  speciesOptions = [{ id: SPECIES, label: "Свинина", requires_trichinelloscopy: true }];
+  stateOptions = [{ id: STATE, label: "Охлаждённое", requires_trichinelloscopy: false }];
+  resolvedSpecies = speciesOptions[0];
+  resolvedState = stateOptions[0];
   contextRequests = 0;
   listRequests = 0;
   putSpy.mockClear();
@@ -213,8 +248,67 @@ describe("MethodsEditorPage", () => {
     expect(screen.getAllByRole("button", { name: "Настроить" }).length).toBe(INDICATORS.length);
     // The human-readable scope is shown; no GUID ever appears.
     expect(screen.getByText(/Состояние продукции: Охлаждённое/)).toBeInTheDocument();
+    expect(screen.getByText(/Продукция: Свинина/)).toBeInTheDocument();
     expect(screen.queryByText(SPECIES)).toBeNull();
     expect(screen.queryByText(STATE)).toBeNull();
+    // The canonical conditional flag of F21 is annotated (spec §4 GUID list).
+    expect(screen.getAllByText("Обязательно для указанных видов продукции").length).toBeGreaterThan(0);
+  });
+
+  it("a multi-species area renders the selector instead of the no-scope screen", async () => {
+    speciesOptions = [
+      { id: SPECIES, label: "Свинина", requires_trichinelloscopy: true },
+      { id: BEEF, label: "Говядина", requires_trichinelloscopy: false },
+    ];
+    resolvedSpecies = null;
+    resolvedState = null;
+    stateOptions = [];
+    renderEditor();
+    // The §5.3 selector of the allowed named options — no GUID, no «not
+    // configured» screen (options are non-empty).
+    const select = await screen.findByLabelText("Продукция");
+    expect(select).toBeInTheDocument();
+    expect(screen.queryAllByText(/Вид продукции и состояние продукции не настроены/i)).toHaveLength(0);
+    expect(screen.queryByText(BEEF)).toBeNull();
+    expect(screen.getByRole("option", { name: "Говядина" })).toBeInTheDocument();
+    expect(screen.getByText("Выберите вид продукции, чтобы открыть нормы.")).toBeInTheDocument();
+    // No scoped rules are shown before the pair is chosen.
+    expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
+  });
+
+  it("picking a species loads the state selector and the scoped rules of the pair", async () => {
+    const act = userEvent.setup();
+    speciesOptions = [
+      { id: SPECIES, label: "Свинина", requires_trichinelloscopy: true },
+      { id: BEEF, label: "Говядина", requires_trichinelloscopy: false },
+    ];
+    resolvedSpecies = null;
+    resolvedState = null;
+    // The observed states of the chosen species (the mock resolves the pair
+    // from the request params like the real backend, single state auto).
+    stateOptions = [{ id: STATE, label: "Охлаждённое", requires_trichinelloscopy: false }];
+    renderEditor();
+    await act.selectOptions(await screen.findByLabelText("Продукция"), BEEF);
+    // After the choice the backend resolves the pair; the registry loads
+    // scoped (the state is auto-selected: exactly one observed state).
+    expect(await screen.findByRole("button", { name: "Добавить норму" })).toBeInTheDocument();
+    for (const indicator of INDICATORS) {
+      expect(screen.getByText(indicator.name)).toBeInTheDocument();
+    }
+    // The selected pair went into the URL of the pick action, not as GUID text.
+    expect(screen.queryByText(BEEF)).toBeNull();
+  });
+
+  it("the URL pair params restore the scoped rules without free UUID input", async () => {
+    activeRules = [intervalRule({})];
+    renderEditor(
+      `/catalogs?tab=methods&area=meat&species=${encodeURIComponent(SPECIES)}&state=${encodeURIComponent(STATE)}`,
+    );
+    // The restored link resolves the same pair (stable safe area code + pair
+    // params) and shows the scoped rule, no UUID input anywhere.
+    expect(await screen.findByLabelText(normLabel(microscopy.name, "от"))).toHaveValue("0");
+    expect(screen.getByText(/Продукция: Свинина/)).toBeInTheDocument();
+    expect(screen.queryByText(/введите UUID/i)).toBeNull();
   });
 
   it("«Добавить норму» opens the shared editor and POSTs real ids, then the row appears", async () => {
@@ -256,11 +350,12 @@ describe("MethodsEditorPage", () => {
     expect(screen.getByLabelText(normLabel(microscopy.name, "до"))).toHaveValue("10");
     // The unit suffix of the row.
     expect(screen.getAllByText("ед.").length).toBeGreaterThan(0);
-    // Boundary inclusivity stays available without exposing source/version.
+    // Boundary inclusivity stays available; the version is never exposed, the
+    // source of the methodology is (§6.1 «источник» column).
     const details = screen.getAllByText("Настройка границ");
     expect(details.length).toBeGreaterThan(0);
     expect(screen.queryByText(/Версия записи/)).toBeNull();
-    expect(screen.queryByText(/источник:/i)).toBeNull();
+    expect(screen.getAllByText(/Источник: методика/).length).toBeGreaterThan(0);
     expect(screen.queryByText("Раздел не готов к расчёту:")).toBeNull();
   });
 

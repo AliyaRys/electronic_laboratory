@@ -388,6 +388,129 @@ test.describe("arrivals", () => {
     await expect(page.getByText("свинина")).toBeVisible();
   });
 
+  // --- DR29 §3/§5/§6/§7 e2e: sync group geometry, focus scoping, dialog stacking ---
+
+  test("sync status sits above the refresh button within its width (DR29 §3)", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    await page.goto(`/labs/${LAB}/arrivals?queue=expected`);
+    await expect(page.getByText("говядина")).toBeVisible();
+    const status = page.locator(".arrivals-sync .arrivals-sync-status");
+    await expect(status).toBeVisible();
+    await expect(status).toHaveText(/Автообновление из ВетИС каждые 15 минут/);
+    const button = page.getByRole("button", { name: "Обновить" });
+
+    const geometry = async (): Promise<{ ok: boolean; details: string }> =>
+      page.evaluate(() => {
+        const group = document.querySelector(".arrivals-sync");
+        const status = group?.querySelector(".arrivals-sync-status");
+        const button = group?.querySelector("button");
+        if (!group || !(status instanceof HTMLElement) || !(button instanceof HTMLElement)) {
+          return { ok: false, details: "missing nodes" };
+        }
+        const s = status.getBoundingClientRect();
+        const b = button.getBoundingClientRect();
+        const rightGap = Math.abs(s.right - b.right);
+        const withinWidth = s.width <= b.width + 1;
+        const belowViewport = document.documentElement.scrollWidth > window.innerWidth;
+        return {
+          ok: rightGap <= 1 && withinWidth && !belowViewport,
+          details: `status=${s.width.toFixed(1)} button=${b.width.toFixed(1)} rightGap=${rightGap.toFixed(1)} overflow=${belowViewport}`,
+        };
+      });
+
+    for (const width of [1440, 1024, 800, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(button).toBeVisible();
+      const wide = await geometry();
+      if (!wide.ok) throw new Error(`viewport ${width}: ${wide.details}`);
+      await shot(page, `dr29-sync-${width}`);
+    }
+
+    // 200% zoom (half-size viewport, the layout equivalent): the text still
+    // wraps inside the button width and the page never overflows.
+    await page.setViewportSize({ width: 720, height: 900 });
+    const zoomed = await geometry();
+    if (!zoomed.ok) throw new Error(`zoom 200%: ${zoomed.details}`);
+
+    // Busy state changes only the text — the group keeps its geometry source.
+    await page.route("**/api/v1/arrivals/sync", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          operation_id: "aaaaaaaa-0000-4000-8000-00000000d001",
+          state: "PENDING",
+          status_url: "/api/v1/operations/aaaaaaaa-0000-4000-8000-00000000d001",
+        }),
+      }),
+    );
+    await page.route("**/api/v1/operations/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "aaaaaaaa-0000-4000-8000-00000000d001",
+          kind: "vetis.sync",
+          state: "PENDING",
+          problem: "VETIS_TRANSPORT_ERROR",
+          updated_at: "2026-11-13T10:00:00Z",
+        }),
+      }),
+    );
+    await button.click();
+    await expect(page.locator(".arrivals-sync .arrivals-sync-status")).toHaveText(/Повторяем обновление/);
+    const busy = await geometry();
+    if (!busy.ok) throw new Error(`busy: ${busy.details}`);
+  });
+
+  test("hide action focus highlight stays on the danger button (DR29 §5.1)", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    await page.goto(`/labs/${LAB}/arrivals?queue=expected`);
+    await expect(page.getByText("говядина")).toBeVisible();
+    const hide = page.getByRole("button", { name: "Скрыть поступление из очереди" });
+    await hide.focus();
+    const buttonOutline = await hide.evaluate((node) => getComputedStyle(node).outlineStyle);
+    expect(buttonOutline).toBe("solid");
+    const group = hide.locator("xpath=..");
+    expect(await group.evaluate((node) => getComputedStyle(node).outlineStyle)).toBe("none");
+    expect(await group.evaluate((node) => getComputedStyle(node).borderTopWidth)).toBe("0px");
+    expect(await group.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+    // The sibling «Сверить» link stays untouched while the button is focused.
+    const reconcile = page.getByRole("link", { name: "Перейти к сверке данных" });
+    expect(await reconcile.evaluate((node) => getComputedStyle(node).outlineStyle)).toBe("none");
+    expect(await reconcile.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(
+      "rgb(255, 255, 255)",
+    );
+  });
+
+  test("delete dialog renders above the overlay and stays readable (DR29 §6)", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    await page.goto(`/labs/${LAB}/arrivals?queue=expected`);
+    await expect(page.getByText("говядина")).toBeVisible();
+    await page.getByRole("button", { name: "Скрыть поступление из очереди" }).click();
+    const dialog = page.getByRole("dialog", { name: "Скрыть поступление из очереди?" });
+    await expect(dialog).toBeVisible();
+    const stacking = await page.evaluate(() => {
+      const overlay = document.querySelector(".app-dialog-overlay");
+      const card = document.querySelector(".app-dialog");
+      if (!(overlay instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+        return { ok: false, details: "missing nodes" };
+      }
+      const overlayZ = Number(getComputedStyle(overlay).zIndex);
+      const cardZ = Number(getComputedStyle(card).zIndex);
+      const overlayRect = overlay.getBoundingClientRect();
+      return {
+        ok: cardZ > overlayZ && overlayZ >= 1000,
+        details: `overlay=${overlayZ} card=${cardZ} overlaySize=${overlayRect.width}x${overlayRect.height}`,
+      };
+    });
+    if (!stacking.ok) throw new Error(stacking.details);
+    await expect(dialog.getByRole("button", { name: "Отмена" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Скрыть поступление из очереди" })).toBeFocused();
+    await shot(page, "dr29-dialog-1440");
+  });
+
   test("21 records paginate: page 2 keeps the remaining row", async ({ page }) => {
     await mockSessionAndArrivals(page);
     const twenty = Array.from({ length: 20 }, (_unused, index) => ({

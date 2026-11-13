@@ -11,6 +11,7 @@ import { ArrivalsFilters, ColumnsChooser } from "./ArrivalsFilters";
 import { CompletedArrivalsTable, ExpectedArrivalsTable, WorkArrivalsTable } from "./ArrivalTables";
 import { ArrivalsPagination } from "./ArrivalsPagination";
 import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
 import type { ArrivalQueue, IncomingView } from "./api";
 
 const meta: Meta = {
@@ -247,6 +248,7 @@ export const ТаблицаЗавершенных: StoryObj = {
 
 export const ИконныеДействия: StoryObj = {
   name: "Иконные действия / состояния",
+
   render: () => (
     <div
       style={{
@@ -280,6 +282,54 @@ export const ИконныеДействия: StoryObj = {
   ),
 };
 
+/** DR29 §5.1/§7: the row actions group with keyboard focus on the hide button —
+    the highlight belongs only to the danger button, the group and the sibling
+    «Сверить» link stay untouched. Hover is demonstrated by pointer. */
+export const ДействияСтрокиФокус: StoryObj = {
+  name: "Действия строки / focus на скрытии (не на группе)",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <div className="app-table-row-actions">
+        <a
+          className="app-table-icon-action"
+          href="#"
+          aria-label="Перейти к сверке данных"
+          title="Перейти к сверке данных"
+        >
+          Сверить
+        </a>
+        <button
+          type="button"
+          className="arrivals-icon-action danger"
+          aria-label="Скрыть поступление из очереди"
+          title="Скрыть поступление из очереди"
+          autoFocus
+        >
+          Скрыть
+        </button>
+      </div>
+    </div>
+  ),
+};
+
+/** DR29 §6.2/§7: the open danger delete Dialog over the arrivals table. */
+export const ДиалогСкрытия: StoryObj = {
+  name: "Диалог скрытия / открыт над таблицей",
+  render: () => (
+    <div className="vse-app">
+      <ArrivalsScreen {...screenProps} queue="EXPECTED" counts={counts} items={expectedRows} />
+      <Dialog
+        open
+        onOpenChange={() => {}}
+        danger
+        title="Скрыть поступление из очереди?"
+        description="Документ e13bda81-7cf6-4b2b-b1aa-3c99e25adaac перестанет отображаться в очереди «Ожидаемые». Сам эВСД не аннулируется: документ останется в системе и при изменении внешнего содержания появится снова."
+        confirmLabel="Скрыть"
+      />
+    </div>
+  ),
+};
+
 export const ПагинацияПервая: StoryObj = {
   name: "Пагинация / первая страница",
   render: () => (
@@ -309,7 +359,14 @@ export const ПагинацияПоследняя: StoryObj = {
 
 // --- 15.2 full pages ---------------------------------------------------------------
 
-function FullScreen(queue: ArrivalQueue, items: readonly IncomingView[]): StoryObj {
+function FullScreen(
+  queue: ArrivalQueue,
+  items: readonly IncomingView[],
+  options: {
+    syncStatus?: string;
+    busy?: boolean;
+  } = {},
+): StoryObj {
   return {
     render: () => (
       <div className="vse-app">
@@ -320,11 +377,15 @@ function FullScreen(queue: ArrivalQueue, items: readonly IncomingView[]): StoryO
           items={items}
           onHide={queue === "EXPECTED" ? () => {} : undefined}
           sync={
-            <div className="arrivals-sync">
-              <Button label="Обновить поступления из ВетИС">Обновить</Button>
-            </div>
+            <Button
+              label="Обновить поступления из ВетИС"
+              busy={options.busy}
+              busyLabel={options.busy ? "Повторяем обновление…" : "Обновление…"}
+            >
+              Обновить
+            </Button>
           }
-          syncStatus="Автообновление из ВетИС каждые 15 минут"
+          syncStatus={options.syncStatus ?? "Автообновление из ВетИС каждые 15 минут"}
         />
       </div>
     ),
@@ -342,6 +403,16 @@ export const СтраницаВРаботе: StoryObj = {
 export const СтраницаЗавершенные: StoryObj = {
   name: "Страница / Завершенные",
   ...FullScreen("ACCEPTED", acceptedRows),
+};
+
+/** DR29 §7: retry/busy state with a long honest status inside the button width. */
+export const СтраницаОжидаемыеОбновление: StoryObj = {
+  name: "Страница / Ожидаемые — обновление (retry, длинный статус)",
+  ...FullScreen("EXPECTED", expectedRows, {
+    busy: true,
+    syncStatus:
+      "Обновление не выполнено: сервис ВетИС временно недоступен. Повторите обновление позже. Длинный статус переносится внутри ширины кнопки, не расширяя страницу.",
+  }),
 };
 
 export const СтраницаУзкийЭкран: StoryObj = {

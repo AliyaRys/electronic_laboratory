@@ -261,27 +261,39 @@
 }
 
 /* --- 8.5 sync button + honest sync status ----------------------------------- */
+/* DR29 §3: the status line sits directly above the refresh button inside the
+   group; the group width equals the button width. The status participates in
+   the intrinsic sizing with max-width: 0 (contributes nothing) and then fills
+   the button-width container through min-width: 100% — a long honest status
+   wraps INSIDE that width and never widens the page or sticks out to the
+   right of the button. Right edges of text and button coincide. */
 .arrivals-sync {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 6px;
+  max-width: 100%;
 }
 .arrivals-sync .app-button {
   min-height: 41px;
 }
+.arrivals-sync .arrivals-sync-status {
+  margin: 0;
+  max-width: 0;
+  min-width: 100%;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+/* Fallback without a button (no group): the same honest tone, unconstrained. */
 .arrivals-sync-status {
   margin: 0;
-  max-width: 420px;
   text-align: right;
   color: var(--app-muted);
   font-size: 12px;
 }
 @media (max-width: 800px) {
-  .arrivals-sync {
-    align-items: flex-start;
-  }
+  .arrivals-sync .arrivals-sync-status,
   .arrivals-sync-status {
     text-align: left;
   }
@@ -408,6 +420,25 @@
 }
 .app-table-row-actions:has(.arrivals-icon-action, .app-table-icon-action) {
   justify-content: flex-end;
+}
+/* DR29 §5.1: the hover/focus highlight of the hide action belongs ONLY to the
+   danger icon button itself. The actions container, the sibling «Сверить» link
+   and the sticky action cell never receive background/border/outline when the
+   child button is hovered or keyboard-focused; the global :focus-visible ring
+   stays on the button (and on every other control). */
+.app-table-row-actions:has(> .arrivals-icon-action.danger:hover),
+.app-table-row-actions:has(> .arrivals-icon-action.danger:focus-visible) {
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.app-table-column-actions:has(> .arrivals-icon-action.danger:hover),
+.app-table-column-actions:has(> .arrivals-icon-action.danger:focus-visible) {
+  outline: none;
+}
+.arrivals-icon-action.danger:focus-visible {
+  outline: 3px solid var(--app-focus);
+  outline-offset: 2px;
 }
 
 /* Result tones (color is never the only carrier of meaning: the text stays). */

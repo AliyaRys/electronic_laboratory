@@ -22,6 +22,12 @@ export type BulkPriceWrite = components["schemas"]["BulkPriceWrite"];
 export type BulkAccepted = components["schemas"]["BulkAccepted"];
 export type BulkPriceJobView = components["schemas"]["BulkPriceJobView"];
 
+/** The scoped methods-catalog read model (ТЗ-DR28 §7 variant B). */
+export type MethodsContextData = components["schemas"]["MethodsContext"];
+export type CatalogAreaOptionView = components["schemas"]["CatalogAreaOption"];
+export type CatalogScopeIdView = components["schemas"]["CatalogScopeId"];
+export type CatalogIndicatorView = components["schemas"]["CatalogIndicator"];
+
 /** The typed rule union behind the JSONB ``rule`` field (INPUT-02). */
 export type MethodRule =
   | {
@@ -109,6 +115,35 @@ export async function fetchMethods(
   );
   if ("problem" in settled) return settled.problem;
   return { ...settled.data, items: settled.data.items.map(typedMethodRule) };
+}
+
+type MethodsContextResult = RawResult<MethodsContextData>;
+
+/** GET /catalogs/methods/context (ТЗ-DR28 §7): the honest scoped read model.
+ * The laboratory UUID is never sent as a species; an invalid scope answers
+ * CONFIGURATION_MISSING and the caller shows the configuration screen. */
+export async function fetchMethodsContext(
+  laboratoryId: string,
+  area: string,
+  productSpeciesId: string | null,
+  productStateId: string | null,
+  signal?: AbortSignal | null,
+): Promise<MethodsContextData | Problem> {
+  const query: {
+    laboratory_id: string;
+    area: string;
+    product_species_id?: string;
+    product_state_id?: string;
+  } = { laboratory_id: laboratoryId, area };
+  if (productSpeciesId !== null) query.product_species_id = productSpeciesId;
+  if (productStateId !== null) query.product_state_id = productStateId;
+  const settled = await settle(
+    apiClient.GET("/api/v1/catalogs/methods/context", {
+      params: { query },
+      signal: signal ?? null,
+    }) as Promise<MethodsContextResult>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
 }
 
 export async function fetchTariffs(

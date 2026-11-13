@@ -8,8 +8,9 @@
 import "./catalogs.css";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Problem } from "../../shared/api/problem";
+import type { CatalogIndicatorView } from "./api";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import { createMethod, deleteMethod, typedMethodRule, updateMethod, type MethodRuleTyped } from "./api";
@@ -39,10 +40,6 @@ const DECIMAL_MESSAGE = "Границы нормы — конечное числ
 export const methodEditorSchema = z
   .object({
     indicator_id: z
-      .string()
-      .trim()
-      .refine((value) => isUuid(value), UUID_MESSAGE),
-    product_state_id: z
       .string()
       .trim()
       .refine((value) => isUuid(value), UUID_MESSAGE),
@@ -100,7 +97,6 @@ export function methodEditorDefaults(rule?: MethodRuleTyped | null): MethodEdito
   const source = rule?.source ?? {};
   return {
     indicator_id: rule?.indicator_id ?? "",
-    product_state_id: rule?.product_state_id ?? "",
     result_schema: (rule?.result_schema as MethodEditorValues["result_schema"]) ?? "DECIMAL",
     unit_id: rule?.unit_id ?? "",
     rule_type: qualitative !== null ? "qualitative" : "interval",
@@ -120,6 +116,14 @@ export interface MethodEditorProps {
   mode: "create" | "edit";
   laboratoryId: string;
   productSpeciesId: string;
+  /** The real product state of the chosen scope (ТЗ-DR28 §5.3): resolved
+   * server-side, never shown or typed as a UUID by the user. */
+  productStateId: string;
+  /** The canonical ФТ indicator definitions of the context endpoint; the
+   * create mode picks one by its Russian name and code (§6.2). */
+  indicators?: readonly CatalogIndicatorView[] | undefined;
+  /** «Настроить» opens the editor with one indicator already picked. */
+  presetIndicatorId?: string | null | undefined;
   rule?: MethodRuleTyped | null;
   busy?: boolean | undefined;
   onSaved: (rule: MethodRuleTyped) => void;
@@ -131,10 +135,34 @@ export interface MethodEditorProps {
 export const DELETE_WARNING =
   "Удаление действующей нормы заблокирует сохранение будущих расчётов: новые результаты нельзя будет рассчитать. Старый снимок цен останется прежним — сохранённые расчёты не пересчитываются.";
 
+type SetValue = ReturnType<typeof useForm<MethodEditorValues>>["setValue"];
+
+/** The canonical prefill of one indicator definition (ТЗ-DR28 §6.2): the
+ * result type and unit come from the definition, qualitative rules start
+ * from the accepted values of the methodology — nothing is invented. */
+function applyIndicatorDefaults(definition: CatalogIndicatorView, setValue: SetValue): void {
+  setValue("result_schema", definition.result_schema as MethodEditorValues["result_schema"]);
+  setValue("unit_id", definition.unit_id ?? "");
+  const qualitative =
+    definition.result_schema === "ENUM" ||
+    definition.result_schema === "TEXT" ||
+    definition.result_schema === "BOOLEAN_MATCH";
+  setValue("rule_type", qualitative ? "qualitative" : "interval");
+  if (qualitative) {
+    setValue("accepted_values", (definition.options ?? []).join(", "));
+  } else {
+    setValue("lower", "");
+    setValue("upper", "");
+  }
+}
+
 export function MethodEditor({
   mode,
   laboratoryId,
   productSpeciesId,
+  productStateId,
+  indicators,
+  presetIndicatorId = null,
   rule,
   busy = false,
   onSaved,
@@ -146,10 +174,13 @@ export function MethodEditor({
     register,
     handleSubmit,
     watch,
+    setValue,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<MethodEditorValues>({ defaultValues: defaults });
   const [formError, setFormError] = useState("");
+  /** The picked indicator of the create mode (its UUID never shows). */
+  const [pickedIndicator, setPickedIndicator] = useState(defaults.indicator_id || presetIndicatorId || "");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   // RHF watch is the documented way to read a select's live value for
@@ -162,7 +193,7 @@ export function MethodEditor({
     laboratory_id: laboratoryId,
     product_species_id: productSpeciesId,
     indicator_id: values.indicator_id.trim(),
-    product_state_id: values.product_state_id.trim(),
+    product_state_id: productStateId,
     result_schema: values.result_schema,
     unit_id: values.unit_id.trim(),
     version: Number(values.version),
@@ -200,6 +231,25 @@ export function MethodEditor({
       bound ? problem.detail : problem.detail !== "" ? problem.detail : "Не удалось сохранить норму.",
     );
   }
+
+  /** ТЗ-DR28 §6.2: the canonical definition of the picked indicator prefills
+   * the result type, the unit and the accepted values — never invented. */
+  function pickIndicator(id: string): void {
+    setValue("indicator_id", id, { shouldValidate: true, shouldDirty: true });
+    const definition = indicators?.find((item) => item.id === id);
+    if (definition === undefined) return;
+    applyIndicatorDefaults(definition, setValue);
+  }
+
+  // «Настроить» from the row of a missing indicator opens the create form
+  // with that indicator already picked and its canonical defaults applied.
+  useEffect(() => {
+    if (mode !== "create" || presetIndicatorId === null || presetIndicatorId === "") return;
+    const definition = indicators?.find((item) => item.id === presetIndicatorId);
+    if (definition === undefined) return;
+    setValue("indicator_id", definition.id, { shouldValidate: true, shouldDirty: true });
+    applyIndicatorDefaults(definition, setValue);
+  }, [mode, presetIndicatorId, indicators, setValue]);
 
   const submit = handleSubmit(async (values) => {
     setFormError("");
@@ -244,35 +294,28 @@ export function MethodEditor({
           <>
             <div className="app-field">
               <div className="app-field-heading">
-                <label htmlFor="method-indicator">Показатель (UUID)</label>
+                <label htmlFor="method-indicator">Показатель</label>
               </div>
-              <input
+              <select
                 id="method-indicator"
-                type="text"
                 disabled={pending}
                 aria-invalid={errors.indicator_id !== undefined ? "true" : undefined}
-                {...register("indicator_id")}
-              />
+                value={pickedIndicator}
+                onChange={(event) => {
+                  setPickedIndicator(event.target.value);
+                  pickIndicator(event.target.value);
+                }}
+              >
+                <option value="">— выберите показатель —</option>
+                {(indicators ?? []).map((definition) => (
+                  <option key={definition.id} value={definition.id}>
+                    {definition.code} · {definition.name}
+                  </option>
+                ))}
+              </select>
               {errors.indicator_id !== undefined ? (
                 <p className="app-field-message app-field-error" role="alert">
                   {errors.indicator_id.message}
-                </p>
-              ) : null}
-            </div>
-            <div className="app-field">
-              <div className="app-field-heading">
-                <label htmlFor="method-state">Состояние продукции (UUID)</label>
-              </div>
-              <input
-                id="method-state"
-                type="text"
-                disabled={pending}
-                aria-invalid={errors.product_state_id !== undefined ? "true" : undefined}
-                {...register("product_state_id")}
-              />
-              {errors.product_state_id !== undefined ? (
-                <p className="app-field-message app-field-error" role="alert">
-                  {errors.product_state_id.message}
                 </p>
               ) : null}
             </div>

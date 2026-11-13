@@ -28,6 +28,7 @@ from backend.src.modules.catalog_pricing.schemas import (
     ReadinessMissing,
     TariffView,
 )
+from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
 
 __all__ = [
     "PAGE_SIZE",
@@ -262,6 +263,37 @@ async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: U
                     input_id=f"tariff:{indicator}",
                     field="tariffs",
                     message="Отсутствует тариф обязательного показателя.",
+                )
+            )
+
+    # Conditional trichinelloscopy belongs to the exact pig/horse product
+    # species GUIDs of the classification read model (E01 policy mapping, DR28
+    # §4): a required F21 without an active norm is reported honestly.
+    trichinella_required = (
+        await db.execute(
+            select(MercuryProductGuidLvl2.requires_trichinelloscopy).where(
+                MercuryProductGuidLvl2.guid == product_species_id,
+                MercuryProductGuidLvl2.requires_trichinelloscopy.is_(True),
+            )
+        )
+    ).first()
+    if trichinella_required is not None:
+        rule = (
+            await db.execute(
+                select(MethodRule.id).where(
+                    MethodRule.laboratory_id == laboratory_id,
+                    MethodRule.product_species_id == product_species_id,
+                    MethodRule.indicator_id == _mandatory.TRICHINELLA_INDICATOR_ID,
+                    MethodRule.active,
+                )
+            )
+        ).scalar_one_or_none()
+        if rule is None:
+            missing.append(
+                ReadinessMissing(
+                    input_id=f"method:{_mandatory.TRICHINELLA_INDICATOR_ID}",
+                    field="method_rules",
+                    message="Для этой продукции требуется трихинеллоскопия: отсутствует норма показателя.",
                 )
             )
 

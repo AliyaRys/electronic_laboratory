@@ -14,6 +14,7 @@ refuses to start the pricing module without the mandatory set.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID, uuid5
 
 __all__ = [
@@ -31,6 +32,8 @@ __all__ = [
     "PEROXIDASE_INDICATOR_ID",
     "DOSIMETRY_INDICATOR_ID",
     "MANDATORY_INDICATOR_IDS",
+    "CatalogIndicatorDef",
+    "CATALOG_INDICATORS",
     "ensure_mandatory_registry_configured",
 ]
 
@@ -65,6 +68,148 @@ DOSIMETRY_INDICATOR_ID = _ft_id("VSE-F29")
 MANDATORY_INDICATOR_IDS: frozenset[UUID] = frozenset(
     {ORGANOLEPTIC_INDICATOR_ID, IDENTIFICATION_INDICATOR_ID, TEMPERATURE_INDICATOR_ID}
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogIndicatorDef:
+    """One canonical ФТ indicator of the methods catalog (VSE-F18–F29).
+
+    The single backend source of stable ids, Russian names, result schemas and
+    units; the frontend registry mirrors it and nothing else may re-define the
+    list. ``options`` are the accepted enum values of the methodology; the
+    accepted-as-normal marking stays on the norm row, never here.
+    """
+
+    id: UUID
+    code: str
+    name: str
+    result_schema: str
+    unit: str | None
+    mandatory: bool
+    conditional: bool = False
+    options: tuple[str, ...] | None = None
+
+
+_MATCH_OPTIONS = ("Соответствует", "Не соответствует")
+_REACTION_OPTIONS = ("Отрицательная", "Положительная")
+_COOKING_OPTIONS = (
+    "Бульон прозрачный, аромат специфический",
+    "Бульон мутный",
+    "Бульон с хлопьями",
+    "Бульон с осадком",
+    "Нехарактерный / неприятный запах",
+    "Иное (указать)",
+)
+
+CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
+    CatalogIndicatorDef(
+        id=ORGANOLEPTIC_INDICATOR_ID,
+        code="VSE-F18",
+        name="Органолептическое исследование",
+        result_schema="ENUM",
+        unit=None,
+        mandatory=True,
+        options=_MATCH_OPTIONS,
+    ),
+    CatalogIndicatorDef(
+        id=IDENTIFICATION_INDICATOR_ID,
+        code="VSE-F19",
+        name="Идентификация продукции",
+        result_schema="ENUM",
+        unit=None,
+        mandatory=True,
+        options=_MATCH_OPTIONS,
+    ),
+    CatalogIndicatorDef(
+        id=TEMPERATURE_INDICATOR_ID,
+        code="VSE-F20",
+        name="Температура в толще мышц",
+        result_schema="DECIMAL",
+        unit="°C",
+        mandatory=True,
+    ),
+    CatalogIndicatorDef(
+        id=TRICHINELLA_INDICATOR_ID,
+        code="VSE-F21",
+        name="Трихинеллоскопия",
+        result_schema="BOOLEAN_MATCH",
+        unit=None,
+        mandatory=False,
+        conditional=True,
+    ),
+    CatalogIndicatorDef(
+        id=LUMINESCENT_INDICATOR_ID,
+        code="VSE-F22",
+        name="Люминесцентный анализ",
+        result_schema="ENUM",
+        unit=None,
+        mandatory=False,
+        options=_MATCH_OPTIONS,
+    ),
+    CatalogIndicatorDef(
+        id=BACTERIOSCOPY_INDICATOR_ID,
+        code="VSE-F23",
+        name="Бактериоскопия",
+        result_schema="TEXT",
+        unit=None,
+        mandatory=False,
+    ),
+    CatalogIndicatorDef(
+        id=MICROSCOPY_INDICATOR_ID,
+        code="VSE-F24",
+        name="Микроскопия",
+        result_schema="INTEGER_NONNEGATIVE",
+        unit=None,
+        mandatory=False,
+    ),
+    CatalogIndicatorDef(
+        id=PH_INDICATOR_ID,
+        code="VSE-F25",
+        name="pH",
+        result_schema="DECIMAL",
+        unit=None,
+        mandatory=False,
+    ),
+    CatalogIndicatorDef(
+        id=COOKING_INDICATOR_ID,
+        code="VSE-F26",
+        name="Проба варки",
+        result_schema="ENUM",
+        unit=None,
+        mandatory=False,
+        options=_COOKING_OPTIONS,
+    ),
+    CatalogIndicatorDef(
+        id=COPPER_INDICATOR_ID,
+        code="VSE-F27",
+        name="Реакция с сернокислой медью",
+        result_schema="ENUM",
+        unit=None,
+        mandatory=False,
+        options=_REACTION_OPTIONS,
+    ),
+    CatalogIndicatorDef(
+        id=PEROXIDASE_INDICATOR_ID,
+        code="VSE-F28",
+        name="Пероксидаза",
+        result_schema="ENUM",
+        unit=None,
+        mandatory=False,
+        options=_REACTION_OPTIONS,
+    ),
+    CatalogIndicatorDef(
+        id=DOSIMETRY_INDICATOR_ID,
+        code="VSE-F29",
+        name="Дозометрическое исследование",
+        result_schema="DOSIMETRY_PAIR",
+        unit="мкЗв/ч",
+        mandatory=False,
+    ),
+)
+
+# VSE-F30 «Инвазионные болезни» and VSE-F31 «Незаразные болезни» are the party
+# dictionaries of ФТ 10, never method-rule norms; they are deliberately absent
+# from CATALOG_INDICATORS.
 
 
 def ensure_mandatory_registry_configured() -> None:

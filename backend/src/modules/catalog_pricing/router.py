@@ -32,6 +32,7 @@ from backend.src.core.problems import ProblemError, idempotency_key_required, no
 from backend.src.modules.catalog_pricing import bulk as bulk_module
 from backend.src.modules.catalog_pricing import commands, queries
 from backend.src.modules.catalog_pricing import schemas as backend_schemas
+from backend.src.modules.catalog_pricing.context import MEAT_AREA_CODE, MethodsContext, methods_context
 from backend.src.modules.catalog_pricing.models import BulkPriceTarget
 from backend.src.modules.catalog_pricing.schemas import (
     CheckServiceRuleView,
@@ -112,6 +113,32 @@ def _set_collection_headers(
 
 # --- method rules -----------------------------------------------------------------
 
+
+@_catalogs.get("/methods/context", response_model=MethodsContext)
+async def get_methods_context(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    laboratory_id: uuid.UUID,
+    area: str = MEAT_AREA_CODE,
+    product_species_id: uuid.UUID | None = None,
+    product_state_id: uuid.UUID | None = None,
+) -> MethodsContext:
+    """The scoped editor context (DR28 §7 variant B): laboratory, resolved
+    product species/state of the chosen human-readable area, the full
+    VSE-F18–F29 indicator catalog, the active rules and the missing ones."""
+    identity, _ = principal
+    await authorizer.authorize(
+        db,
+        identity.actor_id,
+        "catalog:read",
+        ScopeTarget(laboratory_id=laboratory_id, product_scope_id=None),
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return await methods_context(
+        db, laboratory_id, area, product_species_id, product_state_id
+    )
 
 @_catalogs.get("/methods", response_model=Page[MethodRuleView])
 async def list_methods(

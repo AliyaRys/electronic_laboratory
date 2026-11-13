@@ -10,7 +10,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MethodEditor, DELETE_WARNING, methodEditorDefaults, methodEditorSchema } from "./MethodEditor";
-import { typedMethodRule, type MethodRuleTyped } from "./api";
+import { typedMethodRule, type CatalogIndicatorView, type MethodRuleTyped } from "./api";
 
 const server = setupServer();
 beforeAll(() => server.listen());
@@ -42,6 +42,19 @@ const RULE: MethodRuleTyped = {
 const base = {
   laboratoryId: LAB,
   productSpeciesId: SPECIES,
+  productStateId: STATE,
+  indicators: [
+    {
+      id: INDICATOR,
+      code: "VSE-F20",
+      name: "Температура в толще мышц",
+      result_schema: "DECIMAL",
+      unit_id: null,
+      mandatory: true,
+      conditional: false,
+      options: null,
+    },
+  ] as CatalogIndicatorView[],
   onSaved: () => undefined,
   onClose: () => undefined,
 };
@@ -60,19 +73,25 @@ describe("MethodEditor", () => {
     const onSaved = vi.fn();
     render(<MethodEditor mode="create" {...base} onSaved={onSaved} />);
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Показатель (UUID)"), INDICATOR);
-    await user.type(screen.getByLabelText("Состояние продукции (UUID)"), STATE);
+    // The indicator is picked by its Russian name and code; no UUID input
+    // exists and the state UUID is never shown (ТЗ-DR28 §6.2).
+    await user.selectOptions(screen.getByLabelText("Показатель"), [
+      `${screen.getByRole("option", { name: /VSE-F20 · Температура в толще мышц/ }).getAttribute("value")}`,
+    ]);
     await user.type(screen.getByLabelText("Единица измерения нормы"), "kg");
     await user.type(screen.getByLabelText("Нижняя граница"), "0");
     await user.type(screen.getByLabelText("Верхняя граница"), "14");
     await user.type(screen.getByLabelText("Версия"), "1");
     await user.type(screen.getByLabelText("Источник методики"), "методика");
+    expect(document.body.textContent).not.toContain(STATE);
+    expect(document.body.textContent).not.toContain(SPECIES);
     await user.click(screen.getByRole("button", { name: "Сохранить" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     expect(headersSeen[0]).not.toBeNull();
     expect(body).toMatchObject({
       laboratory_id: LAB,
       product_species_id: SPECIES,
+      product_state_id: STATE,
       indicator_id: INDICATOR,
       result_schema: "DECIMAL",
       unit_id: "kg",

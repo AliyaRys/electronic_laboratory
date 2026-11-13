@@ -1,25 +1,40 @@
 /**
- * «Нормы исследований» editor page (ТЗ-DR6 §11, mockup
+ * «Нормы исследований» editor page (ТЗ-DR6 §11, ТЗ-DR28 §5/§6, mockup
  * directory-norms-edit.html).
  *
+ * The page works ONLY on the honest scoped read model
+ * GET /catalogs/methods/context (ТЗ-DR28 §7 variant B): the backend resolves
+ * the real product species/state pair behind the chosen human-readable area,
+ * so a laboratory UUID is never sent as a species (§5.1) and the legacy
+ * «Нормы для этой области не заданы» of an unconfigured scope is replaced by
+ * the blocking configuration screen. The full VSE-F18–F29 list is shown even
+ * with no rules (§6.1); «Добавить норму» opens the EXISTING MethodEditor in
+ * create mode (§6.2); a configuration-missing scope never fetches the catalog
+ * and never creates a norm (R-DR28-1).
+ *
  * Interval MethodRules render as [name/meta] [Норма от + unit] [Норма до +
- * unit]; qualitative rules render as the «Проба варки» composition with the
- * variants coming from the SHARED INDICATORS registry (no second copy of the
- * dictionary). A null boundary stays null (never 0); lower ≤ upper is
- * enforced; inclusivity stays in the folded business settings while
- * version/source/effective date remain hidden and are never lost on save. One
- * «Сохранить справочник» saves ONLY the dirty rules sequentially with honest
- * per-rule results and 409 revision resolution.
+ * unit]; qualitative rules render with the variants coming from the context
+ * indicator catalog (ONE registry, §6.3). A null boundary stays null (never
+ * 0); lower ≤ upper is enforced; one «Сохранить справочник» saves ONLY the
+ * dirty rules sequentially with honest per-rule results and 409 resolution.
  */
 import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { INDICATORS } from "../examinations/indicators";
 import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
-import { deleteMethod, fetchMethods, updateMethod, type MethodRuleTyped, type Problem } from "./api";
+import {
+  fetchMethodsContext,
+  deleteMethod,
+  typedMethodRule,
+  updateMethod,
+  type CatalogIndicatorView,
+  type MethodRuleTyped,
+  type MethodsContextData,
+  type Problem,
+} from "./api";
 import {
   CatalogEditorPage,
   CatalogSectionHeader,
@@ -31,7 +46,7 @@ import {
 import { CatalogContextSlot } from "./catalog-context-slot";
 import { useCatalogContext } from "./use-catalog-context";
 import { useDirtyGuard } from "../context/SwitchContext";
-import { DELETE_WARNING } from "./MethodEditor";
+import { DELETE_WARNING, MethodEditor } from "./MethodEditor";
 
 const NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 
@@ -103,42 +118,87 @@ interface RowModel {
   unknown: boolean;
 }
 
-function indicatorName(indicatorId: string): string | null {
-  return INDICATORS.find((indicator) => indicator.id === indicatorId)?.name ?? null;
+/** The rows of one indicator: its active rules or, when none, «Не настроено».
+ * Historical inactive versions are never duplicated (ТЗ-DR28 §6.1). */
+interface IndicatorBlock {
+  indicator: CatalogIndicatorView;
+  rules: RowModel[];
+  configured: boolean;
 }
 
-export function buildMethodRows(rules: MethodRuleTyped[]): RowModel[] {
-  const counter = new Map<string, number>();
-  return rules.map((rule) => {
-    const name = indicatorName(rule.indicator_id);
-    counter.set(rule.indicator_id, (counter.get(rule.indicator_id) ?? 0) + 1);
-    const ordinal = counter.get(rule.indicator_id) ?? 1;
-    const qualitative = rule.rule.type === "qualitative";
+function rowFor(rule: MethodRuleTyped, indicators: readonly CatalogIndicatorView[]): RowModel {
+  const definition = indicators.find((item) => item.id === rule.indicator_id);
+  const qualitative = rule.rule.type === "qualitative";
+  return {
+    key: rule.id,
+    rule,
+    indicatorId: rule.indicator_id,
+    name: definition?.name ?? "",
+    meta: definition === undefined ? undefined : `${definition.code} · версия ${rule.version}`,
+    unit: rule.unit_id === "" ? undefined : rule.unit_id,
+    kind: qualitative ? "qualitative" : "interval",
+    unknown: definition === undefined,
+  };
+}
+
+/** The full VSE-F18–F29 blocks: configured rules first-class, everything
+ * without an active rule honestly «Не настроено» (§6.1). */
+export function buildIndicatorBlocks(context: MethodsContextData): {
+  blocks: IndicatorBlock[];
+  unknownRules: RowModel[];
+} {
+  const rules: MethodRuleTyped[] = context.active_rules.map((rule) => typedMethodRule(rule));
+  const byIndicator = new Map<string, MethodRuleTyped[]>();
+  for (const rule of rules) {
+    const list = byIndicator.get(rule.indicator_id) ?? [];
+    list.push(rule);
+    byIndicator.set(rule.indicator_id, list);
+  }
+  const blocks = context.indicators.map((indicator) => {
+    const indicatorRules = byIndicator.get(indicator.id) ?? [];
     return {
-      key: rule.id,
-      rule,
-      indicatorId: rule.indicator_id,
-      name: name ?? "",
-      meta: ordinal > 1 ? `Ещё одно правило по этому показателю (${ordinal})` : undefined,
-      unit: rule.unit_id === "" ? undefined : rule.unit_id,
-      kind: qualitative ? "qualitative" : "interval",
-      unknown: name === null,
+      indicator,
+      rules: indicatorRules.map((rule) => rowFor(rule, context.indicators)),
+      configured: indicatorRules.length > 0,
     };
   });
+  const known = new Set(context.indicators.map((item) => item.id));
+  const unknownRules = rules
+    .filter((rule) => !known.has(rule.indicator_id))
+    .map((rule) => rowFor(rule, context.indicators));
+  return { blocks, unknownRules };
 }
 
 export function MethodsEditorPage(): React.ReactElement {
   const context = useCatalogContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const { laboratoryId, productSpeciesId, canEdit, allowedToSwitch } = context;
-  const scoped = laboratoryId !== null && productSpeciesId !== null;
+  const { laboratoryId, canEdit, allowedToSwitch } = context;
 
-  const methods = useQuery({
-    queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/methods", "methods"],
-    queryFn: ({ signal }) => fetchMethods(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
+  // The URL carries the stable safe area CODE, never a GUID (ТЗ-DR28 §5.2);
+  // the species/state pair of the deep link is the server-resolved restore
+  // link of §5.3.
+  const params = new URLSearchParams(location.search);
+  const areaCode = params.get("area") ?? "meat";
+  const speciesParam = params.get("species");
+  const stateParam = params.get("state");
+
+  const scoped = laboratoryId !== null;
+  const methodsContext = useQuery({
+    queryKey: [laboratoryId, areaCode, speciesParam, stateParam, "/catalogs/methods/context"],
+    queryFn: ({ signal }) =>
+      fetchMethodsContext(laboratoryId ?? "", areaCode, speciesParam, stateParam, signal),
     enabled: scoped,
   });
+
+  function updateParams(patch: Record<string, string | null>): void {
+    const search = new URLSearchParams(location.search);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null) search.delete(key);
+      else search.set(key, value);
+    }
+    navigate(`/catalogs?${search.toString()}`);
+  }
 
   const [drafts, setDrafts] = useState<Record<string, MethodDraft>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -152,11 +212,19 @@ export function MethodsEditorPage(): React.ReactElement {
   const [deleteTarget, setDeleteTarget] = useState<{ key: string; rule: MethodRuleTyped } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [savePending, setSavePending] = useState(false);
+  /** The open create dialog: null closed, otherwise the pre-picked indicator. */
+  const [createTarget, setCreateTarget] = useState<string | null>(null);
 
-  const rows = useMemo(() => {
-    const list = methods.data !== undefined && !("code" in methods.data) ? methods.data.items : [];
-    return buildMethodRows(list);
-  }, [methods.data]);
+  const model = useMemo(() => {
+    const data =
+      methodsContext.data !== undefined && !("code" in methodsContext.data) ? methodsContext.data : null;
+    return data === null ? null : buildIndicatorBlocks(data);
+  }, [methodsContext.data]);
+
+  const rows = useMemo(
+    () => (model === null ? [] : [...model.blocks.flatMap((block) => block.rules), ...model.unknownRules]),
+    [model],
+  );
 
   const draftFor = (row: RowModel): MethodDraft => {
     const existing = drafts[row.key];
@@ -204,7 +272,7 @@ export function MethodsEditorPage(): React.ReactElement {
   useDirtyGuard(dirty, "Справочник норм");
 
   async function save(): Promise<void> {
-    if (laboratoryId === null || productSpeciesId === null) return;
+    if (laboratoryId === null) return;
     const failures: string[] = [];
     let saved = 0;
     let conflicted = false;
@@ -311,7 +379,7 @@ export function MethodsEditorPage(): React.ReactElement {
     if (saved > 0 || conflicted) {
       // The fresh revision of the conflicted rows is loaded BEFORE the
       // §12.6 choice is shown.
-      await methods.refetch();
+      await methodsContext.refetch();
     }
   }
 
@@ -339,11 +407,11 @@ export function MethodsEditorPage(): React.ReactElement {
         ...current,
         [row.key]: result.detail !== "" ? result.detail : "Запись снова изменена другим пользователем.",
       }));
-      await methods.refetch();
+      await methodsContext.refetch();
       return;
     }
     clearConflict(row.key);
-    await methods.refetch();
+    await methodsContext.refetch();
   }
 
   /** §12.6 «Взять значение сервера»: the draft is reset to the server state,
@@ -407,10 +475,178 @@ export function MethodsEditorPage(): React.ReactElement {
     );
   }
 
-  const problem = methods.data !== undefined && "code" in methods.data ? (methods.data as Problem) : null;
+  if (!scoped) {
+    return (
+      <CatalogEditorPage
+        title="Нормы исследований"
+        description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
+      >
+        <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." />
+        <div className="vse-catalog-actions">
+          <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
+            Отменить
+          </Button>
+        </div>
+      </CatalogEditorPage>
+    );
+  }
 
-  const intervalRows = rows.filter((row) => row.kind === "interval");
-  const qualitativeRows = rows.filter((row) => row.kind === "qualitative");
+  if (methodsContext.isLoading) {
+    return (
+      <CatalogEditorPage title="Нормы исследований" description="Загрузка области продукции…">
+        <StatusView state="loading" title="Загрузка области продукции…" />
+      </CatalogEditorPage>
+    );
+  }
+
+  const problem =
+    methodsContext.data !== undefined && "code" in methodsContext.data
+      ? (methodsContext.data as Problem)
+      : null;
+  if (problem !== null && problem.code === "CONFIGURATION_MISSING") {
+    return (
+      <CatalogEditorPage
+        title="Нормы исследований"
+        description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
+      >
+        <StatusView
+          state="no-scope"
+          title={
+            problem.detail !== ""
+              ? problem.detail
+              : "Вид продукции и состояние продукции не настроены для этой лаборатории."
+          }
+        />
+        <p className="vse-catalog-lead">
+          Назначение рабочего вида продукции выполняет ответственный администратор. Вводить идентификаторы
+          вручную не требуется.
+        </p>
+        <div className="vse-catalog-actions">
+          <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
+            Вернуться
+          </Button>
+          <Button type="button" variant="primary" onClick={() => void methodsContext.refetch()}>
+            Проверить снова
+          </Button>
+        </div>
+      </CatalogEditorPage>
+    );
+  }
+  if (problem !== null) {
+    return (
+      <CatalogEditorPage
+        title="Нормы исследований"
+        description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
+      >
+        <StatusView
+          state={problem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
+          title={problem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить справочник."}
+          detail={problem.detail}
+          onRetry={() => void methodsContext.refetch()}
+        />
+        <div className="vse-catalog-actions">
+          <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
+            Отменить
+          </Button>
+        </div>
+      </CatalogEditorPage>
+    );
+  }
+
+  const data = methodsContext.data as MethodsContextData;
+  const area = data.areas.find((item) => item.code === areaCode) ?? data.areas[0] ?? null;
+
+  // R-DR28-1: without a configured area there is no catalog call and no
+  // misleading «нормы не заданы» — only the honest configuration screen.
+  if (area === null || !area.configured || data.species_options.length === 0) {
+    return (
+      <CatalogEditorPage
+        title="Нормы исследований"
+        description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
+      >
+        <StatusView
+          state="no-scope"
+          title="Вид продукции и состояние продукции не настроены для этой лаборатории."
+        />
+        <p className="vse-catalog-lead">
+          Назначение рабочего вида продукции выполняет ответственный администратор через защищённый
+          классификационный справочник. Нормы не создаются, пока область не настроена.
+        </p>
+        <div className="vse-catalog-actions">
+          <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
+            Вернуться
+          </Button>
+          <Button type="button" variant="primary" onClick={() => void methodsContext.refetch()}>
+            Проверить снова
+          </Button>
+        </div>
+      </CatalogEditorPage>
+    );
+  }
+
+  const species = data.product_species ?? null;
+  const state = data.product_state ?? null;
+
+  // A species without a single observed product state cannot be configured
+  // honestly: no state id is invented (ТЗ-DR28 §5.3/§11).
+  if (species === null || (species !== null && data.states.length === 0)) {
+    return (
+      <CatalogEditorPage
+        title="Нормы исследований"
+        description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
+      >
+        <ScopeSelectors
+          areas={data.areas.map((item) => ({ code: item.code, name: item.name }))}
+          areaCode={area.code}
+          speciesOptions={data.species_options.map((item) => ({ id: item.id, label: item.label }))}
+          species={species?.id ?? null}
+          states={[]}
+          state={null}
+          onArea={(code) => updateParams({ area: code, species: null, state: null })}
+          onSpecies={(id) => updateParams({ species: id, state: null })}
+          onState={() => undefined}
+        />
+        <StatusView
+          state="no-scope"
+          title="Состояние продукции для выбранного вида ещё не определено."
+          detail="Состояние заполняется из классификации реальных партий этой лаборатории. Обратитесь к администратору, если область назначена."
+        />
+        <div className="vse-catalog-actions">
+          <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
+            Вернуться
+          </Button>
+          <Button type="button" variant="primary" onClick={() => void methodsContext.refetch()}>
+            Проверить снова
+          </Button>
+        </div>
+      </CatalogEditorPage>
+    );
+  }
+
+  if (state === null) {
+    return (
+      <CatalogEditorPage
+        title="Нормы исследований"
+        description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
+      >
+        <ScopeSelectors
+          areas={data.areas.map((item) => ({ code: item.code, name: item.name }))}
+          areaCode={area.code}
+          speciesOptions={data.species_options.map((item) => ({ id: item.id, label: item.label }))}
+          species={species?.id ?? null}
+          states={data.states.map((item) => ({ id: item.id, label: item.label }))}
+          state={null}
+          onArea={(code) => updateParams({ area: code, species: null, state: null })}
+          onSpecies={(id) => updateParams({ species: id, state: null })}
+          onState={(id) => updateParams({ state: id })}
+        />
+        <StatusView state="empty" title="Выберите состояние продукции, чтобы открыть нормы." />
+      </CatalogEditorPage>
+    );
+  }
+
+  const blocks = model === null ? [] : model.blocks;
+  const unknownRules = model === null ? [] : model.unknownRules;
 
   return (
     <CatalogEditorPage
@@ -418,203 +654,88 @@ export function MethodsEditorPage(): React.ReactElement {
       description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
     >
       <CatalogContextSlot context={context} onPick={allowedToSwitch ? pickLaboratory : null} />
+      <ScopeSelectors
+        areas={data.areas.map((item) => ({ code: item.code, name: item.name }))}
+        areaCode={area.code}
+        speciesOptions={data.species_options.map((item) => ({ id: item.id, label: item.label }))}
+        species={species.id}
+        states={data.states.map((item) => ({ id: item.id, label: item.label }))}
+        state={state.id}
+        onArea={(code) => updateParams({ area: code, species: null, state: null })}
+        onSpecies={(id) => updateParams({ species: id, state: null })}
+        onState={(id) => updateParams({ state: id })}
+      />
       {summary !== null ? (
         <SaveSummary state={summary.state} text={summary.text} details={summary.details} />
       ) : null}
-      {scoped ? (
-        <section className="vse-catalog-section" aria-labelledby="methods-section-title">
-          <CatalogSectionHeader
-            icon="directory-norms"
-            title="Диапазоны нормы"
-            description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
-          />
-          {methods.isLoading ? (
-            <StatusView state="loading" title="Загрузка норм…" />
-          ) : problem !== null ? (
-            <StatusView
-              state={problem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
-              title={problem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить нормы."}
-              detail={problem.detail}
-              onRetry={() => void methods.refetch()}
-            />
-          ) : rows.length === 0 ? (
-            <StatusView state="empty" title="Нормы для этой области не заданы." />
-          ) : (
-            <div className="vse-catalog-norm-list">
-              {intervalRows.map((row) => {
-                const draft = draftFor(row);
-                const interval = row.rule.rule;
-                const serverValue =
-                  interval.type === "interval" && (interval.lower != null || interval.upper != null)
-                    ? `от ${interval.lower ?? "—"} до ${interval.upper ?? "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`
-                    : "Не настроено";
-                const draftValue = `от ${draft.lower || "—"} до ${draft.upper || "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`;
-                const metadata = (
-                  <div className="vse-catalog-field">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={draft.lowerInclusive}
-                        disabled={savePending || !canEdit}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [row.key]: { ...draftFor(row), lowerInclusive: event.target.checked },
-                          }))
-                        }
-                      />{" "}
-                      нижняя граница включена
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={draft.upperInclusive}
-                        disabled={savePending || !canEdit}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [row.key]: { ...draftFor(row), upperInclusive: event.target.checked },
-                          }))
-                        }
-                      />{" "}
-                      верхняя граница включена
-                    </label>
+      <section className="vse-catalog-section" aria-labelledby="methods-section-title">
+        <CatalogSectionHeader
+          icon="directory-norms"
+          title="Диапазоны нормы"
+          description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
+          actions={
+            canEdit ? (
+              <Button
+                type="button"
+                variant="primary"
+                disabled={savePending}
+                onClick={() => setCreateTarget(null)}
+              >
+                Добавить норму
+              </Button>
+            ) : undefined
+          }
+        />
+        {methodsContext.isRefetching ? null : null}
+        <div className="vse-catalog-norm-list">
+          {blocks.map((block) => {
+            if (!block.configured) {
+              return (
+                <article
+                  className="vse-catalog-norm-row"
+                  key={block.indicator.id}
+                  data-testid="method-missing"
+                >
+                  <div className="vse-catalog-norm-info">
+                    <div className="vse-catalog-norm-name">
+                      {block.indicator.code} · {block.indicator.name}
+                      {block.indicator.mandatory ? (
+                        <span className="vse-catalog-req" aria-label="обязательный показатель">
+                          {" "}
+                          *
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="vse-catalog-norm-meta">
+                      {block.indicator.unit_id !== null ? `Единица: ${block.indicator.unit_id}. ` : ""}
+                      Не настроено
+                    </div>
                   </div>
-                );
-                if (row.unknown) {
-                  return (
-                    <article
-                      className="vse-catalog-diag"
-                      key={row.key}
-                      data-testid={`method-diag-${row.key}`}
-                    >
-                      Норма показателя вне общего каталога. Идентификатор: <code>{row.indicatorId}</code>.
-                      Наименование недоступно в read model — значение не редактируется на этой странице.
-                    </article>
-                  );
-                }
-                return (
-                  <NormRow
-                    key={row.key}
-                    name={row.name}
-                    meta={row.meta}
-                    lower={draft.lower}
-                    upper={draft.upper}
-                    unit={row.unit}
-                    error={errors[row.key]}
-                    busy={savePending}
-                    readOnly={!canEdit}
-                    details={metadata}
-                    conflict={
-                      conflicts[row.key] === true && drafts[row.key] !== undefined
-                        ? { serverValue, draftValue }
-                        : undefined
-                    }
-                    onKeepMine={conflicts[row.key] === true ? () => void keepMine(row) : undefined}
-                    onTakeServer={conflicts[row.key] === true ? () => takeServer(row) : undefined}
-                    secondary={
-                      canEdit ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={savePending}
-                          aria-label={`Удалить норму: ${row.name}`}
-                          onClick={() => setDeleteTarget({ key: row.key, rule: row.rule })}
-                        >
-                          Удалить норму
-                        </Button>
-                      ) : undefined
-                    }
-                    onLowerChange={(next) => {
-                      setDrafts((current) => ({ ...current, [row.key]: { ...draftFor(row), lower: next } }));
-                      setSummary(null);
-                    }}
-                    onUpperChange={(next) => {
-                      setDrafts((current) => ({ ...current, [row.key]: { ...draftFor(row), upper: next } }));
-                      setSummary(null);
-                    }}
-                  />
-                );
-              })}
-              {qualitativeRows.map((row) => {
-                const draft = draftFor(row);
-                const indicator = INDICATORS.find((item) => item.id === row.indicatorId);
-                const registryOptions = indicator?.options ?? [];
-                const normSet = new Set(draft.accepted);
-                const rowsModel: QualitativeRow[] = [
-                  // The full registry variant list is always shown (mockup);
-                  // an option outside the accepted list is «Отклонение».
-                  ...registryOptions.map((option) => ({
-                    key: option.value,
-                    value: option.label,
-                    norm: normSet.has(option.value),
-                    onNormChange: (norm: boolean) =>
-                      setDrafts((current) => {
-                        const accepted = norm
-                          ? [...draft.accepted, option.value]
-                          : draft.accepted.filter((value) => value !== option.value);
-                        return { ...current, [row.key]: { ...draftFor(row), accepted } };
-                      }),
-                    onRemove: undefined,
-                  })),
-                  // Manually added rows beyond the registry (honest, marked).
-                  ...draft.extra
-                    .filter((value) => !registryOptions.some((option) => option.value === value))
-                    .map((value) => ({
-                      key: value,
-                      value,
-                      norm: normSet.has(value),
-                      onNormChange: (norm: boolean) =>
-                        setDrafts((current) => {
-                          const accepted = norm
-                            ? [...draft.accepted, value]
-                            : draft.accepted.filter((item) => item !== value);
-                          return { ...current, [row.key]: { ...draftFor(row), accepted } };
-                        }),
-                      onRemove: () =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [row.key]: {
-                            ...draftFor(row),
-                            extra: draft.extra.filter((item) => item !== value),
-                          },
-                        })),
-                    })),
-                ];
-                return (
-                  <QualitativeBlock
-                    key={row.key}
-                    title={row.unknown ? "Показатель вне общего каталога" : row.name}
-                    description={
-                      indicator?.kind === "ENUM"
-                        ? "Укажите варианты результата и отметьте, считается ли вариант нормой."
-                        : undefined
-                    }
-                    rows={rowsModel}
-                    readOnly={!canEdit}
-                    busy={savePending}
-                    error={errors[row.key]}
-                    secondary={
-                      canEdit ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={savePending}
-                          aria-label={`Удалить норму: ${row.unknown ? "вне каталога" : row.name}`}
-                          onClick={() => setDeleteTarget({ key: row.key, rule: row.rule })}
-                        >
-                          Удалить норму
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                );
-              })}
-            </div>
-          )}
-        </section>
-      ) : null}
-      {!scoped ? <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." /> : null}
+                  <div className="vse-catalog-field">
+                    {canEdit ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={savePending}
+                        onClick={() => setCreateTarget(block.indicator.id)}
+                      >
+                        Настроить
+                      </Button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            }
+            return block.rules.map((row) => renderRuleRow(row));
+          })}
+          {unknownRules.map((row) => (
+            <article className="vse-catalog-diag" key={row.key} data-testid={`method-diag-${row.key}`}>
+              Норма показателя вне общего каталога. Идентификатор: <code>{row.indicatorId}</code>.
+              Наименование недоступно в read model — значение не редактируется на этой странице.
+            </article>
+          ))}
+        </div>
+      </section>
       <div className="vse-catalog-actions">
         <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
           Отменить
@@ -630,6 +751,40 @@ export function MethodsEditorPage(): React.ReactElement {
           Сохранить справочник
         </Button>
       </div>
+
+      {createTarget !== null && state !== null && species !== null ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setCreateTarget(null);
+          }}
+          title="Добавить норму"
+          description={`Показатель и границы нормы для области «${area.name}».`}
+          cancelLabel="Закрыть"
+          confirmLabel="Готово"
+        >
+          <MethodEditor
+            mode="create"
+            laboratoryId={laboratoryId}
+            productSpeciesId={species.id}
+            productStateId={state.id}
+            indicators={data.indicators}
+            presetIndicatorId={createTarget === "" ? null : createTarget}
+            busy={savePending}
+            onSaved={(rule) => {
+              setCreateTarget(null);
+              setSummary({
+                state: "success",
+                text: "Норма добавлена.",
+                details: [],
+              });
+              void methodsContext.refetch();
+              return rule;
+            }}
+            onClose={() => setCreateTarget(null)}
+          />
+        </Dialog>
+      ) : null}
 
       {deleteTarget !== null ? (
         <Dialog
@@ -647,6 +802,166 @@ export function MethodsEditorPage(): React.ReactElement {
       ) : null}
     </CatalogEditorPage>
   );
+
+  /** One editable rule row of the configured indicator block; rendered by a
+   * direct call (never an inline component type) so a re-render never
+   * remounts the inputs mid-typing. */
+  function renderRuleRow(row: RowModel): React.ReactElement {
+    const draft = draftFor(row);
+    const interval = row.rule.rule;
+    const definition = data.indicators.find((item) => item.id === row.indicatorId);
+    if (row.unknown) {
+      return (
+        <article className="vse-catalog-diag" key={row.key}>
+          Норма показателя вне общего каталога. Идентификатор: <code>{row.indicatorId}</code>.
+        </article>
+      );
+    }
+    if (row.kind === "qualitative") {
+      const options = definition?.options ?? [];
+      const normSet = new Set(draft.accepted);
+      const rowsModel: QualitativeRow[] = [
+        ...options.map((option) => ({
+          key: option,
+          value: option,
+          norm: normSet.has(option),
+          onNormChange: (norm: boolean) =>
+            setDrafts((current) => {
+              const accepted = norm
+                ? [...draft.accepted, option]
+                : draft.accepted.filter((value) => value !== option);
+              return { ...current, [row.key]: { ...draftFor(row), accepted } };
+            }),
+          onRemove: undefined,
+        })),
+        ...draft.extra
+          .filter((value) => !options.some((option) => option === value))
+          .map((value) => ({
+            key: value,
+            value,
+            norm: normSet.has(value),
+            onNormChange: (norm: boolean) =>
+              setDrafts((current) => {
+                const accepted = norm
+                  ? [...draft.accepted, value]
+                  : draft.accepted.filter((item) => item !== value);
+                return { ...current, [row.key]: { ...draftFor(row), accepted } };
+              }),
+            onRemove: () =>
+              setDrafts((current) => ({
+                ...current,
+                [row.key]: {
+                  ...draftFor(row),
+                  extra: draft.extra.filter((item) => item !== value),
+                },
+              })),
+          })),
+      ];
+      return (
+        <QualitativeBlock
+          key={row.key}
+          title={`${definition?.code ?? ""} · ${row.name}`}
+          description="Укажите варианты результата и отметьте, считается ли вариант нормой."
+          rows={rowsModel}
+          readOnly={!canEdit}
+          busy={savePending}
+          error={errors[row.key]}
+          secondary={
+            canEdit ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={savePending}
+                aria-label={`Удалить норму: ${row.name}`}
+                onClick={() => setDeleteTarget({ key: row.key, rule: row.rule })}
+              >
+                Удалить норму
+              </Button>
+            ) : undefined
+          }
+        />
+      );
+    }
+    const serverValue =
+      interval.type === "interval" && (interval.lower != null || interval.upper != null)
+        ? `от ${interval.lower ?? "—"} до ${interval.upper ?? "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`
+        : "Не настроено";
+    const draftValue = `от ${draft.lower || "—"} до ${draft.upper || "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`;
+    const metadata = (
+      <div className="vse-catalog-field">
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.lowerInclusive}
+            disabled={savePending || !canEdit}
+            onChange={(event) =>
+              setDrafts((current) => ({
+                ...current,
+                [row.key]: { ...draftFor(row), lowerInclusive: event.target.checked },
+              }))
+            }
+          />{" "}
+          нижняя граница включена
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.upperInclusive}
+            disabled={savePending || !canEdit}
+            onChange={(event) =>
+              setDrafts((current) => ({
+                ...current,
+                [row.key]: { ...draftFor(row), upperInclusive: event.target.checked },
+              }))
+            }
+          />{" "}
+          верхняя граница включена
+        </label>
+      </div>
+    );
+    return (
+      <NormRow
+        key={row.key}
+        name={`${definition?.code ?? ""} · ${row.name}`}
+        meta={row.meta}
+        lower={draft.lower}
+        upper={draft.upper}
+        unit={row.unit}
+        error={errors[row.key]}
+        busy={savePending}
+        readOnly={!canEdit}
+        details={metadata}
+        conflict={
+          conflicts[row.key] === true && drafts[row.key] !== undefined
+            ? { serverValue, draftValue }
+            : undefined
+        }
+        onKeepMine={conflicts[row.key] === true ? () => void keepMine(row) : undefined}
+        onTakeServer={conflicts[row.key] === true ? () => takeServer(row) : undefined}
+        secondary={
+          canEdit ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={savePending}
+              aria-label={`Удалить норму: ${row.name}`}
+              onClick={() => setDeleteTarget({ key: row.key, rule: row.rule })}
+            >
+              Удалить норму
+            </Button>
+          ) : undefined
+        }
+        onLowerChange={(next) => {
+          setDrafts((current) => ({ ...current, [row.key]: { ...draftFor(row), lower: next } }));
+          setSummary(null);
+        }}
+        onUpperChange={(next) => {
+          setDrafts((current) => ({ ...current, [row.key]: { ...draftFor(row), upper: next } }));
+          setSummary(null);
+        }}
+      />
+    );
+  }
 
   async function runSave(): Promise<void> {
     setSavePending(true);
@@ -668,7 +983,7 @@ export function MethodsEditorPage(): React.ReactElement {
       return;
     }
     setDeleteTarget(null);
-    await methods.refetch();
+    await methodsContext.refetch();
   }
 
   function pickLaboratory(id: string): void {
@@ -676,4 +991,81 @@ export function MethodsEditorPage(): React.ReactElement {
     search.set("laboratory_id", id);
     navigate(`/catalogs?${search.toString()}`);
   }
+}
+
+/* --- Human-readable scope selectors (ТЗ-DR28 §5.2/§5.3) ------------------- */
+
+export interface ScopeSelectorsProps {
+  areas: { code: string; name: string }[];
+  areaCode: string;
+  speciesOptions: { id: string; label: string }[];
+  species: string | null;
+  states: { id: string; label: string }[];
+  state: string | null;
+  onArea: (code: string) => void;
+  onSpecies: (id: string) => void;
+  onState: (id: string) => void;
+}
+
+/** The «Вид продукции» block with ordinary Russian names only; UUIDs are
+ * never shown as labels (ТЗ-DR28 §5.2). */
+export function ScopeSelectors({
+  areas,
+  areaCode,
+  speciesOptions,
+  species,
+  states,
+  state,
+  onArea,
+  onSpecies,
+  onState,
+}: ScopeSelectorsProps): React.ReactElement {
+  return (
+    <div className="vse-catalog-context" data-testid="catalog-scope">
+      <div className="app-field">
+        <div className="app-field-heading">
+          <label htmlFor="scope-area">Вид продукции</label>
+        </div>
+        <select id="scope-area" value={areaCode} onChange={(event) => onArea(event.target.value)}>
+          {areas.map((item) => (
+            <option key={item.code} value={item.code}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {speciesOptions.length > 1 ? (
+        <div className="app-field">
+          <div className="app-field-heading">
+            <label htmlFor="scope-species">Вид</label>
+          </div>
+          <select
+            id="scope-species"
+            value={species ?? ""}
+            onChange={(event) => onSpecies(event.target.value)}
+          >
+            {speciesOptions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      {states.length > 1 ? (
+        <div className="app-field">
+          <div className="app-field-heading">
+            <label htmlFor="scope-state">Состояние продукции</label>
+          </div>
+          <select id="scope-state" value={state ?? ""} onChange={(event) => onState(event.target.value)}>
+            {states.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+    </div>
+  );
 }

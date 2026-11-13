@@ -47,8 +47,10 @@
   длинные названия переносятся (`overflow-wrap`). TS-схема перегенерирована (`gen:api`) — diff нулевой,
   контракты совместимы.
 - **Тайна**: endpoint/actions без секретов; apiKey/issuerId/raw SOAP не попадают в frontend/Git/логи (логи
-  несут только counters/contour/problem code); write capability остаётся выключенной; TLS/ограничения XML
-  сохранены (transport наследует guards словарного транспорта).
+  несут только counters/contour/problem code); write capability остаётся выключенной; write-операции
+  недостижимы через lookup-границу (только два read-метода, без submit/receive пути; тест проверяет
+  classifier и отсутствие write-методов у boundary); TLS/ограничения XML сохранены (transport наследует
+  guards словарного транспорта).
 
 ## Тесты
 
@@ -56,7 +58,10 @@
   нужных kind; дедуп; kind/contour не смешиваются; успешный GetEnterpriseByGuid сохраняет имя (вкл. uuid,
   24ч-обновление); каскад name→fullName→fio; ошибка сохраняет прежнее имя + retry, not-last не заменяет имя;
   идемпотентный backfill; обогащение не меняет raw XML/checksum/revision и факты сверок; worker вызывает только
-  read-only методы; пиннед-конструкторы запросов/парсеры.
+  read-only методы; пиннед-конструкторы запросов/парсеры. Fix round 1: регрессионный тест изоляции kind на
+  read-пути (один GUID в двух kind → каждое имя из СВОЕЙ строки) и тест guard'а эха GUID (mismatch не
+  применяется, диагностика + retry); тест write-границы заменён честным (classifier + отсутствие write-методов
+  у boundary, без самоподнимаемого исключения).
 - API/read model (`backend/tests/arrivals/test_dr18_participant_names.py`, 4): эндпоинт сверки возвращает
   названия из единого read model (PENDING → VETIS_LOOKUP), без GUID; приоритет XML → cache в projection;
   честные тексты состояний; отсутствие имени не блокирует сверку.

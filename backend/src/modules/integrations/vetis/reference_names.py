@@ -222,21 +222,30 @@ async def upsert_reference_names(
 
 
 async def _load_rows(
-    db: AsyncSession, contour: str, keys: dict[uuid.UUID, VetisEntityKind]
-) -> dict[uuid.UUID, VetisReferenceName]:
+    db: AsyncSession, contour: str, keys: set[tuple[uuid.UUID, str]]
+) -> dict[tuple[uuid.UUID, str], VetisReferenceName]:
+    """Load the cache rows of the requested (guid, kind) keys ONLY.
+
+    The key pair is the §5 identity: the same GUID value as a
+    ``BUSINESS_ENTITY`` and as an ``ENTERPRISE`` are two different rows and
+    are never merged on the read path either.
+    """
     if not keys:
         return {}
-    kinds = sorted({kind.value for kind in keys.values()})
+    guids = sorted({guid for guid, _kind in keys})
+    kinds = sorted({kind for _guid, kind in keys})
     rows = (
         await db.execute(
             select(VetisReferenceName).where(
                 VetisReferenceName.contour == contour,
-                VetisReferenceName.guid.in_(keys.keys()),
+                VetisReferenceName.guid.in_(guids),
                 VetisReferenceName.entity_kind.in_(kinds),
             )
         )
     ).scalars()
-    return {row.guid: row for row in rows if keys.get(row.guid) == VetisEntityKind(row.entity_kind)}
+    # Only the REQUESTED (guid, kind) pairs are consumed — a same-GUID row of
+    # the other kind can never leak across.
+    return {(row.guid, row.entity_kind): row for row in rows if (row.guid, row.entity_kind) in keys}
 
 
 async def resolve_participants(
@@ -250,18 +259,18 @@ async def resolve_participants(
     """
     contour_text = str(contour)
     participants = extract_participants(snapshot)
-    keys: dict[uuid.UUID, VetisEntityKind] = {}
+    keys: set[tuple[uuid.UUID, str]] = set()
     for refs in participants.values():
         for ref in refs.values():
             if ref.guid is not None:
-                keys[ref.guid] = ref.kind
+                keys.add((ref.guid, ref.kind.value))
     rows = await _load_rows(db, contour_text, keys)
     result: dict[str, dict[str, ResolvedName]] = {}
     for side, refs in participants.items():
         resolved: dict[str, ResolvedName] = {}
         for kind_value, ref in refs.items():
             guid = ref.guid
-            row = rows.get(guid) if guid is not None else None
+            row = rows.get((guid, kind_value)) if guid is not None else None
             if ref.name:
                 resolved[kind_value] = ResolvedName(
                     name=ref.name,
@@ -451,6 +460,12 @@ async def resolve_due_reference_names(
                 record = parse_enterprise_by_guid(await transport.get_enterprise_by_guid(str(guid)))
             else:
                 record = parse_business_entity_by_guid(await transport.get_business_entity_by_guid(str(guid)))
+            # The cheap echo guard (§8): the response GUID must match the
+            # requested key before ANY result is applied; a mismatch is a
+            # diagnostic + retry, never an applied name.
+            echo = record.get("guid")
+            if echo is not None and _parse_uuid(echo) != guid:
+                record = {"problem": "VETIS_REFERENCE_GUID_MISMATCH"}
         except Exception as exc:  # noqa: BLE001 - any failure is an honest retry
             problem = getattr(exc, "code", None) or type(exc).__name__
             row = (
@@ -481,8 +496,16 @@ async def resolve_due_reference_names(
             )
         ).scalar_one_or_none()
         if row is not None:
-            await _apply_lookup_result(db, row, record, now=datetime.now(UTC))
-            resolved += 1
+            if isinstance(record, dict) and record.get("problem") == "VETIS_REFERENCE_GUID_MISMATCH":
+                # The response GUID did not match the requested key: never
+                # applied — a diagnostic + retry instead (§8).
+                await _apply_lookup_failure(
+                    db, row, "VETIS_REFERENCE_GUID_MISMATCH", now=datetime.now(UTC)
+                )
+                retried += 1
+            else:
+                await _apply_lookup_result(db, row, record, now=datetime.now(UTC))
+                resolved += 1
         await db.commit()
     return {"claimed": len(keys), "resolved": resolved, "retried": retried}
 

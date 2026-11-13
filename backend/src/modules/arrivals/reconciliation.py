@@ -1,4 +1,4 @@
-﻿"""The saved-reconciliation command (API-04 / DATA-02 / ADR-017).
+"""The saved-reconciliation command (API-04 / DATA-02 / ADR-017).
 
 ``save_reconciliation`` is the single coordinator of the started
 reconciliation: it locks the party, enforces the ETag sequence (the party
@@ -129,7 +129,8 @@ def source_projection(
         "senderEnterprise": enterprise_name(consignor),
         "senderOwner": _ref_name(consignor.get("businessEntity")),
         "receiverEnterprise": enterprise_name(consignee),
-        "receiverOwner": _ref_name(consignee.get("businessEntity")),        "transportKind": None,
+        "receiverOwner": _ref_name(consignee.get("businessEntity")),
+        "transportKind": None,
         "vehicleNumber": text_of(payload.get("transportNumber")),
         # ТЗ DR17 §5.2: the separate trailer fact; an absent/empty source
         # number publishes the agreed informational text (never «—», never a

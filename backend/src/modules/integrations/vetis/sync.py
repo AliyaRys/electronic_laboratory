@@ -1,4 +1,4 @@
-﻿"""Full incoming pass (ТЗ-10 V02): atomic intent + outbox, honest checkpoints.
+"""Full incoming pass (ТЗ-10 V02): atomic intent + outbox, honest checkpoints.
 
 ``start_sync`` writes the sync intent (``vetis_operations``) and its durable
 outbox row in ONE transaction — the worker restores both from SQL after a

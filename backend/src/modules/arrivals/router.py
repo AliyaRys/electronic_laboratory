@@ -1,4 +1,4 @@
-﻿"""Arrivals router (API-04): scoped queues, single read, hide, honest sync."""
+"""Arrivals router (API-04): scoped queues, single read, hide, honest sync."""
 
 from __future__ import annotations
 

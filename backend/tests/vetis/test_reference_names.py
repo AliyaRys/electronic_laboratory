@@ -1,4 +1,4 @@
-﻿"""ТЗ DR18 §11 backend tests: the contour-scoped participant-name cache.
+"""ТЗ DR18 §11 backend tests: the contour-scoped participant-name cache.
 
 The ten named contract tests of spec §11 live in this module plus the
 arrivals API module (``backend/tests/arrivals/test_dr18_participant_names.py``).
@@ -19,17 +19,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.arrivals.models import IncomingDocument, Party, Reconciliation
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole
-from backend.src.modules.integrations.vetis.models import VetisSourceDocument
+from backend.src.modules.integrations.vetis.models import VetisReferenceName, VetisSourceDocument
 from backend.src.modules.integrations.vetis.reference_names import (
     NAME_REFRESH_INTERVAL,
     backfill_reference_names,
     extract_participants,
     resolve_due_reference_names,
+    resolve_participants,
     upsert_reference_names,
 )
 from backend.src.modules.integrations.vetis.transport import (
     WRITE_OPERATIONS,
-    WriteOperationRejected,
+    SpyEnterpriseLookupTransport,
+    ZeepEnterpriseLookupTransport,
     build_get_business_entity_by_guid_request,
     build_get_enterprise_by_guid_request,
     is_read_only_operation,
@@ -410,11 +412,95 @@ async def test_10_worker_never_calls_write_methods(db_session: AsyncSession, spy
     assert operations <= {"GetEnterpriseByGuid", "GetBusinessEntityByGUID"}
     for operation in operations:
         assert is_read_only_operation(operation)
+
+
+def test_write_operation_rejected_at_the_boundary() -> None:
+    """A write operation is honestly classified AND unreachable through the
+    lookup boundary (ТЗ DR18 §8): the production classifier refuses it and
+    the lookup transports expose no write method at all — no write SOAP
+    envelope can ever be built from here."""
     for write in WRITE_OPERATIONS:
+        # The production classifier (used by every request builder here).
         assert not is_read_only_operation(write)
-        with pytest.raises(WriteOperationRejected):
-            if write == "ProcessIncomingConsignment":
-                raise WriteOperationRejected(write)
+        # The REAL boundary: the lookup transport has no write method and no
+        # submit path — a write operation is unreachable, not merely untested.
+        transport = ZeepEnterpriseLookupTransport(
+            endpoint="https://api2.vetrf.ru:8002/platform/services/2.0/EnterpriseService",
+            enterprise_action="getEnterpriseByGuidRequest",
+            business_entity_action="getBusinessEntityByGUIDRequest",
+        )
+        assert not hasattr(transport, "send_application")
+        assert not hasattr(transport, "receive_result")
+        spy = SpyEnterpriseLookupTransport()
+        assert not hasattr(spy, "send_application")
+        assert not hasattr(spy, "receive_result")
+        # And the builders of this read path never emit a write envelope.
+        assert "processIncomingConsignmentRequest" not in build_get_enterprise_by_guid_request(str(SENDER_ENT))
+        assert "processIncomingConsignmentRequest" not in build_get_business_entity_by_guid_request(str(SENDER_BE))
+
+
+async def test_read_path_kind_isolation_same_guid(db_session: AsyncSession) -> None:
+    """§5 on the READ path: the same GUID value as both kinds resolves each
+    name from its OWN kind row — never a cross-kind leak."""
+    shared = uuid.UUID("aaaaaaaa-0000-4000-8000-0000000000aa")
+    mixed = {
+        "vdDocument": {
+            "consignor": {
+                "name": "",
+                "businessEntity": {"guid": str(shared)},
+                "enterprise": {"guid": str(shared)},
+            },
+            "consignee": {"name": "", "businessEntity": None, "enterprise": None},
+        }
+    }
+    await upsert_reference_names(db_session, _PILOT, mixed)
+    await db_session.commit()
+    rows = (
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == shared)
+        )
+    ).scalars().all()
+    assert len(rows) == 2
+    for row in rows:
+        row.name = "Хозяйствующий субъект" if row.entity_kind == "BUSINESS_ENTITY" else "Предприятие"
+        row.source = "VETIS_LOOKUP"
+        row.status = "RESOLVED"
+    await db_session.commit()
+
+    participants = await resolve_participants(db_session, _PILOT, mixed)
+    assert participants["sender"]["BUSINESS_ENTITY"].name == "Хозяйствующий субъект"
+    assert participants["sender"]["ENTERPRISE"].name == "Предприятие"
+
+
+async def test_guid_echo_mismatch_never_applied(db_session: AsyncSession, spy_enterprise) -> None:
+    """The response GUID must echo the requested key; a mismatch is a
+    diagnostic + retry and is NEVER applied as a name (§8)."""
+    await upsert_reference_names(db_session, _PILOT, guid_only_snapshot())
+    await db_session.commit()
+    stranger = uuid.UUID("bbbbbbbb-0000-4000-8000-0000000000bb")
+    mismatch = (
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
+        '<soapenv:Body><ws:getEnterpriseByGuidResponse '
+        'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
+        '<dt:enterprise xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" '
+        'xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
+        f"<bs:guid>{stranger}</bs:guid>"
+        "<bs:active>true</bs:active><bs:last>true</bs:last>"
+        "<dt:name>Чужое предприятие</dt:name>"
+        "</dt:enterprise></ws:getEnterpriseByGuidResponse></soapenv:Body></soapenv:Envelope>"
+    )
+    spy = spy_enterprise(enterprise_responses=[mismatch])
+    counters = await resolve_due_reference_names(db_session, spy)
+    await db_session.commit()
+    assert counters["retried"] >= 1
+    row = (
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT)
+        )
+    ).scalar_one()
+    assert row.name is None  # the foreign name is never applied
+    assert row.last_problem_code == "VETIS_REFERENCE_GUID_MISMATCH"
+    assert row.next_check_at is not None and row.next_check_at > datetime.now(UTC)
 
 
 def test_manifest_pinned_request_builders() -> None:

@@ -21,6 +21,7 @@ pure-Python functions are the tested contract.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -69,28 +70,36 @@ __all__ = [
 SCHEDULE_INTERVAL = sync.SCHEDULE_INTERVAL
 LEASE_TIMEOUT = timedelta(minutes=10)
 
+_LOG = logging.getLogger("vetis.worker")
+
 
 def compose_read_adapter() -> VetisReadAdapter:
     """Build the pinned read adapter from the server-side profile.
 
-    Returns an adapter that honestly refuses live calls while the schema pins
-    are PENDING: the composition root never skips pin verification, and the
-    issued test profile (secret file) is simply absent right now.
+    The manifest always comes from the SINGLE runtime composition path
+    (``load_runtime_manifest``, ТЗ DR23 §5.1): committed manifest + pin
+    overlay + SHA-256 verification.  In an installation whose pins are
+    absent/PENDING the committed manifest keeps its recorded state and the
+    adapter honestly refuses live calls (503) — the composition never skips
+    pin verification, and the issued test profile (secret file) is simply
+    absent right now.
     """
-    import json
-    import os
-    from pathlib import Path
-
+    from backend.src.core.problems import ProblemError
     from backend.src.modules.integrations.vetis.adapter import VetisReadAdapter
     from backend.src.modules.integrations.vetis.manifest import (
         load_manifest,
-        load_manifest_with_pins,
+        load_runtime_manifest,
         load_secret_profile,
         secret_profile_path,
     )
+    from backend.src.modules.integrations.vetis.manifest import manifest_path as committed_manifest_path
 
-    manifest_path = Path(__file__).resolve().parents[4] / "resources" / "vetis" / "manifest.json"
-    manifest = load_manifest(manifest_path)
+    try:
+        manifest = load_runtime_manifest()
+    except ProblemError:
+        # The unconfigured installation: keep the committed manifest (its
+        # recorded pins state) so the adapter refuses live calls honestly.
+        manifest = load_manifest(committed_manifest_path())
     issuer_id = ""
     api_key = None
     gateway_user = None
@@ -102,9 +111,6 @@ def compose_read_adapter() -> VetisReadAdapter:
         api_key = profile.api_key
         gateway_user = profile.gateway_user
         gateway_password = profile.gateway_password
-        pins_path = os.environ.get("VETIS_SCHEMA_PINS")
-        if pins_path:
-            manifest = load_manifest_with_pins(manifest_path, json.loads(Path(pins_path).read_text(encoding="utf-8")))
     transport = ZeepApplicationTransport(
         endpoint=manifest.endpoint,
         allowed_urls=imports_allowlist(manifest),
@@ -410,23 +416,41 @@ async def purpose_sync_tick() -> dict[str, object]:
 
     Never per page view and never per document: the due check runs here and
     the full read-only pass (when due) is the ONLY GetPurposeList traffic.
+    The manifest comes from the single runtime composition path (ТЗ DR23 §5.1).
     """
-    from pathlib import Path
-
     from backend.src.core.problems import ProblemError
-    from backend.src.modules.integrations.vetis.manifest import load_manifest
+    from backend.src.modules.integrations.vetis.manifest import load_runtime_manifest
     from backend.src.modules.integrations.vetis.purpose_sync import (
         compose_purpose_transport,
         run_due_purpose_sync,
     )
 
-    manifest_path = Path(__file__).resolve().parents[4] / "resources" / "vetis" / "manifest.json"
-    manifest = load_manifest(manifest_path)
     try:
+        manifest = load_runtime_manifest()
         transport, _contour = compose_purpose_transport(manifest)
     except ProblemError as problem:
         return {"result": "NOT_CONFIGURED", "problem": problem.code}
     return await run_due_purpose_sync(transport=transport, manifest=manifest)
+
+
+def _log_reference_names_tick(result: dict[str, object]) -> None:
+    """The structured, secret-free tick diagnostic (ТЗ DR23 §5.3).
+
+    Only counters and stable problem codes are published: no credentials,
+    apiKey, issuerId, raw SOAP or XML ever reach the log.  An unconfigured or
+    failed tick NEVER looks like a successful empty one.
+    """
+    _LOG.info(
+        "reference_names_tick",
+        extra={
+            "result": str(result.get("result")),
+            "claimed": int(result.get("claimed", 0)),
+            "resolved": int(result.get("resolved", 0)),
+            "retried": int(result.get("retried", 0)),
+            "problem_code": result.get("problem"),
+            "contour": result.get("contour"),
+        },
+    )
 
 
 async def reference_names_tick() -> dict[str, object]:
@@ -434,28 +458,45 @@ async def reference_names_tick() -> dict[str, object]:
 
     Never per page view and never per document: the tick resolves the due
     PENDING/refreshable entries through the pinned EnterpriseService lookups
-    (ТЗ DR18 §8). Unconfigured pins answer honestly WITHOUT any network
-    contact; the import and every screen work regardless.
+    (ТЗ DR18 §8).  The manifest comes from the same runtime composition path
+    as the main read adapter (ТЗ DR23 §5.1): until the pins verify, the tick
+    answers ``NOT_CONFIGURED`` honestly WITHOUT any network contact; the
+    import and every screen work regardless.
     """
-    from pathlib import Path
-
     from backend.src.core.problems import ProblemError
-    from backend.src.modules.integrations.vetis.manifest import load_manifest
+    from backend.src.modules.integrations.vetis.manifest import load_runtime_manifest
     from backend.src.modules.integrations.vetis.reference_names import (
         compose_reference_transport,
         resolve_due_reference_names,
     )
 
-    manifest_path = Path(__file__).resolve().parents[4] / "resources" / "vetis" / "manifest.json"
-    manifest = load_manifest(manifest_path)
     try:
+        manifest = load_runtime_manifest()
         transport = compose_reference_transport(manifest)
     except ProblemError as problem:
-        return {"result": "NOT_CONFIGURED", "problem": problem.code}
+        result = {
+            "result": "NOT_CONFIGURED",
+            "problem": problem.code,
+            "claimed": 0,
+            "resolved": 0,
+            "retried": 0,
+            "contour": None,
+        }
+        _log_reference_names_tick(result)
+        return result
     factory = get_session_factory()
-    async with factory() as session:
-        counters = await resolve_due_reference_names(session, transport)
-        return {"result": "SUCCESS", **counters}
+    try:
+        async with factory() as session:
+            counters = await resolve_due_reference_names(
+                session, transport, contour=manifest.contour
+            )
+    except Exception as exc:  # noqa: BLE001 - an honest tick diagnostic, not a silent cron
+        result = {"result": "ERROR", "problem": type(exc).__name__, "contour": manifest.contour}
+        _log_reference_names_tick(result)
+        return result
+    result = {"result": "SUCCESS", "contour": manifest.contour, **counters}
+    _log_reference_names_tick(result)
+    return result
 
 
 async def backfill_reference_names_startup() -> dict[str, int] | None:

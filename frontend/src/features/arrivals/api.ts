@@ -535,6 +535,22 @@ export const NAME_PENDING_TEXT = "Уточняем названия органи
 export const NAME_ERROR_TEXT = "Название временно недоступно";
 export const NAME_MISSING_TEXT = "Название не получено";
 
+/** ТЗ DR23 §6.2: the bounded refresh of an open reconciliation while the
+ * worker is still resolving participant names.  The page re-reads the local
+ * read-model endpoints every 1.5 s for at most 30 s — the browser NEVER
+ * reaches VetIS, a repeated GET creates no cache jobs and calls no lookup. */
+export const NAME_POLL_INTERVAL_MS = 1500;
+export const NAME_POLL_MAX_MS = 30000;
+
+/** ТЗ DR23 §6.2: true while at least one participant-name field of the open
+ * screen still waits for the background worker lookup (NameSource=PENDING). */
+export function hasPendingParticipantNames(view: { external: { fields: Record<string, unknown> } }): boolean {
+  const fields = view?.external?.fields ?? {};
+  return ["senderOwner", "senderEnterprise", "receiverOwner", "receiverEnterprise"].some(
+    (key) => fields[`${key}NameSource`] === "PENDING",
+  );
+}
+
 /** ТЗ DR18 §10: the honest state of one participant-name field. */
 export type ParticipantNameState = "resolved" | "loading" | "error" | "missing";
 

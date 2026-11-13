@@ -35,8 +35,10 @@ __all__ = [
     "SchemaPins",
     "SecretProfile",
     "VetisManifest",
+    "manifest_path",
     "load_manifest",
     "load_manifest_with_pins",
+    "load_runtime_manifest",
     "load_secret_profile",
 ]
 
@@ -262,6 +264,42 @@ def load_manifest_with_pins(manifest_path: str | os.PathLike[str], pins: dict[st
     return manifest.model_copy(
         update={"schema_pins": SchemaPins(status="PINNED", wsdl=wsdl, xsd=xsd_entries)}, deep=True
     )
+
+
+def manifest_path() -> Path:
+    """The committed manifest location, resolved from this module."""
+    return Path(__file__).resolve().parents[4] / "resources" / "vetis" / "manifest.json"
+
+
+def load_runtime_manifest() -> VetisManifest:
+    """The SINGLE runtime composition path (ТЗ DR23 §5.1).
+
+    committed manifest → ``VETIS_SCHEMA_PINS`` overlay → SHA-256 verification
+    → a ``PINNED`` manifest ONLY after the whole verification succeeded.  A
+    missing/unreadable pins file, a ``PENDING`` state or a checksum mismatch
+    raises a controlled ProblemError BEFORE any network contact.  The
+    committed manifest on disk is never modified and the runtime overlay never
+    reaches the frontend or the logs.  Every server-side composition
+    (``compose_read_adapter``, ``purpose_sync_tick``, ``reference_names_tick``)
+    must load the schema through this one helper — never its own pin reading.
+    """
+    path = manifest_path()
+    manifest = load_manifest(path)
+    pins_path = os.environ.get("VETIS_SCHEMA_PINS")
+    if pins_path:
+        try:
+            pins = json.loads(Path(pins_path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            # An unreadable pins file is the unconfigured state, never a crash.
+            raise integration_not_configured() from None
+        try:
+            manifest = load_manifest_with_pins(path, pins)
+        except FileNotFoundError:
+            # A pinned WSDL/XSD file is absent: honestly unconfigured, no network.
+            raise integration_not_configured() from None
+    if manifest.schema_pins.status != "PINNED":
+        raise integration_not_configured()
+    return manifest
 
 
 class SecretProfile(BaseModel):

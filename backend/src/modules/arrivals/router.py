@@ -233,38 +233,6 @@ async def collect_receipt_context(db: AsyncSession, party: Party) -> ReceiptCont
         operation_id=operation.id if operation is not None else None,
         operation_state=str(operation.state) if operation is not None else None,
     )
-    document = (
-        await db.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
-    ).scalar_one()
-    source_revision = (
-        await db.execute(
-            select(VetisSourceDocument.revision).where(
-                VetisSourceDocument.contour == document.contour,
-                VetisSourceDocument.evsd_uuid == document.evsd_uuid,
-            )
-        )
-    ).scalar_one_or_none()
-    reconciliation_revision = (
-        await db.execute(select(Reconciliation.rev).where(Reconciliation.party_id == party.id))
-    ).scalar_one_or_none()
-    operation = (
-        await db.execute(
-            select(VetisOperation)
-            .where(
-                VetisOperation.party_id == party.id,
-                VetisOperation.kind == VetisOperationKind.RECEIPT,
-            )
-            .order_by(VetisOperation.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    return ReceiptContext(
-        write_enabled=write_enabled(),
-        source_revision=source_revision,
-        reconciliation_revision=reconciliation_revision,
-        operation_id=operation.id if operation is not None else None,
-        operation_state=str(operation.state) if operation is not None else None,
-    )
 
 
 @router.put("/{party_id}/reconciliation", response_model=ReconciliationView)

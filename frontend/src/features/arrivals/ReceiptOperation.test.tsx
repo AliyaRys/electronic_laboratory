@@ -227,7 +227,9 @@ describe("ReceiptOperation", () => {
     const dialog = await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" });
     expect(dialog.textContent).toContain("Ревизия источника / сверки");
     expect(dialog.textContent).toContain("Дата поступления");
-    expect(dialog.textContent).toContain("Единица измерения");
+    // ТЗ DR24 §6: the technical unit GUID is hidden from the visible summary.
+    expect(dialog.textContent).not.toContain("Единица измерения");
+    expect(dialog.textContent).not.toContain("GUID:");
     expect(dialog.textContent).toContain("Осмотры");
     expect(dialog.textContent).toContain("Маршрут после гашения");
   });
@@ -278,6 +280,9 @@ describe("ReceiptOperation", () => {
     await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
     await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
     const dialog = await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" });
-    expect(dialog.textContent).toContain(`Единица из ВСД (GUID: ${UNIT_GUID})`);
+    // ТЗ DR24 §6: the summary never shows the technical GUID — the absent
+    // NAME no longer blocks гашение (the honest mass/мест rows stay).
+    expect(dialog.textContent).not.toContain("GUID:");
+    expect(dialog.textContent).not.toContain(UNIT_GUID);
   });
 });

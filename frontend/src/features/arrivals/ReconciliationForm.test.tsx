@@ -445,12 +445,19 @@ describe("ReconciliationForm", () => {
   it("marks all compared fields with «Все соответствует»", async () => {
     renderForm();
     await userEvent.click(screen.getByRole("button", { name: /Все соответствует/ }));
-    // Only the genuinely compared fields (CHK-F05..F21 here) get the mark;
-    // the transport observations, decisions and the fair flag are untouched.
+    // Only the genuinely compared AND resolved fields get the mark; the
+    // unresolved participant names (disabled controls, ТЗ DR24 §3.4), the
+    // transport observations, decisions and the fair flag are untouched.
     const matchRadios = document.querySelectorAll<HTMLInputElement>('input[type="radio"][value="matches"]');
-    expect(matchRadios.length).toBe(7);
-    for (const radio of matchRadios) {
+    const markable = [...matchRadios].filter((radio) => !radio.disabled);
+    expect(markable.length).toBe(7);
+    for (const radio of markable) {
       expect(radio.checked).toBe(true);
+    }
+    for (const radio of matchRadios) {
+      if (radio.disabled) {
+        expect(radio.checked).toBe(false);
+      }
     }
     // The transport observations stay unanswered.
     expect((screen.getByLabelText("Состояние грузового отделения") as HTMLSelectElement).value).toBe("");
@@ -875,15 +882,17 @@ describe("ТЗ DR8: unit, quantities and return reason", () => {
   });
   afterAll(() => server.close());
 
-  it("shows the read-only source unit and fills all three QuantitySets", async () => {
+  it("shows the quantity fields with clear mass/place labels and fills the QuantitySets", async () => {
     renderForm();
-    expect(screen.getByText("Единица измерения (из эВСД)")).toBeInTheDocument();
-    expect(screen.getByText("кг")).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Единица измерения/)).toBeNull();
+    // ТЗ DR24 §6: no visible unit block and no «Количество (кг)» — the GUID
+    // stays in the payload only.
+    expect(screen.queryByText("Единица измерения (из эВСД)")).toBeNull();
+    expect(screen.queryByText(/Количество \(кг\)/)).toBeNull();
+    expect(screen.getAllByLabelText("Количество мест, шт.").length).toBe(3);
     const weight = screen.getAllByLabelText("Вес, кг")[0];
     await userEvent.clear(weight);
     await userEvent.type(weight, "120");
-    const quantity = screen.getAllByLabelText("Количество (кг)")[0];
+    const quantity = screen.getAllByLabelText("Количество мест, шт.")[0];
     await userEvent.clear(quantity);
     await userEvent.type(quantity, "4");
     await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
@@ -995,11 +1004,13 @@ describe("ТЗ DR10: source unit guid without dt:name", () => {
     documentary: { mass_kg: "120.0", quantity: "4", unit_id: UNIT_GUID },
   };
 
-  it("shows no missing-unit warning when the GUID exists without a name", () => {
+  it("shows no missing-unit warning when the GUID exists without a name and hides the GUID", () => {
     renderForm({ party: partyGuidOnly });
     expect(screen.queryByText(/Исходный эВСД не содержит единицу измерения/)).toBeNull();
-    // The read-only GUID fallback label is shown instead (§6).
-    expect(screen.getByText(`Единица из ВСД (GUID: ${UNIT_GUID})`)).toBeInTheDocument();
+    // ТЗ DR24 §6: the technical GUID is hidden from the visible form — the
+    // identity only rides in the QuantitySet payload.
+    expect(screen.queryByText(/Единица из ВСД \(GUID/)).toBeNull();
+    expect(document.body.textContent).not.toContain("GUID:");
   });
 
   it("saves a non-empty unit id in the payload when the name is absent", async () => {
@@ -1052,7 +1063,10 @@ describe("ТЗ DR10: source unit guid without dt:name", () => {
     const messages = await screen.findAllByText(/не содержит единицу измерения/);
     const block = messages.map((message) => message.closest(".vse-rec-quantities")).find(Boolean);
     expect(block).not.toBeNull();
-    expect(block?.textContent).toContain("Единица измерения (из эВСД)");
+    // ТЗ DR24 §6: the block itself carries no unit/GUID line any more — the
+    // mass and place-count labels stay honest.
+    expect(block?.textContent).toContain("Вес, кг");
+    expect(block?.textContent).toContain("Количество мест, шт.");
   });
 
   function partyWithoutUnitBase(): IncomingView {
@@ -1082,16 +1096,25 @@ describe("ТЗ DR13: полнота сверки и повторное сохр�
     classification: { ...party.classification, productType: 1 },
   };
 
-  it("mirrors the backend compared FieldSpec: CHK-F06/F15 appear with real sources and stay absent otherwise", () => {
+  it("mirrors the backend compared FieldSpec: CHK-F06/F15 appear with real sources; unresolved participant names stay disabled cards (ТЗ DR24)", () => {
+    // ТЗ DR24 §3.4: the four participant fields are ALWAYS comparison cards;
+    // an unresolved name keeps the honest text with DISABLED controls.
     const absent = comparedFields(party).map((field) => field.fieldId);
-    expect(absent).not.toContain("CHK-F06");
     expect(absent).not.toContain("CHK-F15");
+    const f06 = comparedFields(party).find((field) => field.fieldId === "CHK-F06");
+    expect(f06).toMatchObject({ block: "participants", label: "Хозяйствующий субъект", disabled: true });
     const fields = comparedFields(partyComplete);
-    expect(fields.find((field) => field.fieldId === "CHK-F06")).toMatchObject({
+    const resolved06 = fields.find((field) => field.fieldId === "CHK-F06");
+    expect(resolved06).toMatchObject({
       block: "participants",
       label: "Хозяйствующий субъект",
       source: "СХПК «Заря»",
     });
+    // A resolved name carries no disabled flag at all.
+    if (resolved06 === undefined) {
+      throw new Error("CHK-F06 not found");
+    }
+    expect("disabled" in resolved06).toBe(false);
     // The numeric product type keeps its honest decimal string, never an
     // invented Russian label.
     expect(fields.find((field) => field.fieldId === "CHK-F15")).toMatchObject({
@@ -1549,7 +1572,7 @@ describe("participant enterprise/owner comparison cards (ТЗ DR21 §5)", () => 
     expect(screen.getAllByLabelText("Причина несоответствия").length).toBeGreaterThan(0);
   });
 
-  it("an unresolved name shows the honest fallback: no comparison card, no GUID, form working", () => {
+  it("an unresolved name shows the honest fallback inside a comparison card: disabled controls, no GUID, form working", () => {
     renderForm({
       party: partyNamesOnly({
         senderOwnerNameSource: "MISSING",
@@ -1558,15 +1581,20 @@ describe("participant enterprise/owner comparison cards (ТЗ DR21 §5)", () => 
         receiverEnterpriseNameSource: "MISSING",
       }),
     });
-    // No comparison card exists for an unresolved name — no fictive mark.
-    expect(document.querySelector('[data-field-id="CHK-F05"]')).toBeNull();
-    expect(document.querySelector('[data-field-id="CHK-F06"]')).toBeNull();
-    expect(document.querySelector('[data-field-id="CHK-F07"]')).toBeNull();
-    expect(document.querySelector('[data-field-id="CHK-F08"]')).toBeNull();
+    // ТЗ DR24 §3.4: the shared comparison geometry stays — controls exist
+    // but are DISABLED and nothing is marked.
+    for (const fieldId of ["CHK-F05", "CHK-F06", "CHK-F07", "CHK-F08"]) {
+      const card = document.querySelector(`[data-field-id="${fieldId}"]`);
+      expect(card).not.toBeNull();
+      for (const radio of card?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? []) {
+        expect(radio.disabled).toBe(true);
+        expect(radio.checked).toBe(false);
+      }
+    }
+    expect(screen.getAllByText("Уточняем названия организаций…").length).toBe(1);
+    expect(screen.getAllByText("Название не получено").length).toBe(2);
+    expect(screen.getAllByText("Название временно недоступно").length).toBe(1);
     const text = document.body.textContent ?? "";
-    expect(text).toContain("Название не получено");
-    expect(text).toContain("Уточняем названия организаций…");
-    expect(text).toContain("Название временно недоступно");
     expect(text.includes("0ed40ab2")).toBe(false);
     expect(text.includes("d562919c")).toBe(false);
     expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeEnabled();

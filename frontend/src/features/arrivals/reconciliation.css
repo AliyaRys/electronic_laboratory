@@ -49,13 +49,12 @@
   box-shadow: 0 6px 14px #1f5a5b08;
 }
 
-.vse-rec-mercury-badge::before {
-  content: "";
-  width: 14px;
-  height: 14px;
+.vse-rec-mercury-badge img {
+  display: block;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: var(--app-teal);
-  box-shadow: inset 0 0 0 3px var(--app-tint);
+  object-fit: cover;
 }
 
 .vse-rec-breadcrumb {
@@ -301,33 +300,6 @@
   margin-bottom: 0;
 }
 
-.vse-rec-owner-value {
-  display: block;
-  color: #29474d;
-  font-weight: 680;
-  overflow-wrap: anywhere;
-}
-
-/* ТЗ DR18 §10: the honest participant-name states. The field is never an
-   input; loading/error/missing keep the reconciliation usable and a
-   GUID/UUID never appears instead of a name. */
-.vse-rec-name-loading,
-.vse-rec-name-error,
-.vse-rec-name-missing {
-  color: inherit;
-}
-
-.vse-rec-name-loading .vse-rec-owner-value,
-.vse-rec-name-missing .vse-rec-owner-value {
-  font-weight: 400;
-  color: #5a6b70;
-}
-
-.vse-rec-name-error .vse-rec-owner-value {
-  font-weight: 400;
-  color: #8a4b12;
-}
-
 /* --- transport observations ------------------------------------------------------ */
 .vse-rec-observations {
   display: grid;
@@ -411,19 +383,6 @@
   margin: 0;
   color: #29474d;
   font-size: 13px;
-  font-weight: 780;
-}
-
-/* ТЗ DR8 §7: the read-only source unit label above the quantity parts. */
-.vse-rec-quantities-unit {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: -4px;
-}
-
-.vse-rec-quantities-unit .vse-rec-mercury-value {
   font-weight: 780;
 }
 

@@ -152,8 +152,15 @@ function ReconciliationContent(): React.ReactElement {
             <ReconciliationForm
               party={party}
               initial={view}
-              onSaved={(next: ReconciliationView) => {
-                void queryClient.setQueryData([labId, partyId, "reconciliation"], next);
+              onSaved={async (next: ReconciliationView) => {
+                // ТЗ DR27 §4.1 (R-DR27-1): setQueryData alone is NOT enough —
+                // the receipt-context query is invalidated AND awaited, so
+                // ReceiptOperation cannot prepare гашение on a revision older
+                // than the view the user just saved.
+                queryClient.setQueryData([labId, partyId, "reconciliation"], next);
+                await queryClient.invalidateQueries({
+                  queryKey: [labId, partyId, "receipt-context"],
+                });
               }}
             />
           ) : (

@@ -74,6 +74,7 @@ class ProblemError(Exception):
         errors: list[ProblemItem] | None = None,
         headers: Mapping[str, str] | None = None,
         trace_id: str | None = None,
+        extra: Mapping[str, object] | None = None,
     ) -> None:
         super().__init__(detail)
         self.status = status
@@ -83,6 +84,10 @@ class ProblemError(Exception):
         self.errors: list[ProblemItem] = errors or []
         self.headers: dict[str, str] = dict(headers or {})
         self.trace_id = trace_id or new_trace_id()
+        # ТЗ DR27 §5.2: an error MAY carry a few safe, technical diagnostic
+        # fields (never raw XML, credentials or secrets) alongside the stable
+        # Problem shape; the response handler merges them into the JSON body.
+        self.extra: dict[str, object] = dict(extra or {})
 
     def as_problem(self, instance: str | None = None) -> Problem:
         return Problem(
@@ -182,9 +187,13 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def problem_handler(request: Request, exc: ProblemError) -> JSONResponse:
         problem = exc.as_problem(instance=str(request.url.path))
         problem.trace_id = _request_trace_id(request)
+        content = problem.model_dump(mode="json")
+        # Only explicitly attached diagnostics are merged; the Problem schema
+        # itself stays untouched (API-01 keeps its exact shape).
+        content.update(exc.extra)
         return JSONResponse(
             status_code=exc.status,
-            content=problem.model_dump(mode="json"),
+            content=content,
             headers={"Content-Type": PROBLEM_CONTENT_TYPE, **exc.headers},
         )
 

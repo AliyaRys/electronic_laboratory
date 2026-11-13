@@ -189,6 +189,18 @@ async def get_receipt_context(
     """
     _, actor = principal
     party = await _scoped_party(db, authorizer, actor, party_id, "receipt:submit")
+    context = await collect_receipt_context(db, party)
+    response.headers["Cache-Control"] = "no-store"
+    return context
+
+
+async def collect_receipt_context(db: AsyncSession, party: Party) -> ReceiptContext:
+    """The read-model side of the receipt UI (ТЗ DR27 §7.1).
+
+    It must answer the CURRENT source/reconciliation revisions — the frontend
+    re-reads it right before every preview so a stale cached context can
+    never reach the backend guard.
+    """
     document = (
         await db.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
     ).scalar_one()
@@ -201,20 +213,19 @@ async def get_receipt_context(
         )
     ).scalar_one_or_none()
     reconciliation_revision = (
-        await db.execute(select(Reconciliation.rev).where(Reconciliation.party_id == party_id))
+        await db.execute(select(Reconciliation.rev).where(Reconciliation.party_id == party.id))
     ).scalar_one_or_none()
     operation = (
         await db.execute(
             select(VetisOperation)
             .where(
-                VetisOperation.party_id == party_id,
+                VetisOperation.party_id == party.id,
                 VetisOperation.kind == VetisOperationKind.RECEIPT,
             )
             .order_by(VetisOperation.created_at.desc())
             .limit(1)
         )
     ).scalar_one_or_none()
-    response.headers["Cache-Control"] = "no-store"
     return ReceiptContext(
         write_enabled=write_enabled(),
         source_revision=source_revision,

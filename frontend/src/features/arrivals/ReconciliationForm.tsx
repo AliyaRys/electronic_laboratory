@@ -51,7 +51,7 @@ import { ReceiptDecision } from "./ReceiptDecision";
 export interface ReconciliationFormProps {
   party: IncomingView;
   initial: ReconciliationView;
-  onSaved: (view: ReconciliationView) => void;
+  onSaved: (view: ReconciliationView) => void | Promise<void>;
 }
 
 /** The field-level server errors of one validation problem (A02). */
@@ -357,7 +357,10 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
           if (result.response.ok && result.data !== undefined) {
             // The server returned the saved view: publish it and refresh the
             // form state (dirty flag clears with the confirmed facts).
-            onSaved(result.data);
+            // ТЗ DR27 §4.1 (R-DR27-1): the page awaits the receipt-context
+            // invalidation inside this promise chain, so the receipt stage
+            // never keeps a cached context older than the saved view.
+            await onSaved(result.data);
             form.reset(initialValues(party, result.data));
           }
           return result;

@@ -25,7 +25,6 @@ from backend.tests.vetis.test_sync import (
     party_count,
     run,
     start,
-    sync_env,  # noqa: F401 - pytest fixture re-exported for the test signatures
 )
 
 

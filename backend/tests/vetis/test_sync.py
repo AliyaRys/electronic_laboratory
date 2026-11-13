@@ -14,17 +14,16 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.src.core.problems import ProblemError
 from backend.src.modules.arrivals.models import IncomingDocument, Party
-from backend.src.modules.identity.models import Laboratory, OutboxEntry, Territory
+from backend.src.modules.identity.models import OutboxEntry
 from backend.src.modules.integrations.vetis import sync
 from backend.src.modules.integrations.vetis.contracts import VetisScope
 from backend.src.modules.integrations.vetis.models import (
     VetisBinding,
-    VetisContour,
     VetisOperation,
+    VetisOperationState,
     VetisSourceDocument,
 )
 from backend.tests.vetis.test_read_contract import (
@@ -42,35 +41,6 @@ PAST = datetime.now(UTC) - timedelta(days=30)
 
 
 # --- environment ---------------------------------------------------------------
-
-
-@pytest.fixture
-async def sync_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespace:
-    """A laboratory with a registered VetIS binding and its own session factory."""
-    territory = Territory(name="Республика Татарстан")
-    db_session.add(territory)
-    await db_session.flush()
-    lab = Laboratory(
-        territory_id=territory.id, name="Агропромышленный парк", address="ул. Тестовая, 1", organization="ГБУ"
-    )
-    db_session.add(lab)
-    await db_session.flush()
-    binding = VetisBinding(
-        laboratory_id=lab.id,
-        contour=VetisContour.PILOT,
-        business_member_id=MEMBER,
-        enterprise_id=ENTERPRISE,
-        initiator="fixture-read-initiator",
-    )
-    db_session.add(binding)
-    await db_session.commit()
-    return SimpleNamespace(
-        db=db_session,
-        engine=test_db_engine,
-        lab=lab,
-        binding=binding,
-        factory=async_sessionmaker(test_db_engine, class_=AsyncSession, expire_on_commit=False),
-    )
 
 
 def make_adapter(env: SimpleNamespace, transport):
@@ -99,6 +69,21 @@ async def run(env: SimpleNamespace, operation_id: uuid.UUID, adapter) -> None:
     await sync.run_sync(operation_id, adapter=adapter, session_factory=env.factory)
 
 
+async def run_to_terminal(env: SimpleNamespace, operation_id: uuid.UUID, adapter) -> VetisOperation:
+    """Run the read attempts until the operation reaches a terminal state.
+
+    ТЗ DR22 §5.2: a transient READ error no longer fails the operation on the
+    first attempt — the same operation is retried (bounded attempt budget), so
+    the tests that need the FINAL outcome drive it to SUCCESS/FAILED.
+    """
+    for _ in range(sync.MAX_SYNC_ATTEMPTS):
+        await sync.run_sync(operation_id, adapter=adapter, session_factory=env.factory)
+        operation = await op_row(env, operation_id)
+        if operation.state in (VetisOperationState.SUCCESS, VetisOperationState.FAILED):
+            return operation
+    return await op_row(env, operation_id)
+
+
 async def party_count(env: SimpleNamespace) -> int:
     async with env.factory() as session:
         return int((await session.execute(select(func.count()).select_from(Party))).scalar_one())
@@ -107,6 +92,17 @@ async def party_count(env: SimpleNamespace) -> int:
 async def document_count(env: SimpleNamespace) -> int:
     async with env.factory() as session:
         return int((await session.execute(select(func.count()).select_from(IncomingDocument))).scalar_one())
+
+
+async def outbox_rows(env: SimpleNamespace, operation_id: uuid.UUID) -> list[OutboxEntry]:
+    async with env.factory() as session:
+        return list(
+            (
+                await session.execute(
+                    select(OutboxEntry).where(OutboxEntry.operation_id == operation_id).order_by(OutboxEntry.id)
+                )
+            ).scalars()
+        )
 
 
 class SpyWritePort:
@@ -167,7 +163,12 @@ class FailOnLastPage(FakeTransport):
 
 
 async def test_final_page_failure_no_checkpoint(sync_env: SimpleNamespace) -> None:
-    """A failure on the LAST page keeps the previous checkpoint; the walk is honest."""
+    """A failure on the LAST page keeps the previous checkpoint; the walk is honest.
+
+    ТЗ DR22 §5.2: the transient error first schedules a retry inside the SAME
+    operation; after the attempt budget is exhausted the operation fails with
+    the ORIGINAL cause and the checkpoint still never moved.
+    """
     env = sync_env
     first, second = uuid.uuid4(), uuid.uuid4()
     await env.db.execute(update(VetisBinding).where(VetisBinding.laboratory_id == env.lab.id).values(last_success=PAST))
@@ -175,11 +176,11 @@ async def test_final_page_failure_no_checkpoint(sync_env: SimpleNamespace) -> No
 
     operation_id = await start(env)
     transport = FailOnLastPage([page(2, 0, [doc(first, "1")]), page(2, 1, [doc(second, "2")])])
-    await run(env, operation_id, make_adapter(env, transport))
+    operation = await run_to_terminal(env, operation_id, make_adapter(env, transport))
 
-    operation = await op_row(env, operation_id)
     assert operation.state == "FAILED"
-    assert operation.problem_code == "VETIS_TRANSPORT_ERROR"
+    assert operation.problem_code == "VETIS_TRANSPORT_ERROR"  # the ORIGINAL cause
+    assert operation.poll_attempts == sync.MAX_SYNC_ATTEMPTS  # every attempt inside ONE operation
     # The checkpoint moved nowhere: last_success keeps its previous value.
     assert (await binding_row(env)).last_success == PAST
     # The first page was imported honestly (partial), the last page was not.
@@ -250,9 +251,10 @@ async def test_empty_vs_error(sync_env: SimpleNamespace) -> None:
     """An HTTP error is never reported as a successful empty pass."""
     env = sync_env
     operation_id = await start(env)
-    await run(env, operation_id, make_adapter(env, HttpErrorTransport()))
+    # ТЗ DR22: a transient HTTP 502 is retried inside the SAME operation; the
+    # exhausted budget fails honestly with the original cause.
+    failed = await run_to_terminal(env, operation_id, make_adapter(env, HttpErrorTransport()))
 
-    failed = await op_row(env, operation_id)
     assert failed.state == "FAILED"
     assert failed.problem_code == "VETIS_TRANSPORT_ERROR"
     assert (await binding_row(env)).last_success is None  # never a fabricated success
@@ -478,7 +480,12 @@ async def test_stale_recovery_records_the_problem_code(sync_env: SimpleNamespace
 
 
 async def test_cursor_contract_violation_fails_honestly(sync_env: SimpleNamespace) -> None:
-    """A non-complete page without a next cursor fails instead of looping forever."""
+    """A non-complete page without a next cursor fails instead of looping forever.
+
+    ТЗ DR22 §5.1: the malformed answer is a TEMPORARY failure (safely
+    repeatable read), so the same operation is retried with the bounded
+    budget; the deterministic violation then fails with the ORIGINAL code.
+    """
     env = sync_env
     evsd = uuid.uuid4()
     transport = FakeTransport([page(1, 0, [doc(evsd, "1")])])
@@ -490,13 +497,14 @@ async def test_cursor_contract_violation_fails_honestly(sync_env: SimpleNamespac
             return result.model_copy(update={"complete": False, "next_cursor": None})
 
     operation_id = await start(env)
-    await run(env, operation_id, BrokenCursorAdapter())
+    operation = await run_to_terminal(env, operation_id, BrokenCursorAdapter())
 
-    operation = await op_row(env, operation_id)
     assert operation.state == "FAILED"
     assert operation.problem_code == "VETIS_CURSOR_CONTRACT_VIOLATED"
-    # No second SOAP call: the walk stopped at the contract violation.
-    assert len(transport.calls) == 2  # one send + one receive
+    assert operation.poll_attempts == sync.MAX_SYNC_ATTEMPTS
+    # Every attempt walked ONE page (one send + one receive) inside the ONE
+    # operation; the violation never looped forever and never fabricated more.
+    assert len(transport.calls) == 2 * sync.MAX_SYNC_ATTEMPTS
     assert (await binding_row(env)).last_success is None
 
 

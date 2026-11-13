@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Any
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -31,9 +32,14 @@ from backend.src.core.database import get_session_factory
 from backend.src.modules.arrivals.commands import content_hash
 from backend.src.modules.arrivals.models import HiddenIncoming, IncomingDocument, Party
 from backend.src.modules.integrations.vetis.models import VetisSourceDocument
-from backend.src.modules.integrations.vetis.normalizer import normalize_snapshot, parse_vet_document_list
+from backend.src.modules.integrations.vetis.normalizer import (
+    _NS,
+    _goods_date,
+    normalize_snapshot,
+    parse_vet_document_list,
+)
 
-__all__ = ["run_backfill", "BackfillCounters"]
+__all__ = ["run_backfill", "run_goods_date_backfill", "BackfillCounters"]
 
 _LOG = logging.getLogger("vetis.backfill")
 
@@ -163,3 +169,142 @@ if __name__ == "__main__":  # pragma: no cover - the operator entry point
     import asyncio
 
     asyncio.run(run_backfill())
+
+
+# --- DR20 §5.3: the targeted GoodsDate backfill ----------------------------------
+
+_GOODS_DATE_COUNTERS = ("viewed", "fixed", "unchanged", "error")
+
+
+def _parse_goods_dates(raw: str) -> dict[str, dict[str, Any] | None]:
+    """Re-parse ONLY ``dateOfProduction``/``expiryDate`` from raw source XML.
+
+    Namespace-aware ``vd:batch/vd:dateOfProduction|expiryDate``; the returned
+    dicts are the wire structures stored in the snapshot (or ``None`` when
+    the node is absent). An invalid calendar combination stays out of the
+    snapshot and is recorded as a controlled diagnostic (never invented,
+    never silently ignored).
+    """
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(raw)
+    document = root if root.tag.endswith("}vetDocument") else root.find(".//vd:vetDocument", _NS)
+    batch = document.find("vd:certifiedConsignment/vd:batch", _NS) if document is not None else None
+    problems: list[dict[str, str]] = []
+    result: dict[str, dict[str, Any] | None] = {}
+    for wire, label in (("dateOfProduction", "dateOfProduction"), ("expiryDate", "expiryDate")):
+        structure, part_problems = _goods_date(batch.find(f"vd:{label}", _NS) if batch is not None else None, label)
+        problems.extend(part_problems)
+        result[wire] = structure
+    if problems:
+        _LOG.warning(
+            "backfill_goods_date_problem",
+            extra={"problems": problems},
+        )
+    return result
+
+
+def _snapshot_batch(document: IncomingDocument) -> dict[str, Any]:
+    snapshot = document.source_snapshot if isinstance(document.source_snapshot, dict) else {}
+    payload = snapshot.get("vdDocument") if isinstance(snapshot.get("vdDocument"), dict) else {}
+    batch = payload.get("batch") if isinstance(payload.get("batch"), dict) else {}
+    return dict(batch)
+
+
+def _wire_goods_date(value: object) -> dict[str, Any] | None:
+    """The stored wire form of one typed date (alias keys, hours included)."""
+    if not isinstance(value, dict):
+        return None
+    return {key: value[key] for key in sorted(value) if value[key] is not None} or None
+
+
+async def run_goods_date_backfill(
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> dict[str, int]:
+    """DR20 §5.3: re-parse ONLY the production/expiry dates of saved raw XML.
+
+    Nothing else is touched: the raw XML, its checksum, the document UUID,
+    scope and revisions stay as they are (R-DR20-4); the content hash is
+    re-derived from the changed snapshot and the hide decision is kept by
+    re-keying the hidden row to the new hash (no local fact is rewritten and
+    no hidden arrival reappears). A repeated run makes zero changes.
+    """
+    factory = session_factory or get_session_factory()
+    counters: dict[str, int] = dict.fromkeys(_GOODS_DATE_COUNTERS, 0)
+    async with factory() as db:
+        pairs = (
+            await db.execute(
+                select(IncomingDocument.contour, IncomingDocument.evsd_uuid).order_by(IncomingDocument.created_at)
+            )
+        ).all()
+        for contour, evsd_uuid in pairs:
+            counters["viewed"] += 1
+            document = (
+                await db.execute(
+                    select(IncomingDocument)
+                    .where(IncomingDocument.contour == contour, IncomingDocument.evsd_uuid == evsd_uuid)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if document is None:
+                counters["error"] += 1
+                continue
+            raw = (
+                await db.execute(
+                    select(VetisSourceDocument.raw_xml)
+                    .where(VetisSourceDocument.contour == contour, VetisSourceDocument.evsd_uuid == evsd_uuid)
+                    .order_by(VetisSourceDocument.revision.desc(), VetisSourceDocument.updated_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if raw is None:
+                counters["error"] += 1
+                _LOG.warning(
+                    "backfill_missing_raw_xml",
+                    extra={"contour": contour, "evsd_uuid": str(evsd_uuid)},
+                )
+                continue
+            try:
+                parsed = _parse_goods_dates(raw)
+            except Exception as exc:  # noqa: BLE001 - a controlled per-document diagnostic
+                counters["error"] += 1
+                _LOG.warning(
+                    "backfill_parse_error",
+                    extra={"contour": contour, "evsd_uuid": str(evsd_uuid), "detail": type(exc).__name__},
+                )
+                continue
+            batch = _snapshot_batch(document)
+            current = {wire: _wire_goods_date(batch.get(wire)) for wire in ("dateOfProduction", "expiryDate")}
+            if current == parsed:
+                counters["unchanged"] += 1
+                continue
+            snapshot = dict(document.source_snapshot)
+            payload = dict(snapshot["vdDocument"])
+            payload["batch"] = {**batch, **parsed}
+            snapshot["vdDocument"] = payload
+            new_hash = content_hash(snapshot)
+            await db.execute(
+                update(IncomingDocument).where(IncomingDocument.id == document.id).values(
+                    source_snapshot=snapshot, content_hash=new_hash
+                )
+            )
+            # The hide decision is kept (the same document stays hidden).
+            await db.execute(
+                update(HiddenIncoming)
+                .where(
+                    HiddenIncoming.contour == contour,
+                    HiddenIncoming.evsd_uuid == evsd_uuid,
+                    HiddenIncoming.content_hash == document.content_hash,
+                )
+                .values(content_hash=new_hash)
+            )
+            counters["fixed"] += 1
+            await db.commit()
+    _LOG.info("backfill_goods_dates_completed", extra=counters)
+    return counters
+
+
+if __name__ == "__main__":  # pragma: no cover - the operator entry point
+    import asyncio
+
+    asyncio.run(run_goods_date_backfill())

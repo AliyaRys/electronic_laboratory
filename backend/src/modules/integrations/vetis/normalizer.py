@@ -17,6 +17,7 @@ A missing/unparseable ``productType`` never counts as meat.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
@@ -29,6 +30,7 @@ from backend.src.modules.arrivals.schemas import (
     Batch,
     ConsignorConsignee,
     ExternalRef,
+    GoodsDate,
     ProductMark,
     PurposeRef,
     SourceSnapshot,
@@ -36,6 +38,8 @@ from backend.src.modules.arrivals.schemas import (
 )
 from backend.src.modules.integrations.vetis.contracts import VetisScope
 from backend.src.modules.integrations.vetis.models import VetisContour
+
+_DATE_LOG = logging.getLogger("vetis.normalizer.dates")
 
 __all__ = [
     "NormalizedEntry",
@@ -80,6 +84,10 @@ class NormalizedEntry(BaseModel):
     purpose_uuid: str | None = None
     packages: list[dict[str, Any]] = Field(default_factory=list)
     package_quantity: str | None = None
+    # DR20 §5.2: controlled normalization diagnostics of the typed GoodsDate
+    # fields; an invalid date combination never breaks the import of the
+    # other ВСД requisites and is never silently ignored.
+    date_problems: list[dict[str, str]] = Field(default_factory=list)
 
 
 def dependency_unavailable(detail: str) -> ProblemError:
@@ -184,6 +192,75 @@ def package_quantity(packages: list[dict[str, Any]]) -> str | None:
     return _decimal_sum(quantities)
 
 
+def _complex_date(container: ET.Element | None) -> tuple[str | None, int | None]:
+    """DR20 §5.2: the calendar date ``YYYY-MM-DD`` of one ``ComplexDate``.
+
+    The date is assembled ONLY from ``dt:year/month/day``; ``dt:hour`` is
+    returned separately for source/audit and is never added to the displayed
+    date. No timezone is ever involved.
+    """
+    if container is None:
+        return None, None
+    year = _int_text(_find(container, "dt:year"))
+    month = _int_text(_find(container, "dt:month"))
+    day = _int_text(_find(container, "dt:day"))
+    hour = _int_text(_find(container, "dt:hour"))
+    if year is None or month is None or day is None:
+        return None, hour
+    return f"{year:04d}-{month:02d}-{day:02d}", hour
+
+
+def _is_calendar_date(value: str) -> bool:
+    from datetime import date
+
+    parts = value.split("-")
+    if len(parts) != 3 or len(value) != 10:
+        return False
+    try:
+        date(int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return False
+    return True
+
+
+def _goods_date(
+    container: ET.Element | None, field_label: str
+) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+    """DR20 §5.1/§5.2: one typed ``vd:GoodsDate`` (single / interval / informal).
+
+    Namespace-aware ``vd:firstDate|secondDate|informalDate``; a single date
+    keeps ``secondDate`` strictly absent (never a copy). An invalid calendar
+    combination (e.g. ``2026-02-30``) never becomes another date and is never
+    silently ignored: a controlled diagnostic problem is returned and the
+    import of the remaining requisites continues.
+    """
+    if container is None:
+        return None, []
+    first_date, first_hour = _complex_date(_find(container, "vd:firstDate"))
+    second_date, second_hour = _complex_date(_find(container, "vd:secondDate"))
+    informal = _text(_find(container, "vd:informalDate"))
+    if first_date is None and second_date is None and informal is None:
+        return None, []
+    problems: list[dict[str, str]] = []
+    for label, value in (("firstDate", first_date), ("secondDate", second_date)):
+        if value is not None and not _is_calendar_date(value):
+            problems.append({"field": field_label, "part": label, "value": value})
+    if problems:
+        return None, problems
+    structure: dict[str, Any] = {}
+    if first_date is not None:
+        structure["firstDate"] = first_date
+        if first_hour is not None:
+            structure["firstDateHour"] = first_hour
+    if second_date is not None:
+        structure["secondDate"] = second_date
+        if second_hour is not None:
+            structure["secondDateHour"] = second_hour
+    if informal is not None:
+        structure["informalDate"] = informal
+    return structure, []
+
+
 def _packages(batch: ET.Element | None) -> list[dict[str, Any]]:
     package_list = _find(batch, "vd:packageList") if batch is not None else None
     if package_list is None:
@@ -229,6 +306,13 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
     quantity = _text(_find(batch, "vd:quantity")) if batch is not None else None
     product_type = _text(_find(batch, "vd:productType")) if batch is not None else None
     packages = _packages(batch)
+    # DR20 §5.2: the typed production/expiry dates + controlled diagnostics.
+    production, production_problems = _goods_date(
+        _find(batch, "vd:dateOfProduction") if batch is not None else None, "dateOfProduction"
+    )
+    expiry, expiry_problems = _goods_date(
+        _find(batch, "vd:expiryDate") if batch is not None else None, "expiryDate"
+    )
     authentication = _find(element, "vd:authentication")
     purpose = _find(authentication, "vd:purpose") if authentication is not None else None
     return NormalizedEntry(
@@ -257,6 +341,8 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
             "quantity": quantity,
             "unit": _ref(_find(batch, "vd:unit")),
             "packageList": packages,
+            "dateOfProduction": production,
+            "expiryDate": expiry,
         },
         transport_number=_transport_number(transport),
         transport_storage_type=_text(_find(consignment, "vd:transportStorageType")),
@@ -268,6 +354,7 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
         purpose_uuid=_text(_find(purpose, "bs:uuid")),
         packages=packages,
         package_quantity=package_quantity(packages),
+        date_problems=[*production_problems, *expiry_problems],
     )
 
 
@@ -369,6 +456,13 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
     consignor = _participant(entry.consignor)
     consignee = _participant(entry.consignee)
     batch = entry.batch
+    # DR20 §5.2: the controlled normalization diagnostics are published as
+    # structured log warnings — never silent, never a blocker of the import.
+    if entry.date_problems:
+        _DATE_LOG.warning(
+            "goods_date_normalization_problem",
+            extra={"evsd_uuid": str(entry.evsd_uuid), "problems": entry.date_problems},
+        )
 
     def _external_ref(raw: object) -> ExternalRef | None:
         if not isinstance(raw, dict):
@@ -450,6 +544,14 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
                 quantity=package_quantity_value,
                 unit=_external_ref(batch["unit"]),
                 package_list=package_entries,
+                # DR20 §5.1: the typed source dates keep their form (single →
+                # secondDate strictly null, never a copy).
+                date_of_production=GoodsDate.model_validate(batch["dateOfProduction"])
+                if isinstance(batch.get("dateOfProduction"), dict)
+                else None,
+                expiry_date=GoodsDate.model_validate(batch["expiryDate"])
+                if isinstance(batch.get("expiryDate"), dict)
+                else None,
             ),
             transport_number=entry.transport_number,
             transport_storage_type=entry.transport_storage_type,

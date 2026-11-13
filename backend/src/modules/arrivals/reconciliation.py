@@ -42,6 +42,7 @@ from backend.src.modules.arrivals.schemas import (
     ServiceItem,
     SourceSnapshot,
     Transaction,
+    goods_date_fields,
     trailer_projection,
 )
 from backend.src.modules.arrivals.validation import (
@@ -154,8 +155,10 @@ def source_projection(
         # validator (CHK-F20), the NAME is the read-only UI label only.
         "unitId": text_of(unit.get("guid")) if isinstance(unit, dict) else None,
         "unitName": _ref_name(unit),
-        "producedOn": None,
-        "expiresOn": None,
+        # DR20 §6: the typed production/expiry projection (CHK-F22/F23); an
+        # absent source date publishes four None keys — no fictive date.
+        **goods_date_fields(batch, "producedOn"),
+        **goods_date_fields(batch, "expiresOn"),
         "transportDocumentType": None,
         "transportDocumentNumber": None,
         "transportDocumentIssuedOn": None,

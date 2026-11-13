@@ -277,7 +277,16 @@ def build_process_incoming_application(
         raise _invalid("Исходный эВСД не содержит certifiedConsignment.")
     source_uuid = next((node.text for node in source_root if _local(node) == "uuid"), None)
     consignee = next((item for item in source if _local(item) == "consignee"), None)
-    receiver = _desc_text(consignee, "guid")
+    # A real consignee carries businessEntity before enterprise, each with its
+    # own guid; the intent's receiver is the ENTERPRISE guid, so scope the
+    # lookup to the enterprise subtree instead of the first guid anywhere
+    # inside consignee (live regression 2026-11-13).
+    enterprise = (
+        next((item for item in consignee if _local(item) == "enterprise"), None)
+        if consignee is not None
+        else None
+    )
+    receiver = _desc_text(enterprise, "guid")
     batch = next((item for item in source if _local(item) in {"batch", "consignment"}), None)
     unit = _find_local(batch, "unit") if batch is not None else None
     unit_guid = _desc_text(unit, "guid")

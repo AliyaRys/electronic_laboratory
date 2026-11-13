@@ -486,6 +486,40 @@ export function participantOwner(view: IncomingView, side: "sender" | "receiver"
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
+/** ТЗ DR18 §10: the honest participant-name texts of the agreed UI. */
+export const NAME_PENDING_TEXT = "Уточняем названия организаций…";
+export const NAME_ERROR_TEXT = "Название временно недоступно";
+export const NAME_MISSING_TEXT = "Название не получено";
+
+/** ТЗ DR18 §10: the honest state of one participant-name field. */
+export type ParticipantNameState = "resolved" | "loading" | "error" | "missing";
+
+/** The participant-name states of the unified read model (ТЗ DR18 §6/§9).
+ *
+ * `loading` — «Уточняем названия организаций…» (the worker is resolving the
+ * GUID); `error` — «Название временно недоступно» (the worker retries, never
+ * a click); `missing` — «Название не получено» (the reconciliation stays
+ * WORKING); `resolved` — the name itself. A GUID/UUID never replaces a name.
+ */
+export function participantName(
+  view: IncomingView,
+  side: "sender" | "receiver",
+  kind: "owner" | "enterprise",
+): { value: string; state: ParticipantNameState } {
+  const external = view.external.fields;
+  const key = `${side}${kind === "owner" ? "Owner" : "Enterprise"}`;
+  const stateKey = `${key}NameSource`;
+  const raw = external[key];
+  const name = typeof raw === "string" && raw.trim() !== "" ? raw : null;
+  if (name !== null) {
+    return { value: name, state: "resolved" };
+  }
+  const source = typeof external[stateKey] === "string" ? external[stateKey] : "MISSING";
+  if (source === "PENDING") return { value: NAME_PENDING_TEXT, state: "loading" };
+  if (source === "ERROR") return { value: NAME_ERROR_TEXT, state: "error" };
+  return { value: NAME_MISSING_TEXT, state: "missing" };
+}
+
 /** Valid canonical unit identity: a non-empty source GUID (ТЗ DR10 §4).
  *
  * An empty string, null, a mass (``500.0``), a place count or the local

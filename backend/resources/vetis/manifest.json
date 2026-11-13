@@ -6,6 +6,7 @@
   "service_id": "mercury-vu.service:2.0",
   "endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/ApplicationManagementService",
   "dictionary_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/DictionaryService",
+  "enterprise_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/EnterpriseService",
   "business_schema_version": "2.0",
   "soap_version": "1.1",
   "namespaces": {
@@ -14,12 +15,15 @@
     "application_definitions": "http://api.vetrf.ru/schema/cdm/application/ws-definitions",
     "base": "http://api.vetrf.ru/schema/cdm/base",
     "dictionary": "http://api.vetrf.ru/schema/cdm/dictionary/v2",
+    "registry_definitions": "http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2",
     "vet_document": "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"
   },
   "soap_actions": {
     "submit": "submitApplicationRequest",
     "receive": "receiveApplicationResultRequest",
-    "purpose_list": "getPurposeListRequest"
+    "purpose_list": "getPurposeListRequest",
+    "enterprise_by_guid": "getEnterpriseByGuidRequest",
+    "business_entity_by_guid": "getBusinessEntityByGUIDRequest"
   },
   "operations": [
     {
@@ -32,6 +36,18 @@
       "name": "GetPurposeList",
       "input_type": "getPurposeListRequest",
       "output_type": "getPurposeListResponse",
+      "read_only": true
+    },
+    {
+      "name": "GetEnterpriseByGuid",
+      "input_type": "getEnterpriseByGuidRequest",
+      "output_type": "getEnterpriseByGuidResponse",
+      "read_only": true
+    },
+    {
+      "name": "GetBusinessEntityByGUID",
+      "input_type": "getBusinessEntityByGuidRequest",
+      "output_type": "getBusinessEntityByGuidResponse",
       "read_only": true
     },
     {
@@ -63,6 +79,8 @@
     "https://help.vetrf.ru/wiki/GetVetDocumentListOperation_v2",
     "https://help.vetrf.ru/wiki/ProcessIncomingConsignment_v2",
     "https://help.vetrf.ru/wiki/GetPurposeList_v2.0",
+    "https://help.vetrf.ru/wiki/GetEnterpriseByGuid_v2",
+    "https://help.vetrf.ru/wiki/GetBusinessEntityByGUID",
     "docs/TZ_development/plans/mercury-test-integration-contract.md"
   ]
 }

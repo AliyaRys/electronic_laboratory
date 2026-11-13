@@ -167,7 +167,8 @@ async def get_reconciliation(
         await db.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
     ).scalar_one()
     row = await reconciliation.load_reconciliation(db, party_id)
-    view = reconciliation.build_reconciliation_view(row, party, document)
+    names = await reconciliation.resolved_participant_names(db, document) 
+    view = reconciliation.build_reconciliation_view(row, party, document, names=names)
     response.headers["Cache-Control"] = "no-store"
     response.headers["ETag"] = format_etag(view.revision)
     return view

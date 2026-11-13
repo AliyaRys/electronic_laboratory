@@ -57,6 +57,8 @@ _IDENTITY_TABLES = (
     # purpose dictionary (DR5)
     "mercury_purpose_sync_state",
     "mercury_purpose_guid",
+    # participant name cache (DR18)
+    "vetis_reference_names",
     # samples (Task S01)
     "sample_collections",
     "sample_disposals",

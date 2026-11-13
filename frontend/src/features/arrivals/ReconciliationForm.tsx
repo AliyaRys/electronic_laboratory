@@ -30,7 +30,8 @@ import {
   moneyLabel,
   partyUnit,
   partyUnitLabel,
-  participantOwner,
+  participantName,
+  type ParticipantNameState,
   pricingUnitLabel,
   previousVse,
   reconciliationEtag,
@@ -246,6 +247,25 @@ const JOINT_TONES: Readonly<Record<string, string>> = Object.freeze({
 
 const QUANTITY_PARTS = ["delivered", "accepted", "returned"] as const;
 
+/** ТЗ DR18 §10: one immutable participant-name field of the unified read
+ * model. Every state renders its honest Russian text; the field is never an
+ * input and never shows a GUID/UUID instead of a name. */
+function ParticipantNameField({
+  label,
+  field,
+}: {
+  label: string;
+  field: { value: string; state: ParticipantNameState };
+}): React.ReactElement {
+  const stateClass = field.state === "resolved" ? "" : ` vse-rec-name-${field.state}`;
+  return (
+    <div className={`vse-rec-compare reference${stateClass}`}>
+      <span className="vse-rec-compare-name">{label}</span>
+      <span className="vse-rec-mercury-value vse-rec-owner-value">{field.value}</span>
+    </div>
+  );
+}
+
 /** Idempotency key of one save session (ТЗ DR13): a stable key while the
  * payload AND the shown revision stay unchanged, so a repeated identical
  * «Сохранить сверку» lets the server replay the saved state; any edit or a
@@ -264,8 +284,12 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   // a missing display NAME never means a missing unit.
   const hasUnit = useMemo(() => hasSourceUnit(party), [party]);
   const facts = useMemo(() => documentFacts(party), [party]);
-  const senderOwner = participantOwner(party, "sender");
-  const receiverOwner = participantOwner(party, "receiver");
+  // ТЗ DR18 §10: the immutable participant-name fields of the unified read
+  // model — each state renders its honest text, never a GUID/UUID.
+  const senderOwner = participantName(party, "sender", "owner");
+  const senderEnterprise = participantName(party, "sender", "enterprise");
+  const receiverOwner = participantName(party, "receiver", "owner");
+  const receiverEnterprise = participantName(party, "receiver", "enterprise");
   const form = useForm<FormValues>({ defaultValues: initialValues(party, initial) });
   const values = useWatch({ control: form.control }) as FormValues;
   useDirtyGuard(form.formState.isDirty, "Сверка");
@@ -455,28 +479,19 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             <h3 id="vse-rec-sender-title">Сведения об отправителе</h3>
             {compared.some((field) => field.fieldId === "CHK-F05") ? compareField("CHK-F05") : null}
             {/* CHK-F06 (ТЗ DR13): the owner is a compared ground when the
-                source carries it; the reference card stays for absent data. */}
-            {compared.some((field) => field.fieldId === "CHK-F06") ? (
-              compareField("CHK-F06")
-            ) : senderOwner !== null ? (
-              <div className="vse-rec-compare reference">
-                <span className="vse-rec-compare-name">Владелец продукции</span>
-                <span className="vse-rec-mercury-value vse-rec-owner-value">{senderOwner}</span>
-              </div>
-            ) : null}
+                source carries it; the immutable name fields below always
+                show the resolved state (ТЗ DR18 §10). */}
+            {compared.some((field) => field.fieldId === "CHK-F06") ? compareField("CHK-F06") : null}
+            <ParticipantNameField label="Хозяйствующий субъект" field={senderOwner} />
+            <ParticipantNameField label="Предприятие" field={senderEnterprise} />
           </div>
           <div className="vse-rec-participant-card" aria-labelledby="vse-rec-receiver-title">
             <h3 id="vse-rec-receiver-title">Сведения о получателе</h3>
             {compared.some((field) => field.fieldId === "CHK-F07") ? compareField("CHK-F07") : null}
             {/* CHK-F08 (ТЗ DR13): the same compared-owner rule on the receiver. */}
-            {compared.some((field) => field.fieldId === "CHK-F08") ? (
-              compareField("CHK-F08")
-            ) : receiverOwner !== null ? (
-              <div className="vse-rec-compare reference">
-                <span className="vse-rec-compare-name">Владелец продукции</span>
-                <span className="vse-rec-mercury-value vse-rec-owner-value">{receiverOwner}</span>
-              </div>
-            ) : null}
+            {compared.some((field) => field.fieldId === "CHK-F08") ? compareField("CHK-F08") : null}
+            <ParticipantNameField label="Хозяйствующий субъект" field={receiverOwner} />
+            <ParticipantNameField label="Предприятие" field={receiverEnterprise} />
           </div>
         </div>
       </CheckSectionCard>

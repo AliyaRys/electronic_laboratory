@@ -1334,3 +1334,128 @@ describe("ТЗ DR17: номер прицепа/полуприцепа (CHK-F11)"
     expect(document.activeElement).toBe(match);
   });
 });
+
+describe("participant name fields (ТЗ DR18 §10)", () => {
+  function partyWithNames(fields: Record<string, string>): IncomingView {
+    return {
+      ...party,
+      external: { ...party.external, fields: { ...party.external.fields, ...fields } },
+    };
+  }
+
+  it("renders the two immutable fields of each participant card", () => {
+    renderForm({
+      party: partyWithNames({
+        senderOwner: "ООО «Мясопром»",
+        senderEnterprise: "Предприятие «Мясопром»",
+        receiverOwner: "ОАО «Восход»",
+        receiverEnterprise: "Лабораторный убойный пункт",
+        senderOwnerNameSource: "SOURCE_XML",
+        senderEnterpriseNameSource: "VETIS_LOOKUP",
+        receiverOwnerNameSource: "SOURCE_XML",
+        receiverEnterpriseNameSource: "VETIS_LOOKUP",
+      }),
+    });
+    expect(screen.getByText("Сведения о получателе")).toBeInTheDocument();
+    const names = screen.getAllByText("Предприятие «Мясопром»");
+    expect(names.length).toBeGreaterThan(0);
+    expect(screen.getByText("Лабораторный убойный пункт")).toBeInTheDocument();
+  });
+
+  it("shows the loading state while the worker resolves the GUID", () => {
+    renderForm({
+      party: partyWithNames({
+        senderOwnerNameSource: "PENDING",
+        senderEnterpriseNameSource: "PENDING",
+        receiverOwnerNameSource: "PENDING",
+        receiverEnterpriseNameSource: "PENDING",
+      }),
+    });
+    const loading = screen.getAllByText("Уточняем названия организаций…");
+    expect(loading.length).toBe(4);
+    expect(loading.some((node) => node.textContent?.includes("0ed40ab2"))).toBe(false);
+  });
+
+  it("shows the error state without offering a click retry", () => {
+    renderForm({
+      party: partyWithNames({
+        receiverOwnerNameSource: "ERROR",
+        receiverEnterpriseNameSource: "ERROR",
+        senderOwnerNameSource: "SOURCE_XML",
+        senderEnterpriseNameSource: "SOURCE_XML",
+      }),
+    });
+    expect(screen.getAllByText("Название временно недоступно").length).toBe(2);
+    expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeInTheDocument();
+  });
+
+  it("shows the honest missing fallback and keeps the form working", async () => {
+    renderForm({
+      party: partyWithNames({
+        receiverOwnerNameSource: "MISSING",
+        receiverEnterpriseNameSource: "MISSING",
+        senderOwnerNameSource: "MISSING",
+        senderEnterpriseNameSource: "MISSING",
+      }),
+    });
+    expect(screen.getAllByText("Название не получено").length).toBe(4);
+    // The reconciliation is NOT blocked: the full decision is still choosable
+    // and the sticky actions stay enabled.
+    expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeEnabled();
+    // No GUID/UUID is ever shown instead of a name.
+    const text = document.body.textContent ?? "";
+    expect(text.includes("0ed40ab2")).toBe(false);
+    expect(text.includes("d562919c")).toBe(false);
+    await userEvent.click(screen.getAllByLabelText("Вес, кг")[0]);
+    await userEvent.clear(screen.getAllByLabelText("Вес, кг")[0]);
+    await userEvent.type(screen.getAllByLabelText("Вес, кг")[0], "100");
+    expect(screen.getAllByLabelText("Вес, кг")[0]).toHaveValue("100");
+  });
+
+  it("renders a long name without breaking the card layout", () => {
+    const longName =
+      "Очень длинное наименование организации-владельца продукции «Сельскохозяйственный производственный кооператив имени двадцатилетия Победы в Великой Отечественной войне»";
+    renderForm({
+      party: partyWithNames({
+        senderOwner: longName,
+        senderOwnerNameSource: "VETIS_LOOKUP",
+        senderEnterpriseNameSource: "MISSING",
+        receiverOwnerNameSource: "MISSING",
+        receiverEnterpriseNameSource: "MISSING",
+      }),
+    });
+    expect(screen.getAllByText(longName).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Название не получено").length).toBe(3);
+  });
+
+  it("never issues external VetIS requests from the browser", async () => {
+    const externalRequests: string[] = [];
+    const server = setupServer(
+      http.get("*/api/v1/me", () => HttpResponse.json({}, { status: 401 })),
+      http.get("*api2.vetrf.ru*", ({ request }) => {
+        externalRequests.push(request.url);
+        return HttpResponse.json({}, { status: 502 });
+      }),
+      http.post("*api2.vetrf.ru*", ({ request }) => {
+        externalRequests.push(request.url);
+        return HttpResponse.json({}, { status: 502 });
+      }),
+    );
+    server.listen();
+    try {
+      renderForm({
+        party: partyWithNames({
+          senderOwnerNameSource: "PENDING",
+          senderEnterpriseNameSource: "PENDING",
+          receiverOwnerNameSource: "PENDING",
+          receiverEnterpriseNameSource: "PENDING",
+        }),
+      });
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeEnabled());
+      expect(externalRequests).toEqual([]);
+    } finally {
+      server.close();
+    }
+  });
+});

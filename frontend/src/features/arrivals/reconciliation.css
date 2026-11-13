@@ -308,6 +308,26 @@
   overflow-wrap: anywhere;
 }
 
+/* ТЗ DR18 §10: the honest participant-name states. The field is never an
+   input; loading/error/missing keep the reconciliation usable and a
+   GUID/UUID never appears instead of a name. */
+.vse-rec-name-loading,
+.vse-rec-name-error,
+.vse-rec-name-missing {
+  color: inherit;
+}
+
+.vse-rec-name-loading .vse-rec-owner-value,
+.vse-rec-name-missing .vse-rec-owner-value {
+  font-weight: 400;
+  color: #5a6b70;
+}
+
+.vse-rec-name-error .vse-rec-owner-value {
+  font-weight: 400;
+  color: #8a4b12;
+}
+
 /* --- transport observations ------------------------------------------------------ */
 .vse-rec-observations {
   display: grid;

@@ -31,11 +31,25 @@ __all__ = [
     "MercuryPurposeSyncState",
     "VetisBinding",
     "VetisContour",
+    "VetisEntityKind",
     "VetisOperation",
     "VetisOperationKind",
     "VetisOperationState",
+    "VetisReferenceName",
     "VetisSourceDocument",
 ]
+
+
+class VetisEntityKind(StrEnum):
+    """The two participant object kinds of an incoming eVSD (ТЗ DR18 §5).
+
+    ``BUSINESS_ENTITY`` (хозяйствующий субъект) and ``ENTERPRISE`` (предприятие)
+    are separate identities even with the same GUID value; they are never
+    merged and never share a cache row.
+    """
+
+    BUSINESS_ENTITY = "BUSINESS_ENTITY"
+    ENTERPRISE = "ENTERPRISE"
 
 
 class VetisContour(StrEnum):
@@ -43,6 +57,45 @@ class VetisContour(StrEnum):
 
     PILOT = "PILOT"
     PRODUCTION = "PRODUCTION"
+
+
+class VetisReferenceName(Base):
+    """The contour-scoped local name cache of one external participant object
+    (``vetis_reference_names``, ТЗ DR18 §5).
+
+    ``guid`` is the ONLY resolution key; the UUID is stored as the
+    version/diagnostic of the last observation. ``name`` stays nullable — the
+    absence of a name never deletes the row and never fabricates a name. The
+    resolution queue lives in the same row (``next_check_at``/``failure_count``),
+    so one key can never get duplicate jobs.
+    """
+
+    __tablename__ = "vetis_reference_names"
+    __table_args__ = (
+        CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="vetis_reference_contour_valid"),
+        CheckConstraint("entity_kind IN ('BUSINESS_ENTITY','ENTERPRISE')", name="vetis_reference_kind_valid"),
+        CheckConstraint("source IN ('SOURCE_XML','VETIS_LOOKUP')", name="vetis_reference_source_valid"),
+        CheckConstraint("status IN ('PENDING','RESOLVED','ERROR')", name="vetis_reference_status_valid"),
+        CheckConstraint("failure_count >= 0", name="vetis_reference_failures_positive"),
+        # The worker's due-queue index; a per-view request never touches it.
+        Index("ix_vetis_reference_due", "status", "next_check_at"),
+    )
+
+    contour: Mapped[str] = mapped_column(String(16), primary_key=True)
+    entity_kind: Mapped[str] = mapped_column(String(20), primary_key=True)
+    guid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    uuid: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    name: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[str | None] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="PENDING", server_default=text("'PENDING'"))
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    source_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    last_problem_code: Mapped[str | None] = mapped_column(String(128))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
 
 class MercuryProductGuidLvl2(Base):

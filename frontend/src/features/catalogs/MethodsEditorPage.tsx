@@ -203,6 +203,8 @@ export function MethodsEditorPage(): React.ReactElement {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [savePending, setSavePending] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  /** The indicator pre-picked by «Настроить» (null for «Добавить норму»). */
+  const [presetIndicatorId, setPresetIndicatorId] = useState<string | null>(null);
 
   const scopedContext = methods.data !== undefined && !("code" in methods.data) ? methods.data : null;
 
@@ -634,7 +636,7 @@ export function MethodsEditorPage(): React.ReactElement {
                           type="button"
                           variant="secondary"
                           disabled={savePending}
-                          onClick={() => openCreate()}
+                          onClick={() => openCreate(row.indicator?.id ?? null)}
                         >
                           Настроить
                         </Button>
@@ -873,6 +875,7 @@ export function MethodsEditorPage(): React.ReactElement {
             productSpeciesId={scopedContext.product_species.id}
             productStateId={scopedContext.product_state.id}
             indicators={scopedContext.indicators}
+            presetIndicatorId={presetIndicatorId}
             busy={savePending}
             onSaved={() => {
               setCreateOpen(false);
@@ -900,7 +903,8 @@ export function MethodsEditorPage(): React.ReactElement {
     </CatalogEditorPage>
   );
 
-  function openCreate(): void {
+  function openCreate(indicatorId?: string | null): void {
+    setPresetIndicatorId(indicatorId ?? null);
     setCreateOpen(true);
   }
 

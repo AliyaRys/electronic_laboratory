@@ -133,6 +133,10 @@ export interface MethodEditorProps {
    * ids come from the resolved context pair (``productStateId``). */
   indicators?: readonly CatalogIndicator[] | undefined;
   productStateId?: string | undefined;
+  /** «Настроить» from a missing indicator's row opens the create form with
+   * that indicator already picked; the canonical definition then derives the
+   * result type, unit and accepted values (ТЗ-DR28 §6.2). */
+  presetIndicatorId?: string | null | undefined;
   rule?: MethodRuleTyped | null;
   busy?: boolean | undefined;
   onSaved: (rule: MethodRuleTyped) => void;
@@ -150,6 +154,7 @@ export function MethodEditor({
   productSpeciesId,
   indicators,
   productStateId,
+  presetIndicatorId = null,
   rule,
   busy = false,
   onSaved,
@@ -159,6 +164,11 @@ export function MethodEditor({
   const defaults = methodEditorDefaults(rule);
   if (mode === "create" && productStateId !== undefined && productStateId !== "") {
     defaults.product_state_id = productStateId;
+  }
+  // «Настроить» pre-picks the indicator of the clicked row (§6.2); the
+  // canonical-definition effect below then derives type/unit/accepted values.
+  if (mode === "create" && rule == null && presetIndicatorId !== null && presetIndicatorId !== "") {
+    defaults.indicator_id = presetIndicatorId;
   }
   const {
     register,

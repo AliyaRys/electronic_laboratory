@@ -426,3 +426,52 @@ async def test_readiness_lists_missing_mandatory_f18_f20(api_env: SimpleNamespac
     assert f"method:{_mandatory.IDENTIFICATION_INDICATOR_ID}" in inputs
     assert f"method:{_mandatory.TEMPERATURE_INDICATOR_ID}" not in inputs
     assert not any("F30" in item or "F31" in item for item in inputs)
+
+
+@pytest.mark.integration
+async def test_readiness_conditional_trichinelloscopy(api_env: SimpleNamespace) -> None:
+    """Scenario 10 (E01/DR28 §4): a species flagged
+    ``requires_trichinelloscopy`` without an active F21 norm is listed in
+    readiness; a species without the flag (or without a dictionary row at all)
+    keeps F21 conditional — never demanded."""
+    db = api_env.db
+    species = uuid.uuid4()
+    db.add(_meat_record(species, "Конина", trichinella=True))
+    await db.commit()
+
+    from backend.src.modules.catalog_pricing.queries import readiness
+
+    report = await readiness(db, api_env.lab.id, species)
+    inputs = {item.input_id for item in report.missing}
+    assert f"method:{_mandatory.TRICHINELLA_INDICATOR_ID}" in inputs
+
+    # With the active F21 norm of this species the readiness input is gone.
+    db.add(
+        MethodRule(
+            laboratory_id=api_env.lab.id,
+            product_species_id=species,
+            product_state_id=uuid.uuid4(),
+            indicator_id=_mandatory.TRICHINELLA_INDICATOR_ID,
+            version=1,
+            result_schema="BOOLEAN_MATCH",
+            unit_id="",
+            rule={"type": "qualitative", "accepted_values": ["Обнаружено", "Не обнаружено"]},
+            source={"name": "методика"},
+            active=True,
+        )
+    )
+    await db.commit()
+    report = await readiness(db, api_env.lab.id, species)
+    assert f"method:{_mandatory.TRICHINELLA_INDICATOR_ID}" not in {
+        item.input_id for item in report.missing
+    }
+
+    # Without the flag (or without a dictionary row at all) F21 stays
+    # conditional and is never demanded.
+    plain_species = uuid.uuid4()
+    db.add(_meat_record(plain_species, "Говядина"))
+    await db.commit()
+    report = await readiness(db, api_env.lab.id, plain_species)
+    assert not any(
+        item.input_id == f"method:{_mandatory.TRICHINELLA_INDICATOR_ID}" for item in report.missing
+    )

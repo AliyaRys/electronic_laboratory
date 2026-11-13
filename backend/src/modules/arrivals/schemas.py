@@ -149,6 +149,10 @@ class VdDocument(StrictModel):
     # Russian label is resolved at READ time by vetis.storage_types and never
     # written into the snapshot.
     transport_storage_type: str | None = Field(default=None, alias="transportStorageType", max_length=64)
+    # DR19: the raw vd:certifiedConsignment/vd:transportInfo/vd:transportType
+    # code as a STRING; the Russian label is resolved at READ time by
+    # vetis.transport_types and never written into the snapshot.
+    transport_type: str | None = Field(default=None, alias="transportType", max_length=64)
     # ТЗ DR17 §5.1: the trailer is a SEPARATE source fact, never merged with
     # the vehicle number into one string.
     trailer_number: str | None = Field(default=None, max_length=64)

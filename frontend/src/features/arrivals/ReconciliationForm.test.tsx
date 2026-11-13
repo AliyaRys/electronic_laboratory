@@ -1242,7 +1242,7 @@ describe("ТЗ DR17: номер прицепа/полуприцепа (CHK-F11)"
       ...party.external,
       fields: {
         ...party.external.fields,
-        transportKind: "Автомобильный",
+        transportType: "Автомобильный",
         trailerNumber: "Т456РР116",
         storage: "FROZEN",
       },

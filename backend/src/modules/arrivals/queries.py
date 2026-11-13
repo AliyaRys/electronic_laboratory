@@ -41,6 +41,7 @@ from backend.src.modules.integrations.vetis.reference_names import (
 )
 from backend.src.modules.integrations.vetis.status import status_label
 from backend.src.modules.integrations.vetis.storage_types import storage_type_label
+from backend.src.modules.integrations.vetis.transport_types import transport_type_label
 
 __all__ = [
     "PAGE_SIZE",
@@ -388,6 +389,12 @@ def _external_fields(
         # the read model; old fields keep their meanings (R-DR16-4).
         "storageCode": document_payload.get("transportStorageType") or None,
         "storage": storage_type_label(document_payload.get("transportStorageType")),
+        # ТЗ DR19 §4.2: the raw transport-type code stays AS A STRING next to
+        # the Russian label (one dictionary, vetis.transport_types); an absent
+        # node stays absent (no fictitious mark), an unknown code keeps the
+        # source value and renders the honest fallback (R-DR19-3/4).
+        "transportTypeCode": document_payload.get("transportType") or None,
+        "transportType": transport_type_label(document_payload.get("transportType")),
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),
         "productItem": str(product_item.get("name") or "") if product_item is not None else None,

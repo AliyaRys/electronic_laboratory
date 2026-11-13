@@ -413,7 +413,16 @@ export function comparedFields(view: IncomingView): ComparedField[] {
     source(external.consignee, external.receiverEnterprise),
   );
   push("CHK-F08", "participants", "Получатель — владелец", source(external.receiverOwner));
-  push("CHK-F09", "transport", "Вид транспорта", source(external.transportKind));
+  // ТЗ DR19 §5: CHK-F09 is the FIRST card of the transport block; the source
+  // is the read-model Russian label (the raw code stays transportTypeCode);
+  // the mark stays an explicit user action, never auto-matched.
+  push(
+    "CHK-F09",
+    "transport",
+    "Вид транспорта",
+    source(external.transportType),
+    "Фактический вид транспорта",
+  );
   push("CHK-F10", "transport", "Номер ТС", source(external.transportNumber, external.vehicleNumber));
   // ТЗ DR17 §6: CHK-F11 sits between the vehicle number and the storage;
   // an absent trailer arrives as the agreed text «Прицеп отсутствует»

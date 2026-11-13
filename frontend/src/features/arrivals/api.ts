@@ -428,25 +428,22 @@ export function comparedFields(view: IncomingView): ComparedField[] {
       });
     }
   };
-  push(
-    "CHK-F05",
-    "participants",
-    "Отправитель — предприятие",
-    source(external.consignor, external.senderEnterprise),
-  );
+  // ТЗ DR21 §5 (R-DR21-2): each participant card shows TWO different objects
+  // in the agreed order — «Предприятие» (enterprise) first, then
+  // «Хозяйствующий субъект» (businessEntity). Only the Russian labels
+  // changed; the CHK ids keep their business semantics (R-DR21-3). The
+  // source is the resolved enterprise/owner name of the unified read model;
+  // the legacy consignor/consignee keys stay as a projection tolerance for
+  // fixtures, never a second mechanism.
+  push("CHK-F05", "participants", "Предприятие", source(external.senderEnterprise, external.consignor));
   // CHK-F06/F08/F15 (ТЗ DR13): the backend FieldSpec marks senderOwner,
   // receiverOwner and productType as compared (inadmissible) grounds — the
   // frontend list mirrors the backend COMPARABLE_SPECS ids one-to-one; an
   // absent projection key stays absent (push omits it), never a fictitious
-  // mark.
-  push("CHK-F06", "participants", "Отправитель — владелец", source(external.senderOwner));
-  push(
-    "CHK-F07",
-    "participants",
-    "Получатель — предприятие",
-    source(external.consignee, external.receiverEnterprise),
-  );
-  push("CHK-F08", "participants", "Получатель — владелец", source(external.receiverOwner));
+  // mark and never a raw GUID.
+  push("CHK-F06", "participants", "Хозяйствующий субъект", source(external.senderOwner));
+  push("CHK-F07", "participants", "Предприятие", source(external.receiverEnterprise, external.consignee));
+  push("CHK-F08", "participants", "Хозяйствующий субъект", source(external.receiverOwner));
   // ТЗ DR19 §5: CHK-F09 is the FIRST card of the transport block; the source
   // is the read-model Russian label (the raw code stays transportTypeCode);
   // the mark stays an explicit user action, never auto-matched.

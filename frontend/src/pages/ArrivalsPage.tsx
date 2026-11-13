@@ -367,19 +367,20 @@ function ArrivalsContent(): React.ReactElement {
         }}
         sync={
           canSync ? (
-            <div className="arrivals-sync">
-              <Button
-                onClick={() => void runSync()}
-                disabled={!canSync || syncRunning}
-                busy={syncRunning}
-                // ТЗ DR22 §7: between attempts the busy label honestly says a
-                // retry is running — never a final error, never a fake success.
-                busyLabel={syncRetryWait ? "Повторяем обновление…" : "Обновление…"}
-                label="Обновить поступления из ВетИС"
-              >
-                Обновить
-              </Button>
-            </div>
+            // DR29 §3: the group wrapper (status above the button) belongs to
+            // the shared ArrivalsScreen composition; the page passes only the
+            // button with the SAME label/variant/handler contract.
+            <Button
+              onClick={() => void runSync()}
+              disabled={!canSync || syncRunning}
+              busy={syncRunning}
+              // ТЗ DR22 §7: between attempts the busy label honestly says a
+              // retry is running — never a final error, never a fake success.
+              busyLabel={syncRetryWait ? "Повторяем обновление…" : "Обновление…"}
+              label="Обновить поступления из ВетИС"
+            >
+              Обновить
+            </Button>
           ) : undefined
         }
         syncStatus={syncStatus}

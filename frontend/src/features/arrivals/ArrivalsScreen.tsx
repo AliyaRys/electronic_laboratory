@@ -129,12 +129,26 @@ export function ArrivalsScreen({
           <h1>Поступления</h1>
           <p>{STAGE_DESCRIPTIONS[queue]}</p>
         </div>
-        {sync}
+        {/* DR29 §3: the sync status lives IN the sync group, directly above
+            the refresh button — one composition, one source of the text.
+            Without a button (e.g. an ANALYST session) no group is rendered. */}
+        {sync !== undefined ? (
+          <div className="arrivals-sync">
+            {(syncStatus ?? "") !== "" ? (
+              <p className="arrivals-sync-status" role="status">
+                {syncStatus}
+                {syncDiagnostics !== null && syncDiagnostics !== undefined ? ` ${syncDiagnostics}` : ""}
+              </p>
+            ) : null}
+            {sync}
+          </div>
+        ) : (syncStatus ?? "") !== "" ? (
+          <p className="arrivals-sync-status" role="status">
+            {syncStatus}
+            {syncDiagnostics !== null && syncDiagnostics !== undefined ? ` ${syncDiagnostics}` : ""}
+          </p>
+        ) : null}
       </div>
-      <p className="arrivals-sync-status" role="status">
-        {syncStatus}
-        {syncDiagnostics !== null && syncDiagnostics !== undefined ? ` ${syncDiagnostics}` : ""}
-      </p>
 
       <StageTabs current={queue} counts={counts} onQueueChange={onQueueChange} />
       {filters}

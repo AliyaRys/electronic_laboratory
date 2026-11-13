@@ -201,6 +201,32 @@ describe("ArrivalsPage", () => {
     });
   });
 
+  // --- DR29 §7: delete dialog focus return, hide → onHide only ----------------
+
+  it("Escape and Cancel return focus to the delete button (DR29 §7.7)", async () => {
+    renderPage();
+    await screen.findByText("говядина");
+    const trigger = screen.getByRole("button", { name: "Скрыть поступление из очереди" });
+    await userEvent.click(trigger);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    expect(trigger).toHaveFocus();
+  });
+
+  it("the delete button only opens the dialog: no navigation and no hide before confirm (DR29 §7.5)", async () => {
+    const { deletes } = renderPage();
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: "Скрыть поступление из очереди" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(deletes.length).toBe(0);
+    await userEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    expect(deletes.length).toBe(0);
+    expect(screen.getByText("говядина")).toBeTruthy();
+  });
+
   it("after hiding the last row of page 2, the page moves back to an existing page (11)", async () => {
     // Page 2 holds exactly one row (total 21, page_size 20): hiding it makes
     // page 2 empty, so the page corrects to the previous existing page.

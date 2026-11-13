@@ -474,15 +474,23 @@
 }
 
 /* --- Dialog (Radix; safe cancel first, visible focus, described errors) ------- */
+/* DR29 §6.1: explicit stacking, centralized here for EVERY dialog (no
+   per-page exceptions). The overlay sits above the page (AppHeader z-index
+   100/120, popovers 30/40, sticky action cells 5) and below the dialog
+   content; the content card is above the overlay so its title, description,
+   error and buttons are always readable. Radix focus trap/Escape/focus
+   return are unaffected. */
 .app-dialog-overlay {
   position: fixed;
   inset: 0;
+  z-index: 1000; /* above the page and the app header, below the dialog card */
   background: #17323a59;
 }
 .app-dialog {
   position: fixed;
   top: 50%;
   left: 50%;
+  z-index: 1001; /* above the overlay (1000): the card is never dimmed */
   transform: translate(-50%, -50%);
   width: min(460px, calc(100vw - 24px));
   max-height: calc(100vh - 48px);

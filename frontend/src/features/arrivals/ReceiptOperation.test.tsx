@@ -286,3 +286,303 @@ describe("ReceiptOperation", () => {
     expect(dialog.textContent).not.toContain(UNIT_GUID);
   });
 });
+
+// --- ТЗ DR27 §7: the receipt context refresh and frozen-preview contract -------
+
+interface PreviewBody {
+  source_revision?: number;
+  reconciliation_revision?: number;
+  return_date?: string | null;
+}
+interface SubmitBody {
+  source_revision?: number;
+  reconciliation_revision?: number;
+  issue_date?: string;
+  fingerprint?: string;
+}
+
+const DR27_PREVIEW_INTENT = {
+  decision: "ACCEPT_ALL",
+  vet_inspection: "CORRESPONDS",
+  doc_inspection: "CORRESPONDS",
+  discrepancy_items: [],
+  unit_id: "u",
+};
+
+function contextJson(source_revision: number, reconciliation_revision: number): Record<string, unknown> {
+  return {
+    write_enabled: true,
+    source_revision,
+    reconciliation_revision,
+    operation_id: null,
+    operation_state: null,
+  };
+}
+
+describe("ТЗ DR27: receipt context refresh", () => {
+  it("prepare() re-reads the context and continues once after a stale cached context (§4.2)", async () => {
+    let contextGets = 0;
+    const previews: PreviewBody[] = [];
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () => {
+        contextGets += 1;
+        // Mount = stale (2). The first prepare GET is STILL stale; exactly
+        // one automatic refetch then returns the saved revision 3.
+        const reconciliation_revision = contextGets >= 3 ? 3 : 2;
+        return HttpResponse.json(contextJson(7, reconciliation_revision));
+      }),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, async ({ request }) => {
+        previews.push((await request.json()) as PreviewBody);
+        return HttpResponse.json({
+          intent: { ...DR27_PREVIEW_INTENT, source_revision: 7, reconciliation_revision: 3 },
+          application_xml: "<application />",
+          fingerprint: "e".repeat(64),
+        });
+      }),
+    );
+    renderOperation();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    expect(await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" })).toBeInTheDocument();
+    // Mount + fresh GET + ONE automatic refetch of the stale cached context.
+    expect(contextGets).toBe(3);
+    expect(previews[0]?.reconciliation_revision).toBe(3);
+    expect(previews[0]?.source_revision).toBe(7);
+  });
+
+  it("a context that disagrees with the displayed reconciliation blocks the preview, re-reads everything and keeps the input (§4.2)", async () => {
+    let contextGets = 0;
+    let previews = 0;
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () => {
+        contextGets += 1;
+        return HttpResponse.json(contextJson(7, 2));
+      }),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, () => {
+        previews += 1;
+        return HttpResponse.json({ intent: {}, application_xml: "<a/>", fingerprint: "0".repeat(64) });
+      }),
+    );
+    renderOperation();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    expect(
+      await screen.findByText("Сверка обновилась. Проверьте данные и сохраните сверку заново"),
+    ).toBeInTheDocument();
+    // No stale preview is ever sent; the automatic refetch happened once.
+    expect(previews).toBe(0);
+    expect(contextGets).toBeGreaterThanOrEqual(3);
+    // The user input survives the refresh — nothing was auto-cleared.
+    expect((screen.getByLabelText("Результат ветеринарного осмотра") as HTMLSelectElement).value).toBe(
+      "CORRESPONDS",
+    );
+    expect(screen.queryByRole("dialog", { name: "Подтвердите гашение эВСД" })).toBeNull();
+  });
+
+  it("confirm() takes revisions, dates and fingerprint from the frozen preview, never the context (§4.3)", async () => {
+    let contextGets = 0;
+    const submits: SubmitBody[] = [];
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () => {
+        contextGets += 1;
+        // The cached source revision is deliberately WRONG: only the frozen
+        // preview may feed the submit payload.
+        return HttpResponse.json(contextJson(5, 3));
+      }),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, () =>
+        HttpResponse.json({
+          intent: {
+            ...DR27_PREVIEW_INTENT,
+            source_revision: 11,
+            reconciliation_revision: 9,
+            issue_date: "2026-11-09T09:00:00Z",
+            delivery_date: "2026-11-11T08:00:00Z",
+            return_date: null,
+          },
+          application_xml: "<application />",
+          fingerprint: "f".repeat(64),
+        }),
+      ),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt`, async ({ request }) => {
+        submits.push((await request.json()) as SubmitBody);
+        return HttpResponse.json(
+          { operation_id: "aaaaaaaa-0000-4000-8000-000000000003", state: "QUEUED", status_url: "/x" },
+          { status: 202 },
+        );
+      }),
+    );
+    renderOperation();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    await user.click(await screen.findByRole("button", { name: "Погасить эВСД" }));
+    await waitFor(() => expect(submits.length).toBe(1));
+    const body = submits[0];
+    expect(body?.source_revision).toBe(11);
+    expect(body?.reconciliation_revision).toBe(9);
+    expect(body?.issue_date).toBe("2026-11-09T09:00:00Z");
+    expect(body?.fingerprint).toBe("f".repeat(64));
+    expect(contextGets).toBeGreaterThanOrEqual(2);
+  });
+
+  it("REVISION_CONFLICT between preview and confirm drops the stale preview, offers a new one and never auto-submits (§4.3)", async () => {
+    const submits: SubmitBody[] = [];
+    let previews = 0;
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () => HttpResponse.json(contextJson(7, 3))),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, () => {
+        previews += 1;
+        return HttpResponse.json({
+          intent: {
+            ...DR27_PREVIEW_INTENT,
+            source_revision: 7,
+            reconciliation_revision: 3,
+            issue_date: "2026-11-09T09:00:00Z",
+            delivery_date: "2026-11-11T08:00:00Z",
+            return_date: null,
+          },
+          application_xml: "<application />",
+          fingerprint: "1".repeat(64),
+        });
+      }),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt`, async ({ request }) => {
+        submits.push((await request.json()) as SubmitBody);
+        return HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Revision Conflict",
+            status: 409,
+            detail: "Источник или сверка изменились; сформируйте preview заново.",
+            code: "REVISION_CONFLICT",
+            current_source_revision: 8,
+            current_reconciliation_revision: 3,
+          },
+          { status: 409 },
+        );
+      }),
+    );
+    renderOperation();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    await user.click(await screen.findByRole("button", { name: "Погасить эВСД" }));
+    // The conflict closes the dialog, drops the preview and explains itself.
+    expect(await screen.findByText("Источник или сверка изменились")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Подтвердите гашение эВСД" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Погасить эВСД" })).toBeNull();
+    // No automatic retry: exactly one submit for the one confirmation.
+    expect(submits.length).toBe(1);
+    // The diagnostics of §5.2 are shown with the cause.
+    expect(screen.getByText(/Актуальные ревизии: источник 8/)).toBeInTheDocument();
+    // The user input is preserved after the error.
+    expect((screen.getByLabelText("Результат ветеринарного осмотра") as HTMLSelectElement).value).toBe(
+      "CORRESPONDS",
+    );
+    // A new preview is always an explicit user action.
+    await user.click(screen.getByRole("button", { name: "Сформировать preview заново" }));
+    expect(await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" })).toBeInTheDocument();
+    expect(previews).toBe(2);
+    expect(submits.length).toBe(1); // still no automatic submit
+  });
+
+  it("a failed preview keeps the user input and never opens the dialog (§7.7)", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () => HttpResponse.json(contextJson(7, 3))),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Validation error",
+            status: 422,
+            detail: "Дата поступления должна содержать часовой пояс и не быть в будущем.",
+            code: "VALIDATION_ERROR",
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    renderOperation();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "MISMATCH");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    expect(await screen.findByText("Проверьте значения формы")).toBeInTheDocument();
+    expect((screen.getByLabelText("Результат ветеринарного осмотра") as HTMLSelectElement).value).toBe(
+      "MISMATCH",
+    );
+    expect(screen.queryByRole("dialog", { name: "Подтвердите гашение эВСД" })).toBeNull();
+  });
+
+  it("a double click on Погасить creates exactly one submit (§7.5)", async () => {
+    let submits = 0;
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () => HttpResponse.json(contextJson(7, 3))),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, () =>
+        HttpResponse.json({
+          intent: {
+            ...DR27_PREVIEW_INTENT,
+            source_revision: 7,
+            reconciliation_revision: 3,
+            issue_date: "2026-11-09T09:00:00Z",
+            delivery_date: "2026-11-11T08:00:00Z",
+            return_date: null,
+          },
+          application_xml: "<application />",
+          fingerprint: "2".repeat(64),
+        }),
+      ),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt`, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        submits += 1;
+        return HttpResponse.json(
+          { operation_id: "aaaaaaaa-0000-4000-8000-000000000004", state: "QUEUED", status_url: "/x" },
+          { status: 202 },
+        );
+      }),
+    );
+    renderOperation();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    const confirmButton = await screen.findByRole("button", { name: "Погасить эВСД" });
+    await user.click(confirmButton);
+    await user.click(confirmButton);
+    await waitFor(() => expect(submits).toBe(1), { timeout: 3_000 });
+    await waitFor(() => expect(submits).toBe(1));
+  });
+
+  it("the specified party a560d943… Save → Prepare sends the CURRENT revision (§7.8)", async () => {
+    // The §2.3 party: reconciliation.rev moved to 5 independently of the
+    // source revision 1; the context was refreshed after the save.
+    const PARTY_A = "a560d943-38e3-467f-956c-e2a885514cad";
+    const partyA = { ...party, party_id: PARTY_A, laboratory_id: LAB } as unknown as IncomingView;
+    const views = { ...reconciliation, revision: 5 };
+    let previews: PreviewBody[] = [];
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY_A}/receipt-context`, () => HttpResponse.json(contextJson(1, 5))),
+      http.post(`*/api/v1/arrivals/${PARTY_A}/receipt-preview`, async ({ request }) => {
+        previews.push((await request.json()) as PreviewBody);
+        return HttpResponse.json({
+          intent: { ...DR27_PREVIEW_INTENT, source_revision: 1, reconciliation_revision: 5 },
+          application_xml: "<application />",
+          fingerprint: "3".repeat(64),
+        });
+      }),
+    );
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ReceiptOperation party={partyA} reconciliation={views} />
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    expect(await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" })).toBeInTheDocument();
+    expect(previews.length).toBe(1);
+    // The NEW reconciliation revision reaches the preview — never the stale 4.
+    expect(previews[0]?.reconciliation_revision).toBe(5);
+    expect(previews[0]?.source_revision).toBe(1);
+    previews = [];
+  });
+});

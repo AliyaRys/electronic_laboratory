@@ -21,6 +21,9 @@ export interface Problem {
   code: string;
   trace_id?: string | undefined;
   errors?: ProblemItem[] | undefined;
+  /** ТЗ DR27 §5.2: safe technical diagnostics of a REVISION_CONFLICT. */
+  current_source_revision?: number | undefined;
+  current_reconciliation_revision?: number | undefined;
 }
 
 export function isProblemContentType(response: Response): boolean {
@@ -88,6 +91,14 @@ function coerceProblem(raw: unknown, status: number): Problem | null {
     code: record.code,
     trace_id: typeof record.trace_id === "string" ? record.trace_id : undefined,
     errors: Array.isArray(record.errors) ? record.errors.map(coerceProblemItem) : undefined,
+    // ТЗ DR27 §5.2: the backend MAY attach two safe technical diagnostics to
+    // a REVISION_CONFLICT Problem; they survive the normalization.
+    current_source_revision:
+      typeof record.current_source_revision === "number" ? record.current_source_revision : undefined,
+    current_reconciliation_revision:
+      typeof record.current_reconciliation_revision === "number"
+        ? record.current_reconciliation_revision
+        : undefined,
   };
 }
 

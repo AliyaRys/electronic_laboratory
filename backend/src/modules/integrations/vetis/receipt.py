@@ -112,7 +112,20 @@ async def build_receipt_preview(
     if reconciliation.state != "OPEN":
         raise _problem(409, "STATE_CONFLICT", "Гашение по этой сверке уже завершено.")
     if source.revision != source_revision or reconciliation.rev != reconciliation_revision:
-        raise _problem(409, "REVISION_CONFLICT", "Источник или сверка изменились; сформируйте preview заново.")
+        # ТЗ DR27 §5.2 (R-DR27-5): the strict guard stays; the conflict gains
+        # ONLY two safe technical diagnostics so the client can tell a stale
+        # cached context from a genuinely changed source — never raw XML or
+        # any credential.
+        raise ProblemError(
+            status=409,
+            code="REVISION_CONFLICT",
+            title="Revision Conflict",
+            detail="Источник или сверка изменились; сформируйте preview заново.",
+            extra={
+                "current_source_revision": source.revision,
+                "current_reconciliation_revision": reconciliation.rev,
+            },
+        )
     actual_checksum = hashlib.sha256(source.raw_xml.encode()).hexdigest()
     if actual_checksum != source.checksum:
         raise _problem(409, "SOURCE_CHECKSUM_MISMATCH", "Закреплённый исходный XML повреждён.")

@@ -4,7 +4,8 @@
  * party UUID can never match; a foreign/unknown UUID renders not-found.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -198,5 +199,42 @@ describe("ReconciliationPage", () => {
     renderRoute();
     expect(await screen.findByText("Сверка подтверждена внешним результатом.")).toBeInTheDocument();
     expect(screen.queryByText("Решение о приёмке")).toBeNull();
+  });
+
+  // ТЗ DR27 §7.1: after a successful save BOTH the reconciliation query and
+  // the receipt-context query carry the SAME (new) revision — the awaited
+  // invalidation re-reads the context, so the receipt stage never keeps a
+  // cached revision older than the just-saved view.
+  it("refreshes the receipt-context query after a successful save", async () => {
+    let saved = false;
+    const contextRevisions: number[] = [];
+    const savedView: ReconciliationView = { ...emptyReconciliation, revision: 5 };
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}`, () => HttpResponse.json(party)),
+      http.get(`*/api/v1/arrivals/${PARTY}/reconciliation`, () => HttpResponse.json(emptyReconciliation)),
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, async () => {
+        const revision = saved ? 5 : 4;
+        contextRevisions.push(revision);
+        return HttpResponse.json({
+          write_enabled: true,
+          source_revision: 1,
+          // The backend bumps Reconciliation.rev on every save; the context
+          // answers the CURRENT value, so it changes exactly with the save.
+          reconciliation_revision: revision,
+          operation_id: null,
+          operation_state: null,
+        });
+      }),
+      http.put(`*/api/v1/arrivals/${PARTY}/reconciliation`, async () => {
+        saved = true;
+        return HttpResponse.json(savedView);
+      }),
+    );
+    renderRoute();
+    await screen.findByText("Решение о приёмке");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+    // R-DR27-1: the invalidation is awaited inside the save chain — the
+    // fresh context GET after the PUT answers the SAVED revision 5.
+    await waitFor(() => expect(contextRevisions.includes(5)).toBe(true));
   });
 });

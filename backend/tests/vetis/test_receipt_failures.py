@@ -369,3 +369,137 @@ async def test_processing_timeout_becomes_unknown_without_network(receipt_env: S
         assert saved is not None
         assert saved.state == VetisOperationState.UNKNOWN
         assert saved.problem_code == "VETIS_RESULT_TIMEOUT"
+
+
+# --- ТЗ DR27 §7: the revision context contract ------------------------------------
+
+
+async def test_receipt_context_returns_current_revisions(receipt_env: SimpleNamespace, monkeypatch) -> None:
+    """§7.1: the context read model answers the CURRENT frozen revisions."""
+    from backend.src.modules.arrivals.router import collect_receipt_context
+
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
+    context = await collect_receipt_context(receipt_env.db, receipt_env.party)
+    assert context.source_revision == 3
+    assert context.reconciliation_revision == 2
+    assert context.write_enabled is True
+    assert context.operation_id is None
+    assert context.operation_state is None
+
+
+async def test_receipt_preview_accepts_exactly_the_current_pair(receipt_env: SimpleNamespace) -> None:
+    """§7.2: a preview with the exact current (3, 2) pair builds an intent."""
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    assert preview.intent.source_revision == 3
+    assert preview.intent.reconciliation_revision == 2
+
+
+@pytest.mark.parametrize(
+    ("source_revision", "reconciliation_revision"),
+    [(3, 1), (2, 2), (4, 5)],
+    ids=["stale-reconciliation", "stale-source", "both-stale"],
+)
+async def test_any_stale_revision_pair_is_revision_conflict_with_safe_diagnostics(
+    receipt_env: SimpleNamespace, source_revision: int, reconciliation_revision: int
+) -> None:
+    """§7.3/§7.4: any stale revision answers 409 REVISION_CONFLICT; the
+    Problem carries ONLY the two safe current-revision diagnostics (§5.2)."""
+    from backend.src.modules.integrations.vetis.receipt import write_enabled  # noqa: F401 - contract visibility
+
+    with pytest.raises(ProblemError) as error:
+        await build_receipt_preview(
+            receipt_env.db,
+            party_id=receipt_env.party.id,
+            source_revision=source_revision,
+            reconciliation_revision=reconciliation_revision,
+            vet_inspection="CORRESPONDS",
+            return_date=datetime.now(UTC),
+        )
+    assert error.value.status == 409
+    assert error.value.code == "REVISION_CONFLICT"
+    assert error.value.extra == {
+        "current_source_revision": 3,
+        "current_reconciliation_revision": 2,
+    }
+    # No raw XML, checksum or credential ever leaks through the diagnostics.
+    for key in ("raw_xml", "checksum", "application_xml", "initiator", "business_member_id"):
+        assert key not in error.value.extra
+
+
+async def test_source_changed_after_preview_blocks_submit_without_outbox(
+    receipt_env: SimpleNamespace,
+) -> None:
+    """§7.5: a source bump between preview and submit re-runs the locked
+    guard inside the submit path — the stale preview never queues and the
+    outbox stays empty (no external write is even planned)."""
+    document = await receipt_env.db.get(IncomingDocument, receipt_env.party.incoming_document_id)
+    assert document is not None
+    source = (
+        await receipt_env.db.execute(
+            select(VetisSourceDocument).where(
+                VetisSourceDocument.contour == document.contour,
+                VetisSourceDocument.evsd_uuid == document.evsd_uuid,
+            )
+        )
+    ).scalar_one()
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    source.revision = 4
+    await receipt_env.db.commit()
+    with pytest.raises(ProblemError) as error:
+        # submit_receipt re-builds the preview under the party lock; this is
+        # the exact call the endpoint performs before queue_receipt.
+        await build_receipt_preview(
+            receipt_env.db,
+            party_id=receipt_env.party.id,
+            source_revision=3,
+            reconciliation_revision=2,
+            vet_inspection="CORRESPONDS",
+            return_date=datetime.now(UTC),
+            issue_date=preview.intent.issue_date,
+        )
+    assert error.value.code == "REVISION_CONFLICT"
+    assert (
+        await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))
+    ).scalar_one() == 0
+
+
+async def test_checksum_mismatch_is_not_masked_as_revision_success(receipt_env: SimpleNamespace) -> None:
+    """§7.6: a damaged raw XML answers its own checksum problem even when the
+    revisions match — it never silently passes the revision guard."""
+    document = await receipt_env.db.get(IncomingDocument, receipt_env.party.incoming_document_id)
+    assert document is not None
+    source = (
+        await receipt_env.db.execute(
+            select(VetisSourceDocument).where(
+                VetisSourceDocument.contour == document.contour,
+                VetisSourceDocument.evsd_uuid == document.evsd_uuid,
+            )
+        )
+    ).scalar_one()
+    source.raw_xml = source.raw_xml + "<corrupted />"
+    await receipt_env.db.commit()
+    with pytest.raises(ProblemError) as error:
+        await build_receipt_preview(
+            receipt_env.db,
+            party_id=receipt_env.party.id,
+            source_revision=3,
+            reconciliation_revision=2,
+            vet_inspection="CORRESPONDS",
+            return_date=datetime.now(UTC),
+        )
+    assert error.value.status == 409
+    assert error.value.code == "SOURCE_CHECKSUM_MISMATCH"

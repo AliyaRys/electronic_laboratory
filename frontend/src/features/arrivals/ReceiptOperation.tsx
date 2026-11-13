@@ -14,6 +14,7 @@ import {
   isStaleSourcePresence,
   type IncomingView,
   type Problem,
+  type ReceiptContext,
   type ReceiptPreview,
   type ReconciliationView,
   type VetInspection,
@@ -21,6 +22,39 @@ import {
 import { ReceiptConfirmationDialog } from "./ReceiptConfirmationDialog";
 
 const TERMINAL = new Set(["CONFIRMED", "REJECTED", "UNKNOWN"]);
+
+/** ТЗ DR27 §4.2: the honest message when the displayed reconciliation and
+ * the fresh server context no longer agree — no stale preview is sent. */
+const STALE_RECONCILIATION_TEXT = "Сверка обновилась. Проверьте данные и сохраните сверку заново";
+
+/** ТЗ DR27 §5.2 (R-DR27-6): the error taxonomy the client distinguishes. */
+function receiptProblemView(problem: Problem): { title: string; detail: string } {
+  if (problem.code === "REVISION_CONFLICT") {
+    return {
+      title: "Источник или сверка изменились",
+      detail: problem.detail,
+    };
+  }
+  if (problem.code === "SOURCE_CHECKSUM_MISMATCH") {
+    return {
+      title: "Закреплённый исходный XML повреждён",
+      detail: "Критическая ошибка данных: слепое повторение запрещено, обратитесь к администратору.",
+    };
+  }
+  if (problem.code === "RECONCILIATION_INCOMPLETE") {
+    return { title: "Сверка неполная", detail: problem.detail };
+  }
+  if (problem.code === "INTEGRATION_WRITE_DISABLED") {
+    return {
+      title: "Гашение не включено оператором",
+      detail: "Это настройка установки, а не ошибка ревизий. Обратитесь к оператору.",
+    };
+  }
+  if (problem.code === "VALIDATION_ERROR") {
+    return { title: "Проверьте значения формы", detail: problem.detail };
+  }
+  return { title: "Гашение не подготовлено", detail: problem.detail };
+}
 
 function nowLocal(): string {
   const date = new Date();
@@ -113,43 +147,124 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
     ]);
   }, [party.laboratory_id, party.party_id, queryClient, state]);
 
+  /** ТЗ DR27 §4.2: a fresh GET of the receipt context right before any
+   * decision; the closure-captured `context` is never trusted for revisions.
+   * The fresh value also replaces the cache so the displayed state agrees. */
+  async function fetchFreshContext(): Promise<ReceiptContext | Problem> {
+    const fresh = await fetchReceiptContext(party.party_id);
+    if (!("code" in fresh)) {
+      queryClient.setQueryData([party.laboratory_id, party.party_id, "receipt-context"], fresh);
+    }
+    return fresh;
+  }
+
+  /** R-DR27-4: after a rejected write the whole server state is re-read once
+   * (party, reconciliation, context) — the user sees the actual revisions. */
+  async function refreshEverything(): Promise<void> {
+    await Promise.all([
+      queryClient.refetchQueries({
+        queryKey: [party.laboratory_id, party.party_id, "arrival"],
+        exact: true,
+      }),
+      queryClient.refetchQueries({
+        queryKey: [party.laboratory_id, party.party_id, "reconciliation"],
+        exact: true,
+      }),
+      queryClient.refetchQueries({
+        queryKey: [party.laboratory_id, party.party_id, "receipt-context"],
+        exact: true,
+      }),
+    ]);
+  }
+
   async function prepare(): Promise<void> {
-    if (context === null || vetInspection === "" || deliveryDate === "") return;
+    if (vetInspection === "" || deliveryDate === "") return;
     if (isReturn && returnIso === null) return;
     setProblem(null);
     setBusy(true);
-    const result = await previewReceipt(party.party_id, {
-      source_revision: context.source_revision ?? -1,
-      reconciliation_revision: context.reconciliation_revision ?? -1,
-      vet_inspection: vetInspection,
-      delivery_date: deliveryIso,
-      return_date: returnIso,
-    });
-    setBusy(false);
-    if ("code" in result) {
-      setProblem(result);
-      return;
+    try {
+      // ТЗ DR27 §4.2 (R-DR27-2): prepare always re-reads the context, never
+      // the values captured by the previous render.
+      let fresh = await fetchFreshContext();
+      if ("code" in fresh) {
+        setProblem(fresh);
+        return;
+      }
+      // A stale cached context right after a confirmed save gets exactly ONE
+      // automatic context refetch; a persistent divergence stops honestly.
+      if (fresh.reconciliation_revision !== reconciliation.revision) {
+        fresh = await fetchFreshContext();
+      }
+      if ("code" in fresh) {
+        setProblem(fresh);
+        return;
+      }
+      // §4.2 preflight: the context must agree with the DISPLAYED
+      // reconciliation and be usable at all.
+      const mismatch =
+        fresh.reconciliation_revision === null ||
+        fresh.source_revision === null ||
+        fresh.reconciliation_revision !== reconciliation.revision ||
+        reconciliation.state !== "OPEN" ||
+        !reconciliation.complete;
+      if (mismatch) {
+        await refreshEverything();
+        setProblem({
+          type: "about:blank",
+          title: "Сверка обновилась",
+          status: 409,
+          detail: STALE_RECONCILIATION_TEXT,
+          code: "STALE_RECONCILIATION",
+        });
+        return;
+      }
+      if (!fresh.write_enabled) {
+        setProblem({
+          type: "about:blank",
+          title: "Гашение не включено оператором",
+          status: 503,
+          detail: "Отправка в ВетИС появится только после контролируемого включения установки.",
+          code: "INTEGRATION_WRITE_DISABLED",
+        });
+        return;
+      }
+      const result = await previewReceipt(party.party_id, {
+        source_revision: fresh.source_revision ?? -1,
+        reconciliation_revision: fresh.reconciliation_revision ?? -1,
+        vet_inspection: vetInspection,
+        delivery_date: deliveryIso,
+        return_date: returnIso ?? null,
+      });
+      if ("code" in result) {
+        setProblem(result);
+        return;
+      }
+      submitted.current = false; // a new preview earns exactly one new submit
+      setPreview(result);
+      setDialogOpen(true);
+    } finally {
+      setBusy(false);
     }
-    setPreview(result);
-    setDialogOpen(true);
   }
 
   async function confirm(): Promise<void> {
-    if (preview === null || context === null || vetInspection === "" || submitted.current) return;
+    if (preview === null || submitted.current) return;
     submitted.current = true;
     setBusy(true);
     setProblem(null);
+    // ТЗ DR27 §4.3 (R-DR27-3): the frozen preview is the ONLY source of the
+    // submit payload — revisions, dates and the fingerprint all come from
+    // preview.intent / preview.fingerprint, never from a stale context.
+    const intent = preview.intent;
     const result = await submitReceipt(
       party.party_id,
       {
-        source_revision: context.source_revision ?? -1,
-        reconciliation_revision: context.reconciliation_revision ?? -1,
-        vet_inspection: vetInspection,
-        delivery_date: deliveryIso,
-        return_date: returnIso,
-        // ТЗ DR8 §9: the frozen server issue date is echoed so the re-built
-        // preview keeps the exact fingerprint (one frozen intent).
-        issue_date: preview.intent.issue_date,
+        source_revision: intent.source_revision,
+        reconciliation_revision: intent.reconciliation_revision,
+        vet_inspection: intent.vet_inspection,
+        delivery_date: intent.delivery_date,
+        return_date: intent.return_date ?? null,
+        issue_date: intent.issue_date,
         fingerprint: preview.fingerprint,
       },
       crypto.randomUUID(),
@@ -157,6 +272,16 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
     setBusy(false);
     if ("code" in result) {
       submitted.current = false;
+      if (result.code === "REVISION_CONFLICT") {
+        // ТЗ DR27 §4.3 (R-DR27-4): no automatic submit retry, no new external
+        // write without an explicit new confirmation. The stale preview is
+        // dropped, the server state is re-read, the user input is kept.
+        setDialogOpen(false);
+        setPreview(null);
+        await refreshEverything();
+        setProblem(result);
+        return;
+      }
       setProblem(result);
       return;
     }
@@ -280,7 +405,28 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
       </div>
       {!ready ? <p className="vse-receipt-blocked">Сначала полностью заполните и сохраните сверку.</p> : null}
       {problem !== null ? (
-        <StatusView state="forbidden" title="Гашение не подготовлено" detail={problem.detail} />
+        <div>
+          <StatusView
+            state="forbidden"
+            title={receiptProblemView(problem).title}
+            detail={receiptProblemView(problem).detail}
+          />
+          {problem.code === "REVISION_CONFLICT" ? (
+            <>
+              {/* ТЗ DR27 §5.2: the safe technical diagnostics, when present. */}
+              {problem.current_source_revision !== undefined &&
+              problem.current_reconciliation_revision !== undefined ? (
+                <p className="vse-receipt-blocked">
+                  {`Актуальные ревизии: источник ${problem.current_source_revision}, сверка ${problem.current_reconciliation_revision}.`}
+                </p>
+              ) : null}
+              {/* R-DR27-4: a fresh preview is always an explicit user action. */}
+              <Button variant="secondary" disabled={busy} onClick={() => void prepare()}>
+                Сформировать preview заново
+              </Button>
+            </>
+          ) : null}
+        </div>
       ) : null}
       <Button
         variant="primary"

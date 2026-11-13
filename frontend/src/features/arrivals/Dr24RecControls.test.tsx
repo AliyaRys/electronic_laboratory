@@ -158,33 +158,20 @@ describe("ТЗ DR24 §5: строковый decimal-форматтер", () => {
 /* --- §4: the comparison-card geometry ------------------------------------------- */
 
 describe("ТЗ DR24 §4: геометрия карточки сравнения", () => {
-  it("keeps the value and the two mark buttons in one row — value up to the controls", () => {
+  it("renders the name as a full-width line ABOVE the value+buttons line (R-DR26-1)", () => {
     renderForm();
     const card = document.querySelector('[data-field-id="CHK-F21"]');
     expect(card).not.toBeNull();
-    // The mockup grid: the value fills minmax(0,1.4fr), the two 40 px controls
-    // sit right of it as the next grid items — never wrapped below.
+    // The mockup grid: ONE line = value box (1fr) + ok (40px) + bad (40px);
+    // the name spans the full card width on its own row above.
     expect(reconciliationCss).toContain(".vse-rec-compare {");
     expect(
       reconciliationCss
         .replace(/\s+/g, " ")
-        .includes("grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 40px 40px;"),
+        .includes("grid-template-columns: minmax(0, 1fr) 40px 40px; gap: 9px; align-items: end;"),
     ).toBe(true);
-    const children = [...(card as Element).children];
-    const valueIndex = children.findIndex((node) => node.classList.contains("vse-rec-mercury-value"));
-    const buttonsIndex = children.findIndex((node) => node.classList.contains("vse-rec-check-buttons"));
-    expect(valueIndex).toBeGreaterThanOrEqual(0);
-    expect(buttonsIndex).toBe(valueIndex + 1);
-    for (const button of (card as Element).querySelectorAll(".vse-rec-check")) {
-      expect(button.className).toContain("vse-rec-check");
-    }
-  });
-
-  it("renders [name][value][ok][bad] on ONE horizontal line (R-DR25-6)", () => {
-    renderForm();
-    const card = document.querySelector('[data-field-id="CHK-F21"]');
-    expect(card).not.toBeNull();
-    // DOM order: field-name → mercury-value → check-buttons (ok, bad).
+    expect(reconciliationCss).toMatch(/\.vse-rec-compare-name \{[^}]*grid-column: 1 \/ -1;/s);
+    // DOM order: field-name → mercury-value → check-buttons.
     const children = [...(card as Element).children];
     const nameIndex = children.findIndex((node) => node.classList.contains("vse-rec-compare-name"));
     const valueIndex = children.findIndex((node) => node.classList.contains("vse-rec-mercury-value"));
@@ -192,12 +179,36 @@ describe("ТЗ DR24 §4: геометрия карточки сравнения"
     expect(nameIndex).toBeGreaterThanOrEqual(0);
     expect(nameIndex).toBeLessThan(valueIndex);
     expect(buttonsIndex).toBe(valueIndex + 1);
-    // The name is the leading inline cell of the same row — it no longer
-    // spans the full card width above the value.
-    expect(
-      reconciliationCss.replace(/\s+/g, " ").includes(".vse-rec-compare-name { grid-column: 1 / -1;"),
-    ).toBe(false);
-    expect(reconciliationCss).toMatch(/\.vse-rec-compare-name \{[^}]*min-width: 0;/s);
+    for (const button of (card as Element).querySelectorAll(".vse-rec-check")) {
+      expect(button.className).toContain("vse-rec-check");
+    }
+  });
+
+  it("the value box and the mark buttons keep the mockup 40px geometry", () => {
+    renderForm();
+    // The value is a 40px box like a disabled input (R-DR26-1).
+    expect(reconciliationCss).toMatch(
+      /\.vse-rec-mercury-value \{[^}]*height: 40px;[^}]*white-space: nowrap;/s,
+    );
+    // The two mark buttons stay 40×40 with a centered icon face.
+    expect(reconciliationCss).toMatch(/\.vse-rec-check \{[^}]*width: 40px;[^}]*height: 40px;/s);
+    expect(reconciliationCss).toMatch(/\.vse-rec-check \{[^}]*place-items: center;/s);
+  });
+
+  it("the radiogroup wrapper is display:contents — its labels are the grid children (R-DR26-2)", () => {
+    renderForm();
+    const card = document.querySelector('[data-field-id="CHK-F21"]');
+    expect(reconciliationCss).toMatch(/\.vse-rec-check-buttons \{[^}]*display: contents;/s);
+    // The radiogroup keeps its semantics in the DOM.
+    const group = card?.querySelector('[role="radiogroup"]');
+    expect(group).not.toBeNull();
+    expect(group?.getAttribute("aria-label")).toBe("Отметка сравнения: Вес, кг");
+    // The two labels are the effective grid children on the value line.
+    const labels = group?.querySelectorAll(".vse-rec-check");
+    expect(labels?.length).toBe(2);
+    expect(reconciliationCss).toMatch(
+      /\.vse-rec-compare \{[^}]*grid-template-columns: minmax\(0, 1fr\) 40px 40px;/s,
+    );
   });
 
   it("the mismatch block expands BELOW the inline row inside the same card", () => {
@@ -206,11 +217,6 @@ describe("ТЗ DR24 §4: геометрия карточки сравнения"
     // The mismatch facts block spans the full card row (below the line).
     expect(reconciliationCss).toMatch(/\.vse-rec-facts \{[^}]*grid-column: 1 \/ -1;/s);
     expect(card?.querySelector(".vse-rec-facts")).toBeNull(); // not open until marked
-  });
-
-  it("the touch controls keep the 40×40 mockup geometry", () => {
-    renderForm();
-    expect(reconciliationCss).toMatch(/\.vse-rec-check \{[^}]*width: 40px;[^}]*height: 40px;/s);
   });
 
   it("does not push the buttons out at 390 px (no horizontal document scroll)", () => {

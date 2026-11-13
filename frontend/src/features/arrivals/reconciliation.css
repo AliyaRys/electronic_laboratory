@@ -137,13 +137,12 @@
 
 .vse-rec-compare {
   position: relative;
-  /* R-DR25-6: the mockup compare-row is ONE horizontal line — the field name
-     is the leading cell, then the Mercury value, then the two 40 px mark
-     controls immediately right of the value (never on a separate line). */
+  /* R-DR26-1: the mockup compare-row is: a full-width name line ABOVE, then
+     ONE line = value box + ok + bad (3 tracks, aligned to the bottom). */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 40px 40px;
+  grid-template-columns: minmax(0, 1fr) 40px 40px;
   gap: 9px;
-  align-items: center;
+  align-items: end;
   min-width: 0;
   padding: 13px;
   border: 1px solid var(--app-card-line);
@@ -169,6 +168,7 @@
 }
 
 .vse-rec-compare-name {
+  grid-column: 1 / -1;
   min-width: 0;
   color: #29474d;
   font-size: 13px;
@@ -178,9 +178,8 @@
 
 .vse-rec-mercury-value {
   display: block;
+  height: 40px;
   min-width: 0;
-  min-height: 40px;
-  align-self: center;
   border: 1px solid var(--app-mercury-line);
   border-radius: 10px;
   background: var(--app-mercury-bg);
@@ -208,6 +207,12 @@
 }
 
 /* --- mark buttons (native radios, styled faces) -------------------------------- */
+/* R-DR26-2: the radiogroup wrapper must not occupy a grid track — its two
+   labels are the effective grid children (tracks 2 and 3 of the value line). */
+.vse-rec-check-buttons {
+  display: contents;
+}
+
 .vse-rec-check {
   position: relative;
   display: grid;
@@ -796,6 +801,12 @@
 }
 
 @media (max-width: 800px) {
+  /* R-DR26-4: the mockup keeps the value + two buttons on one line ≤800px;
+     the value text ellipsizes instead of pushing a horizontal scroll. */
+  .vse-rec-compare {
+    grid-template-columns: minmax(0, 1fr) 40px 40px;
+  }
+
   .vse-rec-title-row {
     align-items: flex-start;
     flex-direction: column;

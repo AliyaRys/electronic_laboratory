@@ -282,6 +282,8 @@ export interface NormRowProps {
   readOnly?: boolean | undefined;
   /** Optional business details of the norm (currently boundary inclusivity). */
   details?: React.ReactNode | undefined;
+  /** The source of the methodology (§6.1 «источник» column of the row). */
+  source?: string | undefined;
   /** Calm secondary action of the row (e.g. «Удалить норму», §11.5). */
   secondary?: React.ReactNode | undefined;
   /** Active 409 resolution state (§12.6): server values vs the user's draft. */
@@ -303,6 +305,7 @@ export function NormRow({
   busy = false,
   readOnly = false,
   details,
+  source,
   secondary,
   conflict,
   onKeepMine,
@@ -332,6 +335,7 @@ export function NormRow({
       <div className="vse-catalog-norm-info">
         <div className="vse-catalog-norm-name">{name}</div>
         {meta !== undefined ? <div className="vse-catalog-norm-meta">{meta}</div> : null}
+        {source !== undefined ? <div className="vse-catalog-norm-meta">Источник: {source}</div> : null}
         {error !== undefined ? (
           <p className="app-field-message app-field-error" id={errorId} role="alert">
             {error}

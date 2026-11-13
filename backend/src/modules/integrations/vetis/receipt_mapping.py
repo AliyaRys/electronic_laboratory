@@ -167,11 +167,14 @@ def _delivery(
     if certificate is None:
         # Live LIC2 transport eVSDs carry no accompanyingForms; per the
         # integration contract the electronic certificate reference is the
-        # UUID of the source eVSD itself.
-        forms = ET.SubElement(delivery, f"{{{VD_NS}}}accompanyingForms")
+        # UUID of the source eVSD itself. Merge into an existing copied
+        # forms block when present instead of appending a duplicate one.
+        forms = next((item for item in delivery if _local(item) == "accompanyingForms"), None)
+        if forms is None:
+            forms = ET.SubElement(delivery, f"{{{VD_NS}}}accompanyingForms")
         cert = ET.SubElement(forms, f"{{{VD_NS}}}vetCertificate")
         _text(cert, BASE_NS, "uuid", str(intent.source_evsd_uuid))
-        certificate = _find_local(delivery, "vetCertificate")
+        certificate = cert
     if returned:
         for child in list(certificate):
             certificate.remove(child)

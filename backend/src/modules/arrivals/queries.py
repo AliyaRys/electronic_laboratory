@@ -35,6 +35,10 @@ from backend.src.modules.arrivals.schemas import (
 )
 from backend.src.modules.integrations.vetis.models import VetisContour
 from backend.src.modules.integrations.vetis.queries import find_purpose_name
+from backend.src.modules.integrations.vetis.reference_names import (
+    participant_name_overrides,
+    resolve_participants,
+)
 from backend.src.modules.integrations.vetis.status import status_label
 from backend.src.modules.integrations.vetis.storage_types import storage_type_label
 
@@ -349,6 +353,7 @@ def _external_fields(
     purpose_name: str | None = None,
     purpose_guid: str | None = None,
     purpose_uuid: str | None = None,
+    participant_fields: dict[str, str | None] | None = None,
 ) -> ExternalFields:
     payload = document.source_snapshot["vdDocument"]
     document_payload = payload if isinstance(payload, dict) else {}
@@ -390,6 +395,11 @@ def _external_fields(
         # absence does NOT mean the unit is missing (the GUID is the identity).
         "unitName": _unit_name(batch),
         **previous_vse_fields(document.source_snapshot),
+        # ТЗ DR18 §9: the unified read model of the participant names (old
+        # keys keep their single meaning; each name carries its honest state
+        # under ``<key>NameSource``). The values come from the contour-scoped
+        # local cache — the browser never reaches VetIS.
+        **(participant_fields or {}),
     }
     return ExternalFields(
         contour=document.contour,
@@ -430,6 +440,9 @@ async def build_incoming_view(
     examination_id = await _open_examination_id(db, party.id)
     queue_label = await queue_of(db, party, has_reconciliation, confirmation is not None)
     purpose_name, purpose_guid, purpose_uuid = await _resolve_purpose(db, document, document_payload)
+    # ТЗ DR18 §6/§9: the unified read model of the participant names — cache
+    # only, never a VetIS request per view.
+    participants = await resolve_participants(db, VetisContour(document.contour), document.source_snapshot)
     return IncomingView(
         id=str(document.id),
         party_id=str(party.id),
@@ -439,6 +452,7 @@ async def build_incoming_view(
             purpose_name=purpose_name,
             purpose_guid=purpose_guid,
             purpose_uuid=purpose_uuid,
+            participant_fields=participant_name_overrides(participants),
         ),
         classification=_classification_view(dict(party.classification_snapshot)),
         documentary=_quantity_set(batch),

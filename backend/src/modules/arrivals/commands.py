@@ -121,6 +121,22 @@ async def _classification_snapshot(db: AsyncSession, document: IncomingDocumentI
     }
 
 
+async def _upsert_reference_names_safely(
+    uow: AsyncSession, document: IncomingDocumentInput, snapshot_dict: dict[str, Any]
+) -> None:
+    """The §7 cache upsert of one imported document; never blocks the import."""
+    import logging
+
+    from backend.src.modules.integrations.vetis.reference_names import upsert_reference_names
+
+    log = logging.getLogger("vetis.reference_names")
+    try:
+        async with uow.begin_nested():
+            await upsert_reference_names(uow, document.contour, snapshot_dict)
+    except Exception:  # noqa: BLE001 - enrichment never blocks or rejects
+        log.warning("reference_name_upsert_failed", extra={"evsd_uuid": str(document.evsd_uuid)})
+
+
 async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) -> Party:
     """Create or refresh one external document; return its party (no commit)."""
     resolve_binding_or_fail(document)
@@ -129,6 +145,11 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
 
     snapshot_dict: dict[str, Any] = document.snapshot.model_dump(mode="json", by_alias=True)
     hash_value = content_hash(snapshot_dict)
+    # ТЗ DR18 §7: every import upserts its participant objects into the name
+    # cache (name present → SOURCE_XML; GUID-only → PENDING queue entry). The
+    # import is NEVER delayed or rejected by a missing name: the upsert runs
+    # inside a savepoint and a failure only logs.
+    await _upsert_reference_names_safely(uow, document, snapshot_dict)
 
     existing = (
         await uow.execute(

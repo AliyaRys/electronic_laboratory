@@ -16,9 +16,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Collection
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import requests
+
+if TYPE_CHECKING:
+    from xml.etree import ElementTree as ET
 
 from backend.src.core.problems import ProblemError
 from backend.src.modules.integrations.vetis.manifest import VetisManifest
@@ -33,10 +36,17 @@ __all__ = [
     "RestrictedSession",
     "ZeepApplicationTransport",
     "ZeepDictionaryTransport",
+    "ZeepEnterpriseLookupTransport",
+    "SpyEnterpriseLookupTransport",
     "build_get_vet_document_list_application",
     "build_purpose_list_request",
     "parse_purpose_list",
+    "build_get_enterprise_by_guid_request",
+    "build_get_business_entity_by_guid_request",
+    "parse_enterprise_by_guid",
+    "parse_business_entity_by_guid",
     "dictionary_allowlist",
+    "enterprise_allowlist",
     "imports_allowlist",
     "is_read_only_operation",
 ]
@@ -503,3 +513,196 @@ class SpyPurposeTransport:
         if not self._pages:
             raise RuntimeError("spy: no more purpose pages")
         return self._pages.pop(0)
+
+
+# --- the participant-name lookups (ТЗ DR18 §8, EnterpriseService) -----------------
+
+def build_get_enterprise_by_guid_request(guid: str, *, registry_ns: str = _REGISTRY_DEFINITIONS_NS) -> str:
+    """The plain SOAP envelope of a read-only GetEnterpriseByGuid v2 call."""
+    from xml.sax.saxutils import escape
+
+    if not is_read_only_operation("GetEnterpriseByGuid"):
+        raise WriteOperationRejected("GetEnterpriseByGuid")
+    return (
+        f'<ws:getEnterpriseByGuidRequest xmlns:ws="{registry_ns}" '
+        f'xmlns:bs="{_BASE_NS}">'
+        f"<bs:guid>{escape(guid)}</bs:guid>"
+        "</ws:getEnterpriseByGuidRequest>"
+    )
+
+
+def build_get_business_entity_by_guid_request(guid: str, *, registry_ns: str = _REGISTRY_DEFINITIONS_NS) -> str:
+    """The plain SOAP envelope of a read-only GetBusinessEntityByGUID call."""
+    from xml.sax.saxutils import escape
+
+    if not is_read_only_operation("GetBusinessEntityByGUID"):
+        raise WriteOperationRejected("GetBusinessEntityByGUID")
+    return (
+        f'<ws:getBusinessEntityByGuidRequest xmlns:ws="{registry_ns}" '
+        f'xmlns:bs="{_BASE_NS}">'
+        f"<bs:guid>{escape(guid)}</bs:guid>"
+        "</ws:getBusinessEntityByGuidRequest>"
+    )
+
+
+def _localname(element: ET.Element | None) -> str:
+    return element.tag.rsplit("}", 1)[-1] if element is not None else ""
+
+
+def _child_text(parent: ET.Element | None, localname: str) -> str | None:
+    """A child value read by LOCALNAME only (the pinned response namespaces
+    come from the contract; the parser never guesses them from a ВВСД XML)."""
+    if parent is None:
+        return None
+    for child in parent.iter():
+        if _localname(child) == localname:
+            value = (child.text or "").strip()
+            return value or None
+    return None
+
+
+def _identity_record(element: ET.Element | None, kind: str) -> dict[str, object]:
+    """The source-faithful record of one lookup response (ТЗ DR18 §8)."""
+    if element is None or _localname(element) != kind:
+        raise ProblemError(
+            status=502,
+            code="VETIS_REFERENCE_RESPONSE_INVALID",
+            title="VetIS reference response invalid",
+            detail=f"Ответ ВетИС не содержит объект {kind}.",
+        )
+    created = _child_text(element, "createDate")
+    updated = _child_text(element, "updateDate")
+    return {
+        "guid": _child_text(element, "guid"),
+        "uuid": _child_text(element, "uuid"),
+        "active": (_child_text(element, "active") or "false") == "true",
+        "last": (_child_text(element, "last") or "false") == "true",
+        "status": int(_child_text(element, "status") or 0),
+        "created_at": created,
+        "updated_at": updated,
+    }
+
+
+def parse_enterprise_by_guid(result_xml: str) -> dict[str, object]:
+    """Parse a GetEnterpriseByGuid v2 response; the name is ``dt:name``."""
+    from xml.etree import ElementTree as ET
+
+    root = ET.fromstring(result_xml)
+    enterprise = next((node for node in root.iter() if _localname(node) == "enterprise"), None)
+    record = _identity_record(enterprise, "enterprise")
+    record["name"] = _child_text(enterprise, "name")
+    return record
+
+
+def parse_business_entity_by_guid(result_xml: str) -> dict[str, object]:
+    """Parse a GetBusinessEntityByGUID response; name → fullName → fio."""
+    from xml.etree import ElementTree as ET
+
+    root = ET.fromstring(result_xml)
+    entity = next((node for node in root.iter() if _localname(node) == "businessEntity"), None)
+    record = _identity_record(entity, "businessEntity")
+    record["name"] = (
+        _child_text(entity, "name") or _child_text(entity, "fullName") or _child_text(entity, "fio")
+    )
+    return record
+
+
+def enterprise_allowlist(manifest: VetisManifest) -> set[str]:
+    """The fail-closed allowlist of the EnterpriseService boundary."""
+    allowed = dictionary_allowlist(manifest)
+    if manifest.enterprise_endpoint:
+        allowed.add(manifest.enterprise_endpoint)
+    return allowed
+
+
+class ZeepEnterpriseLookupTransport:
+    """The real read-only EnterpriseService boundary (ТЗ DR18 §8).
+
+    Same guards as the dictionary transport: TLS verified, DTD/entities off,
+    bounded timeouts and the fail-closed URL allowlist; both SOAP actions come
+    from the pinned manifest, never guessed.
+    """
+
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        enterprise_action: str,
+        business_entity_action: str,
+        connect_timeout_s: int = 10,
+        read_timeout_s: int = 60,
+        allowed_urls: Collection[str] | None = None,
+        gateway_user: str | None = None,
+        gateway_password: str | None = None,
+    ) -> None:
+        self._endpoint = endpoint
+        self._enterprise_action = enterprise_action
+        self._business_entity_action = business_entity_action
+        self._connect_timeout = connect_timeout_s
+        self._read_timeout = read_timeout_s
+        self._allowed_urls = frozenset(allowed_urls or ())
+        self._gateway_user = gateway_user
+        self._gateway_password = gateway_password
+
+    def _post(self, action: str, body: str) -> str:  # pragma: no cover - live boundary
+        session = RestrictedSession(allowed=self._allowed_urls) if self._allowed_urls else requests.Session()
+        if self._gateway_user is not None and self._gateway_password is not None:
+            session.auth = (self._gateway_user, self._gateway_password)
+        envelope = (
+            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
+            f"<soapenv:Header/><soapenv:Body>{body}</soapenv:Body></soapenv:Envelope>"
+        )
+        response = session.post(
+            self._endpoint,
+            data=envelope.encode("utf-8"),
+            headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": action},
+            timeout=(self._connect_timeout, self._read_timeout),
+        )
+        response.raise_for_status()
+        return str(response.text)
+
+    async def get_enterprise_by_guid(self, guid: str) -> str:
+        return await asyncio.to_thread(
+            self._post, self._enterprise_action, build_get_enterprise_by_guid_request(guid)
+        )
+
+    async def get_business_entity_by_guid(self, guid: str) -> str:
+        return await asyncio.to_thread(
+            self._post, self._business_entity_action, build_get_business_entity_by_guid_request(guid)
+        )
+
+
+class SpyEnterpriseLookupTransport:
+    """A recording spy of the EnterpriseService boundary (ТЗ DR18 §11).
+
+    Proves zero write operations: only the two read-only lookup methods are
+    invokable; every call is recorded with its operation name.
+    """
+
+    def __init__(
+        self,
+        *,
+        enterprise_responses: list[str] | None = None,
+        business_entity_responses: list[str] | None = None,
+        failure: Exception | None = None,
+    ) -> None:
+        self._enterprise_responses = list(enterprise_responses or [])
+        self._business_entity_responses = list(business_entity_responses or [])
+        self._failure = failure
+        self.calls: list[dict[str, object]] = []
+
+    async def get_enterprise_by_guid(self, guid: str) -> str:
+        self.calls.append({"operation": "GetEnterpriseByGuid", "guid": guid})
+        if self._failure is not None:
+            raise self._failure
+        if not self._enterprise_responses:
+            raise RuntimeError("spy: no more enterprise responses")
+        return self._enterprise_responses.pop(0)
+
+    async def get_business_entity_by_guid(self, guid: str) -> str:
+        self.calls.append({"operation": "GetBusinessEntityByGUID", "guid": guid})
+        if self._failure is not None:
+            raise self._failure
+        if not self._business_entity_responses:
+            raise RuntimeError("spy: no more business entity responses")
+        return self._business_entity_responses.pop(0)

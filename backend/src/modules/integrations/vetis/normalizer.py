@@ -313,6 +313,10 @@ def _participant(raw: dict[str, Any]) -> dict[str, str | None]:
         "guid": entity.get("guid"),
         "uuid": entity.get("uuid"),
         "enterprise_guid": enterprise.get("guid"),
+        # ТЗ DR18 §7: the enterprise object keeps its own uuid — the name
+        # cache stores it per (contour, kind, guid), never merged with the
+        # businessEntity identity.
+        "enterprise_uuid": enterprise.get("uuid"),
     }
 
 
@@ -411,14 +415,26 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
                 business_entity=_external_ref(
                     {"guid": consignor.get("guid"), "uuid": consignor.get("uuid"), "name": consignor["name"]}
                 ),
-                enterprise=_external_ref({"guid": consignor.get("enterprise_guid"), "name": consignor["name"]}),
+                enterprise=_external_ref(
+                    {
+                        "guid": consignor.get("enterprise_guid"),
+                        "uuid": consignor.get("enterprise_uuid"),
+                        "name": consignor["name"],
+                    }
+                ),
             ),
             consignee=ConsignorConsignee(
                 name=consignee["name"] or "",
                 business_entity=_external_ref(
                     {"guid": consignee.get("guid"), "uuid": consignee.get("uuid"), "name": consignee["name"]}
                 ),
-                enterprise=_external_ref({"guid": consignee.get("enterprise_guid"), "name": consignee["name"]}),
+                enterprise=_external_ref(
+                    {
+                        "guid": consignee.get("enterprise_guid"),
+                        "uuid": consignee.get("enterprise_uuid"),
+                        "name": consignee["name"],
+                    }
+                ),
             ),
             batch=Batch(
                 product=_external_ref(batch["product"]) or ExternalRef(),

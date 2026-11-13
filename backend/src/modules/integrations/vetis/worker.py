@@ -20,6 +20,7 @@ pure-Python functions are the tested contract.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -60,6 +61,7 @@ __all__ = [
     "schedule_scheduled_syncs",
     "compose_read_adapter",
     "purpose_sync_tick",
+    "reference_names_tick",
     "run_receipt_operation",
     "WorkerSettings",
 ]
@@ -387,7 +389,8 @@ async def _startup(_: dict[str, Any]) -> None:
     async with factory() as session:
         await dispatch_pending_operations(session)
         await session.commit()
-
+    with contextlib.suppress(Exception):  # the backfill never blocks the worker
+        await backfill_reference_names_startup()
 
 async def _job_run_vetis_sync(ctx: dict[str, Any], *, operation_id: str) -> None:  # pragma: no cover - arq entry
     await sync.run_sync(uuid.UUID(operation_id), adapter=compose_read_adapter())
@@ -399,6 +402,7 @@ async def _job_vetis_scheduler(ctx: dict[str, Any]) -> None:  # pragma: no cover
         await schedule_scheduled_syncs(session)
         await session.commit()
     await purpose_sync_tick()
+    await reference_names_tick()
 
 
 async def purpose_sync_tick() -> dict[str, object]:
@@ -423,6 +427,57 @@ async def purpose_sync_tick() -> dict[str, object]:
     except ProblemError as problem:
         return {"result": "NOT_CONFIGURED", "problem": problem.code}
     return await run_due_purpose_sync(transport=transport, manifest=manifest)
+
+
+async def reference_names_tick() -> dict[str, object]:
+    """The due read-only participant-name resolution at every scheduler tick.
+
+    Never per page view and never per document: the tick resolves the due
+    PENDING/refreshable entries through the pinned EnterpriseService lookups
+    (ТЗ DR18 §8). Unconfigured pins answer honestly WITHOUT any network
+    contact; the import and every screen work regardless.
+    """
+    from pathlib import Path
+
+    from backend.src.core.problems import ProblemError
+    from backend.src.modules.integrations.vetis.manifest import load_manifest
+    from backend.src.modules.integrations.vetis.reference_names import (
+        compose_reference_transport,
+        resolve_due_reference_names,
+    )
+
+    manifest_path = Path(__file__).resolve().parents[4] / "resources" / "vetis" / "manifest.json"
+    manifest = load_manifest(manifest_path)
+    try:
+        transport = compose_reference_transport(manifest)
+    except ProblemError as problem:
+        return {"result": "NOT_CONFIGURED", "problem": problem.code}
+    factory = get_session_factory()
+    async with factory() as session:
+        counters = await resolve_due_reference_names(session, transport)
+        return {"result": "SUCCESS", **counters}
+
+
+async def backfill_reference_names_startup() -> dict[str, int] | None:
+    """The safe idempotent backfill at worker startup (ТЗ DR18 §7).
+
+    Only derived cache rows/queue entries are created from the ALREADY stored
+    source snapshots: the raw XML, checksum, revision and every local fact
+    stay untouched. A repeated start creates nothing new.
+    """
+    from sqlalchemy import select
+
+    from backend.src.modules.arrivals.models import IncomingDocument
+    from backend.src.modules.integrations.vetis.reference_names import backfill_reference_names
+
+    factory = get_session_factory()
+    async with factory() as session:
+        rows = (await session.execute(select(IncomingDocument))).scalars()
+        counters = await backfill_reference_names(
+            session, [(row.contour, row.source_snapshot) for row in rows]
+        )
+        await session.commit()
+        return counters
 
 
 async def _job_poll_due(ctx: dict[str, Any]) -> None:  # pragma: no cover - arq entry

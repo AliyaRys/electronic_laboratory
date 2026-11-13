@@ -1,4 +1,4 @@
-"""The saved-reconciliation command (API-04 / DATA-02 / ADR-017).
+﻿"""The saved-reconciliation command (API-04 / DATA-02 / ADR-017).
 
 ``save_reconciliation`` is the single coordinator of the started
 reconciliation: it locks the party, enforces the ETag sequence (the party
@@ -53,6 +53,11 @@ from backend.src.modules.arrivals.validation import (
 )
 from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
+from backend.src.modules.integrations.vetis.models import VetisContour
+from backend.src.modules.integrations.vetis.reference_names import (
+    participant_name_overrides,
+    resolve_participants,
+)
 from backend.src.modules.integrations.vetis.status import status_label
 from backend.src.modules.integrations.vetis.storage_types import storage_type_label
 
@@ -87,13 +92,17 @@ def _as_dict(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
-def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocument:
+def source_projection(
+    row: IncomingDocumentRow, party: Party, *, names: dict[str, str | None] | None = None
+) -> IncomingDocument:
     """The CHK source projection from the stored snapshot + classification.
 
     A value the snapshot does not carry stays absent: informational absence
     never demands a fictitious mark (FT-ARR-03). The fourth-level
     ``productItem.name`` is the CHK-F18 «Название продукции», never the
-    second-level product name.
+    second-level product name. ``names`` (ТЗ DR18 §9) carries the resolved
+    participant names from the unified read model and REPLACES only the four
+    participant keys — the raw snapshot is never modified by enrichment.
     """
     snapshot: dict[str, object] = _as_dict(row.source_snapshot)
     payload = _as_dict(snapshot.get("vdDocument"))
@@ -120,8 +129,7 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
         "senderEnterprise": enterprise_name(consignor),
         "senderOwner": _ref_name(consignor.get("businessEntity")),
         "receiverEnterprise": enterprise_name(consignee),
-        "receiverOwner": _ref_name(consignee.get("businessEntity")),
-        "transportKind": None,
+        "receiverOwner": _ref_name(consignee.get("businessEntity")),        "transportKind": None,
         "vehicleNumber": text_of(payload.get("transportNumber")),
         # ТЗ DR17 §5.2: the separate trailer fact; an absent/empty source
         # number publishes the agreed informational text (never «—», never a
@@ -151,6 +159,11 @@ def source_projection(row: IncomingDocumentRow, party: Party) -> IncomingDocumen
         "transportDocumentIssuedOn": None,
         **previous_vse_fields(row.source_snapshot),
     }
+    if names is not None:
+        # ТЗ DR18 §9: the four participant keys come from the unified read
+        # model (§6 priority); every other key stays the raw projection.
+        for key in ("senderOwner", "senderEnterprise", "receiverOwner", "receiverEnterprise"):
+            fields[key] = names.get(key)
     return IncomingDocument(
         snapshot=SourceSnapshot.model_validate(row.source_snapshot),
         classification=classification,
@@ -243,6 +256,8 @@ def build_reconciliation_view(
     row: Reconciliation | None,
     party: Party,
     document_row: IncomingDocumentRow,
+    *,
+    names: dict[str, str | None] | None = None,
 ) -> ReconciliationView:
     """The API-04 ``ReconciliationView``; a not-yet-created reconciliation is
     an empty ``OPEN`` view whose revision carries the parent (party) ETag."""
@@ -276,7 +291,7 @@ def build_reconciliation_view(
             complete=False,
         )
     payload = row_to_payload(row)
-    validation = validate_receipt(payload, source_projection(document_row, party), CAPABILITIES)
+    validation = validate_receipt(payload, source_projection(document_row, party, names=names), CAPABILITIES)
     delivered, accepted, returned = _quantities(row, _source_unit_id(document_row))
     return ReconciliationView(
         id=str(row.id),
@@ -421,7 +436,9 @@ async def save_reconciliation(
         document_row = (
             await db.execute(select(IncomingDocumentRow).where(IncomingDocumentRow.id == party.incoming_document_id))
         ).scalar_one()
-        return build_reconciliation_view(row, party, document_row)
+        return build_reconciliation_view(
+            row, party, document_row, names=await resolved_participant_names(db, document_row)
+        )
 
     document_row = (
         await db.execute(select(IncomingDocumentRow).where(IncomingDocumentRow.id == party.incoming_document_id))
@@ -432,6 +449,10 @@ async def save_reconciliation(
     # from the immutable source snapshot before validation.
     saved = normalize_payload(payload)
     source_unit_id = _source_unit_id(document_row)
+    # ТЗ DR18 §9: the participant names come from the unified read model —
+    # the validator and the returned view show the resolved names, and a
+    # missing name never demands a fictitious mark (FT-ARR-03).
+    names = await resolved_participant_names(db, document_row)
     if source_unit_id:
         # ТЗ DR10 §5/R-DR10-3 (fix round 1): the immutable source snapshot is
         # the single unit authority — an EMPTY, STALE or MISMATCHING unit in
@@ -445,7 +466,7 @@ async def save_reconciliation(
                 "returned": saved.returned.model_copy(update={"unit_id": source_unit_id}),
             }
         )
-    validation = validate_receipt(saved, source_projection(document_row, party), CAPABILITIES)
+    validation = validate_receipt(saved, source_projection(document_row, party, names=names), CAPABILITIES)
     if validation.blocking:
         raise validation_error(validation.blocking)
 
@@ -479,7 +500,15 @@ async def save_reconciliation(
         row.pricing_snapshot = snapshot.model_dump(mode="json")  # type: ignore[assignment]
     await db.flush()
     await recorder.complete(work, record, row.id)
-    return build_reconciliation_view(row, party, document_row)
+    return build_reconciliation_view(row, party, document_row, names=names)
+
+
+async def resolved_participant_names(db: AsyncSession, document_row: IncomingDocumentRow) -> dict[str, str | None]:
+    """The flat participant-name overrides of one document (ТЗ DR18 §9)."""
+    participants = await resolve_participants(
+        db, VetisContour(document_row.contour), document_row.source_snapshot
+    )
+    return participant_name_overrides(participants)
 
 
 async def load_reconciliation(db: AsyncSession, party_id: UUID) -> Reconciliation | None:

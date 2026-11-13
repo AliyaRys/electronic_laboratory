@@ -1,4 +1,4 @@
-"""ТЗ DR18 §11 backend tests: the contour-scoped participant-name cache.
+﻿"""ТЗ DR18 §11 backend tests: the contour-scoped participant-name cache.
 
 The ten named contract tests of spec §11 live in this module plus the
 arrivals API module (``backend/tests/arrivals/test_dr18_participant_names.py``).
@@ -26,6 +26,7 @@ from backend.src.modules.integrations.vetis.reference_names import (
     extract_participants,
     resolve_due_reference_names,
     resolve_participants,
+    schedule_vetis_lookup_recheck,
     upsert_reference_names,
 )
 from backend.src.modules.integrations.vetis.transport import (
@@ -614,3 +615,158 @@ def test_extract_participants_keeps_levels() -> None:
     assert sender["BUSINESS_ENTITY"].name == "ООО «Мясопром»"
     assert sender["ENTERPRISE"].name == "Предприятие «Мясопром»"
     assert sender["BUSINESS_ENTITY"].guid != sender["ENTERPRISE"].guid
+
+
+# --- R-DR25: the STRICT top-level name cascade -----------------------------------
+
+def _business_entity_variant(inner: str) -> str:
+    """One GetBusinessEntityByGUID answer whose businessEntity carries ONLY
+    the given inner XML (besides the pinned identity fields)."""
+    return (
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
+        '<soapenv:Body><ws:getBusinessEntityByGuidResponse '
+        'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
+        '<dt:businessEntity xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" '
+        'xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
+        f"<bs:uuid>{uuid.UUID(int=2)}</bs:uuid>"
+        f"<bs:guid>{SENDER_BE}</bs:guid>"
+        "<bs:active>true</bs:active><bs:last>true</bs:last><bs:status>100</bs:status>"
+        "<bs:createDate>2026-01-01T00:00:00</bs:createDate>"
+        "<bs:updateDate>2026-06-01T00:00:00</bs:updateDate>"
+        f"{inner}"
+        "</dt:businessEntity></ws:getBusinessEntityByGuidResponse></soapenv:Body>"
+        "</soapenv:Envelope>"
+    )
+
+
+ADDRESS_ONLY_INNER = (
+    "<dt:juridicalAddress>"
+    '<dt:country><dt:name>Российская Федерация</dt:name></dt:country>'
+    "<dt:region><dt:name>Республика Татарстан</dt:name></dt:region>"
+    "<dt:district><dt:name>Высокогорский район</dt:name></dt:district>"
+    "<dt:locality><dt:name>с. Высокая Гора</dt:name></dt:locality>"
+    "</dt:juridicalAddress>"
+)
+
+
+def test_business_entity_fio_only_resolves_the_fio() -> None:
+    """R-DR25-4: a fio-only businessEntity (the live DR25 case) resolves the
+    fio — «Хусаинова Гульнур Мансуровна», never a nested address name."""
+    parsed = parse_business_entity_by_guid(
+        _business_entity_variant("<dt:fio>Хусаинова Гульнур Мансуровна</dt:fio>" + ADDRESS_ONLY_INNER)
+    )
+    assert parsed["name"] == "Хусаинова Гульнур Мансуровна"
+    assert parsed["active"] is True and parsed["last"] is True
+
+
+def test_business_entity_name_beats_fio_and_fullname() -> None:
+    """The cascade order: name → fullName → fio; name wins over fio."""
+    parsed = parse_business_entity_by_guid(
+        _business_entity_variant(
+            "<dt:name>ООО «Мясопром»</dt:name>"
+            "<dt:fullName>Общество с ограниченной ответственностью «Мясопром»</dt:fullName>"
+            "<dt:fio>Хусаинова Гульнур Мансуровна</dt:fio>"
+        )
+    )
+    assert parsed["name"] == "ООО «Мясопром»"
+
+
+def test_business_entity_fullname_between_name_and_fio() -> None:
+    """Without dt:name the fullName is the second cascade step."""
+    parsed = parse_business_entity_by_guid(
+        _business_entity_variant(
+            "<dt:fullName>Общество с ограниченной ответственностью «Мясопром»</dt:fullName>"
+            "<dt:fio>Хусаинова Гульнур Мансуровна</dt:fio>"
+        )
+    )
+    assert parsed["name"] == "Общество с ограниченной ответственностью «Мясопром»"
+
+
+def test_nested_address_country_never_becomes_the_name() -> None:
+    """THE DR25 regression: a juridicalAddress/country name with NO top-level
+    name/fullName/fio yields NO name at all — never «Российская Федерация»."""
+    parsed = parse_business_entity_by_guid(_business_entity_variant(ADDRESS_ONLY_INNER))
+    assert parsed["name"] is None
+
+
+def test_enterprise_never_takes_a_name_from_a_nested_address() -> None:
+    """R-DR25-2: the enterprise reads ONLY its own top-level dt:name."""
+    nested = (
+        '<dt:enterprise xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" '
+        'xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
+        f"<bs:uuid>{uuid.UUID(int=1)}</bs:uuid>"
+        f"<bs:guid>{SENDER_ENT}</bs:guid>"
+        "<bs:active>true</bs:active><bs:last>true</bs:last><bs:status>100</bs:status>"
+        "<bs:createDate>2026-01-01T00:00:00</bs:createDate>"
+        "<bs:updateDate>2026-06-01T00:00:00</bs:updateDate>"
+        f"{ADDRESS_ONLY_INNER}"
+        "</dt:enterprise>"
+    )
+    envelope = (
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
+        '<soapenv:Body><ws:getEnterpriseByGuidResponse '
+        'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
+        f"{nested}"
+        "</ws:getEnterpriseByGuidResponse></soapenv:Body></soapenv:Envelope>"
+    )
+    parsed = parse_enterprise_by_guid(envelope)
+    assert parsed["name"] is None  # the country/region names are never the name
+
+
+async def test_recheck_schedules_only_vetis_lookup_rows(
+    db_session: AsyncSession, spy_enterprise
+) -> None:
+    """R-DR25-3: the data-fix re-check is programmatic, idempotent and never
+    touches SOURCE_XML rows; no write method is ever reachable."""
+    await upsert_reference_names(db_session, _PILOT, guid_only_snapshot())
+    await db_session.commit()
+    rows = {
+        row.guid: row
+        for row in (await db_session.execute(select(VetisReferenceName))).scalars()
+    }
+    # All rows were resolved long ago and are not due anymore; one carries a
+    # (possibly wrongly-resolved) lookup name, one a source name.
+    future = datetime.now(UTC) + timedelta(hours=20)
+    for row in rows.values():
+        row.next_check_at = future
+    rows[SENDER_BE].name = "Российская Федерация"
+    rows[SENDER_BE].source = "VETIS_LOOKUP"
+    rows[SENDER_BE].status = "RESOLVED"
+    rows[SENDER_BE].next_check_at = future
+    rows[SENDER_ENT].name = "Предприятие «Мясопром»"
+    rows[SENDER_ENT].source = "SOURCE_XML"
+    rows[SENDER_ENT].status = "RESOLVED"
+    rows[SENDER_ENT].next_check_at = future
+    await db_session.commit()
+
+    scheduled = await schedule_vetis_lookup_recheck(db_session)
+    await db_session.commit()
+    assert scheduled == 1
+    updated = {
+        row.guid: row
+        for row in (await db_session.execute(select(VetisReferenceName))).scalars()
+    }
+    assert updated[SENDER_BE].next_check_at <= datetime.now(UTC)  # re-resolution due now
+    assert updated[SENDER_ENT].next_check_at == future  # SOURCE_XML stays untouched
+    # Idempotent: a repeated run schedules nothing new.
+    assert await schedule_vetis_lookup_recheck(db_session) == 0
+
+    # The next tick re-resolves the scheduled row through the READ-ONLY
+    # boundary only — every recorded operation is a lookup, never a write.
+    spy = spy_enterprise(
+        business_entity_responses=[
+            _business_entity_variant("<dt:fio>Хусаинова Гульнур Мансуровна</dt:fio>")
+        ]
+    )
+    counters = await resolve_due_reference_names(db_session, spy, contour=_PILOT)
+    await db_session.commit()
+    assert counters["resolved"] == 1
+    for call in spy.calls:
+        assert call["operation"] in ("GetEnterpriseByGuid", "GetBusinessEntityByGUID")
+    fixed = (
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_BE)
+        )
+    ).scalar_one()
+    assert fixed.name == "Хусаинова Гульнур Мансуровна"
+

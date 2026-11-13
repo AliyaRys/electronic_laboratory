@@ -162,11 +162,13 @@ describe("ТЗ DR24 §4: геометрия карточки сравнения"
     renderForm();
     const card = document.querySelector('[data-field-id="CHK-F21"]');
     expect(card).not.toBeNull();
-    // The mockup grid: the value fills minmax(0,1fr), the two 40 px controls
+    // The mockup grid: the value fills minmax(0,1.4fr), the two 40 px controls
     // sit right of it as the next grid items — never wrapped below.
     expect(reconciliationCss).toContain(".vse-rec-compare {");
     expect(
-      reconciliationCss.replace(/\s+/g, " ").includes("grid-template-columns: minmax(0, 1fr) 40px 40px;"),
+      reconciliationCss
+        .replace(/\s+/g, " ")
+        .includes("grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 40px 40px;"),
     ).toBe(true);
     const children = [...(card as Element).children];
     const valueIndex = children.findIndex((node) => node.classList.contains("vse-rec-mercury-value"));
@@ -176,6 +178,34 @@ describe("ТЗ DR24 §4: геометрия карточки сравнения"
     for (const button of (card as Element).querySelectorAll(".vse-rec-check")) {
       expect(button.className).toContain("vse-rec-check");
     }
+  });
+
+  it("renders [name][value][ok][bad] on ONE horizontal line (R-DR25-6)", () => {
+    renderForm();
+    const card = document.querySelector('[data-field-id="CHK-F21"]');
+    expect(card).not.toBeNull();
+    // DOM order: field-name → mercury-value → check-buttons (ok, bad).
+    const children = [...(card as Element).children];
+    const nameIndex = children.findIndex((node) => node.classList.contains("vse-rec-compare-name"));
+    const valueIndex = children.findIndex((node) => node.classList.contains("vse-rec-mercury-value"));
+    const buttonsIndex = children.findIndex((node) => node.classList.contains("vse-rec-check-buttons"));
+    expect(nameIndex).toBeGreaterThanOrEqual(0);
+    expect(nameIndex).toBeLessThan(valueIndex);
+    expect(buttonsIndex).toBe(valueIndex + 1);
+    // The name is the leading inline cell of the same row — it no longer
+    // spans the full card width above the value.
+    expect(
+      reconciliationCss.replace(/\s+/g, " ").includes(".vse-rec-compare-name { grid-column: 1 / -1;"),
+    ).toBe(false);
+    expect(reconciliationCss).toMatch(/\.vse-rec-compare-name \{[^}]*min-width: 0;/s);
+  });
+
+  it("the mismatch block expands BELOW the inline row inside the same card", () => {
+    renderForm();
+    const card = document.querySelector('[data-field-id="CHK-F21"]');
+    // The mismatch facts block spans the full card row (below the line).
+    expect(reconciliationCss).toMatch(/\.vse-rec-facts \{[^}]*grid-column: 1 \/ -1;/s);
+    expect(card?.querySelector(".vse-rec-facts")).toBeNull(); // not open until marked
   });
 
   it("the touch controls keep the 40×40 mockup geometry", () => {

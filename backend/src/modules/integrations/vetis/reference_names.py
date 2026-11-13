@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.integrations.vetis.models import (
@@ -56,6 +56,7 @@ __all__ = [
     "upsert_reference_names",
     "resolve_participants",
     "resolve_due_reference_names",
+    "schedule_vetis_lookup_recheck",
     "backfill_reference_names",
     "participant_name_overrides",
 ]
@@ -349,6 +350,37 @@ def _backoff(failure_count: int) -> timedelta:
     """Exponential backoff with the 24-hour upper bound (§8)."""
     delay = BACKOFF_BASE * (2 ** max(0, failure_count - 1))
     return delay if delay < MAX_BACKOFF else MAX_BACKOFF
+
+
+async def schedule_vetis_lookup_recheck(
+    db: AsyncSession, *, now: datetime | None = None
+) -> int:
+    """The R-DR25-3 data-fix: rows resolved by the OLD broken name cascade.
+
+    Rows whose name was written with ``source=VETIS_LOOKUP`` may carry a name
+    resolved through the descendant-search bug (a nested juridicalAddress/
+    country name instead of the businessEntity name). This is a purely
+    programmatic re-check schedule — NO manual SQL, NO deletes, names are
+    never invented here: every such row gets ``next_check_at = now`` through
+    the normal ORM path, so the next worker tick re-resolves it with the
+    fixed cascade and ``_apply_lookup_result`` overwrites the name (or keeps
+    it and retries honestly when no top-level name exists). Rows with
+    ``source=SOURCE_XML`` stay untouched — their names came from the source
+    document, not from the lookup. Idempotent: rows already due (or not yet
+    scheduled) are left as they are, so a repeated run changes nothing.
+    """
+    current = now or datetime.now(UTC)
+    result = await db.execute(
+        update(VetisReferenceName)
+        .where(
+            VetisReferenceName.source == "VETIS_LOOKUP",
+            VetisReferenceName.next_check_at.is_(None)
+            | (VetisReferenceName.next_check_at > current),
+        )
+        .values(next_check_at=current, updated_at=current)
+    )
+    await db.commit()
+    return int(result.rowcount or 0)
 
 
 def _parse_source_timestamp(value: object) -> datetime | None:

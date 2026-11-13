@@ -397,6 +397,9 @@ async def _startup(_: dict[str, Any]) -> None:
         await session.commit()
     with contextlib.suppress(Exception):  # the backfill never blocks the worker
         await backfill_reference_names_startup()
+    with contextlib.suppress(Exception):  # the re-check schedule never blocks the worker
+        await recheck_vetis_lookup_names_startup()
+
 
 async def _job_run_vetis_sync(ctx: dict[str, Any], *, operation_id: str) -> None:  # pragma: no cover - arq entry
     await sync.run_sync(uuid.UUID(operation_id), adapter=compose_read_adapter())
@@ -519,6 +522,26 @@ async def backfill_reference_names_startup() -> dict[str, int] | None:
         )
         await session.commit()
         return counters
+
+
+async def recheck_vetis_lookup_names_startup() -> int:
+    """The R-DR25-3 data-fix trigger at worker startup (idempotent, programmatic).
+
+    Every ``vetis_reference_names`` row whose name was written by the lookup
+    (``source=VETIS_LOOKUP``) is scheduled for re-resolution at the next
+    scheduler tick — the worker restart is the documented controller trigger:
+    restart the worker once after this deploy, the startup hook marks the
+    rows due and the first tick re-resolves them with the fixed top-level
+    cascade, overwriting any wrongly-resolved name. No manual SQL, no
+    deletes; ``SOURCE_XML`` rows stay untouched.
+    """
+    from backend.src.modules.integrations.vetis.reference_names import schedule_vetis_lookup_recheck
+
+    factory = get_session_factory()
+    async with factory() as session:
+        scheduled = await schedule_vetis_lookup_recheck(session)
+        _LOG.info("vetis_lookup_recheck_scheduled", extra={"scheduled": scheduled})
+        return scheduled
 
 
 async def _job_poll_due(ctx: dict[str, Any]) -> None:  # pragma: no cover - arq entry

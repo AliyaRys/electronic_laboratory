@@ -550,11 +550,16 @@ def _localname(element: ET.Element | None) -> str:
 
 
 def _child_text(parent: ET.Element | None, localname: str) -> str | None:
-    """A child value read by LOCALNAME only (the pinned response namespaces
-    come from the contract; the parser never guesses them from a ВВСД XML)."""
+    """A DIRECT child value read by LOCALNAME only (the pinned response namespaces
+    come from the contract; the parser never guesses them from a ВВСД XML).
+
+    R-DR25-1/2: only the element's OWN children qualify — a descendant search
+    would reach nested containers (juridicalAddress/country/region/…), which
+    are never a source of a businessEntity/enterprise field. That descendant
+    search is exactly how a country name once leaked into the ХС name."""
     if parent is None:
         return None
-    for child in parent.iter():
+    for child in parent:
         if _localname(child) == localname:
             value = (child.text or "").strip()
             return value or None
@@ -584,7 +589,8 @@ def _identity_record(element: ET.Element | None, kind: str) -> dict[str, object]
 
 
 def parse_enterprise_by_guid(result_xml: str) -> dict[str, object]:
-    """Parse a GetEnterpriseByGuid v2 response; the name is ``dt:name``."""
+    """Parse a GetEnterpriseByGuid v2 response; the name is the enterprise's
+    OWN top-level ``dt:name`` — never a nested address field (R-DR25-2)."""
     from xml.etree import ElementTree as ET
 
     root = ET.fromstring(result_xml)
@@ -595,7 +601,11 @@ def parse_enterprise_by_guid(result_xml: str) -> dict[str, object]:
 
 
 def parse_business_entity_by_guid(result_xml: str) -> dict[str, object]:
-    """Parse a GetBusinessEntityByGUID response; name → fullName → fio."""
+    """Parse a GetBusinessEntityByGUID response; the name cascade reads ONLY
+    the top-level children of dt:businessEntity: name → fullName → fio
+    (R-DR25-1). Nested elements (juridicalAddress/country/…) are NEVER a
+    source: when none of the three fields is present the record yields NO
+    name (VETIS_REFERENCE_NAME_ABSENT → retry), never an address substitute."""
     from xml.etree import ElementTree as ET
 
     root = ET.fromstring(result_xml)

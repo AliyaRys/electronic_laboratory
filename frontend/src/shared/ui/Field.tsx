@@ -10,7 +10,8 @@ import { useId, useState } from "react";
 export interface FieldProps {
   id?: string;
   label: string;
-  type?: "text" | "password" | "email";
+  /** DR20 §7.2: a compared date field enters its fact as a native date input. */
+  type?: "text" | "password" | "email" | "date";
   name?: string;
   value: string;
   onChange: (value: string) => void;

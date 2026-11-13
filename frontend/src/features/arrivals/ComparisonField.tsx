@@ -26,6 +26,8 @@ export interface ComparisonFieldProps {
   value: ComparisonValue;
   /** Optional placeholder of the mismatch «Фактическое значение» input. */
   actualPlaceholder?: string | undefined;
+  /** DR20 §7.2: the fact input kind — ``date`` renders a native date input. */
+  actualType?: "text" | "date" | undefined;
   onChange?: ((next: ComparisonValue) => void) | undefined;
   disabled?: boolean;
   error?: string;
@@ -37,6 +39,7 @@ export function ComparisonField({
   source,
   value,
   actualPlaceholder = "",
+  actualType = "text",
   onChange,
   disabled = false,
   error = "",
@@ -108,6 +111,7 @@ export function ComparisonField({
           <Field
             label="Фактическое значение"
             name={`${name}.actual`}
+            type={actualType}
             value={value.actual}
             placeholder={actualPlaceholder}
             disabled={disabled}

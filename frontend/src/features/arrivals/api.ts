@@ -303,6 +303,8 @@ export interface ComparedField {
   source: string;
   /** ТЗ DR17 §6: the explicit placeholder of the mismatch fact input. */
   actualPlaceholder?: string | undefined;
+  /** DR20 §7.2: the fact input kind of a date comparison card. */
+  actualType?: "date" | undefined;
 }
 
 /** User-facing reconciliation section titles (mockup wording). */
@@ -362,6 +364,30 @@ export function returnReasonLabel(code: string): string {
   return RETURN_REASON_CODES.find((item) => item.code === code)?.label ?? code;
 }
 
+/** DR20 §2/§7.1: the typed GoodsDate read model keeps the TYPE of the source
+ * value; the display renders it without collapsing an interval into one date
+ * and without inventing a date from an informal text. Timezones are never
+ * involved: a plain ISO date goes through {@link formatRuDate}.
+ */
+export function formatGoodsDate(
+  fields: Record<string, string | null | undefined>,
+  base: "producedOn" | "expiresOn",
+): string | null {
+  const informal = fields[`${base}Informal`];
+  if (typeof informal === "string" && informal.trim() !== "") return informal;
+  const from = fields[`${base}From`];
+  const to = fields[`${base}To`];
+  if (typeof from === "string" && typeof to === "string") {
+    return `с ${formatRuDate(from)} по ${formatRuDate(to)}`;
+  }
+  const single = fields[base];
+  if (typeof single === "string" && single.trim() !== "") {
+    // §7.1: the expiry of a single date reads «до 10.11.2026».
+    return base === "expiresOn" ? `до ${formatRuDate(single)}` : formatRuDate(single);
+  }
+  return null;
+}
+
 /** The viewed CHK source projection of one arrival (informational + compared). */
 export function comparedFields(view: IncomingView): ComparedField[] {
   const fields: ComparedField[] = [];
@@ -389,9 +415,17 @@ export function comparedFields(view: IncomingView): ComparedField[] {
     label: string,
     source: string | null | undefined,
     actualPlaceholder?: string,
+    actualType?: "date",
   ): void => {
     if (source !== null && source !== undefined && source !== "") {
-      fields.push({ fieldId, block, label, source, ...(actualPlaceholder ? { actualPlaceholder } : {}) });
+      fields.push({
+        fieldId,
+        block,
+        label,
+        source,
+        ...(actualPlaceholder ? { actualPlaceholder } : {}),
+        ...(actualType ? { actualType } : {}),
+      });
     }
   };
   push(
@@ -444,8 +478,12 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   push("CHK-F19", "product", "Изготовитель", source(external.manufacturer));
   push("CHK-F20", "product", "Количество", source(view.documentary.quantity, external.quantity));
   push("CHK-F21", "product", "Вес, кг", source(view.documentary.mass_kg, external.massKg));
-  push("CHK-F22", "product", "Дата выработки", source(external.producedOn));
-  push("CHK-F23", "product", "Годен до", source(external.expiresOn));
+  // DR20 §7: the two date comparison cards of the product block — the typed
+  // GoodsDate read model (single / interval / informal) rendered without
+  // collapsing an interval; a mismatch enters a strict single calendar date
+  // (the current CHK fact contract — §7.2).
+  push("CHK-F22", "product", "Дата выработка", formatGoodsDate(external, "producedOn"), undefined, "date");
+  push("CHK-F23", "product", "Срок годности", formatGoodsDate(external, "expiresOn"), undefined, "date");
   // CHK-F25–27: the accompanying-document «act» grounds of the backend
   // FieldSpec; the projection fills them only when the snapshot carries the
   // requisites.

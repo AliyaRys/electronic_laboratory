@@ -46,6 +46,9 @@ __all__ = [
     "PackageEntry",
     "ProductMark",
     "PurposeRef",
+    "GoodsDate",
+    "goods_date_fields",
+    "strict_calendar_date",
     "parse_decimal",
 ]
 
@@ -104,6 +107,74 @@ class PackageEntry(StrictModel):
     product_marks: list[ProductMark] = Field(default_factory=list, alias="productMarks")
 
 
+def strict_calendar_date(value: str) -> str:
+    """DR20 §8: a strict calendar date ``YYYY-MM-DD`` — nothing else passes.
+
+    ``2026-02-30`` and ``2026-13-01`` are refused (no silent normalization,
+    no datetime round-trip through a timezone).
+    """
+    if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is None:
+        raise ValueError("Дата должна быть календарной датой в формате ГГГГ-ММ-ДД.")
+    year_text, month_text, day_text = value.split("-")
+    try:
+        datetime(int(year_text), int(month_text), int(day_text))
+    except ValueError as exc:
+        raise ValueError("Дата должна быть существующей календарной датой.") from exc
+    return value
+
+
+StrictCalendarDate = Annotated[str, AfterValidator(strict_calendar_date)]
+
+
+class GoodsDate(StrictModel):
+    """DR20 §5.1: the typed ``vd:GoodsDate`` of the source XML.
+
+    The TYPE of the source value survives end-to-end: a single date keeps
+    ``secondDate`` strictly ``null`` (never a copy of ``firstDate``), an
+    interval keeps both dates, an informal value keeps the source text and
+    never becomes an invented calendar date. ``dt:hour`` is stored separately
+    (``firstDateHour``/``secondDateHour``) for source/audit only — it is never
+    added to the displayed calendar date and never shifts it by a timezone.
+    """
+
+    first_date: StrictCalendarDate | None = Field(default=None, alias="firstDate")
+    second_date: StrictCalendarDate | None = Field(default=None, alias="secondDate")
+    informal_date: str | None = Field(default=None, alias="informalDate", max_length=255)
+    first_date_hour: int | None = Field(default=None, alias="firstDateHour")
+    second_date_hour: int | None = Field(default=None, alias="secondDateHour")
+
+
+def goods_date_fields(batch: dict[str, object], base: str) -> dict[str, str | None]:
+    """DR20 §6: the read-model keys of one typed source GoodsDate.
+
+    ``base`` is ``producedOn`` or ``expiresOn``; the four published keys
+    ``<base>``/``<base>From``/``<base>To``/``<base>Informal`` keep the TYPE of
+    the source value machine-readable: a single date fills only ``<base>``,
+    an interval fills only ``From``/``To`` (never collapsed to one date), an
+    informal value fills only ``<base>Informal`` with the source text. An
+    absent node (or an empty structure) publishes four ``None`` values — no
+    fictive date, no invented mark.
+    """
+    raw = batch.get("dateOfProduction" if base == "producedOn" else "expiryDate")
+    goods = raw if isinstance(raw, dict) else {}
+
+    def text(value: object) -> str | None:
+        return None if value in (None, "") else str(value)
+
+    first = text(goods.get("firstDate"))
+    second = text(goods.get("secondDate"))
+    informal = text(goods.get("informalDate"))
+    if first is None and second is None and informal is None:
+        return {base: None, f"{base}From": None, f"{base}To": None, f"{base}Informal": None}
+    return {
+        # An interval is never collapsed into one date: ``<base>`` stays None.
+        base: first if second is None else None,
+        f"{base}From": first if second is not None else None,
+        f"{base}To": second,
+        f"{base}Informal": informal,
+    }
+
+
 class PurposeRef(StrictModel):
     """``vd:authentication/vd:purpose`` — identifiers only; the Russian name is
     resolved at READ time from the contour-scoped local dictionary and is
@@ -127,6 +198,10 @@ class Batch(StrictModel):
     quantity: DecimalString | None = None
     unit: ExternalRef | None = None
     package_list: list[PackageEntry] = Field(default_factory=list, alias="packageList")
+    # DR20 §5: the typed production/expiry dates of the source batch; absent
+    # nodes stay ``None`` (the read model never fabricates a date).
+    date_of_production: GoodsDate | None = Field(default=None, alias="dateOfProduction")
+    expiry_date: GoodsDate | None = Field(default=None, alias="expiryDate")
 
 
 class ConsignorConsignee(StrictModel):

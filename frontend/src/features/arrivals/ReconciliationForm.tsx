@@ -443,6 +443,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         block={field.block}
         source={field.source}
         actualPlaceholder={field.actualPlaceholder}
+        actualType={field.actualType}
         value={comparisonValue(field.fieldId)}
         onChange={comparisonChange(field.fieldId)}
         error={fieldErrors[`comparisons.${field.fieldId}`] ?? ""}

@@ -31,6 +31,7 @@ from backend.src.modules.arrivals.schemas import (
     ExternalFields,
     IncomingView,
     QuantitySet,
+    goods_date_fields,
     trailer_projection,
 )
 from backend.src.modules.integrations.vetis.models import VetisContour
@@ -394,6 +395,12 @@ def _external_fields(
         # ТЗ DR10 §5: the optional display name of the source unit; its
         # absence does NOT mean the unit is missing (the GUID is the identity).
         "unitName": _unit_name(batch),
+        # DR20 §6: the typed production/expiry read model — machine-readable
+        # ISO calendar dates + the informal source text; a single date fills
+        # only ``producedOn``/``expiresOn``, an interval only From/To, an
+        # informal value only ``…Informal``; the type never collapses.
+        **goods_date_fields(batch, "producedOn"),
+        **goods_date_fields(batch, "expiresOn"),
         **previous_vse_fields(document.source_snapshot),
         # ТЗ DR18 §9: the unified read model of the participant names (old
         # keys keep their single meaning; each name carries its honest state

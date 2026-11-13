@@ -45,6 +45,7 @@ from backend.src.modules.arrivals.schemas import (
     ReconciliationWrite,
     SourceSnapshot,
     Transaction,
+    strict_calendar_date,
 )
 
 __all__ = [
@@ -335,6 +336,20 @@ def validate_receipt(
                 errors.append(
                     _item(f"checks.{spec.field_id}", "CHK-F42", "Для расхождения обязательно фактическое значение.")
                 )
+            elif spec.field_id in ("CHK-F22", "CHK-F23"):
+                # DR20 §8: the fact of a date mismatch is a strict calendar
+                # date — never a free text that pretends to be a date.
+                actual = str(mark.actual)
+                try:
+                    strict_calendar_date(actual)
+                except ValueError:
+                    blocking.append(
+                        _item(
+                            f"checks.{spec.field_id}",
+                            spec.field_id,
+                            "Фактическая дата должна быть корректной календарной датой в формате ГГГГ-ММ-ДД.",
+                        )
+                    )
             if mark.reason is None or mark.reason.strip() == "":
                 errors.append(_item(f"checks.{spec.field_id}", "CHK-F43", "Для расхождения обязательна причина."))
 
@@ -347,6 +362,19 @@ def validate_receipt(
             blocking.append(
                 _item(f"checks.{key}", key, "Источник не содержит значения этого поля: отметка не требуется.")
             )
+
+    # --- DR20 §8: the source date order is validated on the source facts --------
+    produced_end = fields.get("producedOn") or fields.get("producedOnTo")
+    expires_start = fields.get("expiresOn") or fields.get("expiresOnFrom")
+    if _present(produced_end) and _present(expires_start) and str(expires_start) < str(produced_end):
+        blocking.append(
+            _item(
+                "source",
+                "CHK-F23",
+                "Срок годности в источнике не может быть раньше даты выработки; "
+                "проверьте исходный эВСД и фактические даты.",
+            )
+        )
 
     # --- quantitative facts (FT-ARR-06) ----------------------------------------
     delivered, accepted, returned = payload.delivered, payload.accepted, payload.returned
@@ -506,7 +534,7 @@ def validate_receipt(
             errors.append(_item("checks.CHK-F20", "CHK-F43", "Расхождение количества требует причины для акта."))
 
     # --- derived act items (CHK-F44, FT-ARR-08) ---------------------------------
-    act_specs = ("CHK-F10", "CHK-F11", "CHK-F18", "CHK-F23", "CHK-F25", "CHK-F26", "CHK-F27")
+    act_specs = ("CHK-F10", "CHK-F11", "CHK-F18", "CHK-F22", "CHK-F23", "CHK-F25", "CHK-F26", "CHK-F27")
     items: list[ActItem] = []
     for field_id in act_specs:
         mark = grounds.get(field_id)

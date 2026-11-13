@@ -221,6 +221,41 @@ export const CHECK_SERVICE_NAMES: Readonly<Record<string, string>> = Object.free
 });
 
 /**
+ * ТЗ DR24 §5: the string-only decimal presentation of a quantity — the value
+ * never passes through a JavaScript number (no `parseFloat`, no `toFixed`, no
+ * arithmetic), so a long or precise source string keeps every significant
+ * digit. Only INSIGNIFICANT trailing zeros of the fractional part are dropped
+ * and the decimal point is shown as a comma at presentation. An intermediate
+ * user input («60,», a trailing point) is returned untouched, an empty string
+ * stays empty and any non-decimal text (labels, numbers) passes through.
+ */
+export function formatDecimalDisplay(value: string | null | undefined): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (trimmed === "" || /[.,]$/.test(trimmed)) return trimmed;
+  const normalized = trimmed.replace(",", ".");
+  const dot = normalized.indexOf(".");
+  if (dot === -1) return normalized;
+  const fraction = normalized.slice(dot + 1).replace(/0+$/, "");
+  const integer = normalized.slice(0, dot);
+  return fraction === "" ? integer : `${integer}.${fraction}`.replace(".", ",");
+}
+
+/**
+ * ТЗ DR24 §5: the canonical decimal string of a user input per the existing
+ * API contract (the same DECIMAL shape the zod schema and the backend
+ * accept): the comma becomes a dot and insignificant trailing zeros are
+ * dropped WITHOUT any numeric conversion — «60,45» → «60.45», «60.0» → «60».
+ */
+export function normalizeDecimalInput(value: string): string {
+  const trimmed = value.trim().replace(",", ".");
+  const dot = trimmed.indexOf(".");
+  if (dot === -1) return trimmed;
+  const fraction = trimmed.slice(dot + 1).replace(/0+$/, "");
+  return fraction === "" ? trimmed.slice(0, dot) : `${trimmed.slice(0, dot)}.${fraction}`;
+}
+
+/**
  * ТЗ DR11 §6: the money is a server decimal string — the screen formats the
  * display only (a comma separator), it never computes or alters a value.
  */
@@ -301,6 +336,12 @@ export interface ComparedField {
   block: "participants" | "transport" | "product" | "documents";
   label: string;
   source: string;
+  /**
+   * ТЗ DR24 §3.4: a participant card with an UNRESOLVED name (PENDING /
+   * ERROR / MISSING) keeps the comparison geometry but its controls are
+   * disabled — no mark can be chosen before the name resolves.
+   */
+  disabled?: boolean;
   /** ТЗ DR17 §6: the explicit placeholder of the mismatch fact input. */
   actualPlaceholder?: string | undefined;
   /** DR20 §7.2: the fact input kind of a date comparison card. */
@@ -428,22 +469,45 @@ export function comparedFields(view: IncomingView): ComparedField[] {
       });
     }
   };
-  // ТЗ DR21 §5 (R-DR21-2): each participant card shows TWO different objects
-  // in the agreed order — «Предприятие» (enterprise) first, then
-  // «Хозяйствующий субъект» (businessEntity). Only the Russian labels
-  // changed; the CHK ids keep their business semantics (R-DR21-3). The
-  // source is the resolved enterprise/owner name of the unified read model;
-  // the legacy consignor/consignee keys stay as a projection tolerance for
-  // fixtures, never a second mechanism.
-  push("CHK-F05", "participants", "Предприятие", source(external.senderEnterprise, external.consignor));
-  // CHK-F06/F08/F15 (ТЗ DR13): the backend FieldSpec marks senderOwner,
-  // receiverOwner and productType as compared (inadmissible) grounds — the
-  // frontend list mirrors the backend COMPARABLE_SPECS ids one-to-one; an
-  // absent projection key stays absent (push omits it), never a fictitious
-  // mark and never a raw GUID.
-  push("CHK-F06", "participants", "Хозяйствующий субъект", source(external.senderOwner));
-  push("CHK-F07", "participants", "Предприятие", source(external.receiverEnterprise, external.consignee));
-  push("CHK-F08", "participants", "Хозяйствующий субъект", source(external.receiverOwner));
+  // ТЗ DR21 §5 (R-DR21-2) + ТЗ DR24 §3.4: each participant card shows TWO
+  // different objects in the agreed order — «Предприятие» (enterprise) first,
+  // then «Хозяйствующий субъект» (businessEntity). The fields are ALWAYS
+  // comparison cards of the shared geometry (R-DR24-4): a resolved name is
+  // the source value with ACTIVE controls; an unresolved name keeps the
+  // honest DR18 §10 text with controls present but DISABLED — no fictitious
+  // mark, never a raw GUID/UUID. The legacy consignor/consignee keys stay a
+  // projection tolerance only when the unified read model carries no
+  // NameSource state at all (old fixtures).
+  const participant = (
+    fieldId: string,
+    side: "sender" | "receiver",
+    kind: "owner" | "enterprise",
+    label: string,
+  ): void => {
+    const name = participantName(view, side, kind);
+    const stateKey = `${side}${kind === "owner" ? "Owner" : "Enterprise"}NameSource`;
+    const hasNameState = typeof external[stateKey] === "string" && external[stateKey] !== "";
+    const legacyKey = kind === "enterprise" ? (side === "sender" ? "consignor" : "consignee") : null;
+    const legacy =
+      legacyKey !== null && !hasNameState && name.state !== "resolved"
+        ? (source(external[legacyKey]) ?? null)
+        : null;
+    if (legacy !== null) {
+      fields.push({ fieldId, block: "participants", label, source: legacy });
+      return;
+    }
+    fields.push({
+      fieldId,
+      block: "participants",
+      label,
+      source: name.value,
+      ...(name.state !== "resolved" ? { disabled: true } : {}),
+    });
+  };
+  participant("CHK-F05", "sender", "enterprise", "Предприятие");
+  participant("CHK-F06", "sender", "owner", "Хозяйствующий субъект");
+  participant("CHK-F07", "receiver", "enterprise", "Предприятие");
+  participant("CHK-F08", "receiver", "owner", "Хозяйствующий субъект");
   // ТЗ DR19 §5: CHK-F09 is the FIRST card of the transport block; the source
   // is the read-model Russian label (the raw code stays transportTypeCode);
   // the mark stays an explicit user action, never auto-matched.

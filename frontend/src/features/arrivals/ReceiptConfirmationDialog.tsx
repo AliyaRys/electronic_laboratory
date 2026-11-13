@@ -2,8 +2,8 @@ import { Dialog } from "../../shared/ui/Dialog";
 import {
   decisionLabel,
   documentFacts,
+  formatDecimalDisplay,
   formatRuDateTime,
-  partyUnitLabel,
   returnReasonLabel,
   type IncomingView,
   type ReceiptPreview,
@@ -77,18 +77,17 @@ export function ReceiptConfirmationDialog({
         <div>
           <dt>Принято</dt>
           <dd>
-            {reconciliation.accepted.mass_kg} кг; {reconciliation.accepted.quantity} мест
+            {/* ТЗ DR24 §5: the same string-only decimal presentation. */}
+            {formatDecimalDisplay(reconciliation.accepted.mass_kg)} кг;{" "}
+            {formatDecimalDisplay(reconciliation.accepted.quantity)} мест
           </dd>
         </div>
         <div>
           <dt>Возвращается</dt>
           <dd>
-            {reconciliation.returned.mass_kg} кг; {reconciliation.returned.quantity} мест
+            {formatDecimalDisplay(reconciliation.returned.mass_kg)} кг;{" "}
+            {formatDecimalDisplay(reconciliation.returned.quantity)} мест
           </dd>
-        </div>
-        <div>
-          <dt>Единица измерения (из эВСД)</dt>
-          <dd>{preview?.intent.unit_id ? partyUnitLabel(party) : "—"}</dd>
         </div>
         <div>
           <dt>Дата поступления</dt>

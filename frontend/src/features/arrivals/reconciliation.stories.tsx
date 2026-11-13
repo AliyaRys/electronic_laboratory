@@ -491,6 +491,33 @@ export const СравнениеРасхождение: StoryObj<typeof Compariso
   },
 };
 
+export const СравнениеНедоступно: StoryObj<typeof ComparisonField> = {
+  /** ТЗ DR24 §8-7: the disabled state — controls visible, unmarked, not interactive. */
+  render: (args) => <ComparisonField {...args} />,
+  args: {
+    fieldId: "CHK-F10",
+    label: "Номер ТС",
+    block: "transport",
+    source: "А123ВС77",
+    value: mark(null),
+    disabled: true,
+  },
+};
+
+export const СравнениеОжиданиеИмени: StoryObj<typeof ComparisonField> = {
+  /** ТЗ DR24 §3.4: an unresolved participant name — the honest text with
+   * controls present but disabled (loading state). */
+  render: (args) => <ComparisonField {...args} />,
+  args: {
+    fieldId: "CHK-F07",
+    label: "Предприятие",
+    block: "participants",
+    source: "Уточняем названия организаций…",
+    value: mark(null),
+    disabled: true,
+  },
+};
+
 export const СправочноеЗначение: StoryObj<typeof ReferenceField> = {
   render: (args) => <ReferenceField {...args} />,
   args: { label: "UUID ВСД", value: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac" },

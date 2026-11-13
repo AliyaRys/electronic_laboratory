@@ -112,7 +112,13 @@ function ReconciliationContent(): React.ReactElement {
       </nav>
       <div className="vse-rec-title-row">
         <h1>Сверка данных транспортного эВСД</h1>
-        <span className="vse-rec-mercury-badge">Меркурий</span>
+        <span className="vse-rec-mercury-badge">
+          {/* ТЗ DR24 §3.2: the decorative mockup logo ships from
+              frontend/public (it reaches the Docker build); the accessible
+              name of the badge is the text «Меркурий». */}
+          <img src="/mercury-logo.webp" alt="" />
+          <span>Меркурий</span>
+        </span>
       </div>
       {arrivalProblem !== null ? (
         arrivalProblem.status === 404 ? (

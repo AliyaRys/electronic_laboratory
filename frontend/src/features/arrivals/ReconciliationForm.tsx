@@ -28,10 +28,9 @@ import {
   documentFacts,
   hasSourceUnit,
   moneyLabel,
+  normalizeDecimalInput,
+  formatDecimalDisplay,
   partyUnit,
-  partyUnitLabel,
-  participantName,
-  type ParticipantNameState,
   pricingUnitLabel,
   previousVse,
   reconciliationEtag,
@@ -49,18 +48,18 @@ import { ReconciliationFeedback } from "./ReconciliationFeedback";
 import { ActPreview } from "./ActPreview";
 import { ReceiptDecision } from "./ReceiptDecision";
 
+export interface ReconciliationFormProps {
+  party: IncomingView;
+  initial: ReconciliationView;
+  onSaved: (view: ReconciliationView) => void;
+}
+
 /** The field-level server errors of one validation problem (A02). */
 function problemItemsOf(problem: Problem | null): ReceiptProblemItem[] {
   if (problem === null || problem.code !== "VALIDATION_ERROR") {
     return [];
   }
   return (problem as unknown as { errors?: ReceiptProblemItem[] }).errors ?? [];
-}
-
-export interface ReconciliationFormProps {
-  party: IncomingView;
-  initial: ReconciliationView;
-  onSaved: (view: ReconciliationView) => void;
 }
 
 const DECIMAL = /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
@@ -247,24 +246,22 @@ const JOINT_TONES: Readonly<Record<string, string>> = Object.freeze({
 
 const QUANTITY_PARTS = ["delivered", "accepted", "returned"] as const;
 
-/** ТЗ DR18 §10: one immutable participant-name field of the unified read
- * model. Every state renders its honest Russian text; the field is never an
- * input and never shows a GUID/UUID instead of a name. */
-function ParticipantNameField({
-  label,
-  field,
-}: {
-  label: string;
-  field: { value: string; state: ParticipantNameState };
-}): React.ReactElement {
-  const stateClass = field.state === "resolved" ? "" : ` vse-rec-name-${field.state}`;
-  return (
-    <div className={`vse-rec-compare reference${stateClass}`}>
-      <span className="vse-rec-compare-name">{label}</span>
-      <span className="vse-rec-mercury-value vse-rec-owner-value">{field.value}</span>
-    </div>
-  );
+/** ТЗ DR24 §5: the canonical QuantitySet of a submit — the mass and the
+ * place count are normalised as strings only (never a JS number), the
+ * unit_id rides unchanged. */
+function canonicalQuantitySet(part: FormValues["delivered"]): FormValues["delivered"] {
+  return {
+    ...part,
+    mass_kg: normalizeDecimalInput(part.mass_kg),
+    quantity: normalizeDecimalInput(part.quantity),
+  };
 }
+
+/** ТЗ DR24 §3.4: the four participant fields (CHK-F05/F06 sender,
+ * CHK-F07/F08 receiver) are ALWAYS the shared comparison-card geometry — a
+ * resolved name keeps active controls, an unresolved one renders the honest
+ * DR18 §10 text with disabled controls (never a GUID, never a mark).
+ */
 
 /** Idempotency key of one save session (ТЗ DR13): a stable key while the
  * payload AND the shown revision stay unchanged, so a repeated identical
@@ -279,17 +276,12 @@ function newIdempotencyKey(): string {
 export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFormProps): React.ReactElement {
   const compared = useMemo(() => comparedFields(party), [party]);
   const previous = useMemo(() => previousVse(party), [party]);
-  const unit = useMemo(() => partyUnit(party), [party]);
   // ТЗ DR10 §6: the unit counts as present only with a valid canonical GUID;
-  // a missing display NAME never means a missing unit.
+  // a missing display NAME never means a missing unit. The GUID itself stays
+  // out of the visible form (ТЗ DR24 §6): unit_id keeps riding in the three
+  // QuantitySets and in the receipt mapping.
   const hasUnit = useMemo(() => hasSourceUnit(party), [party]);
   const facts = useMemo(() => documentFacts(party), [party]);
-  // ТЗ DR18 §10: the immutable participant-name fields of the unified read
-  // model — each state renders its honest text, never a GUID/UUID.
-  const senderOwner = participantName(party, "sender", "owner");
-  const senderEnterprise = participantName(party, "sender", "enterprise");
-  const receiverOwner = participantName(party, "receiver", "owner");
-  const receiverEnterprise = participantName(party, "receiver", "enterprise");
   const form = useForm<FormValues>({ defaultValues: initialValues(party, initial) });
   const values = useWatch({ control: form.control }) as FormValues;
   useDirtyGuard(form.formState.isDirty, "Сверка");
@@ -315,7 +307,16 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   const submit = (event: React.FormEvent<HTMLFormElement>): void => {
     const formElement = event.currentTarget;
     void form.handleSubmit((formValues) => {
-      const parsed = formSchemaWithComparisonFacts.safeParse(formValues);
+      // ТЗ DR24 §5: the entered decimals are canonicalised at submit — the
+      // comma becomes the contract dot, insignificant trailing zeros drop;
+      // the value never passes through a JS number.
+      const canonical: FormValues = {
+        ...formValues,
+        delivered: canonicalQuantitySet(formValues.delivered),
+        accepted: canonicalQuantitySet(formValues.accepted),
+        returned: canonicalQuantitySet(formValues.returned),
+      };
+      const parsed = formSchemaWithComparisonFacts.safeParse(canonical);
       if (!parsed.success) {
         const errors: Record<string, string> = {};
         for (const issue of parsed.error.issues) {
@@ -341,7 +342,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       // view carries the parent party revision, a saved view its own), and the
       // idempotency key is stable while the payload and revision are
       // unchanged — a repeated identical save replays the saved state.
-      const payload = toPayload(formValues, party);
+      const payload = toPayload(canonical, party);
       const etag = reconciliationEtag(initial);
       const fingerprint = JSON.stringify(payload);
       const session = sessionRef.current;
@@ -423,6 +424,11 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
 
   const markAllCompared = (): void => {
     for (const field of compared) {
+      // ТЗ DR24 §3.4/§7: an unresolved participant name keeps its controls
+      // disabled — «Все соответствует» never marks what cannot be marked.
+      if (field.disabled) {
+        continue;
+      }
       const current = comparisonValue(field.fieldId);
       if (current.matches !== true) {
         form.setValue(`comparisons.${field.fieldId}`, { ...current, matches: true }, { shouldDirty: true });
@@ -446,6 +452,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         actualType={field.actualType}
         value={comparisonValue(field.fieldId)}
         onChange={comparisonChange(field.fieldId)}
+        disabled={field.disabled ?? false}
         error={fieldErrors[`comparisons.${field.fieldId}`] ?? ""}
       />
     );
@@ -478,40 +485,22 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         <div className="vse-rec-participants">
           <div className="vse-rec-participant-card" aria-labelledby="vse-rec-sender-title">
             <h3 id="vse-rec-sender-title">Сведения об отправителе</h3>
-            {/* ТЗ DR21 §5 (R-DR21-2): the two objects of the sender in the
-                agreed order — «Предприятие» then «Хозяйствующий субъект».
-                A RESOLVED name is an explicit comparison card (the same
-                shared ComparisonField and match/mismatch controls); an
-                unresolved name renders the honest DR18 §10 fallback instead —
-                never a raw GUID/UUID, never a fictive mark, the form stays
-                working. One mechanism per state: no duplication. */}
-            {compared.some((field) => field.fieldId === "CHK-F05") ? (
-              compareField("CHK-F05")
-            ) : (
-              <ParticipantNameField label="Предприятие" field={senderEnterprise} />
-            )}
-            {compared.some((field) => field.fieldId === "CHK-F06") ? (
-              compareField("CHK-F06")
-            ) : (
-              <ParticipantNameField label="Хозяйствующий субъект" field={senderOwner} />
-            )}
+            {/* ТЗ DR21 §5 (R-DR21-2) + ТЗ DR24 §3.4: the two objects of the
+                sender in the agreed order — «Предприятие» then «Хозяйствующий
+                субъект». Both are ALWAYS the shared comparison-card geometry:
+                a resolved name keeps ACTIVE controls, an unresolved name
+                renders the honest DR18 §10 text with controls present but
+                DISABLED — no fictitious mark, never a GUID. */}
+            {compareField("CHK-F05")}
+            {compareField("CHK-F06")}
           </div>
           <div className="vse-rec-participant-card" aria-labelledby="vse-rec-receiver-title">
             <h3 id="vse-rec-receiver-title">Сведения о получателе</h3>
-            {/* ТЗ DR21 §5.2: the same two objects on the receiver — the
-                symmetric order and the same controls; an empty receiver card
-                is impossible while the read model carries a name or an
-                honest «Название не получено» state (§5). */}
-            {compared.some((field) => field.fieldId === "CHK-F07") ? (
-              compareField("CHK-F07")
-            ) : (
-              <ParticipantNameField label="Предприятие" field={receiverEnterprise} />
-            )}
-            {compared.some((field) => field.fieldId === "CHK-F08") ? (
-              compareField("CHK-F08")
-            ) : (
-              <ParticipantNameField label="Хозяйствующий субъект" field={receiverOwner} />
-            )}
+            {/* ТЗ DR21 §5.2 + ТЗ DR24 §3.4: the same two objects on the
+                receiver — the symmetric order, the same controls and the
+                same disabled rule for an unresolved name. */}
+            {compareField("CHK-F07")}
+            {compareField("CHK-F08")}
           </div>
         </div>
       </CheckSectionCard>
@@ -582,21 +571,10 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       >
         <div className="vse-rec-compare-grid">{compareGrid("product")}</div>
         <div className="vse-rec-quantities" aria-label="Количества партии">
-          <div className="vse-rec-quantities-unit">
-            <span className="vse-rec-quantities-title">Единица измерения (из эВСД)</span>
-            {/* ТЗ DR10 §6: with a name the GUID stays an accessible tooltip;
-                without one the honest GUID fallback is the value itself. */}
-            {hasUnit ? (
-              <span
-                className="vse-rec-mercury-value"
-                title={unit.name !== "" ? `Единица из ВСД (GUID: ${unit.id})` : undefined}
-              >
-                {partyUnitLabel(party)}
-              </span>
-            ) : (
-              <span className="vse-rec-mercury-value">—</span>
-            )}
-          </div>
+          {/* ТЗ DR24 §6 (variant 1 of §6.2): no visible unit block at all —
+              the technical GUID never confuses the doctor; unit_id keeps its
+              place in the QuantitySets and in the receipt XML mapping. The
+              honest warning stays only for a genuinely ABSENT GUID. */}
           {hasUnit ? null : (
             <p className="vse-rec-prior-note">
               Исходный эВСД не содержит единицу измерения: гашение будет недоступно, пока единица не появится
@@ -613,17 +591,33 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             return (
               <div key={part} className="vse-rec-quantities-part">
                 <p className="vse-rec-quantities-title">{title}</p>
+                {/* ТЗ DR24 §5: mass and place count stay separate with clear
+                    labels (never «Количество (кг)»); the display shows the
+                    string-only decimal presentation («60.000000» → «60»,
+                    «60.45» → «60,45») while the form keeps the canonical
+                    value — a comma input is canonicalised on blur and at
+                    submit, an intermediate «60,» is never broken. */}
                 <Field
                   label="Вес, кг"
-                  value={values[part].mass_kg}
+                  value={formatDecimalDisplay(values[part].mass_kg)}
                   error={fieldErrors[`${part}.mass_kg`] ?? ""}
                   onChange={(next) => form.setValue(`${part}.mass_kg`, next, { shouldDirty: true })}
+                  onBlur={() =>
+                    form.setValue(`${part}.mass_kg`, normalizeDecimalInput(values[part].mass_kg), {
+                      shouldDirty: true,
+                    })
+                  }
                 />
                 <Field
-                  label={unit.name !== "" ? `Количество (${unit.name})` : "Количество"}
-                  value={values[part].quantity}
+                  label="Количество мест, шт."
+                  value={formatDecimalDisplay(values[part].quantity)}
                   error={fieldErrors[`${part}.quantity`] ?? ""}
                   onChange={(next) => form.setValue(`${part}.quantity`, next, { shouldDirty: true })}
+                  onBlur={() =>
+                    form.setValue(`${part}.quantity`, normalizeDecimalInput(values[part].quantity), {
+                      shouldDirty: true,
+                    })
+                  }
                 />
                 {quantityErrors[part] !== undefined ? (
                   <p className="app-field-message app-field-error" aria-live="polite">

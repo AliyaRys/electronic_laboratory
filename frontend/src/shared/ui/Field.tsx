@@ -24,6 +24,8 @@ export interface FieldProps {
   /** Persistent validation/server error from the parent. */
   error?: string;
   hint?: string;
+  /** DR24 §5: blur canonicalises a decimal input (comma → dot, no float). */
+  onBlur?: () => void;
 }
 
 export function Field({
@@ -40,6 +42,7 @@ export function Field({
   maxLength,
   error = "",
   hint = "",
+  onBlur,
 }: FieldProps): React.ReactElement {
   const generatedId = useId();
   const inputId = id ?? `field-${generatedId}`;
@@ -75,6 +78,7 @@ export function Field({
           setDismissedFor(error);
           onChange(event.target.value);
         }}
+        onBlur={onBlur}
       />
       {hint !== "" ? (
         <p className="app-field-message" id={hintId}>

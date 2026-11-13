@@ -102,6 +102,56 @@ def _delivery_element(xml: str, returned: bool) -> ET.Element | None:
     return None
 
 
+VDT_NS_PREFIX = (
+    'xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2" '
+    'xmlns:bs="http://api.vetrf.ru/schema/cdm/base" '
+    'xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2"'
+)
+
+# ТЗ DR8 §6 / live regression 2026-11-13: a real consignee carries
+# businessEntity BEFORE enterprise, each with its own guid. The receiver of
+# the intent is the ENTERPRISE guid; the builder must not take the first
+# guid in the consignee subtree (the businessEntity one).
+SOURCE_XML_CONSIGNEE_FULL = f"""<vd:vetDocument
+ {VDT_NS_PREFIX}>
+ <bs:uuid>{SOURCE_EVSD}</bs:uuid>
+ <vd:authentication><vd:purpose><bs:guid>purpose-guid</bs:guid></vd:purpose></vd:authentication>
+ <vd:certifiedConsignment>
+  <vd:consignor><dt:enterprise><bs:guid>sender</bs:guid></dt:enterprise></vd:consignor>
+  <vd:consignee>
+   <dt:businessEntity><bs:guid>business-entity-guid</bs:guid></dt:businessEntity>
+   <dt:enterprise><bs:guid>{SOURCE_RECEIVER}</bs:guid></dt:enterprise>
+  </vd:consignee>
+  <vd:batch><vd:volume>120</vd:volume><vd:unit><bs:guid>{SOURCE_UNIT}</bs:guid></vd:unit></vd:batch>
+  <vd:transportInfo><vd:transportType>1</vd:transportType></vd:transportInfo>
+  <vd:transportStorageType>FROZEN</vd:transportStorageType>
+  <vd:accompanyingForms><vd:vetCertificate><bs:uuid>source</bs:uuid></vd:vetCertificate></vd:accompanyingForms>
+ </vd:certifiedConsignment>
+</vd:vetDocument>"""
+
+
+def test_consignee_business_entity_does_not_break_receiver_match() -> None:
+    """Live regression: consignee = businessEntity guid first, then enterprise.
+
+    The builder must compare against the enterprise guid (the intent's
+    receiver_enterprise_id), not the first guid inside the consignee
+    subtree; otherwise every real гашение fails with the intent-mismatch
+    VALIDATION_ERROR.
+    """
+    xml = build_process_incoming_application(
+        intent(mismatch=False, decision="ACCEPT_ALL"),
+        source_xml=SOURCE_XML_CONSIGNEE_FULL,
+        service_id="s",
+        issuer_id="i",
+    )
+    delivery = _delivery_element(xml, returned=False)
+    assert delivery is not None
+    receiver = delivery.find(f".//{VD}consignee/{DT}enterprise/{BS}guid")
+    assert receiver is not None and receiver.text == SOURCE_RECEIVER
+    business = delivery.find(f".//{VD}consignee/{DT}businessEntity/{BS}guid")
+    assert business is not None and business.text == "business-entity-guid"
+
+
 def test_gashenie_keeps_source_trailer_number() -> None:
     """ТЗ DR17 §7: the source trailerNumber stays a source requisite of the
     гашение XML — the user's discrepancy fact never replaces it."""

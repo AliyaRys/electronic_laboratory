@@ -72,6 +72,9 @@ class NormalizedEntry(BaseModel):
     transport_number: str | None
     # DR16: the raw vd:certifiedConsignment/vd:transportStorageType code.
     transport_storage_type: str | None = None
+    # DR19: the raw vd:certifiedConsignment/vd:transportInfo/vd:transportType
+    # code, kept AS A STRING (never a number, never from vehicleNumber).
+    transport_type: str | None = None
     trailer_number: str | None = None
     purpose_guid: str | None = None
     purpose_uuid: str | None = None
@@ -257,6 +260,9 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
         },
         transport_number=_transport_number(transport),
         transport_storage_type=_text(_find(consignment, "vd:transportStorageType")),
+        # DR19 R-DR19-2: the transport type comes ONLY from
+        # vd:transportInfo/vd:transportType, namespace-aware, as a raw string.
+        transport_type=_text(_find(transport, "vd:transportType")),
         trailer_number=_trailer_number(transport),
         purpose_guid=_text(_find(purpose, "bs:guid")),
         purpose_uuid=_text(_find(purpose, "bs:uuid")),
@@ -447,6 +453,7 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
             ),
             transport_number=entry.transport_number,
             transport_storage_type=entry.transport_storage_type,
+            transport_type=entry.transport_type,
             trailer_number=entry.trailer_number,
             purpose=purpose if (purpose.guid or purpose.external_uuid) else None,
         ),

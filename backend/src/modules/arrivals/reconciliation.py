@@ -60,6 +60,7 @@ from backend.src.modules.integrations.vetis.reference_names import (
 )
 from backend.src.modules.integrations.vetis.status import status_label
 from backend.src.modules.integrations.vetis.storage_types import storage_type_label
+from backend.src.modules.integrations.vetis.transport_types import transport_type_label
 
 __all__ = ["save_reconciliation", "build_reconciliation_view", "load_reconciliation", "source_projection"]
 
@@ -130,7 +131,7 @@ def source_projection(
         "senderOwner": _ref_name(consignor.get("businessEntity")),
         "receiverEnterprise": enterprise_name(consignee),
         "receiverOwner": _ref_name(consignee.get("businessEntity")),
-        "transportKind": None,
+        "transportKind": transport_type_label(text_of(payload.get("transportType"))),
         "vehicleNumber": text_of(payload.get("transportNumber")),
         # ТЗ DR17 §5.2: the separate trailer fact; an absent/empty source
         # number publishes the agreed informational text (never «—», never a

@@ -559,7 +559,13 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   // requisites.
   push("CHK-F25", "documents", "Тип транспортного документа", source(external.transportDocumentType));
   push("CHK-F26", "documents", "Номер транспортного документа", source(external.transportDocumentNumber));
-  push("CHK-F27", "documents", "Дата транспортного документа", source(external.transportDocumentIssuedOn));
+  const transportDocumentDate = source(external.transportDocumentIssuedOn);
+  push(
+    "CHK-F27",
+    "documents",
+    "Дата транспортного документа",
+    transportDocumentDate === null ? null : formatRuDate(transportDocumentDate),
+  );
   return fields;
 }
 

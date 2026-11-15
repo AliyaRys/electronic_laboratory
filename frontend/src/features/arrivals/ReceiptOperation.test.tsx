@@ -133,6 +133,34 @@ describe("ReceiptOperation", () => {
     expect(screen.queryByRole("link", { name: "Создать ВСЭ" })).toBeNull();
   });
 
+  it("shows the exact safe VetIS rejection reason", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () =>
+        HttpResponse.json({
+          write_enabled: true,
+          source_revision: 7,
+          reconciliation_revision: 3,
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000009",
+          operation_state: "REJECTED",
+        }),
+      ),
+      http.get("*/api/v1/operations/*", () =>
+        HttpResponse.json({
+          id: "op",
+          kind: "vetis.receipt",
+          state: "REJECTED",
+          problem: "VETIS_RECEIPT_REJECTED",
+          diagnostics: { problem: "Сведения о товарно-транспортной накладной указаны неверно." },
+        }),
+      ),
+    );
+    renderOperation();
+    expect(await screen.findByText("ВетИС отклонил гашение")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Сведения о товарно-транспортной накладной указаны неверно\./),
+    ).toBeInTheDocument();
+  });
+
   it("demands the return date for return decisions and sends it once", async () => {
     const bodies: { return_date?: string | null; issue_date?: string; fingerprint?: string }[] = [];
     server.use(

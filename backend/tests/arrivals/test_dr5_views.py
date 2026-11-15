@@ -147,6 +147,9 @@ async def test_chk_source_projection_separates_quantity_and_mass(db_session: Asy
     assert fields["massKg"] == "500.0"
     assert fields["documentUuid"] == str(DOC_UUID)
     assert fields["statusLabel"] == "Оформлен"
+    assert fields["transportDocumentType"] == "Товарно-транспортная накладная"
+    assert fields["transportDocumentNumber"] == "123"
+    assert fields["transportDocumentIssuedOn"] == "2026-11-03"
 
 
 async def test_arrival_search_finds_document_by_uuid(db_session: AsyncSession, lab) -> None:

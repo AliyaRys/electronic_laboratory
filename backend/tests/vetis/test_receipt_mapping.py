@@ -524,3 +524,27 @@ def test_source_referenced_document_becomes_delivery_waybill() -> None:
         "issueDate": "2026-11-12",
         "type": "1",
     }
+
+
+def test_nested_research_document_is_never_used_as_delivery_waybill() -> None:
+    source = SOURCE_XML.replace(
+        "<vd:authentication>",
+        """<vd:laboratoryResearch><vd:referencedDocument>
+          <vd:issueNumber>333</vd:issueNumber><vd:issueDate>2026-11-12</vd:issueDate>
+          <vd:type>9</vd:type>
+        </vd:referencedDocument></vd:laboratoryResearch>
+        <vd:referencedDocument>
+          <vd:issueNumber>111111</vd:issueNumber><vd:issueDate>2026-11-13</vd:issueDate>
+          <vd:type>1</vd:type><vd:relationshipType>1</vd:relationshipType>
+        </vd:referencedDocument><vd:authentication>""",
+    )
+    xml = build_process_incoming_application(
+        intent(mismatch=False, decision="ACCEPT_ALL"),
+        source_xml=source,
+        service_id="mercury-vu.service:2.0",
+        issuer_id="fixture",
+    )
+    root = ET.fromstring(xml)
+    waybill = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "waybill")
+    values = {node.tag.rsplit("}", 1)[-1]: node.text for node in waybill}
+    assert values == {"issueNumber": "111111", "issueDate": "2026-11-13", "type": "1"}

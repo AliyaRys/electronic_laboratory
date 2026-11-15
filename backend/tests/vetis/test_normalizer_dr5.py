@@ -74,6 +74,8 @@ REAL_DOC = """
   <vd:referencedDocument>
     <vd:issueNumber>123</vd:issueNumber>
     <vd:issueDate>2026-11-03</vd:issueDate>
+    <vd:type>1</vd:type>
+    <vd:relationshipType>1</vd:relationshipType>
   </vd:referencedDocument>
 </vd:vetDocument>
 """
@@ -149,6 +151,26 @@ def test_issue_number_is_not_uuid() -> None:
     # The referencedDocument number stays in its place; the top-level document
     # has NO issueNumber in the real answer, and the UUID is never assembled.
     assert snapshot.vd_document.issue_number == ""
+
+
+def test_top_level_transport_document_is_normalized_for_reconciliation() -> None:
+    document = normalize_snapshot(parse_one()).vd_document.transport_document
+    assert document is not None
+    assert document.issue_number == "123"
+    assert document.issue_date == "2026-11-03"
+    assert document.document_type == "1"
+    assert document.relationship_type == "1"
+
+
+def test_laboratory_research_reference_is_not_a_transport_document() -> None:
+    research = """<vd:laboratoryResearch><vd:referencedDocument>
+      <vd:issueNumber>333</vd:issueNumber><vd:issueDate>2026-11-02</vd:issueDate>
+      <vd:type>9</vd:type>
+    </vd:referencedDocument></vd:laboratoryResearch>"""
+    source = REAL_DOC.replace("<vd:authentication>", research + "<vd:authentication>")
+    document = normalize_snapshot(parse_one(source)).vd_document.transport_document
+    assert document is not None
+    assert document.issue_number == "123"
 
 
 def test_raw_extraction_keeps_the_document() -> None:

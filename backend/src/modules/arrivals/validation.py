@@ -284,6 +284,41 @@ def _previous_present(fields: dict[str, str | int | None]) -> bool:
     return any(_present(fields.get(key)) for key in PREVIOUS_KEYS)
 
 
+def _comparison_source_values(
+    fields: dict[str, str | int | None], spec: FieldSpec
+) -> tuple[str | int | None, ...]:
+    """All wire variants that make one CHK comparison source present.
+
+    GoodsDate deliberately keeps a single date, an interval and informal text
+    in different read-model keys.  CHK-F22/F23 are one comparison each, so
+    validation must use the same union that the frontend renders.
+    """
+    if spec.field_id in ("CHK-F22", "CHK-F23"):
+        return (
+            fields.get(spec.key),
+            fields.get(f"{spec.key}From"),
+            fields.get(f"{spec.key}To"),
+            fields.get(f"{spec.key}Informal"),
+        )
+    return (fields.get(spec.key),)
+
+
+def _comparison_source_present(fields: dict[str, str | int | None], spec: FieldSpec) -> bool:
+    return any(_present(value) for value in _comparison_source_values(fields, spec))
+
+
+def _comparison_source_text(fields: dict[str, str | int | None], spec: FieldSpec) -> str | None:
+    values = _comparison_source_values(fields, spec)
+    if spec.field_id not in ("CHK-F22", "CHK-F23"):
+        return str(values[0]) if _present(values[0]) else None
+    single, start, end, informal = values
+    if _present(single):
+        return str(single)
+    if _present(start) or _present(end):
+        return " — ".join(str(value) for value in (start, end) if _present(value))
+    return str(informal) if _present(informal) else None
+
+
 def _decision_allowed(decision: str, allowed: list[str]) -> bool:
     return decision in allowed
 
@@ -306,9 +341,9 @@ def validate_receipt(
     # --- explicit marks for the compared fields (FT-ARR-03) --------------------
     grounds: dict[str, Comparison] = {}
     for spec in COMPARABLE_SPECS:
-        source_value = fields.get(spec.key)
-        if not _present(source_value):
+        if not _comparison_source_present(fields, spec):
             continue  # informational absence never demands a fictitious mark
+        source_value = _comparison_source_text(fields, spec)
         mark = payload.checks.get(spec.field_id)
         # ТЗ DR17 §7: an ABSENT trailer is published as the agreed
         # informational text («Прицеп отсутствует»). The absence itself is
@@ -358,7 +393,7 @@ def validate_receipt(
         mark_spec = FIELD_REGISTRY.get(key)
         if mark_spec is None or mark_spec.ground not in ("act", "inadmissible"):
             blocking.append(_item(f"checks.{key}", key, "Это поле не требует отметки сравнения (информационное)."))
-        elif not _present(fields.get(mark_spec.key)):
+        elif not _comparison_source_present(fields, mark_spec):
             blocking.append(
                 _item(f"checks.{key}", key, "Источник не содержит значения этого поля: отметка не требуется.")
             )
@@ -540,7 +575,7 @@ def validate_receipt(
         mark = grounds.get(field_id)
         if mark is None or mark.actual is None or mark.reason is None:
             continue
-        source_value = fields.get(FIELD_REGISTRY[field_id].key)
+        source_value = _comparison_source_text(fields, FIELD_REGISTRY[field_id])
         items.append(
             ActItem(
                 field_id=field_id,

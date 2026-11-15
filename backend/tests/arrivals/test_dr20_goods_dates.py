@@ -192,6 +192,45 @@ def test_absent_dates_demand_no_mark_and_fictive_mark_is_refused() -> None:
     assert any(item.field_id == "CHK-F22" for item in result.blocking)  # type: ignore[attr-defined]
 
 
+def test_interval_dates_are_present_and_accept_explicit_marks() -> None:
+    source = source_projection(_row(INTERVAL_DATES, ""), _party())
+    incomplete = validate_receipt(_payload({}), source, CAPS)
+    incomplete_ids = {item.field_id for item in incomplete.all_errors()}  # type: ignore[attr-defined]
+    assert {"CHK-F22", "CHK-F23"}.issubset(incomplete_ids)
+
+    marked = validate_receipt(
+        _payload(
+            {
+                "CHK-F22": Comparison(matches=True),
+                "CHK-F23": Comparison(matches=True),
+            }
+        ),
+        source,
+        CAPS,
+    )
+    assert all(item.field_id not in ("CHK-F22", "CHK-F23") for item in marked.all_errors())  # type: ignore[attr-defined]
+
+
+def test_interval_date_mismatch_keeps_interval_in_act_source() -> None:
+    source = source_projection(_row(INTERVAL_DATES, ""), _party())
+    result = validate_receipt(
+        _payload(
+            {
+                "CHK-F22": Comparison(matches=True),
+                "CHK-F23": Comparison(
+                    matches=False,
+                    actual="2026-11-17",
+                    reason="Фактический срок отличается",
+                ),
+            }
+        ),
+        source,
+        CAPS,
+    )
+    item = next(item for item in result.act.items if item.field_id == "CHK-F23")  # type: ignore[attr-defined]
+    assert item.source == "2026-11-10 — 2026-11-16"
+
+
 # --- §9-8: a mismatch requires the actual date and the reason ----------------------
 
 

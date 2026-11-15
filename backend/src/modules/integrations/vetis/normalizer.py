@@ -33,6 +33,7 @@ from backend.src.modules.arrivals.schemas import (
     GoodsDate,
     ProductMark,
     PurposeRef,
+    ReferencedDocument,
     SourceSnapshot,
     VdDocument,
 )
@@ -82,6 +83,7 @@ class NormalizedEntry(BaseModel):
     trailer_number: str | None = None
     purpose_guid: str | None = None
     purpose_uuid: str | None = None
+    transport_document: dict[str, str | None] | None = None
     packages: list[dict[str, Any]] = Field(default_factory=list)
     package_quantity: str | None = None
     # DR20 §5.2: controlled normalization diagnostics of the typed GoodsDate
@@ -289,6 +291,42 @@ def _packages(batch: ET.Element | None) -> list[dict[str, Any]]:
     return packages
 
 
+def _transport_document(element: ET.Element) -> dict[str, str | None] | None:
+    """Return the consignment transport document, never a research document.
+
+    Mercury places the consignment references directly under ``vetDocument``.
+    A laboratory research may contain its own ``referencedDocument`` (usually
+    type 9, sample act); a descendant-wide search would therefore select the
+    wrong document.  Transport document types are 1..5 and relationships 1/6
+    according to the VetIS contract.
+    """
+    candidates: list[dict[str, str | None]] = []
+    for referenced in element.findall("vd:referencedDocument", _NS):
+        document_type = _text(_find(referenced, "vd:type"))
+        relationship_type = _text(_find(referenced, "vd:relationshipType"))
+        issue_number = _text(_find(referenced, "vd:issueNumber"))
+        issue_date = _text(_find(referenced, "vd:issueDate"))
+        if (
+            document_type not in {"1", "2", "3", "4", "5"}
+            or relationship_type not in {"1", "6"}
+            or issue_number is None
+            or issue_date is None
+        ):
+            continue
+        candidates.append(
+            {
+                "issueSeries": _text(_find(referenced, "vd:issueSeries")),
+                "issueNumber": issue_number,
+                "issueDate": issue_date,
+                "type": document_type,
+                "relationshipType": relationship_type,
+            }
+        )
+    if not candidates:
+        return None
+    return next((item for item in candidates if item["relationshipType"] == "1"), candidates[0])
+
+
 def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | None:
     if _depth(element) > max_depth:
         raise dependency_unavailable("Ответ ВетИС превышает допустимую глубину XML.")
@@ -352,6 +390,7 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
         trailer_number=_trailer_number(transport),
         purpose_guid=_text(_find(purpose, "bs:guid")),
         purpose_uuid=_text(_find(purpose, "bs:uuid")),
+        transport_document=_transport_document(element),
         packages=packages,
         package_quantity=package_quantity(packages),
         date_problems=[*production_problems, *expiry_problems],
@@ -558,6 +597,11 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
             transport_type=entry.transport_type,
             trailer_number=entry.trailer_number,
             purpose=purpose if (purpose.guid or purpose.external_uuid) else None,
+            transport_document=(
+                ReferencedDocument.model_validate(entry.transport_document)
+                if entry.transport_document is not None
+                else None
+            ),
         ),
         vet_documents=[],
     )

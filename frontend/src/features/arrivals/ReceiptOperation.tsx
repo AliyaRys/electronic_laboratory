@@ -62,7 +62,7 @@ function nowLocal(): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-function operationCopy(state: string): {
+function operationCopy(state: string, diagnostics?: { [key: string]: unknown } | null): {
   title: string;
   detail: string;
   status: "loading" | "forbidden" | "unknown" | "empty";
@@ -76,7 +76,10 @@ function operationCopy(state: string): {
   if (state === "REJECTED")
     return {
       title: "ВетИС отклонил гашение",
-      detail: "Местная ВСЭ не открыта. Проверьте причину операции.",
+      detail:
+        typeof diagnostics?.problem === "string" && diagnostics.problem.trim() !== ""
+          ? diagnostics.problem
+          : "Местная ВСЭ не открыта. Проверьте причину операции.",
       status: "forbidden",
     };
   if (state === "UNKNOWN")
@@ -327,7 +330,7 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
     );
 
   if (state !== null) {
-    const copy = operationCopy(state);
+    const copy = operationCopy(state, operation?.diagnostics);
     return (
       <section className="vse-receipt-operation" aria-labelledby="receipt-operation-title">
         <h2 id="receipt-operation-title">Гашение эВСД</h2>

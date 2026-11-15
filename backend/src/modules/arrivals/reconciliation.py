@@ -54,6 +54,7 @@ from backend.src.modules.arrivals.validation import (
 )
 from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
+from backend.src.modules.integrations.vetis.document_types import document_type_label
 from backend.src.modules.integrations.vetis.models import VetisContour
 from backend.src.modules.integrations.vetis.reference_names import (
     participant_name_overrides,
@@ -111,6 +112,7 @@ def source_projection(
     consignor = _as_dict(payload.get("consignor"))
     consignee = _as_dict(payload.get("consignee"))
     batch = _as_dict(payload.get("batch"))
+    transport_document = _as_dict(payload.get("transportDocument"))
     unit = _as_dict(batch.get("unit"))
     classification = ClassificationView.model_validate(dict(party.classification_snapshot), by_alias=True)
 
@@ -159,9 +161,9 @@ def source_projection(
         # absent source date publishes four None keys — no fictive date.
         **goods_date_fields(batch, "producedOn"),
         **goods_date_fields(batch, "expiresOn"),
-        "transportDocumentType": None,
-        "transportDocumentNumber": None,
-        "transportDocumentIssuedOn": None,
+        "transportDocumentType": document_type_label(text_of(transport_document.get("type"))),
+        "transportDocumentNumber": text_of(transport_document.get("issueNumber")),
+        "transportDocumentIssuedOn": text_of(transport_document.get("issueDate")),
         **previous_vse_fields(row.source_snapshot),
     }
     if names is not None:

@@ -24,6 +24,8 @@ async def reconcile_receipt(db: AsyncSession, operation: VetisOperation, result:
     elif result.state == "REJECTED":
         operation.state = VetisOperationState.REJECTED
         operation.problem_code = "VETIS_RECEIPT_REJECTED"
+        external_problem = result.detail.get("problem") if isinstance(result.detail, dict) else None
+        operation.problem_detail = str(external_problem) if external_problem else "ВетИС отклонил гашение."
         operation.diagnostics = result.detail
     elif result.state == "UNKNOWN":
         operation.state = VetisOperationState.UNKNOWN

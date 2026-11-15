@@ -210,6 +210,21 @@ class ConsignorConsignee(StrictModel):
     enterprise: ExternalRef | None = None
 
 
+class ReferencedDocument(StrictModel):
+    """One top-level document linked to the eVSD.
+
+    Laboratory research documents use the same XML element, but are nested
+    inside ``laboratoryResearch`` and must never be mistaken for the
+    consignment waybill.
+    """
+
+    issue_series: str | None = Field(default=None, alias="issueSeries", max_length=64)
+    issue_number: str = Field(alias="issueNumber", max_length=255)
+    issue_date: str = Field(alias="issueDate", max_length=64)
+    document_type: str = Field(alias="type", max_length=64)
+    relationship_type: str | None = Field(default=None, alias="relationshipType", max_length=64)
+
+
 class VdDocument(StrictModel):
     type: str = Field(max_length=64)
     status: str = Field(max_length=64)
@@ -232,6 +247,7 @@ class VdDocument(StrictModel):
     # the vehicle number into one string.
     trailer_number: str | None = Field(default=None, max_length=64)
     purpose: PurposeRef | None = None
+    transport_document: ReferencedDocument | None = Field(default=None, alias="transportDocument")
 
 
 # ТЗ DR17 §1/§5.2: the agreed informational text published for an absent or

@@ -131,9 +131,32 @@ def _purpose_identifiers(source_root: ET.Element) -> tuple[str | None, str | Non
 
 def _append_source_waybill(delivery: ET.Element, source_root: ET.Element) -> None:
     """Map the source referencedDocument to the accepted delivery waybill."""
-    referenced = _find_local(source_root, "referencedDocument")
+    vet_documents = [source_root] if _local(source_root) == "vetDocument" else []
+    vet_documents.extend(node for node in source_root.iter() if _local(node) == "vetDocument")
+    direct_references = [
+        child
+        for document in vet_documents
+        for child in document
+        if _local(child) == "referencedDocument"
+    ]
+    valid = [
+        node
+        for node in direct_references
+        if (_desc_text(node, "type") or "") in {"1", "2", "3", "4", "5"}
+        and (_desc_text(node, "relationshipType") or "") in {"1", "6"}
+        and (_desc_text(node, "issueNumber") or "").strip()
+        and (_desc_text(node, "issueDate") or "").strip()
+    ]
+    referenced = next(
+        (node for node in valid if (_desc_text(node, "relationshipType") or "") == "1"),
+        valid[0] if valid else None,
+    )
     if referenced is None:
-        return
+        if not direct_references:
+            # VetIS permits a source eVSD without a transport document; in
+            # that case the waybill block is honestly omitted.
+            return
+        raise _invalid("Исходный эВСД не содержит корректную транспортную накладную (тип 1–5, номер и дата).")
     forms = next((item for item in delivery if _local(item) == "accompanyingForms"), None)
     if forms is None:
         forms = ET.SubElement(delivery, f"{{{VD_NS}}}accompanyingForms")

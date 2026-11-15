@@ -103,6 +103,9 @@ async def test_view_requisites_quantity_mass_distinct(db_session: AsyncSession, 
     assert fields["documentNumber"] != str(DOC_UUID)
     assert fields["purposeGuid"] == str(PURPOSE_GUID)
     assert fields["purposeUuid"] == "d4f9b0ea-f4d9-4cd7-92f0-016e1299160e"
+    assert fields["transportDocumentType"] == "Товарно-транспортная накладная"
+    assert fields["transportDocumentNumber"] == "123"
+    assert fields["transportDocumentIssuedOn"] == "2026-11-03"
 
 
 async def test_view_purpose_name_resolved_inside_contour(db_session: AsyncSession, lab) -> None:

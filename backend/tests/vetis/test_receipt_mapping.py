@@ -498,3 +498,29 @@ def test_fractional_package_quantity_is_rejected_before_network() -> None:
             service_id="mercury-vu.service:2.0",
             issuer_id="fixture",
         )
+
+
+def test_source_referenced_document_becomes_delivery_waybill() -> None:
+    source = SOURCE_XML.replace(
+        "<vd:certifiedConsignment>",
+        """<vd:referencedDocument>
+          <vd:issueSeries>005</vd:issueSeries><vd:issueNumber>222</vd:issueNumber>
+          <vd:issueDate>2026-11-12</vd:issueDate><vd:type>1</vd:type>
+          <vd:relationshipType>1</vd:relationshipType>
+        </vd:referencedDocument><vd:certifiedConsignment>""",
+    )
+    xml = build_process_incoming_application(
+        intent(mismatch=False, decision="ACCEPT_ALL"),
+        source_xml=source,
+        service_id="mercury-vu.service:2.0",
+        issuer_id="fixture",
+    )
+    root = ET.fromstring(xml)
+    waybill = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "waybill")
+    values = {node.tag.rsplit("}", 1)[-1]: node.text for node in waybill}
+    assert values == {
+        "issueSeries": "005",
+        "issueNumber": "222",
+        "issueDate": "2026-11-12",
+        "type": "1",
+    }

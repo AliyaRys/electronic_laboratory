@@ -25,7 +25,7 @@
 | Base namespace | `http://api.vetrf.ru/schema/cdm/base` |
 | SOAP | SOAP 1.1, `Content-Type: text/xml; charset=utf-8` |
 | SOAPAction submit | `submitApplicationRequest` |
-| SOAPAction receive | `receiveApplicationResultRequest` |
+| SOAPAction receive | `receiveApplicationResult` (элемент запроса — `receiveApplicationResultRequest`) |
 | Read-операция | `GetVetDocumentListOperation` (заявка `getVetDocumentListRequest`) |
 | Write-операция (read-path запрещена) | `ProcessIncomingConsignment` |
 | Инициатор | служебная read-идентичность (`SERVICE_READ_IDENTITY`), `write_capability=false` |

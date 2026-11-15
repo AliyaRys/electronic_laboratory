@@ -80,12 +80,18 @@ def _set_package_quantity(consignment: ET.Element, quantity: Decimal) -> None:
     with the aggregate quantity and the redundant siblings of the same level
     are omitted; the single package keeps its source packingType and marks.
     """
+    if quantity != quantity.to_integral_value():
+        raise _invalid("Количество мест для гашения должно быть целым числом.")
+    # VetIS dt:quantity is an integer schema type.  Decimal values originate
+    # from NUMERIC database columns and may carry scale (``6.000000``); that
+    # representation is schema-invalid even though it is numerically six.
+    quantity_text = format(quantity.to_integral_value(), "f")
     package_list = _find_local(consignment, "packageList")
     if package_list is None:
         package_list = ET.SubElement(consignment, f"{{{VD_NS}}}packageList")
         package = ET.SubElement(package_list, f"{{{DICT_NS}}}package")
         node = ET.SubElement(package, f"{{{DICT_NS}}}quantity")
-        node.text = format(quantity, "f")
+        node.text = quantity_text
         return
     packages = [item for item in package_list if _local(item) == "package"]
     levels: list[tuple[int, ET.Element]] = []
@@ -111,7 +117,7 @@ def _set_package_quantity(consignment: ET.Element, quantity: Decimal) -> None:
         node = _find_local(package, "quantity")
         if node is None:
             node = ET.SubElement(package, f"{{{DICT_NS}}}quantity")
-        node.text = format(quantity, "f")
+        node.text = quantity_text
 
 
 def _purpose_identifiers(source_root: ET.Element) -> tuple[str | None, str | None]:
@@ -123,9 +129,28 @@ def _purpose_identifiers(source_root: ET.Element) -> tuple[str | None, str | Non
     return _desc_text(purpose, "guid"), _desc_text(purpose, "uuid")
 
 
+def _append_source_waybill(delivery: ET.Element, source_root: ET.Element) -> None:
+    """Map the source referencedDocument to the accepted delivery waybill."""
+    referenced = _find_local(source_root, "referencedDocument")
+    if referenced is None:
+        return
+    forms = next((item for item in delivery if _local(item) == "accompanyingForms"), None)
+    if forms is None:
+        forms = ET.SubElement(delivery, f"{{{VD_NS}}}accompanyingForms")
+    if any(_local(item) == "waybill" for item in forms):
+        return
+    waybill = ET.Element(f"{{{VD_NS}}}waybill")
+    for name in ("issueSeries", "issueNumber", "issueDate", "type"):
+        _copy_named(waybill, referenced, name)
+    if not any(_local(item) == "type" for item in waybill):
+        raise _invalid("Исходный эВСД не содержит тип ТТН; гашение не формируется.")
+    forms.insert(0, waybill)
+
+
 def _delivery(
     request: ET.Element,
     source: ET.Element,
+    source_root: ET.Element,
     intent: ReceiptIntent,
     *,
     returned: bool,
@@ -163,6 +188,7 @@ def _delivery(
         delivery.append(consignment)
     for child_name in ("transportInfo", "transportStorageType", "accompanyingForms"):
         _copy_named(delivery, source, child_name)
+    _append_source_waybill(delivery, source_root)
     certificate = _find_local(delivery, "vetCertificate")
     if certificate is None:
         # Live LIC2 transport eVSDs carry no accompanyingForms; per the
@@ -325,7 +351,7 @@ def build_process_incoming_application(
     initiator = ET.SubElement(request, f"{{{VU_NS}}}initiator")
     _text(initiator, VD_NS, "login", intent.initiator)
     authentication_template = _find_local(source_root, "authentication")
-    _delivery(request, source, intent, returned=False)
+    _delivery(request, source, source_root, intent, returned=False)
 
     facts = ET.SubElement(request, f"{{{VU_NS}}}deliveryFacts")
     _text(facts, VD_NS, "vetCertificatePresence", "ELECTRONIC")
@@ -363,6 +389,7 @@ def build_process_incoming_application(
         _delivery(
             request,
             source,
+            source_root,
             intent,
             returned=True,
             authentication_template=authentication_template,

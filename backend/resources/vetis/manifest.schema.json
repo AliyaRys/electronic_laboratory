@@ -61,7 +61,7 @@
       "required": ["submit", "receive"],
       "properties": {
         "submit": { "type": "string", "const": "submitApplicationRequest" },
-        "receive": { "type": "string", "const": "receiveApplicationResultRequest" },
+        "receive": { "type": "string", "const": "receiveApplicationResult" },
         "purpose_list": { "type": "string", "const": "getPurposeListRequest" },
         "enterprise_by_guid": { "type": "string", "const": "getEnterpriseByGuidRequest" },
         "business_entity_by_guid": { "type": "string", "const": "getBusinessEntityByGUIDRequest" }

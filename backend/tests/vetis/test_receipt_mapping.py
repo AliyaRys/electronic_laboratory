@@ -455,3 +455,72 @@ async def test_enabled_transport_uses_exact_submit_action_without_network() -> N
     application_id = await transport.send_application(xml)
     assert application_id == "fixture-app"
     assert transport.captured == [("submitApplicationRequest", xml)]
+
+
+async def test_transport_uses_wsdl_receive_action_with_request_element() -> None:
+    class CaptureTransport(ZeepApplicationTransport):
+        def __init__(self) -> None:
+            super().__init__(endpoint="https://fixture.invalid", api_key="key", issuer_id="issuer")
+            self.captured: list[tuple[str, str]] = []
+
+        def _post(self, action: str, body: str) -> str:
+            self.captured.append((action, body))
+            return "<response><status>IN_PROCESS</status></response>"
+
+    transport = CaptureTransport()
+    await transport.receive_result("fixture-app")
+    assert transport.captured[0][0] == "receiveApplicationResult"
+    assert "receiveApplicationResultRequest" in transport.captured[0][1]
+
+
+def test_package_quantity_is_serialized_as_schema_integer() -> None:
+    value = intent(mismatch=False, decision="ACCEPT_ALL").model_copy(
+        update={"delivered_quantity": Decimal("6.000000"), "accepted_quantity": Decimal("6.000000")}
+    )
+    xml = build_process_incoming_application(
+        value,
+        source_xml=SOURCE_XML,
+        service_id="mercury-vu.service:2.0",
+        issuer_id="fixture",
+    )
+    assert "<dt:quantity>6</dt:quantity>" in xml
+    assert "<dt:quantity>6.000000</dt:quantity>" not in xml
+
+
+def test_fractional_package_quantity_is_rejected_before_network() -> None:
+    value = intent(mismatch=False, decision="ACCEPT_ALL").model_copy(
+        update={"delivered_quantity": Decimal("6.5"), "accepted_quantity": Decimal("6.5")}
+    )
+    with pytest.raises(ProblemError, match="целым числом"):
+        build_process_incoming_application(
+            value,
+            source_xml=SOURCE_XML,
+            service_id="mercury-vu.service:2.0",
+            issuer_id="fixture",
+        )
+
+
+def test_source_referenced_document_becomes_delivery_waybill() -> None:
+    source = SOURCE_XML.replace(
+        "<vd:certifiedConsignment>",
+        """<vd:referencedDocument>
+          <vd:issueSeries>005</vd:issueSeries><vd:issueNumber>222</vd:issueNumber>
+          <vd:issueDate>2026-11-12</vd:issueDate><vd:type>1</vd:type>
+          <vd:relationshipType>1</vd:relationshipType>
+        </vd:referencedDocument><vd:certifiedConsignment>""",
+    )
+    xml = build_process_incoming_application(
+        intent(mismatch=False, decision="ACCEPT_ALL"),
+        source_xml=source,
+        service_id="mercury-vu.service:2.0",
+        issuer_id="fixture",
+    )
+    root = ET.fromstring(xml)
+    waybill = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "waybill")
+    values = {node.tag.rsplit("}", 1)[-1]: node.text for node in waybill}
+    assert values == {
+        "issueSeries": "005",
+        "issueNumber": "222",
+        "issueDate": "2026-11-12",
+        "type": "1",
+    }

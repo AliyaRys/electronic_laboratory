@@ -25,7 +25,11 @@ from backend.src.modules.integrations.vetis.models import (
 )
 from backend.src.modules.integrations.vetis.polling import MAX_PROCESSING, poll_delay
 from backend.src.modules.integrations.vetis.receipt import build_receipt_preview, queue_receipt
-from backend.src.modules.integrations.vetis.worker import run_receipt_operation
+from backend.src.modules.integrations.vetis.transport import TransportOutcome, VetisTransportError
+from backend.src.modules.integrations.vetis.worker import (
+    resolve_unknown_receipt_not_applied,
+    run_receipt_operation,
+)
 from backend.tests.vetis.test_receipt_mapping import SOURCE_EVSD, SOURCE_RECEIVER, SOURCE_UNIT, SOURCE_XML
 
 
@@ -274,6 +278,139 @@ async def test_lost_submit_response_becomes_unknown_without_resubmit(receipt_env
         assert saved.state == VetisOperationState.UNKNOWN
         assert saved.application_id is None
     assert transport.sends == 1
+
+
+async def test_soap_fault_is_rejected_not_unknown(receipt_env: SimpleNamespace, monkeypatch) -> None:
+    class Rejected:
+        async def send_application(self, application_xml: str) -> str:
+            raise VetisTransportError(
+                code="VETIS_SOAP_FAULT",
+                detail="Incorrect request fixture",
+                outcome=TransportOutcome.DEFINITE_REJECTION,
+            )
+
+        async def receive_result(self, application_id: str) -> str:
+            raise AssertionError("rejected submit has no application id")
+
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    operation = await queue_receipt(
+        receipt_env.db,
+        preview=preview,
+        confirmation=UserConfirmation(
+            actor_id=receipt_env.actor.id,
+            fingerprint=preview.fingerprint,
+            confirmed_at=datetime.now(UTC),
+        ),
+    )
+    await receipt_env.db.commit()
+    await run_receipt_operation(operation.id, transport=Rejected(), session_factory=receipt_env.factory)
+    async with receipt_env.factory() as db:
+        saved = await db.get(VetisOperation, operation.id)
+        assert saved is not None
+        assert saved.state == VetisOperationState.REJECTED
+        assert saved.problem_code == "VETIS_SOAP_FAULT"
+        assert saved.problem_detail == "Incorrect request fixture"
+
+
+async def test_unknown_is_closed_only_after_fresh_confirmed_read(
+    receipt_env: SimpleNamespace, monkeypatch
+) -> None:
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    operation = await queue_receipt(
+        receipt_env.db,
+        preview=preview,
+        confirmation=UserConfirmation(
+            actor_id=receipt_env.actor.id,
+            fingerprint=preview.fingerprint,
+            confirmed_at=datetime.now(UTC),
+        ),
+    )
+    operation.state = VetisOperationState.UNKNOWN
+    operation.problem_code = "VETIS_SUBMIT_OUTCOME_UNKNOWN"
+    await receipt_env.db.commit()
+
+    class FreshConfirmed:
+        async def get_document_status(self, evsd_uuid, initiator):  # type: ignore[no-untyped-def]
+            return "CONFIRMED"
+
+    resolved = await resolve_unknown_receipt_not_applied(
+        operation.id,
+        adapter=FreshConfirmed(),  # type: ignore[arg-type]
+        session_factory=receipt_env.factory,
+    )
+    assert resolved is True
+    async with receipt_env.factory() as db:
+        saved = await db.get(VetisOperation, operation.id)
+        assert saved is not None
+        assert saved.state == VetisOperationState.REJECTED
+        assert saved.problem_code == "VETIS_SUBMIT_NOT_APPLIED"
+
+    retry = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    assert retry.intent.operation_id != operation.id
+    assert retry.intent.local_transaction_id == str(retry.intent.operation_id)
+
+
+async def test_unknown_stays_blocked_when_fresh_read_does_not_contain_document(
+    receipt_env: SimpleNamespace, monkeypatch
+) -> None:
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    operation = await queue_receipt(
+        receipt_env.db,
+        preview=preview,
+        confirmation=UserConfirmation(
+            actor_id=receipt_env.actor.id,
+            fingerprint=preview.fingerprint,
+            confirmed_at=datetime.now(UTC),
+        ),
+    )
+    operation.state = VetisOperationState.UNKNOWN
+    await receipt_env.db.commit()
+
+    class FreshMissing:
+        async def get_document_status(self, evsd_uuid, initiator):  # type: ignore[no-untyped-def]
+            return "UTILIZED"
+
+    resolved = await resolve_unknown_receipt_not_applied(
+        operation.id,
+        adapter=FreshMissing(),  # type: ignore[arg-type]
+        session_factory=receipt_env.factory,
+    )
+    assert resolved is False
+    async with receipt_env.factory() as db:
+        saved = await db.get(VetisOperation, operation.id)
+        assert saved is not None
+        assert saved.state == VetisOperationState.UNKNOWN
 
 
 async def test_confirmed_result_is_idempotent_and_opens_gate_once(receipt_env: SimpleNamespace, monkeypatch) -> None:

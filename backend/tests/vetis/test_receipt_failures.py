@@ -346,12 +346,8 @@ async def test_unknown_is_closed_only_after_fresh_confirmed_read(
     await receipt_env.db.commit()
 
     class FreshConfirmed:
-        async def list_incoming(self, scope, cursor, initiator):  # type: ignore[no-untyped-def]
-            return SimpleNamespace(
-                items=[SimpleNamespace(evsd_uuid=preview.intent.source_evsd_uuid, external_status="CONFIRMED")],
-                complete=True,
-                next_cursor=None,
-            )
+        async def get_document_status(self, evsd_uuid, initiator):  # type: ignore[no-untyped-def]
+            return "CONFIRMED"
 
     resolved = await resolve_unknown_receipt_not_applied(
         operation.id,
@@ -402,8 +398,8 @@ async def test_unknown_stays_blocked_when_fresh_read_does_not_contain_document(
     await receipt_env.db.commit()
 
     class FreshMissing:
-        async def list_incoming(self, scope, cursor, initiator):  # type: ignore[no-untyped-def]
-            return SimpleNamespace(items=[], complete=True, next_cursor=None)
+        async def get_document_status(self, evsd_uuid, initiator):  # type: ignore[no-untyped-def]
+            return "UTILIZED"
 
     resolved = await resolve_unknown_receipt_not_applied(
         operation.id,

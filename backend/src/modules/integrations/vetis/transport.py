@@ -43,6 +43,7 @@ __all__ = [
     "ZeepEnterpriseLookupTransport",
     "SpyEnterpriseLookupTransport",
     "build_get_vet_document_list_application",
+    "build_get_vet_document_by_uuid_application",
     "build_purpose_list_request",
     "parse_purpose_list",
     "build_get_enterprise_by_guid_request",
@@ -422,6 +423,36 @@ def build_get_vet_document_list_application(
         "</mercvu:businessMember>"
         "</mercvu:getVetDocumentListRequest>"
         "</apl:data></apl:application></apldef:submitApplicationRequest>"
+    )
+
+
+def build_get_vet_document_by_uuid_application(
+    *,
+    service_id: str,
+    issuer_id: str,
+    initiator: str,
+    evsd_uuid: str,
+    api_key: str | None = None,
+) -> str:
+    """Build the VU read-only application used to reconcile an unknown submit."""
+    import uuid
+    from xml.sax.saxutils import escape
+
+    return (
+        f'<apldef:submitApplicationRequest xmlns:apldef="{_APPLICATION_DEFINITIONS_NS}" '
+        f'xmlns:apl="{_APPLICATION_NS}" xmlns:bs="{_BASE_NS}" '
+        f'xmlns:mercvu="{_MERCURY_NS}" xmlns:vd="{_VET_DOCUMENT_NS}">'
+        f"<apldef:apiKey>{escape(api_key or '')}</apldef:apiKey>"
+        "<apl:application>"
+        f"<apl:serviceId>{escape(service_id)}</apl:serviceId>"
+        f"<apl:issuerId>{escape(issuer_id)}</apl:issuerId>"
+        f"<apl:issueDate>{datetime.now(UTC).isoformat()}</apl:issueDate>"
+        "<apl:data><mercvu:getVetDocumentByUuidRequest>"
+        f"<mercvu:localTransactionId>read-{uuid.uuid4().hex}</mercvu:localTransactionId>"
+        f"<mercvu:initiator><vd:login>{escape(initiator)}</vd:login></mercvu:initiator>"
+        f"<bs:uuid>{escape(evsd_uuid)}</bs:uuid>"
+        "</mercvu:getVetDocumentByUuidRequest></apl:data></apl:application>"
+        "</apldef:submitApplicationRequest>"
     )
 
 

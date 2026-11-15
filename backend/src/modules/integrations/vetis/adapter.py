@@ -41,6 +41,7 @@ from backend.src.modules.integrations.vetis.normalizer import (
 )
 from backend.src.modules.integrations.vetis.transport import (
     VetisTransport,
+    build_get_vet_document_by_uuid_application,
     build_get_vet_document_list_application,
 )
 
@@ -191,6 +192,42 @@ class VetisReadAdapter:
             # build the FULL observed set (kept + filtered), not only imports.
             filtered_documents=filtered_documents,
             raw_documents=extract_raw_documents(result_xml),
+        )
+
+    async def get_document_status(self, evsd_uuid: uuid.UUID, initiator: str) -> str | None:
+        """Read the exact eVSD version; used only to reconcile UNKNOWN submit."""
+        if not initiator or not initiator.strip():
+            raise _initiator_missing()
+        self.require_live_ready()
+        application = build_get_vet_document_by_uuid_application(
+            service_id=self._manifest.service_id,
+            issuer_id=self._issuer_id,
+            initiator=initiator,
+            evsd_uuid=str(evsd_uuid),
+            api_key=self._api_key,
+        )
+        application_id = await self._transport.send_application(application)
+        result_xml = await self._transport.receive_result(application_id)
+        from xml.etree import ElementTree as ET
+
+        root = ET.fromstring(result_xml)
+        application_status = next(
+            (
+                (node.text or "").strip().upper()
+                for node in root.iter()
+                if node.tag.rsplit("}", 1)[-1] == "status" and (node.text or "").strip()
+            ),
+            "",
+        )
+        if application_status not in {"COMPLETED", "CONFIRMED"}:
+            return None
+        return next(
+            (
+                (node.text or "").strip().upper()
+                for node in root.iter()
+                if node.tag.rsplit("}", 1)[-1] == "vetDStatus" and (node.text or "").strip()
+            ),
+            None,
         )
 
 

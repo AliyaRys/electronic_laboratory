@@ -38,7 +38,7 @@ from backend.src.modules.arrivals.ports import ReceiptEvidence
 from backend.src.modules.identity.models import OutboxEntry
 from backend.src.modules.integrations.vetis import sync
 from backend.src.modules.integrations.vetis.adapter import VetisReadAdapter
-from backend.src.modules.integrations.vetis.contracts import ExternalResult, ReceiptIntent, VetisScope
+from backend.src.modules.integrations.vetis.contracts import ExternalResult, ReceiptIntent
 from backend.src.modules.integrations.vetis.dispatcher import dispatch_pending_operations
 from backend.src.modules.integrations.vetis.evidence import parse_receipt_result
 from backend.src.modules.integrations.vetis.models import (
@@ -413,9 +413,8 @@ async def resolve_unknown_receipt_not_applied(
 ) -> bool:
     """Close an old UNKNOWN only after a fresh read proves it is still incoming.
 
-    This function never submits a write.  It performs a complete, live,
-    read-only list walk for the operation's frozen VetIS scope.  A missing
-    document or any read failure leaves UNKNOWN untouched.
+    This function never submits a write.  It performs a live, read-only exact
+    UUID lookup.  Any status other than CONFIRMED leaves UNKNOWN untouched.
     """
     factory = session_factory or get_session_factory()
     async with factory() as db:
@@ -431,28 +430,10 @@ async def resolve_unknown_receipt_not_applied(
         intent = ReceiptIntent.model_validate(operation.intent)
 
     live = adapter or compose_read_adapter()
-    scope = VetisScope(
-        laboratory_id=intent.laboratory_id,
-        contour=intent.contour,
-        business_member_id=intent.business_member_id,
-        enterprise_id=intent.receiver_enterprise_id,
-        initiator=intent.initiator,
-    )
-    cursor: str | None = None
-    present = False
-    while True:
-        page = await live.list_incoming(scope, cursor, intent.initiator)
-        if any(
-            item.evsd_uuid == intent.source_evsd_uuid and item.external_status == "CONFIRMED"
-            for item in page.items
-        ):
-            present = True
-        if page.complete:
-            break
-        if not page.next_cursor:
-            return False
-        cursor = page.next_cursor
-    if not present:
+    # Exact UUID lookup is stronger than list absence/presence and remains
+    # valid even while list indexes are temporarily converging.
+    status = await live.get_document_status(intent.source_evsd_uuid, intent.initiator)
+    if status != "CONFIRMED":
         return False
 
     async with factory() as db:

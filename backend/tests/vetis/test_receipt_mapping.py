@@ -471,3 +471,30 @@ async def test_transport_uses_wsdl_receive_action_with_request_element() -> None
     await transport.receive_result("fixture-app")
     assert transport.captured[0][0] == "receiveApplicationResult"
     assert "receiveApplicationResultRequest" in transport.captured[0][1]
+
+
+def test_package_quantity_is_serialized_as_schema_integer() -> None:
+    value = intent(mismatch=False, decision="ACCEPT_ALL").model_copy(
+        update={"delivered_quantity": Decimal("6.000000"), "accepted_quantity": Decimal("6.000000")}
+    )
+    xml = build_process_incoming_application(
+        value,
+        source_xml=SOURCE_XML,
+        service_id="mercury-vu.service:2.0",
+        issuer_id="fixture",
+    )
+    assert "<dt:quantity>6</dt:quantity>" in xml
+    assert "<dt:quantity>6.000000</dt:quantity>" not in xml
+
+
+def test_fractional_package_quantity_is_rejected_before_network() -> None:
+    value = intent(mismatch=False, decision="ACCEPT_ALL").model_copy(
+        update={"delivered_quantity": Decimal("6.5"), "accepted_quantity": Decimal("6.5")}
+    )
+    with pytest.raises(ProblemError, match="целым числом"):
+        build_process_incoming_application(
+            value,
+            source_xml=SOURCE_XML,
+            service_id="mercury-vu.service:2.0",
+            issuer_id="fixture",
+        )

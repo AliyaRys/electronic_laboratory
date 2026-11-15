@@ -80,12 +80,18 @@ def _set_package_quantity(consignment: ET.Element, quantity: Decimal) -> None:
     with the aggregate quantity and the redundant siblings of the same level
     are omitted; the single package keeps its source packingType and marks.
     """
+    if quantity != quantity.to_integral_value():
+        raise _invalid("Количество мест для гашения должно быть целым числом.")
+    # VetIS dt:quantity is an integer schema type.  Decimal values originate
+    # from NUMERIC database columns and may carry scale (``6.000000``); that
+    # representation is schema-invalid even though it is numerically six.
+    quantity_text = format(quantity.to_integral_value(), "f")
     package_list = _find_local(consignment, "packageList")
     if package_list is None:
         package_list = ET.SubElement(consignment, f"{{{VD_NS}}}packageList")
         package = ET.SubElement(package_list, f"{{{DICT_NS}}}package")
         node = ET.SubElement(package, f"{{{DICT_NS}}}quantity")
-        node.text = format(quantity, "f")
+        node.text = quantity_text
         return
     packages = [item for item in package_list if _local(item) == "package"]
     levels: list[tuple[int, ET.Element]] = []
@@ -111,7 +117,7 @@ def _set_package_quantity(consignment: ET.Element, quantity: Decimal) -> None:
         node = _find_local(package, "quantity")
         if node is None:
             node = ET.SubElement(package, f"{{{DICT_NS}}}quantity")
-        node.text = format(quantity, "f")
+        node.text = quantity_text
 
 
 def _purpose_identifiers(source_root: ET.Element) -> tuple[str | None, str | None]:

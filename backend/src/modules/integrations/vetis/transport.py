@@ -2,6 +2,7 @@
 
 The transport speaks only two confirmed SOAP actions of the application
 management service (``submitApplicationRequest`` /
+``receiveApplicationResult``; its body element is
 ``receiveApplicationResultRequest``). Every call records the business
 operation it carries; write operations (``ProcessIncomingConsignment``) are
 rejected at the boundary before any network contact, and product-dictionary
@@ -16,6 +17,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Collection
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 import requests
@@ -34,6 +36,8 @@ __all__ = [
     "VetisTransport",
     "SpyTransport",
     "RestrictedSession",
+    "TransportOutcome",
+    "VetisTransportError",
     "ZeepApplicationTransport",
     "ZeepDictionaryTransport",
     "ZeepEnterpriseLookupTransport",
@@ -77,6 +81,46 @@ _BASE_NS = "http://api.vetrf.ru/schema/cdm/base"
 _DICTIONARY_NS = "http://api.vetrf.ru/schema/cdm/dictionary/v2"
 _MERCURY_NS = "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2"
 _VET_DOCUMENT_NS = "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"
+
+
+class TransportOutcome(StrEnum):
+    """Whether a failed submit can have changed external VetIS state."""
+
+    DEFINITE_REJECTION = "DEFINITE_REJECTION"
+    OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN"
+
+
+class VetisTransportError(Exception):
+    """A safe, classified transport failure (never carries credentials/XML)."""
+
+    def __init__(self, *, code: str, detail: str, outcome: TransportOutcome) -> None:
+        super().__init__(detail)
+        self.code = code
+        self.detail = detail[:500]
+        self.outcome = outcome
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _soap_fault_detail(payload: str) -> str | None:
+    """Return a bounded human-readable SOAP fault without echoing the request."""
+    from xml.etree import ElementTree as ET
+
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError:
+        return None
+    if not any(_local_name(node.tag) == "Fault" for node in root.iter()):
+        return None
+    preferred = ("message", "faultstring", "detail")
+    for name in preferred:
+        for node in root.iter():
+            text = (node.text or "").strip()
+            if _local_name(node.tag) == name and text:
+                return " ".join(text.split())[:500]
+    return "ВетИС отклонил SOAP-запрос без текстового описания."
 
 
 class WriteOperationRejected(Exception):
@@ -225,6 +269,8 @@ class ZeepApplicationTransport:
         gateway_password: str | None = None,
         api_key: str | None = None,
         issuer_id: str | None = None,
+        submit_action: str = "submitApplicationRequest",
+        receive_action: str = "receiveApplicationResult",
     ) -> None:
         self._endpoint = endpoint
         self._connect_timeout = connect_timeout_s
@@ -234,6 +280,8 @@ class ZeepApplicationTransport:
         self._gateway_password = gateway_password
         self._api_key = api_key
         self._issuer_id = issuer_id
+        self._submit_action = submit_action
+        self._receive_action = receive_action
 
     def _client(self) -> object:  # pragma: no cover - requires credentials/zeep at runtime
         import zeep
@@ -261,17 +309,38 @@ class ZeepApplicationTransport:
             '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
             f"<soapenv:Header/><soapenv:Body>{body}</soapenv:Body></soapenv:Envelope>"
         )
-        response = session.post(
-            self._endpoint,
-            data=envelope.encode("utf-8"),
-            headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": action},
-            timeout=(self._connect_timeout, self._read_timeout),
-        )
-        response.raise_for_status()
+        try:
+            response = session.post(
+                self._endpoint,
+                data=envelope.encode("utf-8"),
+                headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": action},
+                timeout=(self._connect_timeout, self._read_timeout),
+            )
+        except requests.RequestException as exc:
+            raise VetisTransportError(
+                code="VETIS_TRANSPORT_OUTCOME_UNKNOWN",
+                detail="Ответ ВетИС не получен; результат отправки неизвестен.",
+                outcome=TransportOutcome.OUTCOME_UNKNOWN,
+            ) from exc
+        if not response.ok:
+            fault = _soap_fault_detail(str(response.text))
+            # A SOAP Fault and ordinary client errors prove that this exact
+            # application was rejected. Gateway availability errors do not.
+            if fault is not None or 400 <= response.status_code < 500:
+                raise VetisTransportError(
+                    code="VETIS_SOAP_FAULT" if fault is not None else "VETIS_HTTP_REJECTED",
+                    detail=fault or f"ВетИС отклонил запрос (HTTP {response.status_code}).",
+                    outcome=TransportOutcome.DEFINITE_REJECTION,
+                )
+            raise VetisTransportError(
+                code="VETIS_TRANSPORT_OUTCOME_UNKNOWN",
+                detail=f"Шлюз ВетИС не подтвердил результат (HTTP {response.status_code}).",
+                outcome=TransportOutcome.OUTCOME_UNKNOWN,
+            )
         return str(response.text)
 
     async def send_application(self, application_xml: str) -> str:  # pragma: no cover
-        response_xml = await asyncio.to_thread(self._post, "submitApplicationRequest", application_xml)
+        response_xml = await asyncio.to_thread(self._post, self._submit_action, application_xml)
         from xml.etree import ElementTree as ET
 
         root = ET.fromstring(response_xml)
@@ -302,7 +371,7 @@ class ZeepApplicationTransport:
             f"<apldef:applicationId>{escape(application_id)}</apldef:applicationId>"
             "</apldef:receiveApplicationResultRequest>"
         )
-        return await asyncio.to_thread(self._post, "receiveApplicationResultRequest", body)
+        return await asyncio.to_thread(self._post, self._receive_action, body)
 
 
 def build_get_vet_document_list_application(

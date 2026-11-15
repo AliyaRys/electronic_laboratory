@@ -177,7 +177,7 @@ def test_manifest_carries_confirmed_profile_without_secrets() -> None:
     assert manifest["service_id"] == "mercury-vu.service:2.0"
     assert manifest["namespaces"]["business"] == "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2"
     assert manifest["soap_actions"]["submit"] == "submitApplicationRequest"
-    assert manifest["soap_actions"]["receive"] == "receiveApplicationResultRequest"
+    assert manifest["soap_actions"]["receive"] == "receiveApplicationResult"
     text = (RESOURCES / "manifest.json").read_text(encoding="utf-8")
     for forbidden in ("apiKey", "apiKey:", "password", "login", "issuerId"):
         assert forbidden not in text.lower() or forbidden == "login" and '"login"' not in text.lower()

@@ -20,7 +20,7 @@
   },
   "soap_actions": {
     "submit": "submitApplicationRequest",
-    "receive": "receiveApplicationResultRequest",
+    "receive": "receiveApplicationResult",
     "purpose_list": "getPurposeListRequest",
     "enterprise_by_guid": "getEnterpriseByGuidRequest",
     "business_entity_by_guid": "getBusinessEntityByGUIDRequest"

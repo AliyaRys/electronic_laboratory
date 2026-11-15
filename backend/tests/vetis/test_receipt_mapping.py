@@ -455,3 +455,19 @@ async def test_enabled_transport_uses_exact_submit_action_without_network() -> N
     application_id = await transport.send_application(xml)
     assert application_id == "fixture-app"
     assert transport.captured == [("submitApplicationRequest", xml)]
+
+
+async def test_transport_uses_wsdl_receive_action_with_request_element() -> None:
+    class CaptureTransport(ZeepApplicationTransport):
+        def __init__(self) -> None:
+            super().__init__(endpoint="https://fixture.invalid", api_key="key", issuer_id="issuer")
+            self.captured: list[tuple[str, str]] = []
+
+        def _post(self, action: str, body: str) -> str:
+            self.captured.append((action, body))
+            return "<response><status>IN_PROCESS</status></response>"
+
+    transport = CaptureTransport()
+    await transport.receive_result("fixture-app")
+    assert transport.captured[0][0] == "receiveApplicationResult"
+    assert "receiveApplicationResultRequest" in transport.captured[0][1]

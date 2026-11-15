@@ -38,7 +38,7 @@ from backend.src.modules.arrivals.ports import ReceiptEvidence
 from backend.src.modules.identity.models import OutboxEntry
 from backend.src.modules.integrations.vetis import sync
 from backend.src.modules.integrations.vetis.adapter import VetisReadAdapter
-from backend.src.modules.integrations.vetis.contracts import ExternalResult, ReceiptIntent
+from backend.src.modules.integrations.vetis.contracts import ExternalResult, ReceiptIntent, VetisScope
 from backend.src.modules.integrations.vetis.dispatcher import dispatch_pending_operations
 from backend.src.modules.integrations.vetis.evidence import parse_receipt_result
 from backend.src.modules.integrations.vetis.models import (
@@ -51,7 +51,12 @@ from backend.src.modules.integrations.vetis.polling import MAX_PROCESSING, poll_
 from backend.src.modules.integrations.vetis.receipt import write_enabled
 from backend.src.modules.integrations.vetis.receipt_mapping import build_process_incoming_application
 from backend.src.modules.integrations.vetis.reconcile import reconcile_receipt
-from backend.src.modules.integrations.vetis.transport import ZeepApplicationTransport, imports_allowlist
+from backend.src.modules.integrations.vetis.transport import (
+    TransportOutcome,
+    VetisTransportError,
+    ZeepApplicationTransport,
+    imports_allowlist,
+)
 
 __all__ = [
     "SCHEDULE_INTERVAL",
@@ -64,6 +69,7 @@ __all__ = [
     "purpose_sync_tick",
     "reference_names_tick",
     "run_receipt_operation",
+    "resolve_unknown_receipt_not_applied",
     "WorkerSettings",
 ]
 
@@ -118,6 +124,8 @@ def compose_read_adapter() -> VetisReadAdapter:
         gateway_password=gateway_password,
         api_key=api_key,
         issuer_id=issuer_id,
+        submit_action=manifest.soap_actions["submit"],
+        receive_action=manifest.soap_actions["receive"],
     )
     return VetisReadAdapter(
         transport=transport,
@@ -305,15 +313,32 @@ async def run_receipt_operation(
             application_id = await transport.send_application(xml)  # type: ignore[attr-defined]
             if not application_id:
                 raise RuntimeError("missing application id")
-        except Exception:  # noqa: BLE001 - outcome may be externally committed
+        except Exception as exc:  # noqa: BLE001 - outcome may be externally committed
             async with factory() as db:
                 operation = (
                     await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
                 ).scalar_one()
-                operation.state = VetisOperationState.UNKNOWN
-                operation.problem_code = "VETIS_SUBMIT_OUTCOME_UNKNOWN"
-                operation.problem_detail = (
-                    "Связь оборвалась во время submit; автоматическая повторная отправка запрещена."
+                definite = (
+                    isinstance(exc, VetisTransportError)
+                    and exc.outcome == TransportOutcome.DEFINITE_REJECTION
+                )
+                if definite:
+                    operation.state = VetisOperationState.REJECTED
+                    operation.problem_code = exc.code
+                    operation.problem_detail = exc.detail
+                    operation.finished_at = datetime.now(UTC)
+                else:
+                    operation.state = VetisOperationState.UNKNOWN
+                    operation.problem_code = "VETIS_SUBMIT_OUTCOME_UNKNOWN"
+                    operation.problem_detail = (
+                        "Ответ submit с applicationId не получен; автоматическая повторная отправка запрещена."
+                    )
+                _LOG.warning(
+                    "VetIS receipt submit failed operation=%s state=%s error=%s code=%s",
+                    operation_id,
+                    operation.state,
+                    type(exc).__name__,
+                    getattr(exc, "code", "UNCLASSIFIED"),
                 )
                 operation.updated_at = datetime.now(UTC)
                 await db.commit()
@@ -350,12 +375,19 @@ async def run_receipt_operation(
         return
     try:
         result_xml = await transport.receive_result(application_id)  # type: ignore[attr-defined]
-    except Exception:  # polling is safe to repeat
-        result = ExternalResult(
-            application_id=application_id,
-            state="PROCESSING",
-            detail={"problem": "VETIS_POLL_TEMPORARY_FAILURE"},
-        )
+    except Exception as exc:  # polling is safe to repeat
+        if isinstance(exc, VetisTransportError) and exc.outcome == TransportOutcome.DEFINITE_REJECTION:
+            result = ExternalResult(
+                application_id=application_id,
+                state="REJECTED",
+                detail={"problem": exc.code, "message": exc.detail},
+            )
+        else:
+            result = ExternalResult(
+                application_id=application_id,
+                state="PROCESSING",
+                detail={"problem": "VETIS_POLL_TEMPORARY_FAILURE"},
+            )
     else:
         result = parse_receipt_result(result_xml, intent, application_id=application_id)
     async with factory() as db:
@@ -371,6 +403,74 @@ async def run_receipt_operation(
             operation.next_poll_at = None
         operation.updated_at = datetime.now(UTC)
         await db.commit()
+
+
+async def resolve_unknown_receipt_not_applied(
+    operation_id: uuid.UUID,
+    *,
+    adapter: VetisReadAdapter | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> bool:
+    """Close an old UNKNOWN only after a fresh read proves it is still incoming.
+
+    This function never submits a write.  It performs a complete, live,
+    read-only list walk for the operation's frozen VetIS scope.  A missing
+    document or any read failure leaves UNKNOWN untouched.
+    """
+    factory = session_factory or get_session_factory()
+    async with factory() as db:
+        operation = await db.get(VetisOperation, operation_id)
+        if (
+            operation is None
+            or operation.kind != VetisOperationKind.RECEIPT
+            or operation.state != VetisOperationState.UNKNOWN
+            or operation.application_id is not None
+            or operation.intent is None
+        ):
+            return False
+        intent = ReceiptIntent.model_validate(operation.intent)
+
+    live = adapter or compose_read_adapter()
+    scope = VetisScope(
+        laboratory_id=intent.laboratory_id,
+        contour=intent.contour,
+        business_member_id=intent.business_member_id,
+        enterprise_id=intent.receiver_enterprise_id,
+        initiator=intent.initiator,
+    )
+    cursor: str | None = None
+    present = False
+    while True:
+        page = await live.list_incoming(scope, cursor, intent.initiator)
+        if any(
+            item.evsd_uuid == intent.source_evsd_uuid and item.external_status == "CONFIRMED"
+            for item in page.items
+        ):
+            present = True
+        if page.complete:
+            break
+        if not page.next_cursor:
+            return False
+        cursor = page.next_cursor
+    if not present:
+        return False
+
+    async with factory() as db:
+        operation = (
+            await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
+        ).scalar_one()
+        if operation.state != VetisOperationState.UNKNOWN or operation.application_id is not None:
+            return False
+        operation.state = VetisOperationState.REJECTED
+        operation.problem_code = "VETIS_SUBMIT_NOT_APPLIED"
+        operation.problem_detail = (
+            "Свежая проверка ВетИС подтверждает, что ВСД остаётся входящим и оформленным; "
+            "предыдущая отправка не была применена."
+        )
+        operation.finished_at = datetime.now(UTC)
+        operation.updated_at = datetime.now(UTC)
+        await db.commit()
+    return True
 
 
 async def run_sync_operation(operation_id: uuid.UUID) -> None:

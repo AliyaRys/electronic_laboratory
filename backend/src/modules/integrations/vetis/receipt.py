@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError, not_found
@@ -192,9 +192,23 @@ async def build_receipt_preview(
     selected_issue_date = issue_date or datetime.now(UTC)
     if selected_issue_date.tzinfo is None or selected_issue_date > datetime.now(UTC):
         raise _problem(422, "VALIDATION_ERROR", "Дата формирования запроса некорректна.")
+    # A rejected application is terminal and may be corrected/retried by an
+    # explicit new user command.  Keep the first operation id stable, while
+    # giving each proven-safe retry a fresh localTransactionId/primary key.
+    rejected_attempts = (
+        await db.execute(
+            select(func.count())
+            .select_from(VetisOperation)
+            .where(
+                VetisOperation.party_id == party.id,
+                VetisOperation.kind == VetisOperationKind.RECEIPT,
+                VetisOperation.state == VetisOperationState.REJECTED,
+            )
+        )
+    ).scalar_one()
     operation_key = (
         f"vetis-receipt:{party.id}:{source.revision}:{reconciliation.rev}:"
-        f"{vet_inspection}:{reconciliation.decision}"
+        f"{vet_inspection}:{reconciliation.decision}:attempt-{rejected_attempts}"
     )
     operation_id = uuid.uuid5(uuid.NAMESPACE_URL, operation_key)
     raw: dict[str, object] = {

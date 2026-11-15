@@ -365,6 +365,17 @@ async def test_unknown_is_closed_only_after_fresh_confirmed_read(
         assert saved.state == VetisOperationState.REJECTED
         assert saved.problem_code == "VETIS_SUBMIT_NOT_APPLIED"
 
+    retry = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    assert retry.intent.operation_id != operation.id
+    assert retry.intent.local_transaction_id == str(retry.intent.operation_id)
+
 
 async def test_unknown_stays_blocked_when_fresh_read_does_not_contain_document(
     receipt_env: SimpleNamespace, monkeypatch

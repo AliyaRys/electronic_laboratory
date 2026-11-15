@@ -34,6 +34,7 @@ from backend.src.modules.arrivals.schemas import (
     goods_date_fields,
     trailer_projection,
 )
+from backend.src.modules.integrations.vetis.document_types import document_type_label
 from backend.src.modules.integrations.vetis.models import VetisContour
 from backend.src.modules.integrations.vetis.queries import find_purpose_name
 from backend.src.modules.integrations.vetis.reference_names import (
@@ -367,6 +368,8 @@ def _external_fields(
     batch = batch_raw if isinstance(batch_raw, dict) else {}
     product_item_raw = batch.get("productItem")
     product_item = product_item_raw if isinstance(product_item_raw, dict) else None
+    transport_document_raw = document_payload.get("transportDocument")
+    transport_document = transport_document_raw if isinstance(transport_document_raw, dict) else {}
     fields: dict[str, str | None] = {
         # Deprecated alias with ONE fixed meaning: the blank issueNumber. The
         # UUID ВСД is `documentUuid`/`evsd_uuid` — never this field.
@@ -396,6 +399,21 @@ def _external_fields(
         # source value and renders the honest fallback (R-DR19-3/4).
         "transportTypeCode": document_payload.get("transportType") or None,
         "transportType": transport_type_label(document_payload.get("transportType")),
+        # The top-level eVSD reference is the consignment waybill.  Research
+        # documents are excluded by the normalizer and never reach this field.
+        "transportDocumentType": document_type_label(
+            str(transport_document.get("type")) if transport_document.get("type") is not None else None
+        ),
+        "transportDocumentNumber": (
+            str(transport_document.get("issueNumber"))
+            if transport_document.get("issueNumber") not in (None, "")
+            else None
+        ),
+        "transportDocumentIssuedOn": (
+            str(transport_document.get("issueDate"))
+            if transport_document.get("issueDate") not in (None, "")
+            else None
+        ),
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),
         "productItem": str(product_item.get("name") or "") if product_item is not None else None,

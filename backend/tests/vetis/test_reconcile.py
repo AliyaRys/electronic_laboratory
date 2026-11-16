@@ -148,8 +148,8 @@ def test_real_v2_stock_and_documents_prove_partial_receipt() -> None:
         <packageList><dt:package xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2">
           <dt:level>1</dt:level><dt:quantity>1</dt:quantity></dt:package></packageList>
         </batch></certifiedConsignment>
-       <authentication><specialMarks>OTHER_REASON</specialMarks>
-         <specialMarks>OTHER_REASON: Обезличенная причина возврата</specialMarks></authentication>
+       <authentication><specialMarks>Причина возврата: OTHER_REASON Обезличенная причина возврата</specialMarks>
+       </authentication>
       </vetDocument>
     </processIncomingConsignmentResponse></response>"""
     result = parse_receipt_result(xml, frozen, application_id="real-v2")
@@ -157,7 +157,7 @@ def test_real_v2_stock_and_documents_prove_partial_receipt() -> None:
 
 
 def test_wrong_reason_code_in_return_document_is_unknown() -> None:
-    """ТЗ DR8 §6.2: the exact code, never the Russian label, proves the reason."""
+    """ТЗ DR38 §6: код без обязательного префикса не доказывает причину."""
     frozen = intent(mismatch=True, decision="PARTIALLY")
     xml = f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
       <sourceVetDocumentUuid>{frozen.source_evsd_uuid}</sourceVetDocumentUuid>

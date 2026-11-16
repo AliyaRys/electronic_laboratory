@@ -198,6 +198,13 @@ export const ICON_DEFINITIONS: Readonly<Record<string, readonly IconPart[]>> = O
     ["path", { d: "M4 14h6v6H4z" }],
     ["path", { d: "M14 14h6v6h-6z" }],
   ],
+  // ТЗ DR39: триггер «Дата сверки данных» (arrivals-accepted.html).
+  calendar: [
+    ["path", { d: "M7 2v4" }],
+    ["path", { d: "M17 2v4" }],
+    ["path", { d: "M4 9h16" }],
+    ["path", { d: "M5 5h14v16H5z" }],
+  ],
   "chevron-left": [["path", { d: "m15 18-6-6 6-6" }]],
   "chevron-right": [["path", { d: "m9 18 6-6-6-6" }]],
   // --- components/shell/AppHeader.js (canonical shell icons)
@@ -381,6 +388,7 @@ export const ARRIVAL_ICON_NAMES: readonly IconName[] = Object.freeze([
   "arrival-plus",
   "arrival-reconcile",
   "columns-grid",
+  "calendar",
 ]);
 
 /** DR30: section icons of the examination card (VseIcon.js + this adapter). */

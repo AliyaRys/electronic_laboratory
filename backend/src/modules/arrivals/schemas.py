@@ -30,6 +30,7 @@ __all__ = [
     "ClassificationView",
     "ClassificationEntry",
     "ConfirmationSummary",
+    "ReconciliationSummary",
     "IncomingView",
     "Comparison",
     "Inspection",
@@ -326,6 +327,22 @@ class ConfirmationSummary(BaseModel):
     confirmed_at: datetime
 
 
+class ReconciliationSummary(BaseModel):
+    """ТЗ DR39 §3: the compact server-side summary of the completed сверка.
+
+    Sources of truth: ``Reconciliation.completed_at`` (NEVER the receipt
+    ``confirmed_at``), the frozen ``pricing_snapshot`` (never recalculated)
+    and the author ``User.full_name`` resolved by ``actor_id`` (CHK-F33).
+    A missing summary is an honest ``null``; a saved zero stays zero.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    completed_at: datetime | None
+    author_name: str | None
+    pricing: PricingSnapshot | None = None
+
+
 class IncomingView(BaseModel):
     """API-04 ``IncomingView``."""
 
@@ -338,6 +355,8 @@ class IncomingView(BaseModel):
     classification: ClassificationView
     documentary: QuantitySet
     confirmation: ConfirmationSummary | None
+    # ТЗ DR39: the compact reconciliation summary of the row (absent = None).
+    reconciliation: ReconciliationSummary | None = None
     queue: Literal["EXPECTED", "WORK", "ACCEPTED"]
     examination_id: str | None
     revision: int

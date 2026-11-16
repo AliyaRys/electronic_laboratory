@@ -9,13 +9,14 @@
  * changing the global app shell width.
  */
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import {
   fetchArrivals,
   fetchOperationState,
   hideArrival,
+  reconciliationRangeQuery,
   revisionEtag,
   syncArrivals,
   syncIsTerminal,
@@ -43,9 +44,17 @@ interface Filters {
   result: string;
   q: string;
   page: number;
-  /** DR15 §5.1: the issue-date sort; the URL default is the server default. */
+  // DR15 §5.1: the issue-date sort of the EXPECTED queue; the URL default is
+  // the server default. ТЗ DR39 §4: the SAME desc default now serves every
+  // queue — a queue switch normalizes the sort and drops the stale param.
   sort: ArrivalSort;
+  /** ТЗ DR39 §7: the applied reconciliation date (ACCEPTED only). */
+  reconciledOn: string;
+  reconciledFrom: string;
+  reconciledTo: string;
 }
+
+const RECONCILED_KEYS: readonly string[] = ["reconciled_on", "reconciled_from", "reconciled_to"];
 
 /** DR15 §6: the default sort matches the server default (desc = newest first). */
 const DEFAULT_SORT: ArrivalSort = "desc";
@@ -54,12 +63,18 @@ const SORTS: readonly ArrivalSort[] = ["asc", "desc"];
 function filtersFromParams(params: URLSearchParams): Filters {
   const queue = (params.get("queue") ?? "EXPECTED").toUpperCase() as ArrivalQueue;
   const sortParam = params.get("sort") as ArrivalSort | null;
+  const accepted = queue === "ACCEPTED";
   return {
     queue: QUEUES.includes(queue) ? queue : "EXPECTED",
     result: params.get("result") ?? "",
     q: params.get("q") ?? "",
     page: Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1),
     sort: sortParam !== null && SORTS.includes(sortParam) ? sortParam : DEFAULT_SORT,
+    // ТЗ DR39 §7: the date filters exist ONLY in ACCEPTED — outside it they
+    // are simply not read (and stripped from the URL by the effect below).
+    reconciledOn: accepted ? (params.get("reconciled_on") ?? "") : "",
+    reconciledFrom: accepted ? (params.get("reconciled_from") ?? "") : "",
+    reconciledTo: accepted ? (params.get("reconciled_to") ?? "") : "",
   };
 }
 
@@ -85,10 +100,18 @@ function ArrivalsContent(): React.ReactElement {
 
   const arrivals = useQuery({
     // DR15 §6: the sort is part of the query key so a stale answer never
-    // replaces the newly sorted page.
+    // replaces the newly sorted page. ТЗ DR39: the reconciliation date is
+    // part of the same server filters — the key carries all of them.
     queryKey: ["arrivals", labId ?? null, filters],
-    queryFn: ({ signal }) =>
-      fetchArrivals(
+    queryFn: ({ signal }) => {
+      // ТЗ DR39 §7: the reconciled_* wire values exist ONLY in ACCEPTED;
+      // the «По» minute is normalized to the half-open next-minute bound
+      // in Europe/Moscow (never the browser timezone).
+      const date: { reconciled_from?: string; reconciled_to?: string } =
+        filters.queue === "ACCEPTED" && filters.reconciledFrom !== "" && filters.reconciledTo !== ""
+          ? reconciliationRangeQuery(filters.reconciledFrom, filters.reconciledTo)
+          : {};
+      return fetchArrivals(
         {
           laboratory_id: labId ?? "",
           queue: filters.queue,
@@ -96,9 +119,14 @@ function ArrivalsContent(): React.ReactElement {
           q: filters.q === "" ? null : filters.q,
           page: filters.page,
           sort: filters.sort,
+          reconciled_on:
+            filters.queue === "ACCEPTED" && filters.reconciledOn !== "" ? filters.reconciledOn : null,
+          reconciled_from: date.reconciled_from ?? null,
+          reconciled_to: date.reconciled_to ?? null,
         },
         signal,
-      ),
+      );
+    },
     enabled: labId !== undefined,
     // Fresh data keep the table geometry while a new page/filter loads.
     placeholderData: (previous) => previous,
@@ -178,8 +206,28 @@ function ArrivalsContent(): React.ReactElement {
     // existing routes/landing URLs stay unchanged.
     if (merged.sort !== DEFAULT_SORT) search.set("sort", merged.sort);
     if (merged.page > 1) search.set("page", String(merged.page));
+    // ТЗ DR39 §7: the reconciled_* params live ONLY in ACCEPTED — a queue
+    // switch (or any change on another queue) removes them from the URL.
+    if (merged.queue === "ACCEPTED" && merged.reconciledOn !== "") {
+      search.set("reconciled_on", merged.reconciledOn);
+    }
+    if (merged.queue === "ACCEPTED" && merged.reconciledFrom !== "" && merged.reconciledTo !== "") {
+      search.set("reconciled_from", merged.reconciledFrom);
+      search.set("reconciled_to", merged.reconciledTo);
+    }
     setParams(search);
   };
+
+  // ТЗ DR39 §7: a deep link to another queue must never keep the stale
+  // reconciled_* params — they are stripped from the URL right away.
+  useEffect(() => {
+    if (filters.queue === "ACCEPTED") return;
+    const stale = RECONCILED_KEYS.some((key) => params.has(key));
+    if (!stale) return;
+    const next = new URLSearchParams(params);
+    for (const key of RECONCILED_KEYS) next.delete(key);
+    setParams(next, { replace: true });
+  }, [filters.queue, params, setParams]);
 
   const runHide = async (): Promise<void> => {
     if (hideTarget === null) return;
@@ -335,13 +383,28 @@ function ArrivalsContent(): React.ReactElement {
       <ArrivalsScreen
         queue={filters.queue}
         counts={counts}
-        onQueueChange={(queue) => applyFilters({ queue, result: "", page: 1 })}
+        onQueueChange={(queue) => applyFilters({ queue, result: "", page: 1, sort: DEFAULT_SORT })}
         q={filters.q}
         onSearch={(q) => applyFilters({ q, page: 1 })}
         result={filters.result}
         onResultChange={(result) => applyFilters({ result, page: 1 })}
         sort={filters.sort}
         onSortChange={(sort) => applyFilters({ sort, page: 1 })}
+        reconciled={{
+          on: filters.reconciledOn,
+          from: filters.reconciledFrom,
+          to: filters.reconciledTo,
+        }}
+        // ТЗ DR39 §7: every application/reset resets the page and keeps the
+        // rest of the applicable filters (q/result/sort live in filters).
+        onReconciledApply={(next) =>
+          applyFilters({
+            reconciledOn: next.on,
+            reconciledFrom: next.from,
+            reconciledTo: next.to,
+            page: 1,
+          })
+        }
         hiddenColumns={hiddenColumns}
         onToggleColumn={(id) =>
           setHiddenColumns((previous) => {

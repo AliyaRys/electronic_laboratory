@@ -5,14 +5,17 @@
  * no copied mockup markup and no mockup demo data.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { useState } from "react";
 import { ArrivalsScreen } from "./ArrivalsScreen";
 import { StageTabs } from "./StageTabs";
 import { ArrivalsFilters, ColumnsChooser } from "./ArrivalsFilters";
+import { ReconciliationDateFilter } from "./ReconciliationDateFilter";
 import { CompletedArrivalsTable, ExpectedArrivalsTable, WorkArrivalsTable } from "./ArrivalTables";
 import { ArrivalsPagination } from "./ArrivalsPagination";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import type { ArrivalQueue, IncomingView } from "./api";
+import { SORT_LABELS_BY_QUEUE } from "./api";
 
 const meta: Meta = {
   title: "A01/Очереди поступлений",
@@ -76,6 +79,16 @@ const expectedRows: IncomingView[] = [
   }),
 ];
 
+const summary = (
+  completedAt: string,
+  total: string,
+  author: string,
+): NonNullable<IncomingView["reconciliation"]> => ({
+  completed_at: completedAt,
+  author_name: author,
+  pricing: { lines: [], fair: false, total, currency: "RUB" },
+});
+
 const workRows: IncomingView[] = [
   party({
     queue: "WORK",
@@ -88,6 +101,8 @@ const workRows: IncomingView[] = [
       returned_quantity: "0.000000",
       confirmed_at: "2026-08-12T11:40:00Z",
     },
+    // ТЗ DR39: the frozen server summary — cost/date/author are REAL fields.
+    reconciliation: summary("2026-11-05T07:10:00Z", "230.00", "Иванова Анна Петровна"),
   }),
   party({
     party_id: "0c1b2d3e-1111-4222-8333-444444444444",
@@ -102,6 +117,7 @@ const workRows: IncomingView[] = [
       confirmed_at: "2026-08-12T15:25:00Z",
     },
     examination_id: "77777777-1111-4222-8333-444444444444",
+    reconciliation: summary("2026-11-06T08:35:00Z", "0.00", "Смирнов Пётр Васильевич"),
   }),
 ];
 
@@ -118,6 +134,7 @@ const acceptedRows: IncomingView[] = [
       confirmed_at: "2026-08-12T13:10:00Z",
     },
     examination_id: "77777777-1111-4222-8333-444444444444",
+    reconciliation: summary("2026-11-05T07:10:00Z", "230.00", "Иванова Анна Петровна"),
   }),
   party({
     party_id: "0c1b2d3e-1111-4222-8333-444444444444",
@@ -132,6 +149,36 @@ const acceptedRows: IncomingView[] = [
       confirmed_at: "2026-08-12T16:40:00Z",
     },
     examination_id: null,
+    reconciliation: summary("2026-11-06T08:35:00Z", "230.00", "Смирнов Пётр Васильевич"),
+  }),
+];
+
+/** ТЗ DR39 §5: the honest legacy state — a WORK row without any summary. */
+const legacyWorkRows: IncomingView[] = [
+  party({
+    queue: "WORK",
+    confirmation: {
+      id: "55555555-1111-4222-8333-444444444444",
+      accepted_mass_kg: "486.500000",
+      accepted_quantity: "3.000000",
+      accepted_unit_id: "u",
+      returned_mass_kg: "0.000000",
+      returned_quantity: "0.000000",
+      confirmed_at: "2026-08-12T11:40:00Z",
+    },
+    reconciliation: null,
+  }),
+];
+
+const longAuthorRows: IncomingView[] = [
+  party({
+    queue: "WORK",
+    confirmation: workRows[0]!.confirmation,
+    reconciliation: summary(
+      "2026-11-05T07:10:00Z",
+      "230.00",
+      "Иванова Анна Петровна Константиновна Очень-Очень-Длинное Полное Имя Сотрудника Лаборатории",
+    ),
   }),
 ];
 
@@ -145,6 +192,10 @@ const screenProps = {
   // DR15 §5.1: the storybook full pages show the EXPECTED sort control too.
   sort: "desc" as const,
   onSortChange: () => {},
+  // ТЗ DR39 §7: the stories show the real (empty) applied date; the date
+  // filter story uses its own applied value.
+  reconciled: { on: "", from: "", to: "" } as const,
+  onReconciledApply: () => {},
   hiddenColumns: new Set<string>(),
   onToggleColumn: () => {},
   loading: false,
@@ -187,6 +238,69 @@ export const ФильтрыОжидаемые: StoryObj = {
       <ArrivalsFilters q="" onSearch={() => {}} />
     </div>
   ),
+};
+
+/** ТЗ DR39 §7: the queue-aware WORK sort labels of the ONE select. */
+export const ФильтрыВРаботе: StoryObj = {
+  name: "Панель фильтров / в работе (сортировка сверки)",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <ArrivalsFilters q="" onSearch={() => {}} sort="desc" onSortChange={() => {}} sortLabels={SORT_LABELS_BY_QUEUE.WORK} />
+    </div>
+  ),
+};
+
+// --- ТЗ DR39 §7: the reconciliation date filter states ----------------------------
+
+const dateFilterGrid = (applied: { on: string; from: string; to: string }, initialOpen = false): React.ReactElement => (
+  <div style={{ padding: 16, background: "#f5f9f8", display: "flex", gap: 16, flexWrap: "wrap" }}>
+    <ReconciliationDateFilter applied={applied} onApply={() => {}} initialOpen={initialOpen} />
+  </div>
+);
+
+export const ДатаФильтрЗакрыт: StoryObj = {
+  name: "Фильтр даты сверки / закрыт",
+  render: () => dateFilterGrid({ on: "", from: "", to: "" }),
+};
+
+export const ДатаФильтрОдинДень: StoryObj = {
+  name: "Фильтр даты сверки / выбран один день",
+  render: () => dateFilterGrid({ on: "2026-11-06", from: "", to: "" }),
+};
+
+export const ДатаФильтрДиапазон: StoryObj = {
+  name: "Фильтр даты сверки / применён диапазон",
+  render: () => dateFilterGrid({ on: "", from: "2026-11-05T10:00", to: "2026-11-06T18:30" }),
+};
+
+export const ДатаФильтрНеверныйДиапазон: StoryObj = {
+  name: "Фильтр даты сверки / неверный диапазон",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <RangeErrorStory />
+    </div>
+  ),
+};
+
+function RangeErrorStory(): React.ReactElement {
+  const [applied, setApplied] = useState({ on: "", from: "", to: "" });
+  return (
+    <div style={{ display: "flex", gap: 16 }}>
+      <ReconciliationDateFilter applied={applied} onApply={setApplied} initialOpen />
+    </div>
+  );
+}
+
+export const ДатаФильтрДлиннаяСводка: StoryObj = {
+  name: "Фильтр даты сверки / длинная подпись",
+  render: () =>
+    dateFilterGrid({ on: "", from: "2026-11-05T10:00", to: "2026-12-31T23:59" }),
+};
+
+export const ДатаФильтрУзкийЭкран: StoryObj = {
+  name: "Фильтр даты сверки / 390 px",
+  parameters: { viewport: { width: 390, height: 844 } },
+  render: () => dateFilterGrid({ on: "2026-11-06", from: "", to: "" }, true),
 };
 
 export const ФильтрыЗавершенные: StoryObj = {
@@ -242,6 +356,27 @@ export const ТаблицаЗавершенных: StoryObj = {
   render: () => (
     <div style={{ padding: 16, background: "#f5f9f8" }}>
       <CompletedArrivalsTable labId={LAB} items={acceptedRows} hiddenColumns={new Set()} />
+    </div>
+  ),
+};
+
+/** ТЗ DR39 §5: the honest legacy state — no summary, only «—». */
+export const ТаблицаВРаботеБезСводки: StoryObj = {
+  name: "Таблица в работе / без сводки сверки (legacy)",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <WorkArrivalsTable labId={LAB} items={legacyWorkRows} />
+    </div>
+  ),
+};
+
+/** ТЗ DR39 §5: a long author name is truncated visually only — the full value
+ * stays available through the native title of the table cell. */
+export const ТаблицаВРаботеДлинныйАвтор: StoryObj = {
+  name: "Таблица в работе / длинный автор сверки",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <WorkArrivalsTable labId={LAB} items={longAuthorRows} />
     </div>
   ),
 };
@@ -419,6 +554,13 @@ export const СтраницаУзкийЭкран: StoryObj = {
   name: "Страница / Ожидаемые 390 px",
   parameters: { viewport: { width: 390, height: 844 } },
   ...FullScreen("EXPECTED", expectedRows),
+};
+
+/** ТЗ DR39 §5: the WORK queue on a narrow screen keeps real metadata. */
+export const СтраницаВРаботеУзкийЭкран: StoryObj = {
+  name: "Страница / В работе 390 px",
+  parameters: { viewport: { width: 390, height: 844 } },
+  ...FullScreen("WORK", workRows),
 };
 
 export const СтраницаЗагрузка: StoryObj = {

@@ -22,6 +22,8 @@ const props = {
   onResultChange: () => {},
   sort: "desc" as const,
   onSortChange: () => {},
+  reconciled: { on: "", from: "", to: "" } as const,
+  onReconciledApply: () => {},
   hiddenColumns: new Set<string>(),
   onToggleColumn: () => {},
   items: [],

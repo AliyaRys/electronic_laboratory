@@ -13,7 +13,9 @@ import { RESULT_LABELS, type ArrivalResult, type ArrivalSort } from "./api";
 const SEARCH_PLACEHOLDER = "UUID ВСД, хозяйство, продукция или ТС";
 const DEBOUNCE_MS = 300;
 
-/** DR15 §5.1: the two exact mockup labels of the EXPECTED sort filter. */
+/** DR15 §5.1: the two exact mockup labels of the EXPECTED sort filter.
+ * ТЗ DR39: the per-queue wording lives in SORT_LABELS_BY_QUEUE (api.ts) —
+ * this constant stays the EXPECTED default. */
 export const SORT_LABELS: Readonly<Record<ArrivalSort, string>> = Object.freeze({
   asc: "Сначала оформленные раньше",
   desc: "Сначала оформленные позже",
@@ -26,9 +28,12 @@ export interface ArrivalsFiltersProps {
   /** Server-supported result filter of the accepted queue. */
   result?: string | undefined;
   onResultChange?: ((result: string) => void) | undefined;
-  /** DR15 §5.1: the issue-date sort of the EXPECTED queue. */
+  /** DR15 §5.1: the issue-date sort of the EXPECTED queue.
+   * ТЗ DR39 §4: the sort exists on EVERY queue — the labels come from the
+   * queue-aware configuration (SORT_LABELS_BY_QUEUE), never one global text. */
   sort?: ArrivalSort | undefined;
   onSortChange?: ((sort: ArrivalSort) => void) | undefined;
+  sortLabels?: Readonly<Record<ArrivalSort, string>> | undefined;
   /** Column chooser of the accepted queue (session-only preference). */
   columns?: React.ReactNode;
 }
@@ -40,6 +45,7 @@ export function ArrivalsFilters({
   onResultChange,
   sort,
   onSortChange,
+  sortLabels = SORT_LABELS,
   columns,
 }: ArrivalsFiltersProps): React.ReactElement {
   const [value, setValue] = useState(q);
@@ -116,8 +122,8 @@ export function ArrivalsFilters({
               value={sort}
               onChange={(event) => onSortChange(event.target.value as ArrivalSort)}
             >
-              <option value="asc">{SORT_LABELS.asc}</option>
-              <option value="desc">{SORT_LABELS.desc}</option>
+              <option value="asc">{sortLabels.asc}</option>
+              <option value="desc">{sortLabels.desc}</option>
             </select>
           </div>
         ) : null}

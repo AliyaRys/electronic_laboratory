@@ -193,7 +193,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Assignable Options */
+        /**
+         * Assignable Options
+         * @description Server-authoritative assignment options for the create form (DR34 §7.2).
+         *
+         *     Read-only and scoped: it answers the delegable roles, territories,
+         *     laboratories and product areas of the caller only, so the form never shows
+         *     a foreign area or a raw UUID. It never replaces the POST-time delegation
+         *     check (FT-ADM-01).
+         */
         get: operations["assignable_options_api_v1_users_assignable_get"];
         put?: never;
         post?: never;
@@ -1107,6 +1115,35 @@ export interface components {
             items?: components["schemas"]["ActItem"][];
         };
         /**
+         * AssignableOptionsView
+         * @description Read-only scoped options of ``GET /users/assignable`` (DR34 §7.2).
+         */
+        AssignableOptionsView: {
+            /** Roles */
+            roles: components["schemas"]["AssignableRoleOptions"][];
+        };
+        /**
+         * AssignableRoleOptions
+         * @description The server-authoritative assignment set for ONE role (DR34 §7.2).
+         *
+         *     ``laboratories``/``territories`` carry only the delegated subset; empty
+         *     sets mean the role cannot be delegated by the caller at all. Selection
+         *     multiplicity rules the form needs ride along as ``max_laboratories``.
+         */
+        AssignableRoleOptions: {
+            role: components["schemas"]["UserRole"];
+            /** Label */
+            label: string;
+            /** Territories */
+            territories?: components["schemas"]["TerritoryOptionView"][];
+            /** Laboratories */
+            laboratories?: components["schemas"]["LaboratoryOptionView"][];
+            /** Product Areas */
+            product_areas?: components["schemas"]["ProductAreaOptionView"][];
+            /** Max Laboratories */
+            max_laboratories?: number | null;
+        };
+        /**
          * BalanceView
          * @description API-06 balance line: the live mass of one laboratory/species basket with
          *     its revision (the value the disposal dialog confirms against).
@@ -1830,6 +1867,7 @@ export interface components {
             classification: components["schemas"]["ClassificationView"];
             documentary: components["schemas"]["QuantitySet"];
             confirmation: components["schemas"]["ConfirmationSummary"] | null;
+            reconciliation?: components["schemas"]["ReconciliationSummary"] | null;
             /**
              * Queue
              * @enum {string}
@@ -2323,6 +2361,22 @@ export interface components {
             message: string;
         };
         /**
+         * ProductAreaOptionView
+         * @description One named product area available for a VET scope (DR34 §7.2).
+         *
+         *     The ids come from the local VetIS classification read model; the endpoint
+         *     exposes only its human-readable selection set — it stays read-only.
+         */
+        ProductAreaOptionView: {
+            /**
+             * Product Area Id
+             * Format: uuid
+             */
+            product_area_id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * QualitativeRule
          * @description An explicit list of accepted textual values (clinical mapping from source).
          */
@@ -2550,6 +2604,22 @@ export interface components {
             issue_date?: string | null;
             /** Fingerprint */
             fingerprint: string;
+        };
+        /**
+         * ReconciliationSummary
+         * @description ТЗ DR39 §3: the compact server-side summary of the completed сверка.
+         *
+         *     Sources of truth: ``Reconciliation.completed_at`` (NEVER the receipt
+         *     ``confirmed_at``), the frozen ``pricing_snapshot`` (never recalculated)
+         *     and the author ``User.full_name`` resolved by ``actor_id`` (CHK-F33).
+         *     A missing summary is an honest ``null``; a saved zero stays zero.
+         */
+        ReconciliationSummary: {
+            /** Completed At */
+            completed_at: string | null;
+            /** Author Name */
+            author_name: string | null;
+            pricing?: components["schemas"]["PricingSnapshot"] | null;
         };
         /**
          * ReconciliationView
@@ -3008,6 +3078,19 @@ export interface components {
             version: number;
             source: components["schemas"]["SourceRef"];
         };
+        /**
+         * TerritoryOptionView
+         * @description One named territory the actor may delegate ADMIN over (DR34 §7.2).
+         */
+        TerritoryOptionView: {
+            /**
+             * Territory Id
+             * Format: uuid
+             */
+            territory_id: string;
+            /** Name */
+            name: string;
+        };
         /** TextResearch */
         TextResearch: {
             /**
@@ -3116,44 +3199,8 @@ export interface components {
             password?: string | null;
             /** Confirmation */
             confirmation?: string | null;
-            /**
-             * Territory Id
-             * @description DR34: the target territory of a new ADMIN (chosen from the assignable options).
-             */
-            territory_id?: string | null;
-        };
-        /** TerritoryOptionView */
-        TerritoryOptionView: {
             /** Territory Id */
-            territory_id: string;
-            /** Name */
-            name: string;
-        };
-        /** ProductAreaOptionView */
-        ProductAreaOptionView: {
-            /** Product Area Id */
-            product_area_id: string;
-            /** Name */
-            name: string;
-        };
-        /** AssignableRoleOptions */
-        AssignableRoleOptions: {
-            role: components["schemas"]["UserRole"];
-            /** Label */
-            label: string;
-            /** Territories */
-            territories: components["schemas"]["TerritoryOptionView"][];
-            /** Laboratories */
-            laboratories: components["schemas"]["LaboratoryOptionView"][];
-            /** Product Areas */
-            product_areas: components["schemas"]["ProductAreaOptionView"][];
-            /** Max Laboratories */
-            max_laboratories: number | null;
-        };
-        /** AssignableOptionsView */
-        AssignableOptionsView: {
-            /** Roles */
-            roles: components["schemas"]["AssignableRoleOptions"][];
+            territory_id?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -3482,15 +3529,6 @@ export interface operations {
                     "application/json": components["schemas"]["AssignableOptionsView"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_user_api_v1_users__user_id__get: {
@@ -3725,6 +3763,9 @@ export interface operations {
                 q?: string | null;
                 page?: number;
                 sort?: ("asc" | "desc") | null;
+                reconciled_on?: string | null;
+                reconciled_from?: string | null;
+                reconciled_to?: string | null;
             };
             header?: never;
             path?: never;

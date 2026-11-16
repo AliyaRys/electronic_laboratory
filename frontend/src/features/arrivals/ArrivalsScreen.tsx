@@ -13,9 +13,11 @@ import {
 } from "./ArrivalTables";
 import { ArrivalsFilters, ColumnsChooser } from "./ArrivalsFilters";
 import { ArrivalsPagination } from "./ArrivalsPagination";
+import { ReconciliationDateFilter, type AppliedReconciliationDate } from "./ReconciliationDateFilter";
 import { StageTabs, type StageCount } from "./StageTabs";
 import {
   STAGE_DESCRIPTIONS,
+  SORT_LABELS_BY_QUEUE,
   type ArrivalQueue,
   type ArrivalSort,
   type IncomingView,
@@ -34,6 +36,9 @@ export interface ArrivalsScreenProps {
   /** DR15 §5.1: the issue-date sort of the EXPECTED queue only. */
   sort: ArrivalSort;
   onSortChange: (sort: ArrivalSort) => void;
+  /** ТЗ DR39 §7: the ACCEPTED-only applied reconciliation date (URL state). */
+  reconciled: AppliedReconciliationDate;
+  onReconciledApply: (next: AppliedReconciliationDate) => void;
   hiddenColumns: ReadonlySet<string>;
   onToggleColumn: (id: string) => void;
   labId: string;
@@ -67,6 +72,8 @@ export function ArrivalsScreen({
   onResultChange,
   sort,
   onSortChange,
+  reconciled,
+  onReconciledApply,
   hiddenColumns,
   onToggleColumn,
   labId,
@@ -101,15 +108,24 @@ export function ArrivalsScreen({
         onSearch={onSearch}
         result={result}
         onResultChange={onResultChange}
+        // ТЗ DR39 §4.2: the ACCEPTED sort + its own labels; the date filter
+        // arrives as an additional control slot of the same panel.
+        sort={sort}
+        onSortChange={onSortChange}
+        sortLabels={SORT_LABELS_BY_QUEUE.ACCEPTED}
         columns={
-          <ColumnsChooser
-            options={ACCEPTED_OPTIONAL_COLUMN_IDS.map((id) => ({
-              id,
-              label: OPTIONAL_COLUMN_LABELS[id] ?? id,
-            }))}
-            hidden={hiddenColumns}
-            onToggle={onToggleColumn}
-          />
+          <>
+            {/* ТЗ DR39 §7: the date filter lives INSIDE the same filter panel. */}
+            <ReconciliationDateFilter applied={reconciled} onApply={onReconciledApply} />
+            <ColumnsChooser
+              options={ACCEPTED_OPTIONAL_COLUMN_IDS.map((id) => ({
+                id,
+                label: OPTIONAL_COLUMN_LABELS[id] ?? id,
+              }))}
+              hidden={hiddenColumns}
+              onToggle={onToggleColumn}
+            />
+          </>
         }
       />
     ) : (
@@ -117,8 +133,11 @@ export function ArrivalsScreen({
         key={q}
         q={q}
         onSearch={onSearch}
-        sort={queue === "EXPECTED" ? sort : undefined}
-        onSortChange={queue === "EXPECTED" ? onSortChange : undefined}
+        // ТЗ DR39 §4: the sort is queue-aware on EVERY queue — one select,
+        // one «asc|desc» contract, the labels belong to the queue.
+        sort={sort}
+        onSortChange={onSortChange}
+        sortLabels={SORT_LABELS_BY_QUEUE[queue]}
       />
     );
 

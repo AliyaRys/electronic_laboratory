@@ -660,10 +660,129 @@ describe("ArrivalsPage", () => {
     expect(dates).toEqual(["12.08.2026 08:40", "10.08.2026 08:40"]);
   });
 
-  it("the sort select exists only on the EXPECTED stage", async () => {
+  it("the EXPECTED queue keeps the exact DR15 sort labels", async () => {
+    renderPage(`/labs/${LAB}/arrivals?queue=expected`);
+    await screen.findByText("говядина");
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.textContent).toContain("Сначала оформленные раньше");
+    expect(select.textContent).toContain("Сначала оформленные позже");
+  });
+
+  // ТЗ DR39 §4.1: WORK sorts by the completed reconciliation date.
+  it("the WORK queue sorts by сверка date with its own labels", async () => {
     renderPage(`/labs/${LAB}/arrivals?queue=work`);
     await screen.findByText("говядина");
-    expect(screen.queryByLabelText("Сортировка")).toBeNull();
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.textContent).toContain("Сначала сверенные раньше");
+    expect(select.textContent).toContain("Сначала сверенные позже");
+  });
+
+  // ТЗ DR39 §4.2: ACCEPTED uses the exact «Завершенные» wording.
+  it("the ACCEPTED queue sorts by сверка date with its own labels", async () => {
+    renderPage(`/labs/${LAB}/arrivals?queue=accepted`);
+    await screen.findByText("говядина");
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.textContent).toContain("Сначала старые");
+    expect(select.textContent).toContain("Сначала новые");
+    expect(select.textContent).not.toContain("оформленные");
+  });
+
+  it("switching the queue normalizes the sort: the old param never carries its hidden meaning", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=work&sort=asc`);
+    await screen.findByText("говядина");
+    // The WORK select keeps the URL value.
+    await waitFor(() => {
+      const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+      expect(select.value).toBe("asc");
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Завершенные/ }));
+    await waitFor(() => {
+      // The page normalizes the sort to the ACCEPTED default (desc): the URL
+      // carries no stale «sort=asc» of a DIFFERENT queue meaning.
+      expect(captured.at(-1)?.url).not.toContain("sort=asc");
+    });
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.value).toBe("desc");
+  });
+
+  // --- ТЗ DR39 §7: the ACCEPTED-only reconciliation date filter ---------------
+
+  it("applying one день writes reconciled_on to the URL, sends it and resets the page", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=accepted&page=3`);
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: /Дата сверки данных/ }));
+    const day = screen
+      .getAllByLabelText("Дата")
+      .find((entry) => entry instanceof HTMLInputElement && entry.type === "date") as HTMLInputElement;
+    await userEvent.type(day, "2026-11-06");
+    await userEvent.click(screen.getByRole("button", { name: "Применить" }));
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).toContain("reconciled_on=2026-11-06");
+      expect(captured.at(-1)?.url).not.toContain("page=3");
+    });
+  });
+
+  it("the range converts the московские local values to the offset ISO wire form", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=accepted`);
+    await screen.findByText("говядина");
+    await userEvent.click(screen.getByRole("button", { name: /Дата сверки данных/ }));
+    await userEvent.click(screen.getByRole("radio", { name: "Диапазон" }));
+    await userEvent.type(screen.getByLabelText("С"), "2026-11-05T10:00");
+    await userEvent.type(screen.getByLabelText("По"), "2026-11-06T18:30");
+    await userEvent.click(screen.getByRole("button", { name: "Применить" }));
+    await waitFor(() => {
+      // Начало включительно; «По» normalized to the half-open next minute.
+      expect(captured.at(-1)?.url).toContain("reconciled_from=2026-11-05T10%3A00");
+      expect(captured.at(-1)?.url).toContain("reconciled_to=");
+    });
+  });
+
+  it("«Сбросить» removes all reconciled_* from the URL", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=accepted&reconciled_on=2026-11-06`);
+    await screen.findByText("говядина");
+    // The URL state is applied: the summary shows the Russian date.
+    expect(screen.getByRole("button", { name: /06\.11\.2026/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /Дата сверки данных/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Сбросить" }));
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).not.toContain("reconciled_on");
+    });
+  });
+
+  it("the date filter is not rendered and reconciled_* are dropped outside ACCEPTED", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=work&reconciled_on=2026-11-06`);
+    await screen.findByText("говядина");
+    expect(screen.queryByRole("button", { name: /Дата сверки данных/ })).toBeNull();
+    await waitFor(() => {
+      expect(captured.at(-1)?.url).not.toContain("reconciled_on");
+    });
+  });
+
+  it("the stage counters never inherit the active date filter", async () => {
+    const withDate: string[] = [];
+    renderPage(`/labs/${LAB}/arrivals?queue=accepted&reconciled_on=2026-11-06`, (request, items) => {
+      const url = new URL(request.url);
+      const search = url.search;
+      if (search.includes("reconciled_on")) withDate.push(search);
+      return HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 });
+    });
+    await screen.findByText("говядина");
+    await waitFor(() => {
+      // The tab counters read the GENERAL queue totals: no date in their reads.
+      expect(withDate.length).toBe(1); // only the list read carries the filter
+    });
+  });
+
+  it("the applied range survives a fresh load (URL restore)", async () => {
+    const requests: string[] = [];
+    renderPage(`/labs/${LAB}/arrivals?queue=accepted&reconciled_on=2026-11-06`, (request, items) => {
+      const url = new URL(request.url);
+      if (url.searchParams.get("queue") === "ACCEPTED") requests.push(url.search);
+      return HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 });
+    });
+    await screen.findByText("говядина");
+    expect(requests.some((entry) => entry.includes("reconciled_on=2026-11-06"))).toBe(true);
+    expect(screen.getByRole("button", { name: /06\.11\.2026/ })).toBeTruthy();
   });
 
   it("the sort select is keyboard-focusable and survives a URL with sort=asc", async () => {

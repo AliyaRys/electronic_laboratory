@@ -183,6 +183,91 @@
   height: 17px;
 }
 
+/* --- ТЗ DR39 §7: the reconciliation-date filter of «Завершенные» -------------- */
+.arrivals-date-filter {
+  position: relative;
+  min-width: 0;
+}
+.arrivals-date-popover {
+  width: 308px;
+}
+.arrivals-date-modes {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+.arrivals-date-modes label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  color: var(--app-ink);
+  font-weight: 620;
+}
+.arrivals-date-inputs {
+  display: grid;
+  gap: 7px;
+}
+.arrivals-date-inputs label {
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 720;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.arrivals-date-inputs input {
+  width: 100%;
+  min-height: 41px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 9px;
+  padding: 0 11px;
+  background: var(--app-panel);
+  color: var(--app-ink);
+  font: inherit;
+}
+.arrivals-date-inputs input:focus {
+  border-color: var(--app-teal);
+  box-shadow: 0 0 0 3px #1b8b9130;
+  outline: none;
+}
+.arrivals-date-error {
+  margin: 8px 0 0;
+  color: var(--app-danger, #a25762);
+  font-size: 12px;
+  font-weight: 640;
+}
+.arrivals-date-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+.arrivals-date-actions button {
+  min-height: 38px;
+  border: 1px solid #cbdadb;
+  border-radius: 10px;
+  padding: 0 13px;
+  background: var(--app-panel);
+  color: #4d676d;
+  font: inherit;
+  font-weight: 720;
+}
+.arrivals-date-actions button:hover {
+  background: #f5f8f8;
+  color: var(--app-teal-dark);
+}
+.arrivals-date-actions .arrivals-date-primary {
+  background: var(--app-teal);
+  border-color: var(--app-teal);
+  color: #fff;
+}
+.arrivals-date-actions .arrivals-date-primary:hover {
+  background: var(--app-teal-dark);
+  color: #fff;
+}
+
 /* --- 8.4 columns chooser popover -------------------------------------------- */
 .arrivals-columns {
   position: relative;

@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from datetime import datetime
 from typing import Any, Literal, cast
 
 from sqlalchemy import Column, MetaData, String, Table, func, select
@@ -31,9 +32,12 @@ from backend.src.modules.arrivals.schemas import (
     ExternalFields,
     IncomingView,
     QuantitySet,
+    ReconciliationSummary,
     goods_date_fields,
     trailer_projection,
 )
+from backend.src.modules.catalog_pricing.schemas import PricingSnapshot
+from backend.src.modules.identity.models import User
 from backend.src.modules.integrations.vetis.document_types import document_type_label
 from backend.src.modules.integrations.vetis.models import VetisContour
 from backend.src.modules.integrations.vetis.queries import find_purpose_name
@@ -52,6 +56,7 @@ __all__ = [
     "party_view",
     "previous_vse_fields",
     "queue_of",
+    "reconciliation_summaries",
 ]
 
 # CHK source keys of the previous-ВСЭ block (CHK-F24/28–32, field-mapping).
@@ -99,6 +104,10 @@ _EXAMINATIONS = Table(
 )
 
 # Raw probe helper kept minimal: only to_regclass probes are used.
+
+
+class _UNSET:
+    """Sentinel: the caller did not pass a bulk summary (single-read path)."""
 
 
 def _escape_like(query: str) -> str:
@@ -203,8 +212,20 @@ async def arrival_page(
     query: str | None,
     page: int,
     sort: str | None = None,
+    reconciled_from: datetime | None = None,
+    reconciled_to: datetime | None = None,
 ) -> tuple[list[Party], list[IncomingDocument], int]:
-    """A page of arrivals for one laboratory (API-01 paging semantics)."""
+    """A page of arrivals for one laboratory (API-01 paging semantics).
+
+    ТЗ DR39 §3: ``reconciled_from/to`` (a half-open instant range computed
+    from the user's московский day/period) filter the COMPLETED reconciliation
+    date in SQL; the same WHERE serves the rows and ``total`` and both run
+    BEFORE offset/limit. Sorting is queue-aware: EXPECTED sorts by the ВСД
+    issue date (DR15), WORK/ACCEPTED by ``Reconciliation.completed_at`` —
+    ``nulls last`` in BOTH directions, the stable tie-breaker stays
+    ``Party.created_at DESC, Party.id DESC`` and the unique left join never
+    duplicates a row.
+    """
     exams_available = await _examinations_available(db)
     conditions: list[Any] = [
         Party.laboratory_id == laboratory_id,  # scope first — before count/search
@@ -217,29 +238,50 @@ async def arrival_page(
         conditions.append(_result_condition(result.upper(), exams_available))
     if query and query.strip():
         conditions.append(_search_condition(query))
+    # ТЗ DR39: an active date filter excludes a NULL completed_at by itself
+    # (a NULL comparison is never true) — no fictional rows ever pass.
+    if reconciled_from is not None:
+        conditions.append(Reconciliation.completed_at >= reconciled_from)
+    if reconciled_to is not None:
+        conditions.append(Reconciliation.completed_at < reconciled_to)
     where = conditions[0]
     for condition in conditions[1:]:
         where = where & condition
 
+    reconciliation_join = Reconciliation.party_id == Party.id
     total = int(
-        (await db.execute(select(func.count()).select_from(Party).join(IncomingDocument).where(where))).scalar_one()
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(Party)
+                .join(IncomingDocument)
+                .outerjoin(Reconciliation, reconciliation_join)
+                .where(where)
+            )
+        ).scalar_one()
     )
     current = max(page, 1)
-    # DR15 §5.3: the sort is the ВСД issue date from the source snapshot (the
-    # same value the column «Дата оформления ВСД» shows) — never Party.created_at
-    # or a sync/fetched date. It runs in SQL BEFORE count/offset/limit; missing
-    # or malformed dates are SQL NULL (path traversal on non-object JSON never
-    # errors) and keep an explicit deterministic position at the END in both
-    # directions; the stable tie-breaker stays Party.created_at DESC / id DESC.
+    # DR15 §5.3: the EXPECTED sort is the ВСД issue date from the source
+    # snapshot. ТЗ DR39 §3: WORK/ACCEPTED sort by the COMPLETED reconciliation
+    # date (never Party.created_at or a confirmation date) — missing dates
+    # keep an explicit deterministic position at the END in both directions;
+    # the stable tie-breaker stays Party.created_at DESC / id DESC.
     issue_date = IncomingDocument.source_snapshot["vdDocument"]["issueDate"].astext
+    completed = Reconciliation.completed_at
     order: list[Any] = [Party.created_at.desc(), Party.id.desc()]
-    if sort == "asc":
+    if label in ("WORK", "ACCEPTED"):
+        if sort == "asc":
+            order.insert(0, completed.asc().nulls_last())
+        else:  # default (and explicit desc): the latest completed сверка first.
+            order.insert(0, completed.desc().nulls_last())
+    elif sort == "asc":
         order.insert(0, issue_date.asc().nulls_last())
     else:  # default (and explicit desc): the newest issued ВСД first.
         order.insert(0, issue_date.desc().nulls_last())
     rows = await db.execute(
         select(Party, IncomingDocument)
         .join(IncomingDocument, IncomingDocument.id == Party.incoming_document_id)
+        .outerjoin(Reconciliation, reconciliation_join)
         .where(where)
         .order_by(*order)
         .offset((current - 1) * PAGE_SIZE)
@@ -453,6 +495,52 @@ def _confirmation_summary(confirmation: ReceiptConfirmation) -> ConfirmationSumm
     )
 
 
+# --- ТЗ DR39: the compact server-side reconciliation summary ----------------------
+
+
+def _summary_of(reconciliation: Reconciliation, author_name: str | None) -> ReconciliationSummary:
+    """The read-model summary of one saved reconciliation row.
+
+    The frozen ``pricing_snapshot`` is validated through the existing strict
+    ``PricingSnapshot`` schema — never re-computed and never rebuilt as a
+    loosely typed dict. A corrupt stored value keeps an honest absence.
+    """
+    pricing = None
+    if reconciliation.pricing_snapshot is not None:
+        try:
+            pricing = PricingSnapshot.model_validate(reconciliation.pricing_snapshot)
+        except Exception:  # noqa: BLE001 - a corrupt legacy value stays absent
+            pricing = None
+    return ReconciliationSummary(
+        completed_at=reconciliation.completed_at,
+        author_name=author_name,
+        pricing=pricing,
+    )
+
+
+async def reconciliation_summaries(
+    db: AsyncSession,
+    party_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, ReconciliationSummary]:
+    """The reconciliation summaries of one PAGE in ONE SQL read (no N+1).
+
+    One join against ``users`` resolves the author ``full_name`` of every row
+    by ``actor_id`` (CHK-F33): the client never receives a raw id to resolve
+    and the list read never calls a user endpoint nor any VetIS/SOAP service.
+    """
+    if not party_ids:
+        return {}
+    rows = await db.execute(
+        select(Reconciliation, User.full_name)
+        .join(User, User.id == Reconciliation.actor_id, isouter=True)
+        .where(Reconciliation.party_id.in_(party_ids))
+    )
+    return {
+        reconciliation.party_id: _summary_of(reconciliation, author_name)
+        for reconciliation, author_name in rows.all()
+    }
+
+
 async def _open_examination_id(db: AsyncSession, party_id: uuid.UUID) -> uuid.UUID | None:
     if not await _examinations_available(db):
         return None
@@ -463,8 +551,19 @@ async def build_incoming_view(
     db: AsyncSession,
     party: Party,
     document: IncomingDocument,
+    *,
+    reconciliation_summary: ReconciliationSummary | None | _UNSET = _UNSET(),
 ) -> IncomingView:
-    """The API-04 ``IncomingView`` of one arrival."""
+    """The API-04 ``IncomingView`` of one arrival.
+
+    ``reconciliation_summary`` carries the page's bulk read (ТЗ DR39); the
+    default sentinel loads the summary of this one party with one query for
+    the single-read endpoint.
+    """
+    if isinstance(reconciliation_summary, _UNSET):
+        summary = (await reconciliation_summaries(db, [party.id])).get(party.id)
+    else:
+        summary = reconciliation_summary
     has_reconciliation, confirmation = await started_flags(db, party.id)
     document_payload = document.source_snapshot["vdDocument"]
     batch = document_payload["batch"] if isinstance(document_payload, dict) else {}
@@ -489,6 +588,7 @@ async def build_incoming_view(
         classification=_classification_view(dict(party.classification_snapshot)),
         documentary=_quantity_set(batch),
         confirmation=_confirmation_summary(confirmation) if confirmation is not None else None,
+        reconciliation=summary,
         queue=queue_label,
         examination_id=str(examination_id) if examination_id is not None else None,
         revision=party.rev,

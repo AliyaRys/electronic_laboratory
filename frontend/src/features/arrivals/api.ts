@@ -8,6 +8,7 @@
  */
 import type { components } from "../../shared/api/schema";
 import { apiClient } from "../../shared/api/client";
+import { formatMoscowDate, formatMoscowDateTime } from "../../shared/lib/dates";
 import { networkProblem, problemFromParsed, type Problem } from "../../shared/api/problem";
 
 export type { Problem } from "../../shared/api/problem";
@@ -38,7 +39,11 @@ export type QuantitySet = components["schemas"]["QuantitySet"];
 
 export type ArrivalQueue = "EXPECTED" | "WORK" | "ACCEPTED";
 export type ArrivalResult = "WAITING" | "RETURNED" | "COMPLETED";
-/** DR15 §5.2: the issue-date sort order of the EXPECTED queue. */
+/**
+ * DR15 §5.2 + ТЗ DR39 §3: the sort DIRECTION of the current queue — «asc|desc»
+ * keeps one contract while its MEANING is queue-aware (EXPECTED: the ВСД
+ * issue date; WORK/ACCEPTED: the completed reconciliation date).
+ */
 export type ArrivalSort = "asc" | "desc";
 
 export interface ArrivalsQuery {
@@ -49,6 +54,10 @@ export interface ArrivalsQuery {
   page?: number;
   /** DR15 §5.2: sent only when the user picked a non-default order. */
   sort?: ArrivalSort | null;
+  /** ТЗ DR39 §3: the ACCEPTED-only filter of the completed reconciliation date. */
+  reconciled_on?: string | null;
+  reconciled_from?: string | null;
+  reconciled_to?: string | null;
 }
 
 export interface ArrivalsPage {
@@ -101,6 +110,20 @@ export const STAGE_DESCRIPTIONS: Readonly<Record<ArrivalQueue, string>> = Object
   EXPECTED: "Транспортные эВСД из системы «Меркурий», где получателем указана текущая лаборатория",
   WORK: "Партии с пройденной сверкой данных",
   ACCEPTED: "Завершенные партии: сверка завершена, ВСЭ проведена или подтверждена, можно оформить заключение",
+});
+
+/**
+ * ТЗ DR39 §4: the QUEUE-AWARE Russian sort labels of ONE «asc|desc» contract.
+ * The sort DIRECTION is the same value for every queue, while its MEANING —
+ * and its exact user wording — belongs to the queue: EXPECTED sorts by the
+ * ВСД issue date (DR15), WORK/ACCEPTED by the completed reconciliation date.
+ */
+export const SORT_LABELS_BY_QUEUE: Readonly<
+  Record<ArrivalQueue, Readonly<Record<ArrivalSort, string>>>
+> = Object.freeze({
+  EXPECTED: Object.freeze({ asc: "Сначала оформленные раньше", desc: "Сначала оформленные позже" }),
+  WORK: Object.freeze({ asc: "Сначала сверенные раньше", desc: "Сначала сверенные позже" }),
+  ACCEPTED: Object.freeze({ asc: "Сначала старые", desc: "Сначала новые" }),
 });
 
 /** Honest empty-state texts per stage (spec 14). */
@@ -180,8 +203,13 @@ export async function fetchArrivals(
     q: query.q ?? null,
     page: query.page ?? 1,
     // DR15 §6: only the explicitly chosen order is sent; the absent param
-    // keeps the server default (desc = the newest issued ВСД first).
+    // keeps the server default (desc = the newest issued ВСД first). ТЗ DR39:
+    // the reconciliation-date params go out only with non-empty values —
+    // a missing param never filters anything.
     sort: query.sort ?? null,
+    reconciled_on: query.reconciled_on ?? null,
+    reconciled_from: query.reconciled_from ?? null,
+    reconciled_to: query.reconciled_to ?? null,
   };
   const settled = await settle(
     apiClient.GET("/api/v1/arrivals", {
@@ -255,6 +283,57 @@ export function pricingUnitLabel(unitId: string): string {
   if (UNIT_GUID_RE.test(unitId)) return `Единица из ВСД (GUID: ${unitId})`;
   if (unitId === "service") return "1 услуга";
   return unitId;
+}
+
+// --- ТЗ DR39 §7: the completed-reconciliation date filter wire helpers ----------
+
+const MOSCOW_OFFSET = "+03:00";
+
+/**
+ * ТЗ DR39 §3: the wire range of a user «С/По» period. Both datetime-local
+ * values are treated in Europe/Moscow (+03:00, never the browser timezone);
+ * the INCLUSIVE «По» minute is normalized to the half-open upper bound of the
+ * next minute, so the chosen minute itself passes the server filter.
+ */
+export function reconciliationRangeQuery(
+  fromLocal: string,
+  toLocal: string,
+): { reconciled_from: string; reconciled_to: string } {
+  return {
+    reconciled_from: `${fromLocal}:00${MOSCOW_OFFSET}`,
+    reconciled_to: nextMinuteIso(`${toLocal}:00${MOSCOW_OFFSET}`),
+  };
+}
+
+function nextMinuteIso(value: string): string {
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) throw new TypeError(`Некорректная дата: ${value}`);
+  return new Date(instant.getTime() + 60_000).toISOString();
+}
+
+/** ТЗ DR39 §7: the Russian validation error of a period, or null when valid. */
+export function reconciliationRangeError(fromLocal: string, toLocal: string): string | null {
+  if (fromLocal === "" && toLocal === "") return null;
+  if (fromLocal === "" || toLocal === "") return "Укажите обе границы диапазона даты сверки данных.";
+  const from = new Date(`${fromLocal}:00${MOSCOW_OFFSET}`);
+  const to = new Date(`${toLocal}:00${MOSCOW_OFFSET}`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    return "Укажите обе границы диапазона даты сверки данных.";
+  }
+  return from.getTime() > to.getTime() ? "Начало диапазона даты сверки не может быть позже его конца." : null;
+}
+
+/** ТЗ DR39 §4.2: the Russian summary of an applied date filter (no ISO text). */
+export function reconciliationSummaryLabel(applied: {
+  on: string;
+  from: string;
+  to: string;
+}): string {
+  if (applied.on !== "") return formatMoscowDate(`${applied.on}T00:00:00Z`);
+  if (applied.from !== "" && applied.to !== "") {
+    return `с ${formatMoscowDateTime(`${applied.from}:00${MOSCOW_OFFSET}`)} по ${formatMoscowDateTime(`${applied.to}:00${MOSCOW_OFFSET}`)}`;
+  }
+  return "";
 }
 
 /**

@@ -169,6 +169,14 @@
       ['path', { d: 'M4 14h6v6H4z' }],
       ['path', { d: 'M14 14h6v6h-6z' }],
     ],
+    // ТЗ DR39: триггер «Дата сверки данных» очереди «Завершенные»
+    // (arrivals-accepted.html, точные контуры макета).
+    'calendar': [
+      ['path', { d: 'M7 2v4' }],
+      ['path', { d: 'M17 2v4' }],
+      ['path', { d: 'M4 9h16' }],
+      ['path', { d: 'M5 5h14v16H5z' }],
+    ],
     'exam-participants': [
       ['path', { d: 'M6 20h12' }],
       ['path', { d: 'M12 4v16' }],
@@ -221,6 +229,7 @@
     'arrival-plus': 'Создать ВСЭ',
     'arrival-reconcile': 'Перейти к сверке данных',
     'columns-grid': 'Выбрать столбцы',
+    'calendar': 'Дата сверки данных',
   });
 
   // DR30: разделы карточки ВСЭ (electronic-vse-journal.html). Новые иконки

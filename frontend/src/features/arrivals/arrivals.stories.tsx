@@ -5,9 +5,11 @@
  * no copied mockup markup and no mockup demo data.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { useState } from "react";
 import { ArrivalsScreen } from "./ArrivalsScreen";
 import { StageTabs } from "./StageTabs";
 import { ArrivalsFilters, ColumnsChooser } from "./ArrivalsFilters";
+import { ReconciliationDateFilter } from "./ReconciliationDateFilter";
 import { CompletedArrivalsTable, ExpectedArrivalsTable, WorkArrivalsTable } from "./ArrivalTables";
 import { ArrivalsPagination } from "./ArrivalsPagination";
 import { Button } from "../../shared/ui/Button";
@@ -190,6 +192,10 @@ const screenProps = {
   // DR15 §5.1: the storybook full pages show the EXPECTED sort control too.
   sort: "desc" as const,
   onSortChange: () => {},
+  // ТЗ DR39 §7: the stories show the real (empty) applied date; the date
+  // filter story uses its own applied value.
+  reconciled: { on: "", from: "", to: "" } as const,
+  onReconciledApply: () => {},
   hiddenColumns: new Set<string>(),
   onToggleColumn: () => {},
   loading: false,
@@ -234,7 +240,7 @@ export const ФильтрыОжидаемые: StoryObj = {
   ),
 };
 
-/** ТЗ DR39 §4.1: the queue-aware WORK sort labels of the ONE select. */
+/** ТЗ DR39 §7: the queue-aware WORK sort labels of the ONE select. */
 export const ФильтрыВРаботе: StoryObj = {
   name: "Панель фильтров / в работе (сортировка сверки)",
   render: () => (
@@ -242,6 +248,59 @@ export const ФильтрыВРаботе: StoryObj = {
       <ArrivalsFilters q="" onSearch={() => {}} sort="desc" onSortChange={() => {}} sortLabels={SORT_LABELS_BY_QUEUE.WORK} />
     </div>
   ),
+};
+
+// --- ТЗ DR39 §7: the reconciliation date filter states ----------------------------
+
+const dateFilterGrid = (applied: { on: string; from: string; to: string }, initialOpen = false): React.ReactElement => (
+  <div style={{ padding: 16, background: "#f5f9f8", display: "flex", gap: 16, flexWrap: "wrap" }}>
+    <ReconciliationDateFilter applied={applied} onApply={() => {}} initialOpen={initialOpen} />
+  </div>
+);
+
+export const ДатаФильтрЗакрыт: StoryObj = {
+  name: "Фильтр даты сверки / закрыт",
+  render: () => dateFilterGrid({ on: "", from: "", to: "" }),
+};
+
+export const ДатаФильтрОдинДень: StoryObj = {
+  name: "Фильтр даты сверки / выбран один день",
+  render: () => dateFilterGrid({ on: "2026-11-06", from: "", to: "" }),
+};
+
+export const ДатаФильтрДиапазон: StoryObj = {
+  name: "Фильтр даты сверки / применён диапазон",
+  render: () => dateFilterGrid({ on: "", from: "2026-11-05T10:00", to: "2026-11-06T18:30" }),
+};
+
+export const ДатаФильтрНеверныйДиапазон: StoryObj = {
+  name: "Фильтр даты сверки / неверный диапазон",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <RangeErrorStory />
+    </div>
+  ),
+};
+
+function RangeErrorStory(): React.ReactElement {
+  const [applied, setApplied] = useState({ on: "", from: "", to: "" });
+  return (
+    <div style={{ display: "flex", gap: 16 }}>
+      <ReconciliationDateFilter applied={applied} onApply={setApplied} initialOpen />
+    </div>
+  );
+}
+
+export const ДатаФильтрДлиннаяСводка: StoryObj = {
+  name: "Фильтр даты сверки / длинная подпись",
+  render: () =>
+    dateFilterGrid({ on: "", from: "2026-11-05T10:00", to: "2026-12-31T23:59" }),
+};
+
+export const ДатаФильтрУзкийЭкран: StoryObj = {
+  name: "Фильтр даты сверки / 390 px",
+  parameters: { viewport: { width: 390, height: 844 } },
+  render: () => dateFilterGrid({ on: "2026-11-06", from: "", to: "" }, true),
 };
 
 export const ФильтрыЗавершенные: StoryObj = {

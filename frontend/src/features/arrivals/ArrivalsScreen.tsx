@@ -13,6 +13,7 @@ import {
 } from "./ArrivalTables";
 import { ArrivalsFilters, ColumnsChooser } from "./ArrivalsFilters";
 import { ArrivalsPagination } from "./ArrivalsPagination";
+import { ReconciliationDateFilter, type AppliedReconciliationDate } from "./ReconciliationDateFilter";
 import { StageTabs, type StageCount } from "./StageTabs";
 import {
   STAGE_DESCRIPTIONS,
@@ -35,6 +36,9 @@ export interface ArrivalsScreenProps {
   /** DR15 §5.1: the issue-date sort of the EXPECTED queue only. */
   sort: ArrivalSort;
   onSortChange: (sort: ArrivalSort) => void;
+  /** ТЗ DR39 §7: the ACCEPTED-only applied reconciliation date (URL state). */
+  reconciled: AppliedReconciliationDate;
+  onReconciledApply: (next: AppliedReconciliationDate) => void;
   hiddenColumns: ReadonlySet<string>;
   onToggleColumn: (id: string) => void;
   labId: string;
@@ -68,6 +72,8 @@ export function ArrivalsScreen({
   onResultChange,
   sort,
   onSortChange,
+  reconciled,
+  onReconciledApply,
   hiddenColumns,
   onToggleColumn,
   labId,
@@ -108,14 +114,18 @@ export function ArrivalsScreen({
         onSortChange={onSortChange}
         sortLabels={SORT_LABELS_BY_QUEUE.ACCEPTED}
         columns={
-          <ColumnsChooser
-            options={ACCEPTED_OPTIONAL_COLUMN_IDS.map((id) => ({
-              id,
-              label: OPTIONAL_COLUMN_LABELS[id] ?? id,
-            }))}
-            hidden={hiddenColumns}
-            onToggle={onToggleColumn}
-          />
+          <>
+            {/* ТЗ DR39 §7: the date filter lives INSIDE the same filter panel. */}
+            <ReconciliationDateFilter applied={reconciled} onApply={onReconciledApply} />
+            <ColumnsChooser
+              options={ACCEPTED_OPTIONAL_COLUMN_IDS.map((id) => ({
+                id,
+                label: OPTIONAL_COLUMN_LABELS[id] ?? id,
+              }))}
+              hidden={hiddenColumns}
+              onToggle={onToggleColumn}
+            />
+          </>
         }
       />
     ) : (

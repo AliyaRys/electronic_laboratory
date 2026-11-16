@@ -474,7 +474,6 @@ async def test_concurrent_delete_and_recreate_never_leave_two_cards(
     party, view = await saved_card(env, "DEL-CREATE-RACE")
     party_id = party.id
     examination_id = uuid.UUID(view.id)
-    collection_id = uuid.UUID(view.sample_collection_id)
     actor_id = env.actor.id
     replacement_data = payload(number="DEL-CREATE-RACE", trich=False).model_dump(mode="json", by_alias=True)
     # DR35 §11.2: the replacement card takes a NEW physical selection.

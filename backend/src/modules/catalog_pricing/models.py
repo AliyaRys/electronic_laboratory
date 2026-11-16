@@ -67,12 +67,18 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
 
 
 class MethodRule(Base):
-    """A versioned typed norm for one indicator in one product state.
+    """A versioned typed norm for one indicator of one product area (DR31).
 
-    Exactly one *active* version per applicability key is enforced by a partial
-    unique index; historical rows stay for audit and for snapshot provenance.
-    Mandatory-ness of an indicator comes from the functional requirements, never
-    from a catalog flag (ADR-020).
+    The applicability key of the ACTIVE norm is
+    ``laboratory_id + product_area_code + indicator_id`` with ``active = true``
+    (partial unique index). ``product_area_code`` is the stable category code
+    ('meat' = «Мясо и мясопродукты»); the Mercury species/state GUID pair is NO
+    LONGER part of the scope — the legacy ``product_species_id`` and
+    ``product_state_id`` columns stay nullable for the transition period and
+    audit only: new code never reads or writes them as scope. Exactly one
+    active version per key is enforced; historical rows stay for audit and for
+    snapshot provenance. Mandatory-ness of an indicator comes from the
+    functional requirements, never from a catalog flag (ADR-020).
     """
 
     __tablename__ = "method_rules"
@@ -80,21 +86,23 @@ class MethodRule(Base):
         Index(
             "uq_method_rule_active",
             "laboratory_id",
-            "product_species_id",
-            "product_state_id",
+            "product_area_code",
             "indicator_id",
             unique=True,
             postgresql_where=text("active"),
         ),
         CheckConstraint("rev >= 1", name="rev_positive"),
         CheckConstraint("version >= 1", name="version_positive"),
-        Index("ix_method_rules_scope", "laboratory_id", "product_species_id", "indicator_id"),
+        Index("ix_method_rules_scope", "laboratory_id", "product_area_code", "indicator_id"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     laboratory_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    product_species_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    product_state_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    # Legacy scope columns (pre-DR31): nullable, audit-only. New code must not
+    # read or write them as the applicability scope of a norm.
+    product_species_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    product_state_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    product_area_code: Mapped[str] = mapped_column(String(16), default="meat", server_default=text("'meat'"))
     indicator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     version: Mapped[int] = mapped_column(BigInteger)
     result_schema: Mapped[str] = mapped_column(String(32))

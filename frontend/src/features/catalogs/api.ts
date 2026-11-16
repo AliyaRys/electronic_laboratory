@@ -20,8 +20,6 @@ export type CheckServiceRuleWrite = components["schemas"]["CheckServiceRuleWrite
 export type Readiness = components["schemas"]["Readiness"];
 export type MethodsContext = components["schemas"]["MethodsContext"];
 export type CatalogIndicator = components["schemas"]["CatalogIndicator"];
-export type CatalogScopeId = components["schemas"]["CatalogScopeId"];
-/** MethodsContext with the rules narrowed to the typed union. */
 export type MethodsContextTyped = Omit<MethodsContext, "active_rules"> & {
   active_rules: MethodRuleTyped[];
 };
@@ -104,13 +102,14 @@ export interface CatalogPageData<TItem> {
 
 export async function fetchMethods(
   laboratoryId: string,
-  productSpeciesId: string,
   page = 1,
   signal?: AbortSignal | null,
 ): Promise<CatalogPageData<MethodRuleTyped> | Problem> {
+  // DR31: the methods list is scoped by the laboratory and the product area
+  // only — no species parameter exists any more.
   const settled = await settle(
     apiClient.GET("/api/v1/catalogs/methods", {
-      params: { query: { laboratory_id: laboratoryId, product_species_id: productSpeciesId, page } },
+      params: { query: { laboratory_id: laboratoryId, page } },
       signal: signal ?? null,
     }) as Promise<RawResult<MethodsPage>>,
   );
@@ -119,31 +118,21 @@ export async function fetchMethods(
 }
 
 /**
- * The scoped editor read model of the methods catalog (ТЗ-DR28 §7 variant B).
+ * The meat-scope editor read model of the methods catalog (ТЗ DR31 §8.3).
  *
- * The page never sends a product_species_id of its own: the backend resolves
- * the honest human-readable area onto the REAL internal pair, so the legacy
- * laboratory-UUID fallback (DR13) can never reach the URL again. GUIDs stay
- * internal — the caller only shows the Russian labels of the context.
+ * The context is resolved by the laboratory and the product area only: no
+ * species/state parameters exist, no Mercury dictionary or party data is
+ * consulted, and no GUID is ever shown — the caller renders the human-readable
+ * area name from the context.
  */
 export async function fetchMethodsContext(
   laboratoryId: string,
   area: string,
-  productSpeciesId?: string | null,
-  productStateId?: string | null,
   signal?: AbortSignal | null,
 ): Promise<MethodsContextTyped | Problem> {
-  const query: {
-    laboratory_id: string;
-    area: string;
-    product_species_id?: string | null;
-    product_state_id?: string | null;
-  } = { laboratory_id: laboratoryId, area };
-  if (productSpeciesId != null) query.product_species_id = productSpeciesId;
-  if (productStateId != null) query.product_state_id = productStateId;
   const settled = await settle(
     apiClient.GET("/api/v1/catalogs/methods/context", {
-      params: { query },
+      params: { query: { laboratory_id: laboratoryId, area } },
       signal: signal ?? null,
     }) as Promise<RawResult<MethodsContext>>,
   );
@@ -189,12 +178,16 @@ export async function fetchCheckServices(
 
 export async function fetchReadiness(
   laboratoryId: string,
-  productSpeciesId: string,
+  productSpeciesId?: string | null,
   signal?: AbortSignal | null,
 ): Promise<Readiness | Problem> {
+  // DR31 §8.6: the norm readiness is meat-scoped; the species (when the
+  // caller has one) only narrows the tariff checks.
+  const query: { laboratory_id: string; product_species_id?: string } = { laboratory_id: laboratoryId };
+  if (productSpeciesId != null && productSpeciesId !== "") query.product_species_id = productSpeciesId;
   const settled = await settle(
     apiClient.GET("/api/v1/catalogs/readiness", {
-      params: { query: { laboratory_id: laboratoryId, product_species_id: productSpeciesId } },
+      params: { query },
       signal: signal ?? null,
     }) as Promise<RawResult<Readiness>>,
   );

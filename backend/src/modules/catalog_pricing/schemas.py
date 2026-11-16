@@ -171,19 +171,20 @@ class ResultSchema(StrEnum):
 
 
 class MethodRuleWrite(BaseModel):
-    """Create/update payload for a versioned method rule (INPUT-02)."""
+    """Create/update payload of a method rule (DR31 §8.4).
+
+    The client sends ONLY the laboratory, the stable indicator code
+    (VSE-F18–VSE-F29) and the subject values of the norm. The result schema,
+    unit, version, provenance source and the product area are resolved
+    server-side from the canonical registry — no species/state GUIDs, no
+    indicator UUID, no technical fields are ever accepted from the client.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     laboratory_id: UUID
-    product_species_id: UUID
-    product_state_id: UUID
-    indicator_id: UUID
-    version: int = Field(ge=1)
-    result_schema: ResultSchema
-    unit_id: str = Field(min_length=1, max_length=64)
+    code: str = Field(min_length=1, max_length=16)
     rule: Rule
-    source: SourceRef
     effective_from: str | None = None
 
     @field_validator("effective_from")
@@ -350,8 +351,7 @@ class MethodRuleView(BaseModel):
 
     id: UUID
     laboratory_id: UUID
-    product_species_id: UUID
-    product_state_id: UUID
+    product_area_code: str
     indicator_id: UUID
     version: int
     result_schema: str
@@ -361,6 +361,10 @@ class MethodRuleView(BaseModel):
     effective_from: str | None = None
     active: bool
     revision: int
+    # Legacy scope columns of the pre-DR31 rows: audit-only, never part of the
+    # applicability key and never shown to the user as scope.
+    product_species_id: UUID | None = None
+    product_state_id: UUID | None = None
 
 
 class TariffView(BaseModel):

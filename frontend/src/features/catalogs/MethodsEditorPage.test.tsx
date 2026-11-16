@@ -1,9 +1,9 @@
-/**
- * «Нормы исследований» editor page (ТЗ-DR6 §17.4 + ТЗ-DR28 §8 frontend
- * scenarios): the scoped context drives everything — no misleading empty
- * state without a scope, the full VSE-F18–F29 registry with honest
- * «Не настроено» rows, «Добавить норму» opening the SHARED MethodEditor with
- * createMethod() and real internal ids while no UUID is ever shown.
+﻿/**
+ * «Нормы исследований» editor page (ТЗ DR31 §12 frontend scenarios): the page
+ * opens immediately with the full VSE-F18–F29 registry for «Мясо и
+ * мясопродукты», has NO species/state selectors, URL parameters or GUIDs, the
+ * first norm is configured directly from its row («Настроить») and
+ * «Сохранить справочник» saves the dirty rows with honest per-row results.
  */
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -19,35 +19,26 @@ import type { MethodsContextTyped, MethodRuleTyped } from "./api";
 import { MethodsEditorPage } from "./MethodsEditorPage";
 
 const LAB = "11111111-2222-4333-8444-555555555555";
-const SPECIES = "33333333-3333-4333-8333-333333333333";
-const BEEF = "33333333-3333-4333-8333-333333333334";
-const STATE = "cccccccc-0000-4000-8000-000000000001";
-
-type ScopeOption = { id: string; label: string; requires_trichinelloscopy: boolean };
 
 const microscopy = INDICATORS.find((item) => item.code === "VSE-F24") as (typeof INDICATORS)[number];
 const temperature = INDICATORS.find((item) => item.code === "VSE-F20") as (typeof INDICATORS)[number];
 const cooking = INDICATORS.find((item) => item.code === "VSE-F26") as (typeof INDICATORS)[number];
 
 let me: UserView;
-/** The active rules of the mocked scoped context. */
+/** The active rules of the mocked meat context. */
 let activeRules: MethodRuleTyped[];
-/** 409 CONFIGURATION_MISSING: no configured working scope. */
-let scopeMissing: boolean;
+/** 409 problem of the context request. */
+let contextProblem: { code: string; detail: string } | null;
 /** The created rules (POST), served back on the context refetch. */
 let createdRules: MethodRuleTyped[];
-/** Allowed species/state options and the currently resolved pair. */
-let speciesOptions: ScopeOption[];
-let stateOptions: ScopeOption[];
-let resolvedSpecies: ScopeOption | null;
-let resolvedState: ScopeOption | null;
+/** POST failures (partial mass save). */
+let postFailures = 0;
 
 function intervalRule(overrides: Partial<MethodRuleTyped>): MethodRuleTyped {
   return {
     id: "bbbbbbbb-0000-4000-8000-000000000001",
     laboratory_id: LAB,
-    product_species_id: SPECIES,
-    product_state_id: STATE,
+    product_area_code: "meat",
     indicator_id: microscopy.id,
     version: 1,
     result_schema: "INTEGER_NONNEGATIVE",
@@ -64,10 +55,8 @@ function contextFixture(overrides: Partial<MethodsContextTyped> = {}): MethodsCo
   return {
     laboratory: { id: LAB, name: "Лаборатория №1 г. Казань" },
     areas: [{ code: "meat", name: "Мясо и мясопродукты", configured: true }],
-    species_options: speciesOptions,
-    states: stateOptions,
-    product_species: resolvedSpecies,
-    product_state: resolvedState,
+    product_area_code: "meat",
+    product_area_name: "Мясо и мясопродукты",
     indicators: INDICATORS.map((item) => ({
       id: item.id,
       code: item.code,
@@ -99,58 +88,24 @@ function contextFixture(overrides: Partial<MethodsContextTyped> = {}): MethodsCo
 
 const putSpy = vi.fn();
 const postSpy = vi.fn();
-let contextRequests = 0;
 let listRequests = 0;
 
 const server = setupServer(
   http.get("*/api/v1/me", () => HttpResponse.json(me)),
   http.get("*/api/v1/contexts", () =>
     HttpResponse.json([
-      { laboratory_id: LAB, product_scope_id: SPECIES, laboratory_name: "Лаборатория №1 г. Казань" },
+      { laboratory_id: LAB, product_scope_id: null, laboratory_name: "Лаборатория №1 г. Казань" },
     ]),
   ),
-  http.get("*/api/v1/catalogs/methods/context", ({ request }) => {
-    contextRequests += 1;
-    if (scopeMissing) {
-      return HttpResponse.json(
-        {
-          code: "CONFIGURATION_MISSING",
-          detail: "Вид продукции и состояние продукции не настроены для этой лаборатории.",
-        },
-        { status: 409 },
-      );
+  http.get("*/api/v1/catalogs/methods/context", () => {
+    if (contextProblem !== null) {
+      return HttpResponse.json(contextProblem, { status: 409 });
     }
-    // The backend resolves the pair from the URL params, like the real
-    // endpoint: no pair → options without a fabricated selection.
-    const url = new URL(request.url);
-    const speciesId = url.searchParams.get("product_species_id");
-    const stateId = url.searchParams.get("product_state_id");
-    // Exactly one species is auto-selected (backend §5.2); >1 → pair unset.
-    const resolved =
-      speciesId != null
-        ? (speciesOptions.find((item) => item.id === speciesId) ?? null)
-        : speciesOptions.length === 1
-          ? speciesOptions[0]
-          : null;
-    const states = resolved != null ? stateOptions : [];
-    // Exactly one observed state is auto-selected (backend §5.3).
-    const state =
-      stateId != null
-        ? (stateOptions.find((item) => item.id === stateId) ?? null)
-        : states.length === 1
-          ? states[0]
-          : null;
-    return HttpResponse.json(
-      contextFixture({
-        product_species: resolved,
-        states,
-        product_state: state,
-      }),
-    );
+    return HttpResponse.json(contextFixture());
   }),
   http.get("*/api/v1/catalogs/methods", () => {
-    // The legacy scoped list must NEVER be called by the page (DR28 §5.1):
-    // it is not the working read model and a laboratory UUID never reaches it.
+    // The legacy scoped list must NEVER be called by the page (DR31 §9.1):
+    // there is no species parameter and no GUID in the scope any more.
     listRequests += 1;
     return HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 });
   }),
@@ -161,12 +116,19 @@ const server = setupServer(
   http.post("*/api/v1/catalogs/methods", async ({ request }) => {
     const payload = (await request.clone().json()) as Record<string, unknown>;
     postSpy(payload);
+    if (postFailures > 0) {
+      postFailures -= 1;
+      return HttpResponse.json(
+        { code: "VALIDATION_ERROR", detail: "Тип нормы не соответствует каноническому типу результата." },
+        { status: 422 },
+      );
+    }
     createdRules.push(
       intervalRule({
         id: "bbbbbbbb-0000-4000-8000-0000000000aa",
-        indicator_id: String(payload["indicator_id"]),
-        result_schema: String(payload["result_schema"]),
-        unit_id: String(payload["unit_id"]),
+        indicator_id: String((INDICATORS.find((item) => item.code === payload["code"]) ?? { id: "" }).id),
+        result_schema: "DECIMAL",
+        unit_id: "°C",
       }),
     );
     return HttpResponse.json({ rule: { id: "bbbbbbbb-0000-4000-8000-0000000000aa" } });
@@ -184,18 +146,14 @@ beforeEach(() => {
     position: null,
     role: "HEAD",
     active: true,
-    scopes: [{ laboratory_id: LAB, product_scope_id: SPECIES }],
+    scopes: [{ laboratory_id: LAB, product_scope_id: null }],
     capabilities: ["catalog:create", "catalog:update", "catalog:delete"],
     revision: 1,
   };
   activeRules = [];
   createdRules = [];
-  scopeMissing = false;
-  speciesOptions = [{ id: SPECIES, label: "Свинина", requires_trichinelloscopy: true }];
-  stateOptions = [{ id: STATE, label: "Охлаждённое", requires_trichinelloscopy: false }];
-  resolvedSpecies = speciesOptions[0];
-  resolvedState = stateOptions[0];
-  contextRequests = 0;
+  contextProblem = null;
+  postFailures = 0;
   listRequests = 0;
   putSpy.mockClear();
   postSpy.mockClear();
@@ -220,117 +178,79 @@ function renderEditor(initial = "/catalogs?tab=methods"): void {
 const normLabel = (indicatorName: string, bound: "от" | "до"): string => `Норма ${bound}: ${indicatorName}`;
 
 describe("MethodsEditorPage", () => {
-  it("an unconfigured scope shows the honest configuration screen and never the empty norms state", async () => {
-    scopeMissing = true;
+  it("opens immediately with the full registry, the readonly area and no species/state selectors", async () => {
     renderEditor();
-    expect(await screen.findAllByText(/Вид продукции и состояние продукции не настроены/i)).not.toHaveLength(
-      0,
-    );
-    expect(screen.queryByText("Нормы для этой области не заданы.")).toBeNull();
-    await waitFor(() => expect(contextRequests).toBeGreaterThan(0));
-    // The legacy scoped list is never called — the laboratory UUID never
-    // becomes a product species (§5.1).
-    expect(listRequests).toBe(0);
-    expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
-  });
-
-  it("an empty but configured scope lists the full VSE-F18–F29 registry as «Не настроено»", async () => {
-    renderEditor();
-    expect(await screen.findByRole("button", { name: "Добавить норму" })).toBeInTheDocument();
+    await screen.findByTestId("methods-area-name");
     for (const indicator of INDICATORS) {
       expect(screen.getByText(indicator.name)).toBeInTheDocument();
     }
     // F30/F31 are party dictionaries, never catalog norms.
     expect(screen.queryByText("Инвазионные болезни")).toBeNull();
     expect(screen.queryByText("Незаразные болезни")).toBeNull();
-    const unset = screen.getAllByText("Не настроено");
-    expect(unset.length).toBe(INDICATORS.length);
-    expect(screen.getAllByRole("button", { name: "Настроить" }).length).toBe(INDICATORS.length);
-    // The human-readable scope is shown; no GUID ever appears.
-    expect(screen.getByText(/Состояние продукции: Охлаждённое/)).toBeInTheDocument();
-    expect(screen.getByText(/Продукция: Свинина/)).toBeInTheDocument();
-    expect(screen.queryByText(SPECIES)).toBeNull();
-    expect(screen.queryByText(STATE)).toBeNull();
-    // The canonical conditional flag of F21 is annotated (spec §4 GUID list).
+    // The F23 TEXT row carries a readonly explanation instead of a norm.
+    expect(screen.getAllByText("Не настроено").length).toBe(INDICATORS.length - 1);
+    expect(screen.getAllByRole("button", { name: "Настроить" }).length).toBe(INDICATORS.length - 1);
+    // The readonly context of the product area; no selectors, no GUIDs.
+    expect(screen.getByTestId("methods-area-name")).toHaveTextContent("Мясо и мясопродукты");
+    expect(screen.queryByLabelText("Продукция")).toBeNull();
+    expect(screen.queryByLabelText("Состояние продукции")).toBeNull();
+    expect(screen.queryByText(/UUID/)).toBeNull();
+    expect(screen.queryByText(/Выберите вид продукции/)).toBeNull();
+    expect(screen.queryByText(/Выберите состояние продукции/)).toBeNull();
+    expect(listRequests).toBe(0);
+    // No technical «Добавить норму» form exists.
+    expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
+    // The canonical conditional flag of F21 is annotated.
     expect(screen.getAllByText("Обязательно для указанных видов продукции").length).toBeGreaterThan(0);
   });
 
-  it("a multi-species area renders the selector instead of the no-scope screen", async () => {
-    speciesOptions = [
-      { id: SPECIES, label: "Свинина", requires_trichinelloscopy: true },
-      { id: BEEF, label: "Говядина", requires_trichinelloscopy: false },
-    ];
-    resolvedSpecies = null;
-    resolvedState = null;
-    stateOptions = [];
+  it("a problem of the context keeps the honest screen, never an empty catalog", async () => {
+    contextProblem = {
+      code: "CONFIGURATION_MISSING",
+      detail: "Область продукции не поддерживается системой.",
+    };
     renderEditor();
-    // The §5.3 selector of the allowed named options — no GUID, no «not
-    // configured» screen (options are non-empty).
-    const select = await screen.findByLabelText("Продукция");
-    expect(select).toBeInTheDocument();
-    expect(screen.queryAllByText(/Вид продукции и состояние продукции не настроены/i)).toHaveLength(0);
-    expect(screen.queryByText(BEEF)).toBeNull();
-    expect(screen.getByRole("option", { name: "Говядина" })).toBeInTheDocument();
-    expect(screen.getByText("Выберите вид продукции, чтобы открыть нормы.")).toBeInTheDocument();
-    // No scoped rules are shown before the pair is chosen.
-    expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
+    expect(await screen.findAllByText(/Область продукции не поддерживается/i)).not.toHaveLength(0);
   });
 
-  it("picking a species loads the state selector and the scoped rules of the pair", async () => {
+  it("the first norm is configured directly from the row and POSTs only the code and rule", async () => {
     const act = userEvent.setup();
-    speciesOptions = [
-      { id: SPECIES, label: "Свинина", requires_trichinelloscopy: true },
-      { id: BEEF, label: "Говядина", requires_trichinelloscopy: false },
-    ];
-    resolvedSpecies = null;
-    resolvedState = null;
-    // The observed states of the chosen species (the mock resolves the pair
-    // from the request params like the real backend, single state auto).
-    stateOptions = [{ id: STATE, label: "Охлаждённое", requires_trichinelloscopy: false }];
     renderEditor();
-    await act.selectOptions(await screen.findByLabelText("Продукция"), BEEF);
-    // After the choice the backend resolves the pair; the registry loads
-    // scoped (the state is auto-selected: exactly one observed state).
-    expect(await screen.findByRole("button", { name: "Добавить норму" })).toBeInTheDocument();
-    for (const indicator of INDICATORS) {
-      expect(screen.getByText(indicator.name)).toBeInTheDocument();
-    }
-    // The selected pair went into the URL of the pick action, not as GUID text.
-    expect(screen.queryByText(BEEF)).toBeNull();
-  });
-
-  it("the URL pair params restore the scoped rules without free UUID input", async () => {
-    activeRules = [intervalRule({})];
-    renderEditor(
-      `/catalogs?tab=methods&area=meat&species=${encodeURIComponent(SPECIES)}&state=${encodeURIComponent(STATE)}`,
+    await screen.findByTestId("methods-area-name");
+    const unsetRow = (await screen.findByText(temperature.name)).closest("article");
+    await act.click(within(unsetRow as HTMLElement).getByRole("button", { name: "Настроить" }));
+    // The row editor appears inline: subject fields only.
+    await waitFor(() =>
+      expect(within(unsetRow as HTMLElement).queryByRole("button", { name: "Настроить" })).toBeNull(),
     );
-    // The restored link resolves the same pair (stable safe area code + pair
-    // params) and shows the scoped rule, no UUID input anywhere.
-    expect(await screen.findByLabelText(normLabel(microscopy.name, "от"))).toHaveValue("0");
-    expect(screen.getByText(/Продукция: Свинина/)).toBeInTheDocument();
-    expect(screen.queryByText(/введите UUID/i)).toBeNull();
-  });
-
-  it("«Добавить норму» opens the shared editor and POSTs real ids, then the row appears", async () => {
-    const act = userEvent.setup();
-    renderEditor();
-    await act.click(await screen.findByRole("button", { name: "Добавить норму" }));
-    const select = await screen.findByLabelText("Показатель");
-    expect(screen.queryByText(/UUID/)).toBeNull();
-    await act.selectOptions(select, temperature.id);
-    await act.type(screen.getByLabelText("Нижняя граница"), "0");
-    await act.type(screen.getByLabelText("Верхняя граница"), "6");
-    await act.type(screen.getByLabelText("Источник методики"), "ГОСТ");
-    await act.click(screen.getByRole("button", { name: "Сохранить" }));
+    const lower = await screen.findByLabelText(normLabel(temperature.name, "от"));
+    expect(screen.queryByLabelText("Тип результата")).toBeNull();
+    expect(screen.queryByLabelText("Единица измерения нормы")).toBeNull();
+    expect(screen.queryByLabelText("Версия")).toBeNull();
+    expect(screen.queryByLabelText("Источник методики")).toBeNull();
+    await act.type(lower, "0");
+    await act.type(screen.getByLabelText(normLabel(temperature.name, "до")), "6");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
     await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
     const payload = postSpy.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload["product_species_id"]).toBe(SPECIES);
-    expect(payload["product_state_id"]).toBe(STATE);
-    expect(payload["indicator_id"]).toBe(temperature.id);
-    // The created row appears through the context refetch, no page reload.
+    expect(payload["laboratory_id"]).toBe(LAB);
+    expect(payload["code"]).toBe("VSE-F20");
+    expect(payload["rule"]).toEqual({
+      type: "interval",
+      lower: "0",
+      upper: "6",
+      lower_inclusive: true,
+      upper_inclusive: true,
+    });
+    expect(payload["product_species_id"]).toBeUndefined();
+    expect(payload["product_state_id"]).toBeUndefined();
+    expect(payload["result_schema"]).toBeUndefined();
+    expect(payload["unit_id"]).toBeUndefined();
+    expect(payload["version"]).toBeUndefined();
+    expect(payload["source"]).toBeUndefined();
+    // The configured row appears through the context refetch, no page reload.
     expect(await screen.findByLabelText(normLabel(temperature.name, "от"))).toHaveValue("0");
-    // The configured row left the «Не настроено» list.
-    expect(screen.getAllByText("Не настроено").length).toBe(INDICATORS.length - 1);
+    expect(screen.getAllByText("Не настроено").length).toBe(INDICATORS.length - 2);
   });
 
   it("renders interval rows with the unit and only business boundary settings", async () => {
@@ -348,18 +268,13 @@ describe("MethodsEditorPage", () => {
     const lower = await screen.findByLabelText(normLabel(microscopy.name, "от"));
     expect(lower).toHaveValue("0");
     expect(screen.getByLabelText(normLabel(microscopy.name, "до"))).toHaveValue("10");
-    // The unit suffix of the row.
+    // The unit suffix of the row comes from the canonical registry.
     expect(screen.getAllByText("ед.").length).toBeGreaterThan(0);
-    // Boundary inclusivity stays available; the version is never exposed, the
-    // source of the methodology is (§6.1 «источник» column).
-    const details = screen.getAllByText("Настройка границ");
-    expect(details.length).toBeGreaterThan(0);
     expect(screen.queryByText(/Версия записи/)).toBeNull();
     expect(screen.getAllByText(/Источник: методика/).length).toBeGreaterThan(0);
-    expect(screen.queryByText("Раздел не готов к расчёту:")).toBeNull();
   });
 
-  it("a null upper boundary stays empty and is sent as null (not 0)", async () => {
+  it("a null upper boundary stays empty and is sent as a string, never as 0", async () => {
     const act = userEvent.setup();
     activeRules = [
       intervalRule({
@@ -395,22 +310,18 @@ describe("MethodsEditorPage", () => {
   });
 
   it("the qualitative mapping is built from accepted_values with the registry variants", async () => {
+    const first = (cooking.options ?? [])[0] as { label: string };
     activeRules = [
       intervalRule({
         id: "bbbbbbbb-0000-4000-8000-000000000003",
         indicator_id: cooking.id,
         result_schema: "ENUM",
         unit_id: "",
-        rule: {
-          type: "qualitative",
-          accepted_values: ["Бульон прозрачный, аромат специфический"],
-        },
+        rule: { type: "qualitative", accepted_values: [first.label] },
       }),
     ];
     renderEditor();
     await screen.findByRole("heading", { name: cooking.name });
-    // Every registry variant of «Проба варки» is present; the accepted one is
-    // «Норма», the rest are «Отклонение».
     for (const option of cooking.options ?? []) {
       const input = await screen.findByLabelText(`Вариант результата: ${option.label}`);
       expect(input).toHaveValue(option.label);
@@ -418,32 +329,6 @@ describe("MethodsEditorPage", () => {
     const selects = screen.getAllByLabelText(/Оценка/);
     expect((selects[0] as HTMLSelectElement).value).toBe("norm");
     expect((selects[1] as HTMLSelectElement).value).toBe("deviation");
-  });
-
-  it("«Настроить» opens the MethodEditor create with the indicator pre-picked", async () => {
-    const act = userEvent.setup();
-    renderEditor();
-    await screen.findByRole("button", { name: "Добавить норму" });
-    const unsetRow = (await screen.findByText(temperature.name)).closest("article");
-    expect(unsetRow).not.toBeNull();
-    await act.click(within(unsetRow as HTMLElement).getByRole("button", { name: "Настроить" }));
-    // The editor opens in create mode with THAT indicator already picked; a
-    // raw UUID never appears.
-    const select = await screen.findByLabelText("Показатель");
-    expect(select).toHaveValue(temperature.id);
-    expect(screen.queryByText(/UUID/)).toBeNull();
-    // The canonical definition derived the type/unit — they are locked and
-    // prefilled, never retyped.
-    const schema = screen.getByLabelText("Тип результата") as HTMLSelectElement;
-    expect(schema.value).toBe("DECIMAL");
-    expect(schema).toBeDisabled();
-    expect(screen.getByLabelText("Единица измерения нормы")).toHaveValue("°C");
-    await act.type(screen.getByLabelText("Нижняя граница"), "0");
-    await act.type(screen.getByLabelText("Верхняя граница"), "6");
-    await act.type(screen.getByLabelText("Источник методики"), "методика");
-    await act.click(screen.getByRole("button", { name: "Сохранить" }));
-    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
-    expect((postSpy.mock.calls[0][0] as Record<string, unknown>)["indicator_id"]).toBe(temperature.id);
   });
 
   it("marking a second variant «Норма» updates accepted_values on save", async () => {
@@ -470,7 +355,32 @@ describe("MethodsEditorPage", () => {
     expect(await screen.findByText("Справочник норм сохранён.")).toBeInTheDocument();
   });
 
-  it("a reader without edit rights sees no create or configure actions", async () => {
+  it("a partial mass save keeps the input and reports which rows failed", async () => {
+    const act = userEvent.setup();
+    renderEditor();
+    await screen.findByTestId("methods-area-name");
+    const temperatureRow = (await screen.findByText(temperature.name)).closest("article");
+    await act.click(within(temperatureRow as HTMLElement).getByRole("button", { name: "Настроить" }));
+    await act.type(await screen.findByLabelText(normLabel(temperature.name, "от")), "0");
+    await act.type(screen.getByLabelText(normLabel(temperature.name, "до")), "6");
+    postFailures = 1;
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(screen.getByTestId("catalog-save-summary")).toBeInTheDocument());
+    expect(screen.getByTestId("catalog-save-summary")).toHaveTextContent(/Не удалось: 1/);
+    // The draft of the failed row is NOT lost.
+    expect(screen.getByLabelText(normLabel(temperature.name, "от"))).toHaveValue("0");
+  });
+
+  it("a TEXT research shows the honest readonly explanation, never a numeric editor", async () => {
+    const bacterioscopy = INDICATORS.find((item) => item.code === "VSE-F23") as (typeof INDICATORS)[number];
+    renderEditor();
+    await screen.findByText(/автоматическая оценка нормы для этого исследования не применяется/i);
+    expect(screen.getByText(bacterioscopy.name)).toBeInTheDocument();
+    const configureButtons = screen.queryAllByRole("button", { name: "Настроить" });
+    expect(configureButtons.length).toBeLessThan(INDICATORS.length);
+  });
+
+  it("a reader without edit rights sees no configure or delete actions", async () => {
     me = {
       ...me,
       role: "VET",
@@ -479,8 +389,7 @@ describe("MethodsEditorPage", () => {
       capabilities: [],
     };
     renderEditor();
-    expect(await screen.findByText(/Продукция: Свинина/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
+    await screen.findByTestId("methods-area-name");
     expect(screen.queryByRole("button", { name: "Настроить" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Удалить норму" })).toBeNull();
     const save = screen.getByRole("button", { name: "Сохранить справочник" });
@@ -497,6 +406,5 @@ describe("MethodsEditorPage", () => {
     ];
     renderEditor();
     expect(await screen.findByText(/показателя вне общего каталога/i)).toBeInTheDocument();
-    expect(screen.getByText(new RegExp("dddddddd"))).toBeInTheDocument();
   });
 });

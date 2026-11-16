@@ -29,7 +29,7 @@
 
 **Files:** создать `backend/src/modules/catalog_pricing/{models,schemas,service,commands,queries,router}.py`, миграцию `0002_catalog_pricing.py`, `backend/tests/catalog_pricing/test_pricing.py`, `backend/tests/catalog_pricing/test_rules.py`.
 
-**Interfaces:** `evaluate_and_price(uow,request,previous)->PricingSnapshot` из DATA-06/API-03; `readiness(lab_id,product_species_id)->Readiness`; typed rule schema из inputs.
+**Interfaces:** `evaluate_and_price(uow,request,previous)->PricingSnapshot` из DATA-06/API-03; `readiness(lab_id,product_species_id?)->Readiness`; typed rule schema из inputs. **Обновление DR31 (16.11.2026):** активная норма ищется по `laboratory_id + product_area_code('meat') + indicator_id` — species/state исключены из ключа нормы и из write-контракта (write несёт стабильный код VSE-F18–F29; schema/unit/version/source заполняет сервер).
 
 - [x] Написать тесты assert Decimal('3')*100.10→300.30; 0.005→0.01; 4 единицы×100×2 performed→800.00; fair→все 0.00 и нет ordinary price; missing price→CONFIGURATION_MISSING, явный 0 допустим. `test_previous_snapshot_survives_catalog_delete` assert старый показатель остаётся по 100, новый по 150; отклонение нормы не назначает outcome.
 - [x] Запустить `uv run --frozen pytest backend/tests/catalog_pricing/test_pricing.py backend/tests/catalog_pricing/test_rules.py -v`, получить FAIL.

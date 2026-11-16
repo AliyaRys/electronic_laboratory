@@ -437,9 +437,9 @@ export interface paths {
         };
         /**
          * Get Methods Context
-         * @description The scoped editor context (DR28 §7 variant B): laboratory, resolved
-         *     product species/state of the chosen human-readable area, the full
+         * @description The editor context (DR31 §8.3): laboratory + product area, the full
          *     VSE-F18–F29 indicator catalog, the active rules and the missing ones.
+         *     No species/state parameters exist and no Mercury data is consulted.
          */
         get: operations["get_methods_context_api_v1_catalogs_methods_context_get"];
         put?: never;
@@ -457,7 +457,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Methods */
+        /**
+         * List Methods
+         * @description The method-rule page of the laboratory's single meat catalog (DR31).
+         */
         get: operations["list_methods_api_v1_catalogs_methods_get"];
         put?: never;
         /** Create Method */
@@ -606,7 +609,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Readiness */
+        /**
+         * Get Readiness
+         * @description DR31 §8.6: readiness of the single meat set; the species (when present)
+         *     only narrows the tariff checks — norms are never species-scoped.
+         */
         get: operations["get_readiness_api_v1_catalogs_readiness_get"];
         put?: never;
         post?: never;
@@ -1160,24 +1167,6 @@ export interface components {
             conditional: boolean;
             /** Options */
             options?: string[] | null;
-        };
-        /**
-         * CatalogScopeId
-         * @description One internal scope id with its human-readable label (never a bare GUID).
-         */
-        CatalogScopeId: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Label */
-            label: string;
-            /**
-             * Requires Trichinelloscopy
-             * @default false
-             */
-            requires_trichinelloscopy: boolean;
         };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
@@ -1824,16 +1813,8 @@ export interface components {
              * Format: uuid
              */
             laboratory_id: string;
-            /**
-             * Product Species Id
-             * Format: uuid
-             */
-            product_species_id: string;
-            /**
-             * Product State Id
-             * Format: uuid
-             */
-            product_state_id: string;
+            /** Product Area Code */
+            product_area_code: string;
             /**
              * Indicator Id
              * Format: uuid
@@ -1859,10 +1840,20 @@ export interface components {
             active: boolean;
             /** Revision */
             revision: number;
+            /** Product Species Id */
+            product_species_id?: string | null;
+            /** Product State Id */
+            product_state_id?: string | null;
         };
         /**
          * MethodRuleWrite
-         * @description Create/update payload for a versioned method rule (INPUT-02).
+         * @description Create/update payload of a method rule (DR31 §8.4).
+         *
+         *     The client sends ONLY the laboratory, the stable indicator code
+         *     (VSE-F18–VSE-F29) and the subject values of the norm. The result schema,
+         *     unit, version, provenance source and the product area are resolved
+         *     server-side from the canonical registry — no species/state GUIDs, no
+         *     indicator UUID, no technical fields are ever accepted from the client.
          */
         MethodRuleWrite: {
             /**
@@ -1870,29 +1861,10 @@ export interface components {
              * Format: uuid
              */
             laboratory_id: string;
-            /**
-             * Product Species Id
-             * Format: uuid
-             */
-            product_species_id: string;
-            /**
-             * Product State Id
-             * Format: uuid
-             */
-            product_state_id: string;
-            /**
-             * Indicator Id
-             * Format: uuid
-             */
-            indicator_id: string;
-            /** Version */
-            version: number;
-            result_schema: components["schemas"]["ResultSchema"];
-            /** Unit Id */
-            unit_id: string;
+            /** Code */
+            code: string;
             /** Rule */
             rule: components["schemas"]["IntervalRule"] | components["schemas"]["QualitativeRule"];
-            source: components["schemas"]["SourceRef"];
             /** Effective From */
             effective_from?: string | null;
         };
@@ -1901,12 +1873,10 @@ export interface components {
             laboratory: components["schemas"]["_LaboratoryRef"];
             /** Areas */
             areas: components["schemas"]["CatalogAreaOption"][];
-            /** Species Options */
-            species_options: components["schemas"]["CatalogScopeId"][];
-            /** States */
-            states: components["schemas"]["CatalogScopeId"][];
-            product_species?: components["schemas"]["CatalogScopeId"] | null;
-            product_state?: components["schemas"]["CatalogScopeId"] | null;
+            /** Product Area Code */
+            product_area_code: string;
+            /** Product Area Name */
+            product_area_name: string;
             /** Indicators */
             indicators: components["schemas"]["CatalogIndicator"][];
             /** Active Rules */
@@ -2681,12 +2651,6 @@ export interface components {
             /** Confirmation */
             confirmation: string;
         };
-        /**
-         * ResultSchema
-         * @description Typed result schemas from INPUT-02.
-         * @enum {string}
-         */
-        ResultSchema: "BOOLEAN_MATCH" | "INTEGER_NONNEGATIVE" | "DECIMAL" | "ENUM" | "TEXT" | "DOSIMETRY_PAIR";
         /**
          * ReturnReason
          * @description CHK-F35: the Mercury return-reason code (OTHER_REASON needs text).
@@ -3811,8 +3775,6 @@ export interface operations {
             query: {
                 laboratory_id: string;
                 area?: string;
-                product_species_id?: string | null;
-                product_state_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -3844,7 +3806,6 @@ export interface operations {
         parameters: {
             query: {
                 laboratory_id: string;
-                product_species_id: string;
                 page?: number;
             };
             header?: never;
@@ -4419,7 +4380,7 @@ export interface operations {
         parameters: {
             query: {
                 laboratory_id: string;
-                product_species_id: string;
+                product_species_id?: string | null;
             };
             header?: never;
             path?: never;

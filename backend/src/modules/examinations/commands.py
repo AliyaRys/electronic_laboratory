@@ -45,6 +45,24 @@ def _classification_id(party: Party, key: str) -> uuid.UUID:
     return uuid.UUID(str(value))
 
 
+def _ensure_meat_product_type(party: Party) -> None:
+    """DR31 §8.5: the VSE evaluation applies to meat parties (productType 1).
+
+    A classification snapshot that carries a DIFFERENT product type is refused
+    honestly; an unset ``productType`` keeps the pre-DR31 behavior (the party
+    was accepted by the meat VSD filter anyway).
+    """
+    product = party.classification_snapshot.get("product")
+    product_type = product.get("productType") if isinstance(product, dict) else None
+    if product_type is not None and int(product_type) != 1:
+        raise ProblemError(
+            status=422,
+            code="CONFIGURATION_MISSING",
+            title="Configuration missing",
+            detail="Единый мясной справочник норм применяется только к категории «Мясо и мясопродукты».",
+        )
+
+
 async def pricing_request_for(
     uow: AsyncSession | UnitOfWork, party: Party, results: list[ResearchValue]
 ) -> PricingRequest:
@@ -54,6 +72,7 @@ async def pricing_request_for(
     reconciliation = (
         await db.execute(select(Reconciliation).where(Reconciliation.party_id == party.id))
     ).scalar_one_or_none()
+    _ensure_meat_product_type(party)
     return PricingRequest(
         party_id=party.id,
         laboratory_id=party.laboratory_id,

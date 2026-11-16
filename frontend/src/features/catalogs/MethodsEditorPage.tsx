@@ -1,17 +1,15 @@
 /**
- * «Нормы исследований» editor page (ТЗ-DR6 §11 + ТЗ-DR28 §5/§6, mockup
- * directory-norms-edit.html).
+ * «Нормы исследований» editor page (ТЗ DR31 §9, mockup directory-norms-edit.html).
  *
- * The working scope is never guessed: the page reads the scoped context
- * (GET /catalogs/methods/context) where the backend resolves the chosen
- * HUMAN-READABLE area onto the real internal species/state pair — a laboratory
- * UUID is never used as a species and no UUID is ever shown. The full
- * VSE-F18–F29 registry is listed even without rules: an active norm renders as
- * an editable row, a missing one shows the honest «Не настроено» with
- * «Настроить», and the «Добавить норму» action opens the SHARED MethodEditor
- * in create mode (never a copied form). A null boundary stays null (never 0);
- * lower ≤ upper is enforced; one «Сохранить справочник» saves ONLY the dirty
- * rules sequentially with honest per-rule results and 409 resolution.
+ * ONE norm set per laboratory for «Мясо и мясопродукты»: the context is
+ * resolved by the laboratory and the product area only (no species/state
+ * selectors, no Mercury GUIDs, no party data, no technical fields). The full
+ * VSE-F18–F29 registry is listed right away — an active norm renders as an
+ * editable row, a missing one shows the honest «Не настроено» and is
+ * configured directly from its row (no technical «Добавить норму» form).
+ * A null boundary stays null (never 0); lower ≤ upper is enforced; one
+ * «Сохранить справочник» saves ONLY the dirty rows sequentially with honest
+ * per-row results and 409 resolution.
  */
 import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
@@ -21,6 +19,7 @@ import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
 import {
+  createMethod,
   deleteMethod,
   fetchMethodsContext,
   updateMethod,
@@ -39,11 +38,11 @@ import {
 import { CatalogContextSlot } from "./catalog-context-slot";
 import { useCatalogContext } from "./use-catalog-context";
 import { useDirtyGuard } from "../context/SwitchContext";
-import { DELETE_WARNING, MethodEditor } from "./MethodEditor";
+import { DELETE_WARNING } from "./editor-parts";
 
 const NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 
-/** The human-readable source label of a rule (§6.1 «источник»; never a UUID). */
+/** The human-readable source label of a rule (§6.1; never a UUID). */
 export function sourceLabel(source: unknown): string | undefined {
   if (source === null || typeof source !== "object") return undefined;
   const name = (source as Record<string, unknown>)["name"];
@@ -57,23 +56,31 @@ export interface MethodDraft {
   upperInclusive: boolean;
   /** Qualitative: the accepted values of the draft (Норма rows). */
   accepted: string[];
-  /** Extra qualitative rows added from the registry. */
+  /** Extra qualitative rows added from the registry or by hand. */
   extra: string[];
 }
 
-/** The update payload of one interval draft against the current rule (§12). */
-export function intervalPayload(
-  rule: MethodRuleTyped,
-  draft: MethodDraft,
-): Parameters<typeof updateMethod>[1] {
+function intervalDraft(): MethodDraft {
+  return { lower: "", upper: "", lowerInclusive: true, upperInclusive: true, accepted: [], extra: [] };
+}
+
+function qualitativeDraft(accepted: string[]): MethodDraft {
   return {
-    laboratory_id: rule.laboratory_id,
-    product_species_id: rule.product_species_id,
-    indicator_id: rule.indicator_id,
-    product_state_id: rule.product_state_id,
-    result_schema: rule.result_schema as never,
-    unit_id: rule.unit_id,
-    version: rule.version,
+    lower: "",
+    upper: "",
+    lowerInclusive: true,
+    upperInclusive: true,
+    accepted: [...accepted],
+    extra: [],
+  };
+}
+
+/** The create/update payload of one interval draft (§8.4: only the subject
+ * values travel; schema/unit/version/source are server-side data). */
+export function intervalPayload(laboratoryId: string, code: string, draft: MethodDraft) {
+  return {
+    laboratory_id: laboratoryId,
+    code,
     rule: {
       type: "interval" as const,
       ...(draft.lower !== "" ? { lower: draft.lower } : {}),
@@ -81,30 +88,20 @@ export function intervalPayload(
       lower_inclusive: draft.lowerInclusive,
       upper_inclusive: draft.upperInclusive,
     },
-    source: rule.source as { name: string },
-    ...(rule.effective_from != null ? { effective_from: rule.effective_from } : {}),
   };
 }
 
-/** The update payload of one qualitative draft against the current rule. */
-export function qualitativePayload(
-  rule: MethodRuleTyped,
-  draft: MethodDraft,
-): Parameters<typeof updateMethod>[1] {
+/** The create/update payload of one qualitative draft. */
+export function qualitativePayload(laboratoryId: string, code: string, draft: MethodDraft) {
   const accepted = [...draft.accepted, ...draft.extra.filter((value) => !draft.accepted.includes(value))];
   return {
-    laboratory_id: rule.laboratory_id,
-    product_species_id: rule.product_species_id,
-    indicator_id: rule.indicator_id,
-    product_state_id: rule.product_state_id,
-    result_schema: rule.result_schema as never,
-    unit_id: rule.unit_id,
-    version: rule.version,
+    laboratory_id: laboratoryId,
+    code,
     rule: { type: "qualitative" as const, accepted_values: accepted },
-    source: rule.source as { name: string },
-    ...(rule.effective_from != null ? { effective_from: rule.effective_from } : {}),
   };
 }
+
+const INTERVAL_SCHEMAS = new Set(["DECIMAL", "INTEGER_NONNEGATIVE", "DOSIMETRY_PAIR"]);
 
 interface RowModel {
   key: string;
@@ -113,16 +110,19 @@ interface RowModel {
   /** The canonical registry definition (absent for an unknown rule row). */
   indicator: CatalogIndicator | null;
   name: string;
-  meta: string | undefined;
   unit: string | undefined;
-  kind: "interval" | "qualitative";
+  kind: "interval" | "qualitative" | "text";
   /** Unknown to the shared registry: honest diagnostic, no invented name. */
   unknown: boolean;
+  /** A create draft waits on the row after «Настроить». */
+  creating: boolean;
 }
 
 /** Annotation of the conditionally mandatory F21 (spec §4, GUID list — never
  * a per-species policy invented here). */
 const CONDITIONAL_NOTE = "Обязательно для указанных видов продукции";
+const TEXT_NOTE =
+  "Значение фиксируется в карточке ВСЭ; автоматическая оценка нормы для этого исследования не применяется.";
 
 /**
  * The registry-driven rows (§6.1): every expected indicator of the context is
@@ -136,21 +136,23 @@ export function buildMethodRows(
   const byIndicator = new Map<string, MethodRuleTyped>();
   for (const rule of rules) byIndicator.set(rule.indicator_id, rule);
   const rows: RowModel[] = [];
-  const counter = new Map<string, number>();
   for (const indicator of indicators) {
     const rule = byIndicator.get(indicator.id) ?? null;
-    counter.set(indicator.id, (counter.get(indicator.id) ?? 0) + 1);
-    const ordinal = counter.get(indicator.id) ?? 1;
-    const qualitative = rule?.rule.type === "qualitative";
+    const kind: RowModel["kind"] =
+      indicator.result_schema === "TEXT"
+        ? "text"
+        : INTERVAL_SCHEMAS.has(indicator.result_schema)
+          ? "interval"
+          : "qualitative";
     rows.push({
       key: rule?.id ?? `missing-${indicator.id}`,
       rule,
       indicator,
       name: indicator.name,
-      meta: rule !== null && ordinal > 1 ? `Ещё одно правило по этому показателю (${ordinal})` : undefined,
       unit: rule?.unit_id === "" ? undefined : (rule?.unit_id ?? indicator.unit_id ?? undefined),
-      kind: qualitative ? "qualitative" : "interval",
+      kind,
       unknown: false,
+      creating: false,
     });
   }
   for (const rule of rules) {
@@ -160,10 +162,10 @@ export function buildMethodRows(
       rule,
       indicator: null,
       name: "",
-      meta: undefined,
       unit: rule.unit_id === "" ? undefined : rule.unit_id,
       kind: rule.rule.type === "qualitative" ? "qualitative" : "interval",
       unknown: true,
+      creating: false,
     });
   }
   return rows;
@@ -175,18 +177,13 @@ export function MethodsEditorPage(): React.ReactElement {
   const location = useLocation();
   const { laboratoryId, canEdit, allowedToSwitch } = context;
 
-  // The working scope of the page: the human-readable area code in the URL
-  // (never a GUID); species/state selections are restorable link params.
-  const params = new URLSearchParams(location.search);
-  const areaParam = params.get("area");
-  const speciesParam = params.get("species");
-  const stateParam = params.get("state");
+  // The working scope: laboratory + the human-readable product area. No
+  // species/state URL parameters exist any more (ТЗ DR31 §9.1).
   const pageReady = laboratoryId !== null && context.configError === null && !context.needsSelection;
 
   const methods = useQuery({
-    queryKey: [laboratoryId, "methods-context", areaParam, speciesParam, stateParam],
-    queryFn: ({ signal }) =>
-      fetchMethodsContext(laboratoryId ?? "", areaParam ?? "meat", speciesParam, stateParam, signal),
+    queryKey: [laboratoryId, "methods-context"],
+    queryFn: ({ signal }) => fetchMethodsContext(laboratoryId ?? "", "meat", signal),
     enabled: pageReady,
   });
 
@@ -202,16 +199,19 @@ export function MethodsEditorPage(): React.ReactElement {
   const [deleteTarget, setDeleteTarget] = useState<{ key: string; rule: MethodRuleTyped } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [savePending, setSavePending] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  /** The indicator pre-picked by «Настроить» (null for «Добавить норму»). */
-  const [presetIndicatorId, setPresetIndicatorId] = useState<string | null>(null);
 
   const scopedContext = methods.data !== undefined && !("code" in methods.data) ? methods.data : null;
 
   const rows = useMemo(
     () =>
-      scopedContext === null ? [] : buildMethodRows(scopedContext.indicators, scopedContext.active_rules),
-    [scopedContext],
+      scopedContext === null
+        ? []
+        : buildMethodRows(scopedContext.indicators, scopedContext.active_rules).map((row) => ({
+            ...row,
+            // A create draft on a «Не настроено» row waits on that row (§9.3).
+            creating: row.rule === null && drafts[row.key] !== undefined,
+          })),
+    [scopedContext, drafts],
   );
 
   const draftFor = (row: RowModel): MethodDraft => {
@@ -227,22 +227,22 @@ export function MethodsEditorPage(): React.ReactElement {
         extra: [],
       };
     }
-    return {
-      lower: "",
-      upper: "",
-      lowerInclusive: true,
-      upperInclusive: true,
-      accepted: [...(row.rule?.rule.type === "qualitative" ? row.rule.rule.accepted_values : [])],
-      extra: [],
-    };
+    return qualitativeDraft(
+      row.rule?.rule.type === "qualitative" ? row.rule.rule.accepted_values : (row.indicator?.options ?? []),
+    );
   };
 
   const dirty = useMemo(
     () =>
       rows.some((row) => {
-        if (row.rule === null) return false;
+        if (row.unknown) return false;
         const draft = drafts[row.key];
         if (draft === undefined) return false;
+        if (row.rule === null) {
+          // A configured-from-row create draft: any entered value is dirty.
+          if (row.kind === "interval") return draft.lower !== "" || draft.upper !== "";
+          return draft.accepted.length > 0 || draft.extra.length > 0;
+        }
         if (row.rule.rule.type === "interval") {
           return (
             draft.lower !== (row.rule.rule.lower ?? "") ||
@@ -251,9 +251,12 @@ export function MethodsEditorPage(): React.ReactElement {
             draft.upperInclusive !== (row.rule.rule.upper_inclusive ?? true)
           );
         }
+        const accepted = [
+          ...draft.accepted,
+          ...draft.extra.filter((value) => !draft.accepted.includes(value)),
+        ];
         return (
-          draft.accepted.join("\u0001") !== row.rule.rule.accepted_values.join("\u0001") ||
-          draft.extra.length > 0
+          accepted.join("\u0001") !== row.rule.rule.accepted_values.join("\u0001") || draft.extra.length > 0
         );
       }),
     [rows, drafts],
@@ -266,20 +269,56 @@ export function MethodsEditorPage(): React.ReactElement {
     let saved = 0;
     let conflicted = false;
     for (const row of rows) {
-      if (row.rule === null) continue;
+      if (row.unknown) continue;
       const draft = drafts[row.key];
       // A conflicted row waits for the explicit §12.6 choice; a second
       // «Сохранить» never re-submits the stale draft against the fresh
       // revision.
       if (conflicts[row.key] === true) continue;
       if (draft === undefined) continue;
-      const rule = row.rule;
+      const code = row.indicator?.code;
+      if (code === undefined) continue;
       const fail = (message: string): void => {
         const text = message === "" ? "Не удалось сохранить норму." : message;
         failures.push(text);
         setErrors((current) => ({ ...current, [row.key]: text }));
       };
-      if (rule.rule.type === "interval") {
+
+      if (row.rule === null) {
+        // First setup directly from the row (§9.3): create without any
+        // technical field — the registry resolves schema/unit/version/source.
+        if (row.creating !== true) continue;
+        if (row.kind === "interval") {
+          if (draft.lower !== "" && !NUMBER.test(draft.lower)) {
+            fail("Граница нормы — конечное число с точкой.");
+            continue;
+          }
+          if (draft.upper !== "" && !NUMBER.test(draft.upper)) {
+            fail("Граница нормы — конечное число с точкой.");
+            continue;
+          }
+          if (draft.lower === "" && draft.upper === "") continue;
+          if (draft.lower !== "" && draft.upper !== "" && Number(draft.lower) > Number(draft.upper)) {
+            fail("Нижняя граница должна быть не больше верхней.");
+            continue;
+          }
+        } else {
+          const accepted = [
+            ...draft.accepted,
+            ...draft.extra.filter((value) => !draft.accepted.includes(value)),
+          ];
+          if (accepted.length === 0) continue;
+        }
+        const payload =
+          row.kind === "interval"
+            ? intervalPayload(laboratoryId, code, draft)
+            : qualitativePayload(laboratoryId, code, draft);
+        const result = await createMethod(payload, crypto.randomUUID());
+        if ("code" in result) {
+          fail(result.detail);
+          continue;
+        }
+      } else if (row.kind === "interval" && row.rule.rule.type === "interval") {
         if (draft.lower !== "" && !NUMBER.test(draft.lower)) {
           fail("Граница нормы — конечное число с точкой.");
           continue;
@@ -296,14 +335,41 @@ export function MethodsEditorPage(): React.ReactElement {
           fail("Нижняя граница должна быть не больше верхней.");
           continue;
         }
-        const interval = rule.rule;
+        const interval = row.rule.rule;
         const unchanged =
           draft.lower === (interval.lower ?? "") &&
           draft.upper === (interval.upper ?? "") &&
           draft.lowerInclusive === (interval.lower_inclusive ?? true) &&
           draft.upperInclusive === (interval.upper_inclusive ?? true);
         if (unchanged) continue;
-        const result = await updateMethod(rule.id, intervalPayload(rule, draft), `"${rule.revision}"`);
+        const result = await updateMethod(
+          row.rule.id,
+          intervalPayload(laboratoryId, code, draft),
+          `"${row.rule.revision}"`,
+        );
+        if ("code" in result) {
+          if (result.code === "REVISION_CONFLICT") {
+            conflicted = true;
+            setConflicts((current) => ({ ...current, [row.key]: true }));
+          }
+          fail(result.detail);
+          continue;
+        }
+      } else if (row.kind === "qualitative" && row.rule.rule.type === "qualitative") {
+        const accepted = [
+          ...draft.accepted,
+          ...draft.extra.filter((value) => !draft.accepted.includes(value)),
+        ];
+        if (accepted.length === 0) {
+          fail("Хотя бы один вариант должен быть отмечен как «Норма».");
+          continue;
+        }
+        if (accepted.join("\u0001") === row.rule.rule.accepted_values.join("\u0001")) continue;
+        const result = await updateMethod(
+          row.rule.id,
+          qualitativePayload(laboratoryId, code, draft),
+          `"${row.rule.revision}"`,
+        );
         if ("code" in result) {
           if (result.code === "REVISION_CONFLICT") {
             conflicted = true;
@@ -313,27 +379,7 @@ export function MethodsEditorPage(): React.ReactElement {
           continue;
         }
       } else {
-        // The accepted list of the draft plus the extra registry rows.
-        const accepted = [
-          ...draft.accepted,
-          ...draft.extra.filter((value) => !draft.accepted.includes(value)),
-        ];
-        if (accepted.length === 0) {
-          fail("Хотя бы один вариант должен быть отмечен как «Норма».");
-          continue;
-        }
-        const qualitative = rule.rule;
-        if (qualitative.type !== "qualitative") continue;
-        if (accepted.join("\u0001") === qualitative.accepted_values.join("\u0001")) continue;
-        const result = await updateMethod(rule.id, qualitativePayload(rule, draft), `"${rule.revision}"`);
-        if ("code" in result) {
-          if (result.code === "REVISION_CONFLICT") {
-            conflicted = true;
-            setConflicts((current) => ({ ...current, [row.key]: true }));
-          }
-          fail(result.detail);
-          continue;
-        }
+        continue;
       }
       saved += 1;
       setErrors((current) => {
@@ -368,10 +414,10 @@ export function MethodsEditorPage(): React.ReactElement {
   /** §12.6 «Сохранить моё значение»: retry the draft against the FRESH
    * revision (If-Match of the current server state, never the stale one). */
   async function keepMine(row: RowModel): Promise<void> {
-    if (row.rule === null) return;
+    if (row.rule === null || row.indicator === null) return;
     const draft = drafts[row.key];
     if (draft === undefined) return;
-    if (row.rule.rule.type === "interval") {
+    if (row.kind === "interval") {
       if (draft.lower !== "" && draft.upper !== "" && Number(draft.lower) > Number(draft.upper)) return;
     } else {
       const accepted = [...draft.accepted, ...draft.extra.filter((value) => !draft.accepted.includes(value))];
@@ -379,9 +425,9 @@ export function MethodsEditorPage(): React.ReactElement {
     }
     setSavePending(true);
     const payload =
-      row.rule.rule.type === "interval"
-        ? intervalPayload(row.rule, draft)
-        : qualitativePayload(row.rule, draft);
+      row.kind === "interval"
+        ? intervalPayload(laboratoryId ?? "", row.indicator.code, draft)
+        : qualitativePayload(laboratoryId ?? "", row.indicator.code, draft);
     const result = await updateMethod(row.rule.id, payload, `"${row.rule.revision}"`);
     setSavePending(false);
     if ("code" in result) {
@@ -401,25 +447,11 @@ export function MethodsEditorPage(): React.ReactElement {
    * no save runs. */
   function takeServer(row: RowModel): void {
     if (row.rule === null) return;
-    if (row.rule.rule.type === "interval") {
-      setDrafts((current) => {
-        const next = { ...current };
-        delete next[row.key];
-        return next;
-      });
-    } else {
-      setDrafts((current) => ({
-        ...current,
-        [row.key]: {
-          lower: "",
-          upper: "",
-          lowerInclusive: true,
-          upperInclusive: true,
-          accepted: [...(row.rule?.rule.type === "qualitative" ? row.rule.rule.accepted_values : [])],
-          extra: [],
-        },
-      }));
-    }
+    setDrafts((current) => {
+      const next = { ...current };
+      delete next[row.key];
+      return next;
+    });
     clearConflict(row.key);
   }
 
@@ -436,13 +468,21 @@ export function MethodsEditorPage(): React.ReactElement {
     });
   }
 
-  function pickScope(update: { area?: string; species?: string; state?: string }): void {
-    const next = new URLSearchParams(params);
-    for (const [key, value] of Object.entries(update)) {
-      if (value === null || value === "") next.delete(key);
-      else next.set(key, value);
-    }
-    navigate(`/catalogs?${next.toString()}`);
+  /** First setup directly from the row (§9.3): no technical create form. */
+  function startCreate(row: RowModel): void {
+    setDrafts((current) => ({
+      ...current,
+      [row.key]: row.kind === "interval" ? intervalDraft() : qualitativeDraft(row.indicator?.options ?? []),
+    }));
+    setSummary(null);
+  }
+
+  function cancelCreate(row: RowModel): void {
+    setDrafts((current) => {
+      const next = { ...current };
+      delete next[row.key];
+      return next;
+    });
   }
 
   if (context.loading) {
@@ -456,7 +496,7 @@ export function MethodsEditorPage(): React.ReactElement {
     return (
       <CatalogEditorPage
         title="Нормы исследований"
-        description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
+        description="Нормы задаются один раз для категории продукции «Мясо и мясопродукты»."
       >
         <StatusView state="no-scope" title={context.configError} />
         <div className="vse-catalog-actions">
@@ -470,28 +510,15 @@ export function MethodsEditorPage(): React.ReactElement {
 
   const problem = methods.data !== undefined && "code" in methods.data ? (methods.data as Problem) : null;
 
-  // The honest scope screen (§5.1): a missing or unconfigured scope is never
-  // mistaken for an empty catalog and never triggers a scoped list call with
-  // the laboratory UUID.
-  const scopedContextPairReady =
-    scopedContext !== null && scopedContext.product_species != null && scopedContext.product_state != null;
-
-  /** The human-readable area of this view (the code, never a GUID). */
-  const activeArea =
-    scopedContext === null
-      ? null
-      : (scopedContext.areas.find((item) => item.code === (areaParam ?? "meat")) ??
-        scopedContext.areas[0] ??
-        null);
-
   const intervalRows = rows.filter((row) => row.kind === "interval");
   const qualitativeRows = rows.filter((row) => row.kind === "qualitative");
-  const unsetRows = rows.filter((row) => row.rule === null && !row.unknown);
+  const textRows = rows.filter((row) => row.kind === "text");
+  const unsetRows = rows.filter((row) => row.rule === null && !row.unknown && row.kind !== "text");
 
   return (
     <CatalogEditorPage
       title="Нормы исследований"
-      description="Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ."
+      description="Нормы задаются один раз для категории продукции «Мясо и мясопродукты» и применяются ко всем мясным партиям лаборатории."
     >
       <CatalogContextSlot context={context} onPick={allowedToSwitch ? pickLaboratory : null} />
       {summary !== null ? (
@@ -503,15 +530,15 @@ export function MethodsEditorPage(): React.ReactElement {
         <section className="vse-catalog-section" aria-labelledby="methods-section-title">
           <CatalogSectionHeader
             icon="directory-norms"
-            title="Диапазоны нормы"
-            description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
+            title="Нормы исследований"
+            description="Укажите нормы для категории «Мясо и мясопродукты»."
           />
           <StatusView state="loading" title="Загрузка норм…" />
         </section>
       ) : problem !== null && problem.code === "CONFIGURATION_MISSING" ? (
         <StatusView
           state="no-scope"
-          title="Вид продукции и состояние продукции не настроены для этой лаборатории."
+          title="Область продукции не поддерживается системой."
           detail={problem.detail}
           onRetry={() => void methods.refetch()}
         />
@@ -528,323 +555,275 @@ export function MethodsEditorPage(): React.ReactElement {
         <section className="vse-catalog-section" aria-labelledby="methods-section-title">
           <CatalogSectionHeader
             icon="directory-norms"
-            title="Диапазоны нормы"
-            description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
-            actions={
-              canEdit && scopedContextPairReady ? (
-                <Button type="button" variant="primary" onClick={() => openCreate()}>
-                  Добавить норму
-                </Button>
-              ) : undefined
-            }
+            title="Нормы исследований"
+            description="Укажите нормы для категории «Мясо и мясопродукты»."
           />
           <div className="vse-catalog-context" data-testid="methods-scope">
-            <div className="app-field">
-              <div className="app-field-heading">
-                <label htmlFor="methods-area">Вид продукции</label>
-              </div>
-              <select
-                id="methods-area"
-                value={activeArea?.code ?? ""}
-                disabled={scopedContext.areas.length <= 1}
-                onChange={(event) => pickScope({ area: event.target.value, species: "", state: "" })}
-              >
-                {scopedContext.areas.map((item) => (
-                  <option key={item.code} value={item.code}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {scopedContext.species_options.length > 1 ? (
-              <div className="app-field">
-                <div className="app-field-heading">
-                  <label htmlFor="methods-species">Продукция</label>
-                </div>
-                <select
-                  id="methods-species"
-                  value={scopedContext.product_species?.id ?? ""}
-                  onChange={(event) => pickScope({ species: event.target.value, state: "" })}
-                >
-                  {scopedContext.product_species === null ? (
-                    <option value="">— выберите продукцию —</option>
-                  ) : null}
-                  {scopedContext.species_options.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : scopedContext.product_species != null ? (
-              <p className="vse-catalog-note" data-testid="methods-species-name">
-                Продукция: {scopedContext.product_species.label}
-              </p>
-            ) : null}
-            {scopedContext.states.length > 1 ? (
-              <div className="app-field">
-                <div className="app-field-heading">
-                  <label htmlFor="methods-state">Состояние продукции</label>
-                </div>
-                <select
-                  id="methods-state"
-                  value={scopedContext.product_state?.id ?? ""}
-                  onChange={(event) => pickScope({ state: event.target.value })}
-                >
-                  {scopedContext.product_state === null ? (
-                    <option value="">— выберите состояние —</option>
-                  ) : null}
-                  {scopedContext.states.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : scopedContext.product_state != null ? (
-              <p className="vse-catalog-note" data-testid="methods-state-name">
-                Состояние продукции: {scopedContext.product_state.label}
-              </p>
-            ) : null}
-          </div>
-          {!scopedContextPairReady ? (
-            // Options exist but the pair is not resolved yet: the §5.2/§5.3
-            // selectors above are the way forward — never a misleading
-            // «not configured» screen (that one stays for genuinely zero
-            // options and the invalid laboratory-UUID scope).
-            <p className="vse-catalog-note" data-testid="methods-scope-hint">
-              {scopedContext.product_species === null
-                ? "Выберите вид продукции, чтобы открыть нормы."
-                : "Выберите состояние продукции, чтобы открыть нормы."}
+            {/* §9.2: the area is a READONLY context, never an input field. */}
+            <p className="vse-catalog-note" data-testid="methods-area-name">
+              Категория продукции: {scopedContext.product_area_name}
             </p>
+          </div>
+          {unsetRows.length > 0 ? (
+            <div className="vse-catalog-norm-list" data-testid="methods-unset">
+              {unsetRows.map((row) => (
+                <article className="vse-catalog-norm-row" key={row.key}>
+                  <div className="vse-catalog-norm-info">
+                    <div className="vse-catalog-norm-name">{row.name}</div>
+                    <p className="vse-catalog-unset">Не настроено</p>
+                    {row.indicator?.conditional === true ? (
+                      <p className="vse-catalog-note">{CONDITIONAL_NOTE}</p>
+                    ) : null}
+                  </div>
+                  {canEdit && row.creating !== true ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={savePending}
+                      onClick={() => startCreate(row)}
+                    >
+                      Настроить
+                    </Button>
+                  ) : null}
+                </article>
+              ))}
+            </div>
           ) : null}
-          {scopedContextPairReady ? (
-            <>
-              {unsetRows.length > 0 ? (
-                <div className="vse-catalog-norm-list" data-testid="methods-unset">
-                  {unsetRows.map((row) => (
-                    <article className="vse-catalog-norm-row" key={row.key}>
-                      <div className="vse-catalog-norm-info">
-                        <div className="vse-catalog-norm-name">{row.name}</div>
-                        <p className="vse-catalog-unset">Не настроено</p>
-                        {row.indicator?.conditional === true ? (
-                          <p className="vse-catalog-note">{CONDITIONAL_NOTE}</p>
-                        ) : null}
-                      </div>
-                      {canEdit ? (
+          <div className="vse-catalog-norm-list">
+            {intervalRows.map((row) => {
+              if (row.unknown) {
+                return (
+                  <article className="vse-catalog-diag" key={row.key} data-testid={`method-diag-${row.key}`}>
+                    Норма показателя вне общего каталога. Наименование недоступно в read model — значение не
+                    редактируется на этой странице.
+                  </article>
+                );
+              }
+              if (row.rule === null && row.creating !== true) return null;
+              const draft = draftFor(row);
+              const rule = row.rule;
+              const interval = rule?.rule.type === "interval" ? rule.rule : null;
+              const serverValue =
+                interval !== null && (interval.lower != null || interval.upper != null)
+                  ? `от ${interval.lower ?? "—"} до ${interval.upper ?? "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`
+                  : "Не настроено";
+              const draftValue = `от ${draft.lower || "—"} до ${draft.upper || "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`;
+              const metadata = (
+                <div className="vse-catalog-field">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={draft.lowerInclusive}
+                      disabled={savePending || !canEdit}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [row.key]: { ...draftFor(row), lowerInclusive: event.target.checked },
+                        }))
+                      }
+                    />{" "}
+                    нижняя граница включена
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={draft.upperInclusive}
+                      disabled={savePending || !canEdit}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [row.key]: { ...draftFor(row), upperInclusive: event.target.checked },
+                        }))
+                      }
+                    />{" "}
+                    верхняя граница включена
+                  </label>
+                </div>
+              );
+              return (
+                <NormRow
+                  key={row.key}
+                  name={row.name}
+                  meta={row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined}
+                  source={rule !== null ? sourceLabel(rule.source) : undefined}
+                  lower={draft.lower}
+                  upper={draft.upper}
+                  unit={row.unit}
+                  error={errors[row.key]}
+                  busy={savePending}
+                  readOnly={!canEdit}
+                  details={metadata}
+                  conflict={
+                    conflicts[row.key] === true && drafts[row.key] !== undefined
+                      ? { serverValue, draftValue }
+                      : undefined
+                  }
+                  onKeepMine={conflicts[row.key] === true ? () => void keepMine(row) : undefined}
+                  onTakeServer={conflicts[row.key] === true ? () => takeServer(row) : undefined}
+                  secondary={
+                    canEdit ? (
+                      row.rule === null ? (
                         <Button
                           type="button"
                           variant="secondary"
                           disabled={savePending}
-                          onClick={() => openCreate(row.indicator?.id ?? null)}
+                          onClick={() => cancelCreate(row)}
                         >
-                          Настроить
+                          Отменить настройку
                         </Button>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
-              ) : null}
-              <div className="vse-catalog-norm-list">
-                {intervalRows.map((row) => {
-                  if (row.rule === null || row.unknown) return null;
-                  const draft = draftFor(row);
-                  const rule = row.rule;
-                  const interval = rule.rule;
-                  const serverValue =
-                    interval.type === "interval" && (interval.lower != null || interval.upper != null)
-                      ? `от ${interval.lower ?? "—"} до ${interval.upper ?? "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`
-                      : "Не настроено";
-                  const draftValue = `от ${draft.lower || "—"} до ${draft.upper || "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`;
-                  const metadata = (
-                    <div className="vse-catalog-field">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={draft.lowerInclusive}
-                          disabled={savePending || !canEdit}
-                          onChange={(event) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [row.key]: { ...draftFor(row), lowerInclusive: event.target.checked },
-                            }))
-                          }
-                        />{" "}
-                        нижняя граница включена
-                      </label>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={draft.upperInclusive}
-                          disabled={savePending || !canEdit}
-                          onChange={(event) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [row.key]: { ...draftFor(row), upperInclusive: event.target.checked },
-                            }))
-                          }
-                        />{" "}
-                        верхняя граница включена
-                      </label>
-                    </div>
-                  );
-                  return (
-                    <NormRow
-                      key={row.key}
-                      name={row.name}
-                      meta={row.meta ?? (row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined)}
-                      source={sourceLabel(rule.source)}
-                      lower={draft.lower}
-                      upper={draft.upper}
-                      unit={row.unit}
-                      error={errors[row.key]}
-                      busy={savePending}
-                      readOnly={!canEdit}
-                      details={metadata}
-                      conflict={
-                        conflicts[row.key] === true && drafts[row.key] !== undefined
-                          ? { serverValue, draftValue }
-                          : undefined
-                      }
-                      onKeepMine={conflicts[row.key] === true ? () => void keepMine(row) : undefined}
-                      onTakeServer={conflicts[row.key] === true ? () => takeServer(row) : undefined}
-                      secondary={
-                        canEdit ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={savePending}
-                            aria-label={`Удалить норму: ${row.name}`}
-                            onClick={() => setDeleteTarget({ key: row.key, rule })}
-                          >
-                            Удалить норму
-                          </Button>
-                        ) : undefined
-                      }
-                      onLowerChange={(next) => {
-                        setDrafts((current) => ({
-                          ...current,
-                          [row.key]: { ...draftFor(row), lower: next },
-                        }));
-                        setSummary(null);
-                      }}
-                      onUpperChange={(next) => {
-                        setDrafts((current) => ({
-                          ...current,
-                          [row.key]: { ...draftFor(row), upper: next },
-                        }));
-                        setSummary(null);
-                      }}
-                    />
-                  );
-                })}
-                {qualitativeRows.map((row) => {
-                  if (row.rule === null || row.unknown) return null;
-                  const draft = draftFor(row);
-                  const rule = row.rule;
-                  const indicator = row.indicator;
-                  const registryOptions = (indicator?.options ?? []).map((value) => ({
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={savePending}
+                          aria-label={`Удалить норму: ${row.name}`}
+                          onClick={() => setDeleteTarget({ key: row.key, rule: rule as MethodRuleTyped })}
+                        >
+                          Удалить норму
+                        </Button>
+                      )
+                    ) : undefined
+                  }
+                  onLowerChange={(next) => {
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.key]: { ...draftFor(row), lower: next },
+                    }));
+                    setSummary(null);
+                  }}
+                  onUpperChange={(next) => {
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.key]: { ...draftFor(row), upper: next },
+                    }));
+                    setSummary(null);
+                  }}
+                />
+              );
+            })}
+            {qualitativeRows.map((row) => {
+              if (row.unknown) return null;
+              if (row.rule === null && row.creating !== true) return null;
+              const draft = draftFor(row);
+              const rule = row.rule;
+              const indicator = row.indicator;
+              const registryOptions = (indicator?.options ?? []).map((value) => ({
+                value,
+                label: value,
+              }));
+              const normSet = new Set(draft.accepted);
+              const rowsModel: QualitativeRow[] = [
+                // The full registry variant list is always shown; an option
+                // outside the accepted list is «Отклонение».
+                ...registryOptions.map((option) => ({
+                  key: option.value,
+                  value: option.label,
+                  norm: normSet.has(option.value),
+                  onNormChange: (norm: boolean) =>
+                    setDrafts((current) => {
+                      const accepted = norm
+                        ? [...draft.accepted, option.value]
+                        : draft.accepted.filter((value) => value !== option.value);
+                      return { ...current, [row.key]: { ...draftFor(row), accepted } };
+                    }),
+                  onRemove: undefined,
+                })),
+                // Manually added rows beyond the registry (honest, removable).
+                ...draft.extra
+                  .filter((value) => !registryOptions.some((option) => option.value === value))
+                  .map((value, index) => ({
+                    key: `extra-${index}-${value}`,
                     value,
-                    label: value,
-                  }));
-                  const normSet = new Set(draft.accepted);
-                  const rowsModel: QualitativeRow[] = [
-                    // The full registry variant list is always shown (mockup);
-                    // an option outside the accepted list is «Отклонение».
-                    ...registryOptions.map((option) => ({
-                      key: option.value,
-                      value: option.label,
-                      norm: normSet.has(option.value),
-                      onNormChange: (norm: boolean) =>
-                        setDrafts((current) => {
-                          const accepted = norm
-                            ? [...draft.accepted, option.value]
-                            : draft.accepted.filter((value) => value !== option.value);
-                          return { ...current, [row.key]: { ...draftFor(row), accepted } };
-                        }),
-                      onRemove: undefined,
-                    })),
-                    // Manually added rows beyond the registry (honest, marked).
-                    ...draft.extra
-                      .filter((value) => !registryOptions.some((option) => option.value === value))
-                      .map((value) => ({
-                        key: value,
-                        value,
-                        norm: normSet.has(value),
-                        onNormChange: (norm: boolean) =>
-                          setDrafts((current) => {
-                            const accepted = norm
-                              ? [...draft.accepted, value]
-                              : draft.accepted.filter((item) => item !== value);
-                            return { ...current, [row.key]: { ...draftFor(row), accepted } };
-                          }),
-                        onRemove: () =>
+                    norm: normSet.has(value),
+                    onValueChange: (next: string) =>
+                      setDrafts((current) => {
+                        const extra = [...draft.extra];
+                        extra[extra.indexOf(value)] = next;
+                        return { ...current, [row.key]: { ...draftFor(row), extra } };
+                      }),
+                    onNormChange: (norm: boolean) =>
+                      setDrafts((current) => {
+                        const accepted = norm
+                          ? [...draft.accepted, value]
+                          : draft.accepted.filter((item) => item !== value);
+                        return { ...current, [row.key]: { ...draftFor(row), accepted } };
+                      }),
+                    onRemove: () =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [row.key]: {
+                          ...draftFor(row),
+                          extra: draft.extra.filter((item) => item !== value),
+                        },
+                      })),
+                  })),
+              ];
+              return (
+                <QualitativeBlock
+                  key={row.key}
+                  title={row.name}
+                  description={
+                    [
+                      indicator?.result_schema === "ENUM"
+                        ? "Укажите варианты результата и отметьте, считается ли вариант нормой."
+                        : undefined,
+                      row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                  rows={rowsModel}
+                  onAdd={
+                    canEdit
+                      ? () =>
                           setDrafts((current) => ({
                             ...current,
-                            [row.key]: {
-                              ...draftFor(row),
-                              extra: draft.extra.filter((item) => item !== value),
-                            },
-                          })),
-                      })),
-                  ];
-                  return (
-                    <QualitativeBlock
-                      key={row.key}
-                      title={row.name}
-                      description={
-                        [
-                          indicator?.result_schema === "ENUM"
-                            ? "Укажите варианты результата и отметьте, считается ли вариант нормой."
-                            : undefined,
-                          row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined,
-                        ]
-                          .filter(Boolean)
-                          .join(" ") || undefined
-                      }
-                      rows={rowsModel}
-                      readOnly={!canEdit}
-                      busy={savePending}
-                      error={errors[row.key]}
-                      // §6.1: the source of the methodology stays visible on
-                      // the enum rows too («допустимые значения + какие норма»).
-                      details={
-                        sourceLabel(rule.source) !== undefined ? (
-                          <p>Источник: {sourceLabel(rule.source)}</p>
-                        ) : undefined
-                      }
-                      secondary={
-                        canEdit ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={savePending}
-                            aria-label={`Удалить норму: ${row.name}`}
-                            onClick={() => setDeleteTarget({ key: row.key, rule })}
-                          >
-                            Удалить норму
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                  );
-                })}
-                {rows
-                  .filter((row) => row.unknown)
-                  .map((row) => (
-                    <article
-                      className="vse-catalog-diag"
-                      key={row.key}
-                      data-testid={`method-diag-${row.key}`}
-                    >
-                      Норма показателя вне общего каталога. Идентификатор:{" "}
-                      <code>{row.rule?.indicator_id}</code>. Наименование недоступно в read model — значение
-                      не редактируется на этой странице.
-                    </article>
-                  ))}
-              </div>
-            </>
-          ) : null}
+                            [row.key]: { ...draftFor(row), extra: [...draft.extra, ""] },
+                          }))
+                      : undefined
+                  }
+                  readOnly={!canEdit}
+                  busy={savePending}
+                  error={errors[row.key]}
+                  details={
+                    rule !== null && sourceLabel(rule.source) !== undefined ? (
+                      <p>Источник: {sourceLabel(rule.source)}</p>
+                    ) : undefined
+                  }
+                  secondary={
+                    canEdit ? (
+                      row.rule === null ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={savePending}
+                          onClick={() => cancelCreate(row)}
+                        >
+                          Отменить настройку
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={savePending}
+                          aria-label={`Удалить норму: ${row.name}`}
+                          onClick={() => setDeleteTarget({ key: row.key, rule: rule as MethodRuleTyped })}
+                        >
+                          Удалить норму
+                        </Button>
+                      )
+                    ) : undefined
+                  }
+                />
+              );
+            })}
+            {textRows.map((row) => (
+              <article className="vse-catalog-diag" key={row.key} data-testid={`method-text-${row.key}`}>
+                <div className="vse-catalog-norm-name">{row.name}</div>
+                <p className="vse-catalog-note">{TEXT_NOTE}</p>
+              </article>
+            ))}
+          </div>
         </section>
       ) : null}
       <div className="vse-catalog-actions">
@@ -863,29 +842,6 @@ export function MethodsEditorPage(): React.ReactElement {
         </Button>
       </div>
 
-      {createOpen && scopedContext?.product_species != null && scopedContext?.product_state != null ? (
-        <section className="vse-catalog-section" data-testid="method-create">
-          <CatalogSectionHeader
-            title="Новая норма"
-            description="Выберите показатель и введите подтверждённые значения методики."
-          />
-          <MethodEditor
-            mode="create"
-            laboratoryId={scopedContext.laboratory.id}
-            productSpeciesId={scopedContext.product_species.id}
-            productStateId={scopedContext.product_state.id}
-            indicators={scopedContext.indicators}
-            presetIndicatorId={presetIndicatorId}
-            busy={savePending}
-            onSaved={() => {
-              setCreateOpen(false);
-              void methods.refetch();
-            }}
-            onClose={() => setCreateOpen(false)}
-          />
-        </section>
-      ) : null}
-
       {deleteTarget !== null ? (
         <Dialog
           open
@@ -902,11 +858,6 @@ export function MethodsEditorPage(): React.ReactElement {
       ) : null}
     </CatalogEditorPage>
   );
-
-  function openCreate(indicatorId?: string | null): void {
-    setPresetIndicatorId(indicatorId ?? null);
-    setCreateOpen(true);
-  }
 
   async function runSave(): Promise<void> {
     setSavePending(true);

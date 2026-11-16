@@ -16,6 +16,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError, ProblemItem, validation_error
+from backend.src.modules.catalog_pricing import mandatory as _mandatory
+from backend.src.modules.catalog_pricing.mandatory import (
+    MANUAL_SOURCE_NAME,
+    MEAT_AREA_CODE,
+    CatalogIndicatorDef,
+)
 from backend.src.modules.catalog_pricing.models import (
     CheckServiceRule,
     MethodRule,
@@ -53,14 +59,21 @@ def _already_exists(detail: str) -> ProblemError:
     return ProblemError(status=409, code="ALREADY_EXISTS", title="Already exists", detail=detail)
 
 
-def _species_scope_problem() -> ProblemError:
-    """ТЗ DR13: a laboratory UUID is never a product species.
+def _tariff_species_problem() -> ProblemError:
+    """Owner decision DR14: VSE tariffs keep the species binding."""
+    return validation_error(
+        [
+            ProblemItem(
+                path="product_species_id",
+                field_id="VSE",
+                message="Тариф услуги ВСЭ требует вид продукции: выберите вид в контексте справочника.",
+            )
+        ]
+    )
 
-    The scope fallback of legacy assignments could seed ``product_species_id``
-    with the laboratory id; a method rule saved into that scope can never match
-    a real party species, so the write is refused honestly instead of storing
-    a norm that is unreachable for evaluation.
-    """
+
+def _species_scope_problem() -> ProblemError:
+    """ТЗ DR13: a laboratory UUID is never a product species (tariffs)."""
     return validation_error(
         [
             ProblemItem(
@@ -70,39 +83,6 @@ def _species_scope_problem() -> ProblemError:
                     "Вид продукции не может совпадать с лабораторией: выберите реальный вид продукции "
                     "в контексте справочника."
                 ),
-            )
-        ]
-    )
-
-
-def _validate_species_scope(payload: MethodRuleWrite) -> None:
-    if payload.product_species_id == payload.laboratory_id:
-        raise _species_scope_problem()
-    # ТЗ-DR28 §7: a real product_state_id is required — the applicability key
-    # never carries the laboratory UUID or the species id as a state.
-    if payload.product_state_id in (payload.laboratory_id, payload.product_species_id):
-        raise validation_error(
-            [
-                ProblemItem(
-                    path="product_state_id",
-                    field_id="CHECK",
-                    message=(
-                        "Состояние продукции должно быть реальным значением классификатора "
-                        "и не может совпадать с лабораторией или видом продукции."
-                    ),
-                )
-            ]
-        )
-
-
-def _tariff_species_problem() -> ProblemError:
-    """Owner decision DR14: VSE tariffs keep the species binding."""
-    return validation_error(
-        [
-            ProblemItem(
-                path="product_species_id",
-                field_id="VSE",
-                message="Тариф услуги ВСЭ требует вид продукции: выберите вид в контексте справочника.",
             )
         ]
     )
@@ -127,30 +107,84 @@ def _tariff_species(payload: TariffWrite) -> UUID | None:
     return payload.product_species_id
 
 
-async def create_method_rule(db: AsyncSession, payload: MethodRuleWrite) -> MethodRule:
-    """Insert a new active version, retiring the previous active one."""
-    _validate_species_scope(payload)
-    previous = await db.execute(
-        select(MethodRule).where(
-            MethodRule.laboratory_id == payload.laboratory_id,
-            MethodRule.product_species_id == payload.product_species_id,
-            MethodRule.product_state_id == payload.product_state_id,
-            MethodRule.indicator_id == payload.indicator_id,
-            MethodRule.active,
+def _method_definition(payload: MethodRuleWrite) -> CatalogIndicatorDef:
+    """Resolve the canonical definition of a stable VSE-F code (DR31 §8.4).
+
+    An unknown code is refused without creating an arbitrary indicator; the
+    result schema and unit of the norm always come from the canonical
+    registry, never from the client.
+    """
+    try:
+        return _mandatory.indicator_by_code(payload.code)
+    except LookupError as error:
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="code",
+                    field_id="CHECK",
+                    message=str(error),
+                )
+            ]
+        ) from None
+
+
+def _validate_rule_shape(definition: CatalogIndicatorDef, payload: MethodRuleWrite) -> None:
+    """Server-side typed validation (DR31 §8.4): the rule shape must match the
+    canonical result schema of the indicator — never the client's claim."""
+    interval_schemas = {"DECIMAL", "INTEGER_NONNEGATIVE", "DOSIMETRY_PAIR"}
+    qualitative_schemas = {"ENUM", "TEXT", "BOOLEAN_MATCH"}
+    is_interval = payload.rule.type == "interval"
+    expected_interval = definition.result_schema in interval_schemas
+    expected_qualitative = definition.result_schema in qualitative_schemas
+    if expected_interval and not is_interval or expected_qualitative and is_interval:
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="rule.type",
+                    field_id=definition.code,
+                    message="Тип нормы не соответствует каноническому типу результата исследования.",
+                )
+            ]
         )
+
+
+async def create_method_rule(db: AsyncSession, payload: MethodRuleWrite) -> MethodRule:
+    """Insert a new active meat-area version, retiring the previous active one.
+
+    The applicability key is ``laboratory + meat + indicator``: the species and
+    state columns are left NULL and are never written as scope (DR31 §8.1).
+    The version and the provenance source are server-side data.
+    """
+    definition = _method_definition(payload)
+    _validate_rule_shape(definition, payload)
+    previous = (
+        (
+            await db.execute(
+                select(MethodRule)
+                .where(
+                    MethodRule.laboratory_id == payload.laboratory_id,
+                    MethodRule.product_area_code == MEAT_AREA_CODE,
+                    MethodRule.indicator_id == definition.id,
+                    MethodRule.active,
+                )
+                .order_by(MethodRule.version.desc())
+            )
+        )
+        .scalars()
+        .all()
     )
-    for row in previous.scalars():
+    version = (previous[0].version + 1) if previous else 1
+    for row in previous:
         row.active = False
     row = MethodRule(
         laboratory_id=payload.laboratory_id,
-        product_species_id=payload.product_species_id,
-        product_state_id=payload.product_state_id,
-        indicator_id=payload.indicator_id,
-        version=payload.version,
-        result_schema=payload.result_schema.value,
-        unit_id=payload.unit_id,
+        product_area_code=MEAT_AREA_CODE,
+        indicator_id=definition.id,
+        version=version,
+        result_schema=definition.result_schema,
+        unit_id=definition.unit or "",
         rule=dict(payload.rule.model_dump()),
-        source=dict(payload.source.model_dump()),
+        source={"name": MANUAL_SOURCE_NAME},
         active=True,
     )
     db.add(row)
@@ -166,12 +200,28 @@ async def load_method_rule(db: AsyncSession, rule_id: object, *, lock: bool = Fa
 
 
 async def update_method_rule(db: AsyncSession, row: MethodRule, payload: MethodRuleWrite) -> MethodRule:
-    """Edit the row in place; the version history stays intact."""
-    _validate_species_scope(payload)
-    row.result_schema = payload.result_schema.value
-    row.unit_id = payload.unit_id
+    """Edit the row in place; the version history stays intact (DR31 §8.4).
+
+    The result schema and unit are re-resolved from the canonical registry; a
+    code switch that would move the row to another indicator is refused — a
+    norm row stays the norm of its indicator.
+    """
+    definition = _method_definition(payload)
+    _validate_rule_shape(definition, payload)
+    if definition.id != row.indicator_id:
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="code",
+                    field_id=definition.code,
+                    message="Норма остаётся нормой своего показателя: код исследования менять нельзя.",
+                )
+            ]
+        )
+    row.result_schema = definition.result_schema
+    row.unit_id = definition.unit or ""
     row.rule = dict(payload.rule.model_dump())
-    row.source = dict(payload.source.model_dump())
+    row.source = {"name": MANUAL_SOURCE_NAME}
     row.effective_from = None
     row.rev += 1
     await db.flush()

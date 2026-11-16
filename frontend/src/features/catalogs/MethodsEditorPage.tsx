@@ -1,13 +1,15 @@
 /**
- * «Нормы исследований» editor page (ТЗ DR31 §9, mockup directory-norms-edit.html).
+ * «Нормы исследований» editor page (ТЗ DR36 §7–14, mockup directory-norms-edit.html).
  *
  * ONE norm set per laboratory for «Мясо и мясопродукты»: the context is
  * resolved by the laboratory and the product area only (no species/state
  * selectors, no Mercury GUIDs, no party data, no technical fields). The full
- * VSE-F18–F29 registry is listed right away — an active norm renders as an
- * editable row, a missing one shows the honest «Не настроено» and is
- * configured directly from its row (no technical «Добавить норму» form).
- * A null boundary stays null (never 0); lower ≤ upper is enforced; one
+ * VSE-F18–F29 registry is listed right away inside ONE section «Диапазоны
+ * нормы» — every unset interval row shows its «Норма от/до» fields directly
+ * (no «Настроить» step, no separate unset list) and qualitative blocks use
+ * the square ＋/− composition of the mockup. A null boundary stays null
+ * (never 0); lower ≤ upper is enforced; technical metadata (source,
+ * inclusivity, delete) lives in the folded overflow of the row; one
  * «Сохранить справочник» saves ONLY the dirty rows sequentially with honest
  * per-row results and 409 resolution.
  */
@@ -41,13 +43,6 @@ import { useDirtyGuard } from "../context/SwitchContext";
 import { DELETE_WARNING } from "./editor-parts";
 
 const NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
-
-/** The human-readable source label of a rule (§6.1; never a UUID). */
-export function sourceLabel(source: unknown): string | undefined {
-  if (source === null || typeof source !== "object") return undefined;
-  const name = (source as Record<string, unknown>)["name"];
-  return typeof name === "string" && name.trim() !== "" ? name.trim() : undefined;
-}
 
 export interface MethodDraft {
   lower: string;
@@ -114,15 +109,12 @@ interface RowModel {
   kind: "interval" | "qualitative" | "text";
   /** Unknown to the shared registry: honest diagnostic, no invented name. */
   unknown: boolean;
-  /** A create draft waits on the row after «Настроить». */
-  creating: boolean;
 }
 
 /** Annotation of the conditionally mandatory F21 (spec §4, GUID list — never
  * a per-species policy invented here). */
 const CONDITIONAL_NOTE = "Обязательно для указанных видов продукции";
-const TEXT_NOTE =
-  "Значение фиксируется в карточке ВСЭ; автоматическая оценка нормы для этого исследования не применяется.";
+const TEXT_NOTE = "Результат вводится текстом; диапазон нормы не задаётся.";
 
 /**
  * The registry-driven rows (§6.1): every expected indicator of the context is
@@ -152,7 +144,6 @@ export function buildMethodRows(
       unit: rule?.unit_id === "" ? undefined : (rule?.unit_id ?? indicator.unit_id ?? undefined),
       kind,
       unknown: false,
-      creating: false,
     });
   }
   for (const rule of rules) {
@@ -165,7 +156,6 @@ export function buildMethodRows(
       unit: rule.unit_id === "" ? undefined : rule.unit_id,
       kind: rule.rule.type === "qualitative" ? "qualitative" : "interval",
       unknown: true,
-      creating: false,
     });
   }
   return rows;
@@ -203,29 +193,26 @@ export function MethodsEditorPage(): React.ReactElement {
   const scopedContext = methods.data !== undefined && !("code" in methods.data) ? methods.data : null;
 
   const rows = useMemo(
-    () =>
-      scopedContext === null
-        ? []
-        : buildMethodRows(scopedContext.indicators, scopedContext.active_rules).map((row) => ({
-            ...row,
-            // A create draft on a «Не настроено» row waits on that row (§9.3).
-            creating: row.rule === null && drafts[row.key] !== undefined,
-          })),
-    [scopedContext, drafts],
+    () => (scopedContext === null ? [] : buildMethodRows(scopedContext.indicators, scopedContext.active_rules)),
+    [scopedContext],
   );
 
   const draftFor = (row: RowModel): MethodDraft => {
     const existing = drafts[row.key];
     if (existing !== undefined) return existing;
-    if (row.rule?.rule.type === "interval") {
-      return {
-        lower: row.rule.rule.lower ?? "",
-        upper: row.rule.rule.upper ?? "",
-        lowerInclusive: row.rule.rule.lower_inclusive ?? true,
-        upperInclusive: row.rule.rule.upper_inclusive ?? true,
-        accepted: [],
-        extra: [],
-      };
+    if (row.kind === "interval") {
+      if (row.rule?.rule.type === "interval") {
+        return {
+          lower: row.rule.rule.lower ?? "",
+          upper: row.rule.rule.upper ?? "",
+          lowerInclusive: row.rule.rule.lower_inclusive ?? true,
+          upperInclusive: row.rule.rule.upper_inclusive ?? true,
+          accepted: [],
+          extra: [],
+        };
+      }
+      // §10.2: the unset interval row starts with empty boundary fields.
+      return intervalDraft();
     }
     return qualitativeDraft(
       row.rule?.rule.type === "qualitative" ? row.rule.rule.accepted_values : (row.indicator?.options ?? []),
@@ -285,9 +272,8 @@ export function MethodsEditorPage(): React.ReactElement {
       };
 
       if (row.rule === null) {
-        // First setup directly from the row (§9.3): create without any
+        // First setup directly from the row (§10.2): create without any
         // technical field — the registry resolves schema/unit/version/source.
-        if (row.creating !== true) continue;
         if (row.kind === "interval") {
           if (draft.lower !== "" && !NUMBER.test(draft.lower)) {
             fail("Граница нормы — конечное число с точкой.");
@@ -468,36 +454,19 @@ export function MethodsEditorPage(): React.ReactElement {
     });
   }
 
-  /** First setup directly from the row (§9.3): no technical create form. */
-  function startCreate(row: RowModel): void {
-    setDrafts((current) => ({
-      ...current,
-      [row.key]: row.kind === "interval" ? intervalDraft() : qualitativeDraft(row.indicator?.options ?? []),
-    }));
-    setSummary(null);
-  }
-
-  function cancelCreate(row: RowModel): void {
-    setDrafts((current) => {
-      const next = { ...current };
-      delete next[row.key];
-      return next;
-    });
-  }
+  const LEAD =
+    "Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ.";
 
   if (context.loading) {
     return (
-      <CatalogEditorPage title="Нормы исследований" description="Загрузка контекста…">
+      <CatalogEditorPage title="Нормы исследований" description={LEAD}>
         <StatusView state="loading" title="Загрузка контекста…" />
       </CatalogEditorPage>
     );
   }
   if (context.configError !== null) {
     return (
-      <CatalogEditorPage
-        title="Нормы исследований"
-        description="Нормы задаются один раз для категории продукции «Мясо и мясопродукты»."
-      >
+      <CatalogEditorPage title="Нормы исследований" description={LEAD}>
         <StatusView state="no-scope" title={context.configError} />
         <div className="vse-catalog-actions">
           <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
@@ -513,28 +482,34 @@ export function MethodsEditorPage(): React.ReactElement {
   const intervalRows = rows.filter((row) => row.kind === "interval");
   const qualitativeRows = rows.filter((row) => row.kind === "qualitative");
   const textRows = rows.filter((row) => row.kind === "text");
-  const unsetRows = rows.filter((row) => row.rule === null && !row.unknown && row.kind !== "text");
+
+  /** §15.1: the loading skeleton keeps the section geometry. */
+  const skeleton =
+    methods.isLoading || scopedContext === null ? (
+      <section className="vse-catalog-section" aria-busy="true" aria-label="Загрузка норм…">
+        <CatalogSectionHeader
+          icon="directory-norms"
+          title="Диапазоны нормы"
+          description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
+        />
+        <div className="vse-catalog-norm-list">
+          {[0, 1, 2, 3].map((index) => (
+            <div className="vse-catalog-skeleton" key={index} />
+          ))}
+        </div>
+      </section>
+    ) : null;
 
   return (
-    <CatalogEditorPage
-      title="Нормы исследований"
-      description="Нормы задаются один раз для категории продукции «Мясо и мясопродукты» и применяются ко всем мясным партиям лаборатории."
-    >
+    <CatalogEditorPage title="Нормы исследований" description={LEAD}>
       <CatalogContextSlot context={context} onPick={allowedToSwitch ? pickLaboratory : null} />
       {summary !== null ? (
         <SaveSummary state={summary.state} text={summary.text} details={summary.details} />
       ) : null}
       {!pageReady ? (
         <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." />
-      ) : methods.isLoading ? (
-        <section className="vse-catalog-section" aria-labelledby="methods-section-title">
-          <CatalogSectionHeader
-            icon="directory-norms"
-            title="Нормы исследований"
-            description="Укажите нормы для категории «Мясо и мясопродукты»."
-          />
-          <StatusView state="loading" title="Загрузка норм…" />
-        </section>
+      ) : skeleton !== null && problem === null ? (
+        skeleton
       ) : problem !== null && problem.code === "CONFIGURATION_MISSING" ? (
         <StatusView
           state="no-scope"
@@ -551,44 +526,18 @@ export function MethodsEditorPage(): React.ReactElement {
           detail={problem.detail}
           onRetry={() => void methods.refetch()}
         />
-      ) : scopedContext !== null ? (
-        <section className="vse-catalog-section" aria-labelledby="methods-section-title">
+      ) : (
+        <section className="vse-catalog-section" aria-label="Диапазоны нормы">
           <CatalogSectionHeader
             icon="directory-norms"
-            title="Нормы исследований"
-            description="Укажите нормы для категории «Мясо и мясопродукты»."
+            title="Диапазоны нормы"
+            description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
           />
-          <div className="vse-catalog-context" data-testid="methods-scope">
-            {/* §9.2: the area is a READONLY context, never an input field. */}
-            <p className="vse-catalog-note" data-testid="methods-area-name">
-              Категория продукции: {scopedContext.product_area_name}
-            </p>
-          </div>
-          {unsetRows.length > 0 ? (
-            <div className="vse-catalog-norm-list" data-testid="methods-unset">
-              {unsetRows.map((row) => (
-                <article className="vse-catalog-norm-row" key={row.key}>
-                  <div className="vse-catalog-norm-info">
-                    <div className="vse-catalog-norm-name">{row.name}</div>
-                    <p className="vse-catalog-unset">Не настроено</p>
-                    {row.indicator?.conditional === true ? (
-                      <p className="vse-catalog-note">{CONDITIONAL_NOTE}</p>
-                    ) : null}
-                  </div>
-                  {canEdit && row.creating !== true ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={savePending}
-                      onClick={() => startCreate(row)}
-                    >
-                      Настроить
-                    </Button>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          ) : null}
+          {/* §7.3: the category is one calm line under the lead — never a
+              technical field or an empty context container. */}
+          <p className="vse-catalog-context-note" data-testid="methods-area-name">
+            Категория продукции: {scopedContext?.product_area_name ?? ""}
+          </p>
           <div className="vse-catalog-norm-list">
             {intervalRows.map((row) => {
               if (row.unknown) {
@@ -599,7 +548,6 @@ export function MethodsEditorPage(): React.ReactElement {
                   </article>
                 );
               }
-              if (row.rule === null && row.creating !== true) return null;
               const draft = draftFor(row);
               const rule = row.rule;
               const interval = rule?.rule.type === "interval" ? rule.rule : null;
@@ -608,51 +556,70 @@ export function MethodsEditorPage(): React.ReactElement {
                   ? `от ${interval.lower ?? "—"} до ${interval.upper ?? "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`
                   : "Не настроено";
               const draftValue = `от ${draft.lower || "—"} до ${draft.upper || "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`;
-              const metadata = (
-                <div className="vse-catalog-field">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={draft.lowerInclusive}
-                      disabled={savePending || !canEdit}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [row.key]: { ...draftFor(row), lowerInclusive: event.target.checked },
-                        }))
-                      }
-                    />{" "}
-                    нижняя граница включена
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={draft.upperInclusive}
-                      disabled={savePending || !canEdit}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [row.key]: { ...draftFor(row), upperInclusive: event.target.checked },
-                        }))
-                      }
-                    />{" "}
-                    верхняя граница включена
-                  </label>
-                </div>
-              );
+              const overflow = canEdit ? (
+                <>
+                  <div className="vse-catalog-field">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={draft.lowerInclusive}
+                        disabled={savePending}
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [row.key]: { ...draftFor(row), lowerInclusive: event.target.checked },
+                          }))
+                        }
+                      />{" "}
+                      нижняя граница включена
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={draft.upperInclusive}
+                        disabled={savePending}
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [row.key]: { ...draftFor(row), upperInclusive: event.target.checked },
+                          }))
+                        }
+                      />{" "}
+                      верхняя граница включена
+                    </label>
+                  </div>
+                  {rule !== null ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={savePending}
+                      ariaLabel={`Удалить норму: ${row.name}`}
+                      onClick={() => setDeleteTarget({ key: row.key, rule: rule as MethodRuleTyped })}
+                    >
+                      Удалить норму
+                    </Button>
+                  ) : null}
+                </>
+              ) : undefined;
               return (
                 <NormRow
                   key={row.key}
                   name={row.name}
-                  meta={row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined}
-                  source={rule !== null ? sourceLabel(rule.source) : undefined}
+                  meta={
+                    [
+                      rule === null ? "Не настроено" : undefined,
+                      row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || undefined
+                  }
                   lower={draft.lower}
                   upper={draft.upper}
                   unit={row.unit}
                   error={errors[row.key]}
                   busy={savePending}
                   readOnly={!canEdit}
-                  details={metadata}
+                  details={overflow}
                   conflict={
                     conflicts[row.key] === true && drafts[row.key] !== undefined
                       ? { serverValue, draftValue }
@@ -660,30 +627,6 @@ export function MethodsEditorPage(): React.ReactElement {
                   }
                   onKeepMine={conflicts[row.key] === true ? () => void keepMine(row) : undefined}
                   onTakeServer={conflicts[row.key] === true ? () => takeServer(row) : undefined}
-                  secondary={
-                    canEdit ? (
-                      row.rule === null ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={savePending}
-                          onClick={() => cancelCreate(row)}
-                        >
-                          Отменить настройку
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={savePending}
-                          aria-label={`Удалить норму: ${row.name}`}
-                          onClick={() => setDeleteTarget({ key: row.key, rule: rule as MethodRuleTyped })}
-                        >
-                          Удалить норму
-                        </Button>
-                      )
-                    ) : undefined
-                  }
                   onLowerChange={(next) => {
                     setDrafts((current) => ({
                       ...current,
@@ -703,7 +646,6 @@ export function MethodsEditorPage(): React.ReactElement {
             })}
             {qualitativeRows.map((row) => {
               if (row.unknown) return null;
-              if (row.rule === null && row.creating !== true) return null;
               const draft = draftFor(row);
               const rule = row.rule;
               const indicator = row.indicator;
@@ -767,7 +709,7 @@ export function MethodsEditorPage(): React.ReactElement {
                       indicator?.result_schema === "ENUM"
                         ? "Укажите варианты результата и отметьте, считается ли вариант нормой."
                         : undefined,
-                      row.indicator?.conditional === true ? CONDITIONAL_NOTE : undefined,
+                      indicator?.conditional === true ? CONDITIONAL_NOTE : undefined,
                     ]
                       .filter(Boolean)
                       .join(" ") || undefined
@@ -785,47 +727,37 @@ export function MethodsEditorPage(): React.ReactElement {
                   readOnly={!canEdit}
                   busy={savePending}
                   error={errors[row.key]}
-                  details={
-                    rule !== null && sourceLabel(rule.source) !== undefined ? (
-                      <p>Источник: {sourceLabel(rule.source)}</p>
-                    ) : undefined
-                  }
                   secondary={
-                    canEdit ? (
-                      row.rule === null ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={savePending}
-                          onClick={() => cancelCreate(row)}
-                        >
-                          Отменить настройку
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={savePending}
-                          aria-label={`Удалить норму: ${row.name}`}
-                          onClick={() => setDeleteTarget({ key: row.key, rule: rule as MethodRuleTyped })}
-                        >
-                          Удалить норму
-                        </Button>
-                      )
+                    canEdit && rule !== null ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={savePending}
+                        ariaLabel={`Удалить норму: ${row.name}`}
+                        onClick={() => setDeleteTarget({ key: row.key, rule: rule as MethodRuleTyped })}
+                      >
+                        Удалить норму
+                      </Button>
                     ) : undefined
                   }
                 />
               );
             })}
             {textRows.map((row) => (
-              <article className="vse-catalog-diag" key={row.key} data-testid={`method-text-${row.key}`}>
-                <div className="vse-catalog-norm-name">{row.name}</div>
-                <p className="vse-catalog-note">{TEXT_NOTE}</p>
+              <article
+                className="vse-catalog-norm-row vse-catalog-text-row"
+                key={row.key}
+                data-testid={`method-text-${row.key}`}
+              >
+                <div className="vse-catalog-norm-info">
+                  <div className="vse-catalog-norm-name">{row.name}</div>
+                  <p className="vse-catalog-norm-meta">{TEXT_NOTE}</p>
+                </div>
               </article>
             ))}
           </div>
         </section>
-      ) : null}
+      )}
       <div className="vse-catalog-actions">
         <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
           Отменить

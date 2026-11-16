@@ -75,7 +75,7 @@ const tariffs = [
   },
 ];
 
-const methods = [
+const methods: Array<Record<string, unknown>> = [
   {
     id: "bbbbbbbb-0000-4000-8000-000000000001",
     laboratory_id: LAB,
@@ -126,6 +126,30 @@ export const catalogEditorHandlers: HttpHandler[] = [
   http.get("*/api/v1/catalogs/methods", () =>
     HttpResponse.json({ items: methods, total: methods.length, page: 1, page_size: 50 }),
   ),
+  // The DR31/DR36 read model of «Нормы исследований»: the full registry, the
+  // meat scope and the active rules (fixture data only, no mockup numbers).
+  http.get("*/api/v1/catalogs/methods/context", () =>
+    HttpResponse.json(methodsContextFixture([...methods])),
+  ),
+  http.post("*/api/v1/catalogs/methods", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const indicator = INDICATORS.find((item) => item.code === body["code"]) ?? temperature;
+    const created: Record<string, unknown> = {
+      id: "bbbbbbbb-0000-4000-8000-0000000000aa",
+      laboratory_id: LAB,
+      product_area_code: "meat",
+      indicator_id: indicator.id,
+      version: 1,
+      result_schema: indicator.kind === "DECIMAL" ? "DECIMAL" : "INTEGER_NONNEGATIVE",
+      unit_id: indicator.unit ?? null,
+      rule: body["rule"],
+      source: { name: "Ручная настройка справочника норм" },
+      active: true,
+      revision: 1,
+    };
+    methods.push(created);
+    return HttpResponse.json({ rule: { id: created.id } });
+  }),
   http.get("*/api/v1/catalogs/readiness", () => HttpResponse.json({ missing: [] })),
   http.put("*/api/v1/catalogs/tariffs/:id", async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
@@ -136,6 +160,45 @@ export const catalogEditorHandlers: HttpHandler[] = [
     return HttpResponse.json({ ...body, revision: 2 });
   }),
 ];
+
+/** The DR31 methods read-model fixture: full VSE-F18–F29 registry for the
+ * meat scope, active rules from the fixture list, honest missing set. */
+function methodsContextFixture(rules: Array<Record<string, unknown>>): Record<string, unknown> {
+  const active = rules
+    .filter((rule) => rule["active"] === true && rule["product_species_id"] === SPECIES)
+    .map((rule): Record<string, unknown> => ({ ...rule, product_area_code: "meat" }));
+  return {
+    laboratory: { id: LAB, name: "Лаборатория №1 г. Казань" },
+    areas: [{ code: "meat", name: "Мясо и мясопродукты", configured: true }],
+    product_area_code: "meat",
+    product_area_name: "Мясо и мясопродукты",
+    indicators: INDICATORS.map((item) => ({
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      result_schema:
+        item.kind === "DECIMAL"
+          ? "DECIMAL"
+          : item.kind === "INTEGER"
+            ? "INTEGER_NONNEGATIVE"
+            : item.kind === "TEXT"
+              ? "TEXT"
+              : item.kind === "DOSIMETRY"
+                ? "DOSIMETRY_PAIR"
+                : item.kind === "BOOLEAN"
+                  ? "BOOLEAN_MATCH"
+                  : "ENUM",
+      unit_id: item.unit ?? null,
+      mandatory: item.mandatory,
+      conditional: item.code === "VSE-F21",
+      options: item.options ? item.options.map((option) => option.label) : null,
+    })),
+    active_rules: active,
+    missing: INDICATORS.filter((item) => !active.some((rule) => rule["indicator_id"] === item.id)).map(
+      (item) => item.id,
+    ),
+  };
+}
 
 /** The REAL ADMIN shape: /contexts carries only territory rows; laboratory
  * options come exclusively from the scoped /contexts/laboratories endpoint. */

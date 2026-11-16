@@ -13,6 +13,8 @@ export interface ButtonProps {
   children?: ReactNode;
   /** Visible label; also the accessible name of icon-only buttons. */
   label?: string | undefined;
+  /** Accessible name when it differs from the visible content (＋/− squares). */
+  ariaLabel?: string | undefined;
   /** Announced while ``busy`` (components/app contract). */
   busyLabel?: string | undefined;
   variant?: ButtonVariant | undefined;
@@ -39,6 +41,7 @@ export function Button({
   busy = false,
   onClick,
   className,
+  ariaLabel,
   ref,
 }: ButtonProps): React.ReactElement {
   const text = busy ? busyLabel : (label ?? undefined);
@@ -52,7 +55,7 @@ export function Button({
         .join(" ")}
       disabled={disabled || busy}
       aria-busy={busy ? "true" : undefined}
-      aria-label={iconOnly ? text : undefined}
+      aria-label={iconOnly ? text : ariaLabel}
       onClick={onClick}
     >
       {icon !== undefined && !busy ? <Icon name={icon} /> : null}

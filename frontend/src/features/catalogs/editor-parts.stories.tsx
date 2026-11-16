@@ -80,7 +80,7 @@ export const NormRowBothBounds: Story = {
         unit="°C"
         onLowerChange={() => undefined}
         onUpperChange={() => undefined}
-        details={<p>Версия записи: 1 · источник: Методика измерений</p>}
+        details={<p>Нижняя и верхняя границы включены · удаление нормы — в этом же раскрытии.</p>}
       />
     </div>
   ),

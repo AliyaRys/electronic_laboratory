@@ -52,6 +52,10 @@
 - Для административной страницы placeholder `.topbar` получает `data-app-header-mode="admin"`; маршруты можно передать через `data-brand-href`, `data-admin-users-href`, `data-admin-reports-href`, `data-profile-href`, а путь к логотипу вложенной страницы — через `data-logo-src`. Для аналитической страницы используется `data-app-header-mode="analyst"` и `data-arrivals-href`, `data-journal-href`, `data-directories-href`, `data-reports-href` вместо административных маршрутов.
 - `VseAppHeader.spec` содержит утверждённые размеры для документации и автоматических проверок.
 
+## React-порт (frontend/src/shared/ui/AppHeader.tsx)
+
+React-порт повторяет геометрию и иконки этой библиотеки, но с DR37 навигация «Отчёты» строится контекстно: пункт выводится только при наличии фактических отчётных полномочий (`sample:read` или `report:*`) и ведёт в лабораторию текущего канонического маршрута (`/labs/:labId/reports`), а до выбора лаборатории аналитиком — честно на `/labs`. У администратора пункта «Отчёты» нет (FT-RPT-01), поэтому `adminReports` и административный fallback `/labs` в React-порте удалены; активный пункт (`aria-current="page"`) вычисляет `AppShell` по маршруту.
+
 ## Экран отказа в доступе
 
 `AccessDenied.js` добавляет `VseAppHeader.createAccessDenied(options)` — общий компактный блок состояния поверх обычной рабочей области; шапку страницы создаёт вызывающий код в режиме `work` или `admin`. Причина задаётся только кодом: `no-permission`, `changed`, `product-denied`, `admin-page`; произвольный текст причины из URL не принимается. Опции: `checkState` (`checking`, `network-error` — проверка доступа и отказ сети без раскрытия данных), `hasAvailableProducts`, `savedView` (ссылка «Открыть сохранённую версию» — только когда чтение объекта разрешено), `links` (`available`, `profile`, `products`, `adminUsers`, `saved`) и `onRetryCheck`. Ссылка «Перейти в доступный раздел» вычисляется из сессии вызывающим кодом; сам экран не угадывает маршруты. Стили — `access-denied.css`, область ограничена `.vse-access-denied`.

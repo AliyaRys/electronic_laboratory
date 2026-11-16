@@ -225,7 +225,9 @@ describe("AppShell contextual reports navigation (DR37)", () => {
     renderShellWith({ role: "HEAD", capabilities: REPORT_CAPS }, `/labs/${LAB}/examinations`);
     await waitForUser();
     expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("href", `/labs/${LAB}/reports`);
-    expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("aria-current", "page");
+    // The examinations route keeps the journal item active, not reports.
+    expect(screen.getByRole("link", { name: "Журнал ВСЭ" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Отчёты" })).not.toHaveAttribute("aria-current");
   });
 
   it("a user without any reporting capability has no «Отчёты» item", async () => {

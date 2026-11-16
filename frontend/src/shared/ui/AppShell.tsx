@@ -123,6 +123,27 @@ export function AppShell({
     return me.user.scopes[0]?.laboratory_id ?? null;
   }, [me.user, routeLabId, storedLabId]);
 
+  /**
+   * The laboratory the HEADER navigation follows (DR37 §Task 2): VET/HEAD
+   * use their verified assigned laboratory, ANALYST uses the labId of the
+   * current canonical route. On /labs no laboratory is guessed — the honest
+   * selection page stays the target of the header links.
+   */
+  const contextLabId = useMemo(() => {
+    if (me.user === null) return null;
+    if (me.user.role === "ANALYST") return routeLabId;
+    if (me.user.role === "VET" || me.user.role === "HEAD") return workingLabId;
+    return null;
+  }, [me.user, routeLabId, workingLabId]);
+
+  /** Header reports navigation needs at least one reporting direction. */
+  const hasReportNavigation = useMemo(() => {
+    if (me.user === null) return false;
+    return me.user.capabilities.some(
+      (capability) => capability === "sample:read" || capability.startsWith("report:"),
+    );
+  }, [me.user]);
+
   // Restore the non-secret working context from GET /me after a refresh. The
   // Zustand store is intentionally not persisted, so login bootstrap alone is
   // insufficient: a VET/HEAD must still get working links after F5.
@@ -141,22 +162,38 @@ export function AppShell({
     useContextStore.getState().setScope({ userId: me.user.id, labId: workingLabId, productId });
   }, [me.user, workingLabId]);
 
-  // Active navigation follows the real route (spec DR4 §6): /catalogs marks
-  // «Справочники», /profile marks the user link; other routes keep no active
-  // item from the shell.
-  const headerActive: HeaderActive = location.pathname.startsWith("/catalogs") ? "directories" : "";
+  // Active navigation follows the canonical route (spec DR4 §6, DR37 §Task 2):
+  // /catalogs marks «Справочники», /users the admin item, any
+  // /labs/:labId/reports... marks «Отчёты», /profile marks the user link.
+  const headerActive: HeaderActive = location.pathname.startsWith("/catalogs")
+    ? "directories"
+    : location.pathname.startsWith("/users")
+      ? "users"
+      : /^\/labs\/[^/]+\/arrivals/.test(location.pathname)
+        ? "arrivals"
+        : /^\/labs\/[^/]+\/examinations/.test(location.pathname)
+          ? "journal"
+          : /^\/labs\/[^/]+\/reports/.test(location.pathname)
+            ? "reports"
+            : "";
   const profileActive = location.pathname === "/profile";
 
   const headerLinks = useMemo<HeaderLinks>(() => {
-    if (mode !== "work" || workingLabId === null) return {};
-    const arrivals = `/labs/${workingLabId}/arrivals?queue=expected`;
+    if (mode !== "work" && mode !== "analyst") return {};
+    // The analyst without a selected laboratory keeps the honest /labs choice
+    // (also for «Отчёты»); no laboratory of an arbitrary route is guessed.
+    if (contextLabId === null) {
+      if (mode === "analyst" && hasReportNavigation) return { reports: "/labs" };
+      return {};
+    }
+    const arrivals = `/labs/${contextLabId}/arrivals?queue=expected`;
     return {
       brand: arrivals,
       arrivals,
-      journal: `/labs/${workingLabId}/examinations`,
-      reports: `/labs/${workingLabId}/reports`,
+      journal: `/labs/${contextLabId}/examinations`,
+      ...(hasReportNavigation ? { reports: `/labs/${contextLabId}/reports` } : {}),
     };
-  }, [mode, workingLabId]);
+  }, [mode, contextLabId, hasReportNavigation]);
 
   const changeProduct = (product: ProductType): void => {
     if (onProductChange !== undefined) {

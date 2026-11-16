@@ -62,7 +62,10 @@ function nowLocal(): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-function operationCopy(state: string, diagnostics?: { [key: string]: unknown } | null): {
+function operationCopy(
+  state: string,
+  diagnostics?: { [key: string]: unknown } | null,
+): {
   title: string;
   detail: string;
   status: "loading" | "forbidden" | "unknown" | "empty";

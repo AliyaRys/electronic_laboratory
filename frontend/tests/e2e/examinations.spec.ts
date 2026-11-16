@@ -27,6 +27,8 @@ const partyView = {
     evsd_uuid: "1f0e6d2a-1111-4222-8333-444444444444",
     status: "COMPLETED",
     fields: {
+      documentUuid: "1c0d1a2b-1111-4222-8333-444444444444",
+      issuedOn: "2026-08-07",
       documentNumber: "RU016:260807-002914",
       documentIssuedOn: "2026-08-07",
       consignor: "КФХ Шайдуллин Азат Рашидович",
@@ -175,7 +177,7 @@ async function openCreate(
   });
   await mockExamination(page, responseView);
   await page.goto(`/labs/${LAB}/arrivals/${PARTY}/examination/new`);
-  await expect(page.getByRole("heading", { name: "Новая запись ВСЭ" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Создание карточки ВСЭ" })).toBeVisible();
 }
 
 /** Fill the three mandatory researches of the create form. */
@@ -193,8 +195,9 @@ test.describe("examination lifecycle", () => {
     await openCreate(page, posts);
     // Header shows the session user; the party facts are readonly.
     await expect(page.getByText("Специалист: Кузнецова Алиса Викторовна")).toBeVisible();
-    await expect(page.getByText("RU016:260807-002914")).toBeVisible();
-    await expect(page.getByText("140.5").first()).toBeVisible();
+    await expect(page.getByLabel("UUID ВСД")).toHaveValue("1c0d1a2b-1111-4222-8333-444444444444");
+    await expect(page.getByLabel("Принятый вес, кг")).toHaveValue("140.5");
+    await expect(page.getByLabel("Название предприятия").first()).toHaveValue(/Шайдуллин/);
     // REUSE is preselected with the available collection of the same party.
     await expect(page.getByLabel("Доступная проба")).toHaveValue(COLLECTION);
     await expect(page.getByLabel("Вес взятой пробы, кг")).toHaveCount(0);
@@ -305,7 +308,7 @@ test.describe("examination lifecycle", () => {
       });
     });
     await page.goto(`/labs/${LAB}/arrivals/${PARTY}/examination/new`);
-    await expect(page.getByRole("heading", { name: "Новая запись ВСЭ" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Создание карточки ВСЭ" })).toBeVisible();
     await page.getByLabel("Номер ВСЭ *").fill("№ 13/2026");
     await page.getByLabel("Маркировка — ветеринарное клеймо лаборатории *").fill("кл-2");
     await page.getByLabel("Органолептическое исследование").selectOption("MATCH");
@@ -444,7 +447,7 @@ test.describe("examination lifecycle", () => {
     expect(deleted).toBe(true);
     // Step 2: the party is creatable again — open the create form.
     await page.goto(`/labs/${LAB}/arrivals/${PARTY}/examination/new`);
-    await expect(page.getByRole("heading", { name: "Новая запись ВСЭ" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Создание карточки ВСЭ" })).toBeVisible();
     // Step 3: REUSE of the available collection is the default sample entry.
     await expect(page.getByLabel("Использовать имеющуюся пробу")).toBeChecked();
     await expect(page.getByLabel("Доступная проба")).toHaveValue(COLLECTION);
@@ -502,7 +505,7 @@ test.describe("examination lifecycle", () => {
       "aria-selected",
       "true",
     );
-    await expect(page.getByText("RU016:260807-002914")).toBeVisible();
+    await expect(page.getByText("1c0d1a2b-1111-4222-8333-444444444444")).toBeVisible();
     await expect(page.getByText("Ожидание результатов").nth(1)).toBeVisible();
     await page.getByRole("link", { name: /Просмотр карточки ВСЭ/ }).click();
     await expect(page).toHaveURL(new RegExp(`/examinations/${EXAM}`));
@@ -526,6 +529,49 @@ test.describe("examination lifecycle", () => {
     expect(outcome).not.toBeNull();
     expect((sample as { y: number }).y).toBeGreaterThan((research as { y: number }).y);
     expect((outcome as { y: number }).y).toBeGreaterThan((sample as { y: number }).y);
+    // DR30 §7.3: no horizontal page scroll at 390px.
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
     await shot(page, "narrow-390");
+  });
+
+  test("DR30 design parity: mockup composition at 1440 without covered fields", async ({ page }) => {
+    const posts: unknown[] = [];
+    await openCreate(page, posts);
+    // The six mockup sections, in order.
+    const titles = [
+      "Сведения об экспертизе",
+      "Участники и продукция",
+      "Исследования ВСЭ",
+      "Проба",
+      "Итог экспертизы",
+      "Расчёт стоимости услуг",
+    ];
+    let previousY = -1;
+    for (const title of titles) {
+      const heading = page.getByRole("heading", { name: title, level: 2 });
+      await expect(heading).toBeVisible();
+      const box = (await heading.boundingBox()) as { y: number };
+      expect(box.y).toBeGreaterThan(previousY);
+      previousY = box.y;
+    }
+    // Content width stays inside the mockup's ~1180px working area.
+    const width = await page.evaluate(
+      () => document.querySelector(".vse-exam-page")?.getBoundingClientRect().width ?? 0,
+    );
+    expect(width).toBeGreaterThan(0);
+    expect(width).toBeLessThanOrEqual(1181);
+    // The specialist is a readonly fact, never a manual select.
+    await expect(page.getByLabel("Специалист")).toHaveValue("Кузнецова Алиса Викторовна");
+    await expect(page.getByLabel("Специалист")).toHaveAttribute("readonly", "");
+    expect(await page.getByRole("combobox", { name: /специалист/i }).count()).toBe(0);
+    await expect(page.getByRole("button", { name: /черновик/i })).toHaveCount(0);
+    // The sticky action panel never covers the page content at its end.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const inputBox = await page.getByLabel("Принятое количество").boundingBox();
+    const panelBox = await page.locator(".vse-exam-actions").boundingBox();
+    if (inputBox === null || panelBox === null) throw new Error("panel or input not found");
+    expect(panelBox.y - (inputBox.y + inputBox.height)).toBeGreaterThanOrEqual(-1);
+    await shot(page, "dr30-parity-1440");
   });
 });

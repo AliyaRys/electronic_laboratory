@@ -267,6 +267,29 @@ export const ICON_DEFINITIONS: Readonly<Record<string, readonly IconPart[]>> = O
     ["path", { d: "M9 6h6M7.5 11h9M7.5 16h9" }],
   ],
   caret: [["path", { d: "m7 10 5 5 5-5" }]],
+  // --- DR30: разделы карточки ВСЭ (electronic-vse-journal.html; новая иконка
+  // сначала добавлена в components/icons/VseIcon.js, затем в этот адаптер)
+  "exam-participants": [
+    ["path", { d: "M6 20h12" }],
+    ["path", { d: "M12 4v16" }],
+    ["path", { d: "M5 8h14" }],
+    ["path", { d: "M7 8l-3 6h6L7 8z" }],
+    ["path", { d: "M17 8l-3 6h6l-3-6z" }],
+  ],
+  "exam-research": [
+    ["circle", { cx: "10.5", cy: "10.5", r: "6.5" }],
+    ["path", { d: "M15.5 15.5 21 21" }],
+  ],
+  "exam-sample": [
+    [
+      "path",
+      {
+        d: "M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2",
+      },
+    ],
+    ["path", { d: "M8 2h8" }],
+    ["path", { d: "M7 16h10" }],
+  ],
 });
 
 export type IconName = keyof typeof ICON_DEFINITIONS & string;
@@ -358,4 +381,11 @@ export const ARRIVAL_ICON_NAMES: readonly IconName[] = Object.freeze([
   "arrival-plus",
   "arrival-reconcile",
   "columns-grid",
+]);
+
+/** DR30: section icons of the examination card (VseIcon.js + this adapter). */
+export const EXAM_SECTION_ICON_NAMES: readonly IconName[] = Object.freeze([
+  "exam-participants",
+  "exam-research",
+  "exam-sample",
 ]);

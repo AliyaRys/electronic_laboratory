@@ -17,7 +17,6 @@ import { fetchArrival } from "../features/arrivals/api";
 import type { IncomingView, Problem } from "../features/arrivals/api";
 import { fetchCollections, type CollectionView } from "../features/samples/api";
 import { ExaminationForm } from "../features/examinations/ExaminationForm";
-import { PartyReadonlyFacts } from "../features/examinations/SampleSelection";
 import { StatusView } from "../shared/ui/StatusView";
 import { useMe } from "../shared/api/me";
 
@@ -77,11 +76,19 @@ function ExaminationCreateContent(): React.ReactElement {
   }
 
   return (
-    <div className="vse-app vse-page">
+    <div className="vse-app vse-page vse-exam-page">
       <nav className="vse-breadcrumb" aria-label="Навигация">
         <Link to={`/labs/${labId}/arrivals/${partyId}/reconciliation`}>← Сверка эВСД</Link>
       </nav>
-      <h1>Новая запись ВСЭ</h1>
+      <div className="vse-page-head">
+        <div>
+          <p className="vse-eyebrow">Новая запись</p>
+          <h1>Создание карточки ВСЭ</h1>
+        </div>
+        <div className="vse-legend">
+          <span className="vse-req">*</span> обязательные поля
+        </div>
+      </div>
       {me.user !== null ? <p className="vse-arrival-hint">{`Специалист: ${me.user.full_name}`}</p> : null}
       {arrivalProblem !== null ? (
         <StatusView
@@ -113,7 +120,6 @@ function ExaminationCreateContent(): React.ReactElement {
         />
       ) : (
         <>
-          <PartyReadonlyFacts party={party} />
           <ExaminationForm
             party={party}
             view={null}
@@ -121,6 +127,7 @@ function ExaminationCreateContent(): React.ReactElement {
             availableCollections={allCollections.filter(
               (collection) => collection.party_id === party.party_id && collection.disposal_id === null,
             )}
+            specialistName={me.user?.full_name}
             onSaved={(created) => {
               void navigate(`/labs/${labId}/examinations/${created.id}`);
             }}

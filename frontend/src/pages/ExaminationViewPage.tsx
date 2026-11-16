@@ -26,7 +26,7 @@ import {
   type OutcomeWrite,
 } from "../features/examinations/api";
 import { ExaminationForm } from "../features/examinations/ExaminationForm";
-import { PartyReadonlyFacts } from "../features/examinations/SampleSelection";
+import { PartyReadonlyFacts } from "../features/examinations/ExaminationSections";
 import { OutcomeFields, outcomeText } from "../features/examinations/OutcomeFields";
 import { DeleteDialog } from "../features/examinations/DeleteDialog";
 import { emptyOutcome, type OutcomeEntry } from "../features/examinations/formValues";
@@ -190,15 +190,17 @@ function ExaminationViewContent(): React.ReactElement {
         ) : null}
       </div>
 
-      {partyView !== null ? (
+      {/* In edit mode the form itself carries the party sections (DR30);
+          outside the edit the readonly facts stay a separate block. */}
+      {partyView !== null && !editing ? (
         <PartyReadonlyFacts party={partyView} headline="Подтверждённая партия" />
-      ) : party.isLoading ? null : (
+      ) : !editing && !party.isLoading ? (
         <StatusView
           state="network-error"
           title="Не удалось загрузить партию."
           detail={problemOf(party.data)?.detail}
         />
-      )}
+      ) : null}
 
       {editing ? (
         <ExaminationForm
@@ -208,6 +210,7 @@ function ExaminationViewContent(): React.ReactElement {
           availableCollections={allCollections.filter(
             (collection) => collection.party_id === view.party_id && collection.disposal_id === null,
           )}
+          specialistName={me.user?.full_name}
           onSaved={(next) => {
             queryClient.setQueryData(examinationKey(view.id), next);
             setEditing(false);

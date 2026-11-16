@@ -16,6 +16,8 @@ import { useDirtyGuard } from "../context/SwitchContext";
 import { useDirtyStore } from "../../entities/session/context";
 import { Button } from "../../shared/ui/Button";
 import { Field } from "../../shared/ui/Field";
+import { FormSection } from "../../shared/ui/FormSection";
+import { ReadonlyField } from "../../shared/ui/ReadonlyField";
 import { StatusView } from "../../shared/ui/StatusView";
 import type { CollectionView } from "../samples/api";
 import type { IncomingView } from "../arrivals/api";
@@ -29,6 +31,7 @@ import {
   toWritePayload,
   type ExaminationFormValues,
 } from "./formValues";
+import { ExaminationFactsSection, ParticipantsSection } from "./ExaminationSections";
 import { ResearchFields } from "./ResearchFields";
 import { SampleSelection } from "./SampleSelection";
 import { OutcomeFields } from "./OutcomeFields";
@@ -42,6 +45,11 @@ export interface ExaminationFormProps {
   availableCollections: CollectionView[];
   onSaved: (view: ExaminationView) => void;
   onCancel: () => void;
+  /**
+   * DR30 §6.2/§6.8: the current session specialist's ФИО, shown readonly —
+   * a manual specialist select is never added.
+   */
+  specialistName?: string | undefined;
 }
 
 /** The initial sample entry: REUSE default when an available collection exists. */
@@ -95,6 +103,7 @@ export function ExaminationForm({
   availableCollections,
   onSaved,
   onCancel,
+  specialistName,
 }: ExaminationFormProps): React.ReactElement {
   const defaults = useMemo(
     () => ({
@@ -209,9 +218,8 @@ export function ExaminationForm({
 
   return (
     <form className="vse-exam-form" noValidate onSubmit={(event) => event.preventDefault()}>
-      <section className="vse-exam-block" aria-label="Карточка ВСЭ">
-        <h3>Карточка ВСЭ</h3>
-        <div className="vse-exam-grid">
+      <ExaminationFactsSection party={party}>
+        <div className="vse-span6">
           <Field
             id="exam-number"
             label="Номер ВСЭ *"
@@ -219,6 +227,11 @@ export function ExaminationForm({
             disabled={busy}
             onChange={(next) => form.setValue("number", next, { shouldDirty: true })}
           />
+        </div>
+      </ExaminationFactsSection>
+
+      <ParticipantsSection party={party}>
+        <div className="vse-span4">
           <Field
             id="exam-stamp"
             label="Маркировка — ветеринарное клеймо лаборатории *"
@@ -227,16 +240,7 @@ export function ExaminationForm({
             onChange={(next) => form.setValue("stamp", next, { shouldDirty: true })}
           />
         </div>
-        <label className="vse-comparison-mark">
-          <input
-            type="checkbox"
-            checked={values.sentToLab}
-            disabled={busy || (isEdit && view.sent_to_lab)}
-            onChange={(event) => form.setValue("sentToLab", event.target.checked, { shouldDirty: true })}
-          />
-          Пробы отправлены на специальные лабораторные исследования
-        </label>
-      </section>
+      </ParticipantsSection>
 
       <ResearchFields
         values={values}
@@ -258,32 +262,49 @@ export function ExaminationForm({
         onChange={(next) => form.setValue("sample", next.sample, { shouldDirty: true })}
       />
 
-      {view === null || view.status === "COMPLETED" ? (
-        <section className="vse-exam-block" aria-label="Итог">
-          <h3>Итог экспертизы</h3>
+      <FormSection
+        icon="check"
+        title="Итог экспертизы"
+        description="Заключение и специалист, проводивший ВСЭ."
+      >
+        <label className="vse-sent-flag">
+          <input
+            type="checkbox"
+            checked={values.sentToLab}
+            disabled={busy || (isEdit && view.sent_to_lab)}
+            onChange={(event) => form.setValue("sentToLab", event.target.checked, { shouldDirty: true })}
+          />
+          Пробы отправлены на специальные лабораторные исследования
+        </label>
+        {view === null || view.status === "COMPLETED" ? (
           <OutcomeFields
             value={values.outcome}
             disabled={busy}
             onChange={(next) => form.setValue("outcome", next, { shouldDirty: true })}
           />
-        </section>
-      ) : (
-        <section className="vse-exam-block" aria-label="Итог">
-          <h3>Итог экспертизы</h3>
+        ) : (
           <p className="vse-exam-note">
             Карточка в ожидании: итог и направление вводятся отдельным действием после ответа специальной
             лаборатории.
           </p>
-        </section>
-      )}
+        )}
+        <div className="vse-span12">
+          <ReadonlyField label="Специалист" value={specialistName ?? ""} />
+        </div>
+      </FormSection>
 
-      <section className="vse-exam-block" aria-label="Расчёт стоимости">
-        <h3>Расчёт стоимости</h3>
-        <p className="vse-exam-note">
-          Стоимость рассчитывает сервер по принятому составу и действующим тарифам; ярмарка обнуляет платные
-          услуги.
-        </p>
-      </section>
+      <FormSection
+        icon="check-invoice"
+        title="Расчёт стоимости услуг"
+        description="Заполненные исследования, их количество, тарифы и итоговая сумма."
+      >
+        <div className="vse-invoice-pending">
+          <p>
+            Стоимость будет рассчитана сервером при сохранении — по выполненным исследованиям и действующим
+            тарифам.
+          </p>
+        </div>
+      </FormSection>
 
       {formError !== "" ? (
         <StatusView state="forbidden" title="Проверьте введённые значения." detail={formError} />
@@ -319,7 +340,10 @@ export function ExaminationForm({
         />
       ) : null}
 
-      <div className="vse-form-actions">
+      <div className="vse-exam-actions">
+        <Button variant="secondary" disabled={busy} onClick={onCancel}>
+          Отменить
+        </Button>
         {view === null ? (
           <>
             <Button
@@ -344,9 +368,6 @@ export function ExaminationForm({
             Сохранить правку
           </Button>
         )}
-        <Button disabled={busy} onClick={onCancel}>
-          Отменить
-        </Button>
       </div>
     </form>
   );

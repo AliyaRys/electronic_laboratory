@@ -169,6 +169,22 @@
       ['path', { d: 'M4 14h6v6H4z' }],
       ['path', { d: 'M14 14h6v6h-6z' }],
     ],
+    'exam-participants': [
+      ['path', { d: 'M6 20h12' }],
+      ['path', { d: 'M12 4v16' }],
+      ['path', { d: 'M5 8h14' }],
+      ['path', { d: 'M7 8l-3 6h6L7 8z' }],
+      ['path', { d: 'M17 8l-3 6h6l-3-6z' }],
+    ],
+    'exam-research': [
+      ['circle', { cx: '10.5', cy: '10.5', r: '6.5' }],
+      ['path', { d: 'M15.5 15.5 21 21' }],
+    ],
+    'exam-sample': [
+      ['path', { d: 'M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2' }],
+      ['path', { d: 'M8 2h8' }],
+      ['path', { d: 'M7 16h10' }],
+    ],
   });
 
   const checkSections = Object.freeze({
@@ -207,6 +223,14 @@
     'columns-grid': 'Выбрать столбцы',
   });
 
+  // DR30: разделы карточки ВСЭ (electronic-vse-journal.html). Новые иконки
+  // добавлены сначала в этот реестр, затем в React-адаптер legacy-icons.ts.
+  const examSectionIcons = Object.freeze({
+    'exam-participants': 'Участники и продукция',
+    'exam-research': 'Исследования ВСЭ',
+    'exam-sample': 'Проба',
+  });
+
   const createNode = ([tag, attributes]) => {
     const node = document.createElementNS(svgNamespace, tag);
     Object.entries(attributes).forEach(([attribute, value]) => node.setAttribute(attribute, value));
@@ -242,6 +266,7 @@
   api.listAdminIcons = () => [...adminIcons];
   api.listDirectoryIcons = () => Object.entries(directoryIcons).map(([icon, label]) => ({ icon, label }));
   api.listArrivalIcons = () => Object.entries(arrivalIcons).map(([icon, label]) => ({ icon, label }));
+  api.listExamSectionIcons = () => Object.entries(examSectionIcons).map(([icon, label]) => ({ icon, label }));
 
   api.enhanceCheckInterface = (root = document) => {
     root.querySelectorAll('[data-check-section]').forEach(section => {

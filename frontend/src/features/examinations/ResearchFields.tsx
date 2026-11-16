@@ -7,9 +7,15 @@
  * «Иное (указать)» requires an explanation text, the disease rows (invasive /
  * noncontagious) belong to {@link FindingsFields}. No medical value is ever
  * invented: every control starts empty (UI-03).
+ *
+ * DR30: the composition follows electronic-vse-journal.html — mandatory cards
+ * wear the calm `.research.primary` tint, optional ones are plain cards, the
+ * dashed «＋ Добавить …» zone sits under the cards; the user-facing texts stay
+ * domain words without FT numbers (§6.6.9).
  */
 import { type ReactNode } from "react";
 import type { ExaminationView } from "./api";
+import { FormSection } from "../../shared/ui/FormSection";
 import { INDICATORS, INVASIVE_DISEASES, NONCONTAGIOUS_DISEASES, indicator } from "./indicators";
 import {
   pricingNotes,
@@ -39,33 +45,28 @@ export function ResearchFields({
     onChange({ ...values, researches: { ...values.researches, [id]: next } });
   };
   const notes = pricingNotes(values, view);
+  const addButtons = INDICATORS.filter(
+    (def) =>
+      def.mandatory === false &&
+      values.researches[def.id] !== undefined &&
+      values.researches[def.id].performed === false,
+  );
 
   return (
-    <section className="vse-exam-block" aria-label="Исследования ВСЭ">
-      <h3>Исследования ВСЭ</h3>
+    <FormSection
+      icon="exam-research"
+      title="Исследования ВСЭ"
+      description="Результаты основных и дополнительных исследований ветеринарно-санитарной экспертизы."
+    >
       <p className="vse-exam-note">
-        Обязательные исследования нельзя пропустить (FT-VSE-03). Обязательность трихинеллоскопии для
-        конкретной продукции проверяет сервер по справочнику Меркурия.
+        Обязательные исследования нельзя пропустить; обязательность трихинеллоскопии для конкретной продукции
+        проверяет сервер по справочнику Меркурия.
       </p>
       <div className="vse-research-grid">
         {INDICATORS.map((def) => {
           const entry = values.researches[def.id];
           if (entry === undefined) return null;
-          if (!entry.performed) {
-            if (def.mandatory) return null;
-            return (
-              <button
-                key={def.id}
-                type="button"
-                className="vse-research-add"
-                disabled={disabled}
-                aria-label={`Добавить ${def.addName}`}
-                onClick={() => setEntry(def.id, { ...entry, performed: true })}
-              >
-                ＋ Добавить {def.addName}
-              </button>
-            );
-          }
+          if (!entry.performed) return null;
           return (
             <ResearchCard
               key={def.id}
@@ -83,6 +84,22 @@ export function ResearchFields({
           );
         })}
       </div>
+      {addButtons.length > 0 ? (
+        <div className="vse-research-addzone" aria-label="Дополнительные исследования">
+          {addButtons.map((def) => (
+            <button
+              key={def.id}
+              type="button"
+              className="vse-research-add"
+              disabled={disabled}
+              aria-label={`Добавить ${def.addName}`}
+              onClick={() => setEntry(def.id, { ...values.researches[def.id], performed: true })}
+            >
+              ＋ Добавить {def.addName}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {notes.length > 0 ? (
         <ul className="vse-research-notes" aria-label="Особенности расчёта стоимости">
           {notes.map((note) => (
@@ -93,6 +110,7 @@ export function ResearchFields({
       {children}
       <FindingsFields
         title="Инвазионные болезни"
+        hint="Добавьте каждую обнаруженную болезнь и укажите орган или ткань."
         items={values.invasive}
         diseases={INVASIVE_DISEASES}
         withLocation
@@ -111,7 +129,7 @@ export function ResearchFields({
         removePrefix="Удалить незаразное заболевание"
         onChange={(next) => onChange({ ...values, noncontagious: next })}
       />
-    </section>
+    </FormSection>
   );
 }
 
@@ -161,7 +179,7 @@ function ResearchCard({
   );
   const label = name + (unit !== undefined ? `, ${unit}` : "");
   return (
-    <article className="vse-research">
+    <article className={mandatory ? "vse-research primary" : "vse-research"}>
       {heading}
       {kind === "BOOLEAN" ? (
         <div className="vse-research-marks" role="radiogroup" aria-label={label}>
@@ -263,6 +281,7 @@ function ResearchCard({
 
 interface FindingsFieldsProps {
   title: string;
+  hint?: string;
   items: FindingEntry[];
   diseases?: readonly string[] | undefined;
   withLocation: boolean;
@@ -274,6 +293,7 @@ interface FindingsFieldsProps {
 
 export function FindingsFields({
   title,
+  hint,
   items,
   diseases = [],
   withLocation,
@@ -289,9 +309,10 @@ export function FindingsFields({
   };
   return (
     <div className="vse-findings">
-      <p className="vse-exam-note">{title}</p>
+      <h3 className="vse-findings-title">{title}</h3>
+      {hint !== undefined ? <p className="vse-findings-hint">{hint}</p> : null}
       {items.map((item, index) => (
-        <div className="vse-finding-row" key={index}>
+        <div className={withLocation ? "vse-finding-row" : "vse-finding-row single"} key={index}>
           <select
             value={item.disease}
             disabled={disabled}

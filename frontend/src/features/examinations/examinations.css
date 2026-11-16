@@ -1,4 +1,28 @@
-/* Examination screens (E04): create form, journal, view. */
+/* Examination screens (E04): create form, journal, view.
+   DR30: the create/edit composition follows electronic-vse-journal.html;
+   section cards, the 12-col grid, research/participant cards and the sticky
+   action panel are ported 1:1, colors only via the shared app tokens. */
+
+/* --- Page shell: max 1180px, centered, 24px gutters, clear of the sticky panel */
+.vse-exam-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-top: 17px; /* + .app-main 20px ≈ 37px mockup top offset */
+  padding-bottom: 96px;
+  min-width: 0;
+}
+
+/* Page head (DR30 §6.2): eyebrow + h1 + right legend; overrides .vse-page h1. */
+.vse-exam-page .vse-page-head h1 {
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+  margin: 0;
+}
+.vse-exam-page .vse-arrival-hint {
+  margin: -16px 0 22px;
+  color: var(--app-muted);
+}
 
 .vse-exam-form {
   display: flex;
@@ -7,103 +31,124 @@
   min-width: 0;
 }
 
-.vse-exam-block {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid var(--app-line, #dfe9e9);
-  border-radius: 14px;
-  background: var(--app-panel, #fff);
-  min-width: 0;
-}
-
-.vse-exam-block h3 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-
-.vse-exam-block fieldset {
-  margin: 0;
-  border: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-
-.vse-exam-block legend {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.vse-exam-note {
-  margin: 0;
-  color: #5a5a5a;
-  overflow-wrap: anywhere;
-}
-
+/* --- 12-col field grid (mockup .grid) ---------------------------------------- */
 .vse-exam-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 17px 18px;
+  min-width: 0;
 }
 
-.vse-exam-facts {
+.vse-span4 {
+  grid-column: span 4;
+  min-width: 0;
+}
+
+.vse-span6 {
+  grid-column: span 6;
+  min-width: 0;
+}
+
+.vse-span12 {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+/* --- Participant cards (mockup .participant-card) ----------------------------- */
+.vse-participant {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 16px;
+  gap: 13px;
+  align-content: start;
+  min-width: 0;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+  background: var(--app-card-bg);
+  padding: 16px;
+}
+
+.vse-participant h3 {
   margin: 0;
+  color: var(--app-heading-ink);
+  font-size: 14px;
 }
 
-.vse-exam-facts dt {
-  color: #5a5a5a;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+/* The compact «Партия подтверждена внешним результатом» hint (DR30 §6.5.6):
+   a quiet secondary tag, never a dominant block. */
+.vse-confirm-note {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  padding: 3px 9px;
+  border: 1px solid var(--app-mercury-line);
+  border-radius: 99px;
+  background: var(--app-mercury-bg);
+  color: var(--app-muted-readable);
+  font-size: 12px;
+  font-weight: 650;
 }
 
-.vse-exam-facts dd {
-  margin: 2px 0 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
+/* --- Research cards (mockup .research / .research.primary) -------------------- */
 .vse-research-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 13px;
 }
 
 .vse-research {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--app-line, #dfe9e9);
-  border-radius: 12px;
-  background: #fbfdfd;
+  padding: 16px;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+  background: var(--app-panel);
   min-width: 0;
+}
+
+.vse-research.primary {
+  border-color: var(--app-mandatory-line);
+  background: linear-gradient(135deg, var(--app-panel), var(--app-mandatory-tint));
 }
 
 .vse-research-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
+  margin-bottom: 5px;
 }
 
 .vse-research-head h4 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 14px;
+  color: var(--app-heading-ink);
+}
+
+/* The dashed add zone under the cards (mockup .add-row). */
+.vse-research-addzone {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding-top: 18px;
+  margin-top: 13px;
+  border-top: 1px dashed var(--app-input-line);
 }
 
 .vse-research-marks {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.vse-comparison-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.vse-comparison-mark input {
+  accent-color: var(--app-teal);
 }
 
 .vse-research input[type="number"],
@@ -113,51 +158,55 @@
 .vse-finding-row input,
 .vse-finding-row select {
   width: 100%;
-  min-height: 40px;
-  border: 1px solid #cbdadb;
+  min-height: 43px;
+  border: 1px solid var(--app-input-line);
   border-radius: 9px;
-  padding: 0 10px;
-  background: #fff;
+  padding: 0 12px;
+  background: var(--app-panel);
 }
 
 .vse-research-add {
   justify-self: start;
-  min-height: 40px;
+  min-height: 39px;
   padding: 0 12px;
   border: 1px dashed #9cc4c2;
   border-radius: 9px;
   background: #fbfefe;
-  color: #0d5358;
-  font-weight: 600;
+  color: var(--app-teal-dark);
+  font-weight: 650;
 }
 
 .vse-research-add:hover:not(:disabled) {
-  background: #eaf6f4;
+  background: var(--app-tint);
   border-style: solid;
 }
 
 .vse-research-remove {
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  border: 1px solid #cbdadb;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border: 1px solid var(--app-input-line);
   border-radius: 8px;
-  background: #fff;
-  color: #4c6870;
-  font-size: 16px;
-  font-weight: 700;
+  background: var(--app-panel);
+  color: #587077;
+  font-size: 18px;
+  font-weight: 760;
   line-height: 1;
 }
 
 .vse-research-remove:hover:not(:disabled) {
-  background: #eaf6f4;
-  color: #0d5358;
+  background: var(--app-tint);
+  border-color: #9cc4c2;
+  color: var(--app-teal-dark);
 }
 
 .vse-research-notes {
   margin: 0;
   padding-left: 18px;
-  color: #5a5a5a;
+  color: var(--app-muted);
 }
 
 .vse-research-notes li {
@@ -167,7 +216,7 @@
 .vse-dose-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 9px;
 }
 
 .vse-dose-grid label {
@@ -177,41 +226,163 @@
   font-size: 0.85rem;
 }
 
+/* --- Disease finding rows (mockup .invasive-row) ------------------------------ */
 .vse-findings {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 10px;
+  margin-top: 13px;
+}
+
+.vse-findings-title {
+  margin: 0;
+  color: var(--app-heading-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.vse-findings-hint {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 12px;
 }
 
 .vse-finding-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 32px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 43px;
+  gap: 10px;
   align-items: center;
+  border: 1px solid var(--app-card-line);
+  border-radius: 12px;
+  background: var(--app-card-bg);
+  padding: 12px;
+}
+
+.vse-finding-row.single {
+  grid-template-columns: minmax(0, 1fr) 43px;
 }
 
 .vse-findings .vse-finding-row[hidden] {
   display: none;
 }
 
+/* --- Sample section (mockup segmented modes) ---------------------------------- */
 .vse-sample-modes {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 9px;
+}
+
+.vse-sample-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 43px;
+  border: 1px solid var(--app-input-line);
+  border-radius: 9px;
+  background: var(--app-panel);
+  color: #4d676d;
+  padding: 0 13px;
+  font-weight: 600;
+}
+
+.vse-sample-mode:hover:not(:disabled) {
+  border-color: #9cc4c2;
+  background: var(--app-tint);
+  color: var(--app-teal-dark);
+}
+
+/* The active mode is not color-only: the checked radio glyph plus a teal
+   border and an inset ring carry the state (R-DR30-8). */
+.vse-sample-mode:has(input:checked) {
+  border-color: var(--app-teal);
+  background: var(--app-tint);
+  color: var(--app-teal-dark);
+  box-shadow: inset 0 0 0 1px var(--app-teal);
+}
+
+.vse-sample-mode input {
+  accent-color: var(--app-teal);
+}
+
+.vse-sample-mode:has(input:disabled) {
+  border-color: var(--app-line);
+  background: #edf2f2;
+  color: #667b80;
+  cursor: not-allowed;
 }
 
 .vse-sample-inputs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 17px 18px;
   max-width: 560px;
 }
 
+.vse-sample-secondary {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* --- Outcome ------------------------------------------------------------------ */
 .vse-outcome-fields {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.vse-sent-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--app-ink);
+}
+
+.vse-sent-flag input {
+  accent-color: var(--app-teal);
+}
+
+/* --- Pricing: the honest pending state in the mockup invoice styling ---------- */
+.vse-invoice-pending {
+  border: 1px solid var(--app-card-line);
+  border-radius: 12px;
+  background: var(--app-card-bg);
+  padding: 16px;
+  color: var(--app-muted-readable);
+  min-width: 0;
+}
+
+.vse-invoice-pending p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Sticky action panel (mockup .actions) ------------------------------------- */
+.vse-exam-actions {
+  position: sticky;
+  bottom: 18px;
+  z-index: 5;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 15px 18px;
+  background: var(--app-panel-translucent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--app-line);
+  border-radius: 15px;
+  box-shadow: 0 12px 36px #274e501c;
+}
+
+/* --- Journal (unchanged behaviour, existing styles) ---------------------------- */
+.vse-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .vse-journal-filter {
@@ -298,10 +469,14 @@
 
 @media (max-width: 1024px) {
   .vse-research-grid,
-  .vse-exam-grid,
   .vse-sample-inputs,
   .vse-dose-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vse-span4,
+  .vse-span6 {
+    grid-column: 1 / -1;
   }
 
   .vse-journal-row {
@@ -310,6 +485,14 @@
 
   .vse-journal-row .vse-journal-value {
     white-space: normal;
+  }
+}
+
+@media (max-width: 800px) {
+  .vse-exam-actions {
+    bottom: 8px;
+    gap: 7px;
+    padding: 11px;
   }
 }
 
@@ -322,7 +505,72 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .vse-finding-row {
-    grid-template-columns: minmax(0, 1fr) 32px;
+  .vse-finding-row,
+  .vse-finding-row.single {
+    grid-template-columns: minmax(0, 1fr);
   }
+
+  .vse-finding-row .vse-research-remove {
+    width: 100%;
+  }
+}
+
+/* Legacy names still referenced by the view page (PartyReadonlyFacts) and
+   the shared facts list. */
+.vse-exam-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 14px;
+  background: var(--app-panel, #fff);
+  min-width: 0;
+}
+
+.vse-exam-block h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.vse-exam-block fieldset {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vse-exam-block legend {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.vse-exam-note {
+  margin: 0;
+  color: #5a5a5a;
+  overflow-wrap: anywhere;
+}
+
+.vse-exam-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.vse-exam-facts dt {
+  color: #5a5a5a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vse-exam-facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }

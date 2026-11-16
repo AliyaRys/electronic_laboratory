@@ -125,9 +125,14 @@ async def list_arrivals(
         page=page,
         sort=sort,
     )
+    # ТЗ DR39: the summaries of ONE page are loaded with ONE bulk read — the
+    # author name never triggers a per-row user read and never any VetIS call.
+    summaries = await queries.reconciliation_summaries(db, [party.id for party in parties])
     views: list[IncomingView] = []
     for party, document in zip(parties, documents, strict=True):
-        views.append(await queries.build_incoming_view(db, party, document))
+        views.append(
+            await queries.build_incoming_view(db, party, document, reconciliation_summary=summaries.get(party.id))
+        )
     response.headers["Cache-Control"] = "no-store"
     return Page[IncomingView](items=views, total=total, page=page, page_size=queries.PAGE_SIZE)
 

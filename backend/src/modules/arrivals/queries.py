@@ -31,9 +31,12 @@ from backend.src.modules.arrivals.schemas import (
     ExternalFields,
     IncomingView,
     QuantitySet,
+    ReconciliationSummary,
     goods_date_fields,
     trailer_projection,
 )
+from backend.src.modules.catalog_pricing.schemas import PricingSnapshot
+from backend.src.modules.identity.models import User
 from backend.src.modules.integrations.vetis.document_types import document_type_label
 from backend.src.modules.integrations.vetis.models import VetisContour
 from backend.src.modules.integrations.vetis.queries import find_purpose_name
@@ -52,6 +55,7 @@ __all__ = [
     "party_view",
     "previous_vse_fields",
     "queue_of",
+    "reconciliation_summaries",
 ]
 
 # CHK source keys of the previous-ВСЭ block (CHK-F24/28–32, field-mapping).
@@ -99,6 +103,10 @@ _EXAMINATIONS = Table(
 )
 
 # Raw probe helper kept minimal: only to_regclass probes are used.
+
+
+class _UNSET:
+    """Sentinel: the caller did not pass a bulk summary (single-read path)."""
 
 
 def _escape_like(query: str) -> str:
@@ -453,6 +461,52 @@ def _confirmation_summary(confirmation: ReceiptConfirmation) -> ConfirmationSumm
     )
 
 
+# --- ТЗ DR39: the compact server-side reconciliation summary ----------------------
+
+
+def _summary_of(reconciliation: Reconciliation, author_name: str | None) -> ReconciliationSummary:
+    """The read-model summary of one saved reconciliation row.
+
+    The frozen ``pricing_snapshot`` is validated through the existing strict
+    ``PricingSnapshot`` schema — never re-computed and never rebuilt as a
+    loosely typed dict. A corrupt stored value keeps an honest absence.
+    """
+    pricing = None
+    if reconciliation.pricing_snapshot is not None:
+        try:
+            pricing = PricingSnapshot.model_validate(reconciliation.pricing_snapshot)
+        except Exception:  # noqa: BLE001 - a corrupt legacy value stays absent
+            pricing = None
+    return ReconciliationSummary(
+        completed_at=reconciliation.completed_at,
+        author_name=author_name,
+        pricing=pricing,
+    )
+
+
+async def reconciliation_summaries(
+    db: AsyncSession,
+    party_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, ReconciliationSummary]:
+    """The reconciliation summaries of one PAGE in ONE SQL read (no N+1).
+
+    One join against ``users`` resolves the author ``full_name`` of every row
+    by ``actor_id`` (CHK-F33): the client never receives a raw id to resolve
+    and the list read never calls a user endpoint nor any VetIS/SOAP service.
+    """
+    if not party_ids:
+        return {}
+    rows = await db.execute(
+        select(Reconciliation, User.full_name)
+        .join(User, User.id == Reconciliation.actor_id, isouter=True)
+        .where(Reconciliation.party_id.in_(party_ids))
+    )
+    return {
+        reconciliation.party_id: _summary_of(reconciliation, author_name)
+        for reconciliation, author_name in rows.all()
+    }
+
+
 async def _open_examination_id(db: AsyncSession, party_id: uuid.UUID) -> uuid.UUID | None:
     if not await _examinations_available(db):
         return None
@@ -463,8 +517,19 @@ async def build_incoming_view(
     db: AsyncSession,
     party: Party,
     document: IncomingDocument,
+    *,
+    reconciliation_summary: ReconciliationSummary | None | _UNSET = _UNSET(),
 ) -> IncomingView:
-    """The API-04 ``IncomingView`` of one arrival."""
+    """The API-04 ``IncomingView`` of one arrival.
+
+    ``reconciliation_summary`` carries the page's bulk read (ТЗ DR39); the
+    default sentinel loads the summary of this one party with one query for
+    the single-read endpoint.
+    """
+    if isinstance(reconciliation_summary, _UNSET):
+        summary = (await reconciliation_summaries(db, [party.id])).get(party.id)
+    else:
+        summary = reconciliation_summary
     has_reconciliation, confirmation = await started_flags(db, party.id)
     document_payload = document.source_snapshot["vdDocument"]
     batch = document_payload["batch"] if isinstance(document_payload, dict) else {}
@@ -489,6 +554,7 @@ async def build_incoming_view(
         classification=_classification_view(dict(party.classification_snapshot)),
         documentary=_quantity_set(batch),
         confirmation=_confirmation_summary(confirmation) if confirmation is not None else None,
+        reconciliation=summary,
         queue=queue_label,
         examination_id=str(examination_id) if examination_id is not None else None,
         revision=party.rev,

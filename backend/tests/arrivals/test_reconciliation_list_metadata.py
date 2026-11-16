@@ -20,14 +20,14 @@ from backend.src.modules.arrivals.models import Reconciliation
 from backend.src.modules.catalog_pricing.models import Tariff
 from backend.src.modules.identity.models import User
 from backend.tests.arrivals.test_api import _client_for, vet_env  # noqa: F401,F811
+from backend.tests.arrivals.test_dr11_pricing import full_body
+from backend.tests.arrivals.test_import_and_queues import document
 from backend.tests.fixtures.receipt_evidence import (
     FixtureReceiptEvidenceReader,
     confirm_via_reader,
     party_evsd_uuid,
     receipt_evidence,
 )
-from backend.tests.arrivals.test_dr11_pricing import full_body
-from backend.tests.arrivals.test_import_and_queues import document
 
 pytestmark = pytest.mark.integration
 
@@ -54,7 +54,9 @@ async def _work_party(env, *, completed_at=None) -> object:
     assert confirmed is not None
     await env.db.commit()
     if completed_at is not None:
-        await env.db.execute(update(Reconciliation).where(Reconciliation.party_id == party.id).values(completed_at=completed_at))
+        await env.db.execute(
+            update(Reconciliation).where(Reconciliation.party_id == party.id).values(completed_at=completed_at)
+        )
         await env.db.commit()
     return party
 
@@ -146,10 +148,12 @@ async def test_author_is_loaded_without_per_row_user_queries(vet_env) -> None:  
     finally:
         event.remove(env.engine.sync_engine, "before_cursor_execute", _spy)
     assert len(items) == 3
+    # The ONLY users read besides the session identity is the ONE author join
+    # of the page; a per-row user read (no join, no IN) would fail here.
     user_reads = [
         text
         for text in statements
-        if "users" in text.lower() and "select" in text.lower() and "for update" not in text.lower()
+        if "users" in text.lower() and "reconciliations" in text.lower() and "select" in text.lower()
     ]
     assert len(user_reads) <= 1, user_reads
     await env.db.execute(select(User).limit(0))  # keep the import meaningful

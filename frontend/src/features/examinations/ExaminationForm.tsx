@@ -263,7 +263,7 @@ export function ExaminationForm({
       />
 
       <FormSection
-        icon="check"
+        icon="check-complete"
         title="Итог экспертизы"
         description="Заключение и специалист, проводивший ВСЭ."
       >

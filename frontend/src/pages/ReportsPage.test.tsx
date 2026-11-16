@@ -211,6 +211,22 @@ describe("ReportsPage hub (DR37)", () => {
     expect(await screen.findByText(/Лаборатория №1 г. Казань/)).toBeVisible();
   });
 
+  it("without report:5vet-list the 5-вет card never claims «пока нет» (false-empty fix)", async () => {
+    const log: string[] = [];
+    trackWorkRequests(log);
+    server.use(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json(me("ANALYST", ["sample:read", "report:operational", "report:5vet-read"])),
+      ),
+    );
+    renderPage();
+    expect(await screen.findByText("Форма 5-вет (раздел III)")).toBeVisible();
+    // The list was never requested; the meta is neutral, no false empty state.
+    expect(screen.queryByText("Сохранённых отчётов пока нет.")).toBeNull();
+    expect(screen.getByText("Список сохранённых отчётов недоступен.")).toBeVisible();
+    expect(log).toEqual([]);
+  });
+
   it("pages through 25 saved reports: page 2 then back", async () => {
     const user = userEvent.setup();
     const gets: string[] = [];

@@ -116,13 +116,19 @@ function ReportsContent(): React.ReactElement {
     setParams(url);
   };
 
+  // Honest meta (fix-loop DR37): the «пока нет» empty text may be shown only
+  // when the list is really loaded and empty (list access). Without
+  // ``report:5vet-list`` the list was never requested — the meta must not
+  // promise anything, a neutral "unavailable" note instead.
   const fiveVetMeta = problem !== null
     ? null
-    : list.isLoading
-      ? "Загрузка списка сохранённых отчётов…"
-      : (data?.total ?? 0) === 0
-        ? "Сохранённых отчётов пока нет."
-        : `Сохранённых отчётов: ${data?.total ?? 0}. Список — ниже на этой странице.`;
+    : !access.list5vet
+      ? null
+      : list.isLoading
+        ? "Загрузка списка сохранённых отчётов…"
+        : (data?.total ?? 0) === 0
+          ? "Сохранённых отчётов пока нет."
+          : `Сохранённых отчётов: ${data?.total ?? 0}. Список — ниже на этой странице.`;
 
   return (
     <div className="vse-app vse-page vse-reports-hub">
@@ -148,8 +154,7 @@ function ReportsContent(): React.ReactElement {
           {access.list5vet || access.read5vet ? (
             <ReportHubItem
               name="Форма 5-вет (раздел III)"
-              meta={fiveVetMeta ?? "Список сохранённых отчётов недоступен."}
-            />
+              meta={fiveVetMeta ?? "Список сохранённых отчётов недоступен."}            />
           ) : null}
           {access.operational ? (
             <ReportHubItem

@@ -40,9 +40,7 @@ async def _seed(db_session: AsyncSession) -> SimpleNamespace:
     db_session.add_all([root, district, other])
     await db_session.flush()
     lab = Laboratory(territory_id=district.id, name="Лаборатория №1 г. Казань", address="ул. Тест", organization="ГБУ")
-    other_lab = Laboratory(
-        territory_id=other.id, name="Чужая лаборатория", address="ул. Иная", organization="ГБУ"
-    )
+    other_lab = Laboratory(territory_id=other.id, name="Чужая лаборатория", address="ул. Иная", organization="ГБУ")
     db_session.add_all([lab, other_lab])
     await db_session.flush()
     product = uuid.uuid4()
@@ -127,9 +125,7 @@ async def test_admin_laboratory_options_stay_inside_the_district(db_session: Asy
         contexts = await client.get("/api/v1/contexts")
         assert contexts.status_code == 200
         assert any(
-            row["territory_name"] == "Альметьевский район"
-            for row in contexts.json()
-            if row["territory_id"] is not None
+            row["territory_name"] == "Альметьевский район" for row in contexts.json() if row["territory_id"] is not None
         )
 
 

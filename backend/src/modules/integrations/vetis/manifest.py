@@ -289,7 +289,7 @@ def load_runtime_manifest() -> VetisManifest:
     if pins_path:
         try:
             pins = json.loads(Path(pins_path).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except OSError, ValueError:
             # An unreadable pins file is the unconfigured state, never a crash.
             raise integration_not_configured() from None
         try:

@@ -215,9 +215,7 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
                 source_presence_reason=None,
                 last_seen_sync_at=document.fetched_at,
                 presence_changed_at=(
-                    document.fetched_at
-                    if existing.source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST"
-                    else None
+                    document.fetched_at if existing.source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST" else None
                 ),
             )
         )
@@ -246,9 +244,7 @@ async def upsert_incoming(uow: AsyncSession, document: IncomingDocumentInput) ->
                 source_presence_reason=None,
                 last_seen_sync_at=document.fetched_at,
                 presence_changed_at=(
-                    document.fetched_at
-                    if existing.source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST"
-                    else None
+                    document.fetched_at if existing.source_presence == "NOT_IN_CURRENT_CONFIRMED_LIST" else None
                 ),
             )
         )

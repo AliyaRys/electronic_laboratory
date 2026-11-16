@@ -71,9 +71,7 @@ async def run_backfill(
     async with factory() as db:
         pairs = (
             await db.execute(
-                select(IncomingDocument.contour, IncomingDocument.evsd_uuid).order_by(
-                    IncomingDocument.created_at
-                )
+                select(IncomingDocument.contour, IncomingDocument.evsd_uuid).order_by(IncomingDocument.created_at)
             )
         ).all()
         for contour, evsd_uuid in pairs:
@@ -84,9 +82,7 @@ async def run_backfill(
     return counters.as_dict()
 
 
-async def _backfill_one(
-    db: AsyncSession, contour: str, evsd_uuid: uuid.UUID, counters: BackfillCounters
-) -> None:
+async def _backfill_one(db: AsyncSession, contour: str, evsd_uuid: uuid.UUID, counters: BackfillCounters) -> None:
     document = (
         await db.execute(
             select(IncomingDocument)
@@ -152,15 +148,9 @@ async def _backfill_one(
             rev=document.rev + 1,
         )
     )
+    await db.execute(update(Party).where(Party.incoming_document_id == document.id).values(rev=Party.rev + 1))
     await db.execute(
-        update(Party)
-        .where(Party.incoming_document_id == document.id)
-        .values(rev=Party.rev + 1)
-    )
-    await db.execute(
-        delete(HiddenIncoming).where(
-            HiddenIncoming.contour == contour, HiddenIncoming.evsd_uuid == evsd_uuid
-        )
+        delete(HiddenIncoming).where(HiddenIncoming.contour == contour, HiddenIncoming.evsd_uuid == evsd_uuid)
     )
     counters.fixed += 1
 
@@ -284,9 +274,9 @@ async def run_goods_date_backfill(
             snapshot["vdDocument"] = payload
             new_hash = content_hash(snapshot)
             await db.execute(
-                update(IncomingDocument).where(IncomingDocument.id == document.id).values(
-                    source_snapshot=snapshot, content_hash=new_hash
-                )
+                update(IncomingDocument)
+                .where(IncomingDocument.id == document.id)
+                .values(source_snapshot=snapshot, content_hash=new_hash)
             )
             # The hide decision is kept (the same document stays hidden).
             await db.execute(

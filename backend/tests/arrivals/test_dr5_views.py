@@ -26,12 +26,7 @@ from backend.src.modules.integrations.vetis.normalizer import normalize_snapshot
 
 DOC_UUID = uuid.UUID("e13bda81-7cf6-4b2b-b1aa-3c99e25adaac")
 PURPOSE_GUID = uuid.UUID("0778b8cb-f49d-4ed9-88b9-5f70af00a211")
-REAL_DOC = (
-    Path(__file__).resolve().parents[2]
-    / "tests"
-    / "vetis"
-    / "test_normalizer_dr5.py"
-)
+REAL_DOC = Path(__file__).resolve().parents[2] / "tests" / "vetis" / "test_normalizer_dr5.py"
 
 
 def real_snapshot() -> SourceSnapshot:
@@ -275,9 +270,7 @@ async def test_backfill_does_not_touch_confirmed_facts(
     del actor
     from backend.src.modules.identity.models import User
 
-    user = (
-        await db_session.execute(select(User).where(User.login == "vet1"))
-    ).scalar_one()
+    user = (await db_session.execute(select(User).where(User.login == "vet1"))).scalar_one()
     confirmation = ReceiptConfirmation(
         party_id=party.id,
         operation_id=uuid.uuid4(),

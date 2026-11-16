@@ -31,7 +31,6 @@ async def reconcile_receipt(db: AsyncSession, operation: VetisOperation, result:
         operation.state = VetisOperationState.UNKNOWN
         operation.problem_code = "INTEGRATION_EVIDENCE_INCOMPLETE"
         operation.problem_detail = (
-            "Внешний результат не доказывает состав гашения; "
-            "автоматическая повторная отправка запрещена."
+            "Внешний результат не доказывает состав гашения; автоматическая повторная отправка запрещена."
         )
         operation.diagnostics = result.detail

@@ -284,9 +284,7 @@ def _previous_present(fields: dict[str, str | int | None]) -> bool:
     return any(_present(fields.get(key)) for key in PREVIOUS_KEYS)
 
 
-def _comparison_source_values(
-    fields: dict[str, str | int | None], spec: FieldSpec
-) -> tuple[str | int | None, ...]:
+def _comparison_source_values(fields: dict[str, str | int | None], spec: FieldSpec) -> tuple[str | int | None, ...]:
     """All wire variants that make one CHK comparison source present.
 
     GoodsDate deliberately keeps a single date, an interval and informal text

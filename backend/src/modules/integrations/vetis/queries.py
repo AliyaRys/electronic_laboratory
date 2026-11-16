@@ -53,9 +53,7 @@ async def require_product_lvl2(
     return product
 
 
-async def find_purpose_name(
-    db: AsyncSession, contour: VetisContour | str, guid: uuid.UUID
-) -> str | None:
+async def find_purpose_name(db: AsyncSession, contour: VetisContour | str, guid: uuid.UUID) -> str | None:
     """The Russian purpose name inside the SAME contour; a miss is not an error.
 
     A dictionary miss never blocks the import of an incoming eVSD (ТЗ DR5

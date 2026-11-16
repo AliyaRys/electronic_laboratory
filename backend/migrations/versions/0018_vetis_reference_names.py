@@ -47,9 +47,7 @@ def upgrade() -> None:
         sa.Column("last_problem_code", sa.String(length=128), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="vetis_reference_contour_valid"),
-        sa.CheckConstraint(
-            "entity_kind IN ('BUSINESS_ENTITY','ENTERPRISE')", name="vetis_reference_kind_valid"
-        ),
+        sa.CheckConstraint("entity_kind IN ('BUSINESS_ENTITY','ENTERPRISE')", name="vetis_reference_kind_valid"),
         sa.CheckConstraint("source IN ('SOURCE_XML','VETIS_LOOKUP')", name="vetis_reference_source_valid"),
         sa.CheckConstraint("status IN ('PENDING','RESOLVED','ERROR')", name="vetis_reference_status_valid"),
         sa.CheckConstraint("failure_count >= 0", name="vetis_reference_failures_positive"),

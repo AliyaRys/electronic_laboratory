@@ -69,9 +69,7 @@ def purpose_due(state: MercuryPurposeSyncState | None, *, now: datetime) -> bool
 
 async def _acquire_lock(db: AsyncSession, contour: str) -> bool:
     """True when THIS run owns the contour (overlap protection)."""
-    row = (
-        await db.execute(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": _lock_key(contour)})
-    ).scalar()
+    row = (await db.execute(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": _lock_key(contour)})).scalar()
     return bool(row)
 
 
@@ -102,9 +100,7 @@ async def run_purpose_sync(
             return {"result": "SKIPPED_OVERLAP"}
         state = (
             await db.execute(
-                select(MercuryPurposeSyncState)
-                .where(MercuryPurposeSyncState.contour == contour)
-                .with_for_update()
+                select(MercuryPurposeSyncState).where(MercuryPurposeSyncState.contour == contour).with_for_update()
             )
         ).scalar_one_or_none()
         if not purpose_due(state, now=current) and not force:
@@ -161,9 +157,7 @@ async def run_purpose_sync(
             )
             state = (
                 await db.execute(
-                    select(MercuryPurposeSyncState)
-                    .where(MercuryPurposeSyncState.contour == contour)
-                    .with_for_update()
+                    select(MercuryPurposeSyncState).where(MercuryPurposeSyncState.contour == contour).with_for_update()
                 )
             ).scalar_one_or_none()
             if state is None:
@@ -201,16 +195,12 @@ async def run_purpose_sync(
     }
 
 
-async def _record_failure(
-    factory: async_sessionmaker[AsyncSession], contour: str, code: str, now: datetime
-) -> None:
+async def _record_failure(factory: async_sessionmaker[AsyncSession], contour: str, code: str, now: datetime) -> None:
     """The failed attempt is recorded WITHOUT moving the checkpoint."""
     async with factory() as db:
         state = (
             await db.execute(
-                select(MercuryPurposeSyncState)
-                .where(MercuryPurposeSyncState.contour == contour)
-                .with_for_update()
+                select(MercuryPurposeSyncState).where(MercuryPurposeSyncState.contour == contour).with_for_update()
             )
         ).scalar_one_or_none()
         if state is None:
@@ -243,9 +233,7 @@ async def _apply_pass(
 
     existing = {
         str(row.guid): row
-        for row in (
-            await db.execute(select(MercuryPurposeGuid).where(MercuryPurposeGuid.contour == contour))
-        ).scalars()
+        for row in (await db.execute(select(MercuryPurposeGuid).where(MercuryPurposeGuid.contour == contour))).scalars()
     }
     for guid_text, record in collected.items():
         guid = uuid.UUID(guid_text)
@@ -306,9 +294,7 @@ async def run_due_purpose_sync(
     factory = session_factory or get_session_factory()
     async with factory() as db:
         state = (
-            await db.execute(
-                select(MercuryPurposeSyncState).where(MercuryPurposeSyncState.contour == contour)
-            )
+            await db.execute(select(MercuryPurposeSyncState).where(MercuryPurposeSyncState.contour == contour))
         ).scalar_one_or_none()
     if not purpose_due(state, now=now or datetime.now(UTC)):
         return {"result": "NOT_DUE"}

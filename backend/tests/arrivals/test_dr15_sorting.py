@@ -199,14 +199,18 @@ async def test_sort_does_not_change_scope_search_total(vet_env) -> None:  # noqa
     await commands.upsert_incoming(env.db, doc_with_issue_date(uuid.uuid4(), env.foreign.id, "2026-11-01"))
     await env.db.commit()
     async with _client_for(env) as (http, _):
-        scoped = (await http.get(
-            "/api/v1/arrivals", params={"laboratory_id": str(env.own.id), "queue": "EXPECTED", "sort": "asc"}
-        )).json()
+        scoped = (
+            await http.get(
+                "/api/v1/arrivals", params={"laboratory_id": str(env.own.id), "queue": "EXPECTED", "sort": "asc"}
+            )
+        ).json()
         assert scoped["total"] == 2
-        searched = (await http.get(
-            "/api/v1/arrivals",
-            params={"laboratory_id": str(env.own.id), "queue": "EXPECTED", "sort": "asc", "q": "S-00001"},
-        )).json()
+        searched = (
+            await http.get(
+                "/api/v1/arrivals",
+                params={"laboratory_id": str(env.own.id), "queue": "EXPECTED", "sort": "asc", "q": "S-00001"},
+            )
+        ).json()
         assert searched["total"] == 1
         assert searched["items"][0]["external"]["fields"]["issuedOn"] == "2026-11-02"
 

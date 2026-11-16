@@ -85,16 +85,13 @@ def upgrade() -> None:
             # Equivalent norms: keep the NEWEST row active (the group is
             # ordered newest-first), deactivate the rest — history preserved.
             for row in rows[1:]:
-                bind.execute(
-                    sa.text("UPDATE method_rules SET active = false WHERE id = :id").bindparams(id=row.id)
-                )
+                bind.execute(sa.text("UPDATE method_rules SET active = false WHERE id = :id").bindparams(id=row.id))
                 merged_equivalent += 1
             # The surviving row drops the legacy scope values: they are no
             # longer part of the applicability key of this norm.
             bind.execute(
                 sa.text(
-                    "UPDATE method_rules SET product_species_id = NULL, product_state_id = NULL"
-                    " WHERE id = :id"
+                    "UPDATE method_rules SET product_species_id = NULL, product_state_id = NULL WHERE id = :id"
                 ).bindparams(id=rows[0].id)
             )
         else:
@@ -102,9 +99,7 @@ def upgrade() -> None:
             # audit (deactivated, legacy scope kept) and the indicator stays
             # «Не настроено» until the user enters the norm explicitly.
             for row in rows:
-                bind.execute(
-                    sa.text("UPDATE method_rules SET active = false WHERE id = :id").bindparams(id=row.id)
-                )
+                bind.execute(sa.text("UPDATE method_rules SET active = false WHERE id = :id").bindparams(id=row.id))
             conflicting_groups += 1
             to_fill += 1
     if merged_equivalent or conflicting_groups or to_fill:
@@ -135,9 +130,7 @@ def downgrade() -> None:
     no legacy scope values (they were merged away by the upgrade and cannot be
     reconstructed without inventing data)."""
     bind = op.get_bind()
-    count = bind.execute(
-        sa.text("SELECT count(*) FROM method_rules WHERE product_species_id IS NULL")
-    ).scalar_one()
+    count = bind.execute(sa.text("SELECT count(*) FROM method_rules WHERE product_species_id IS NULL")).scalar_one()
     if count:
         raise RuntimeError(
             "downgrade 0019: найдены активные нормы без вида/состояния продукции "

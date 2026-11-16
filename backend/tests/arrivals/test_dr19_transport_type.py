@@ -131,9 +131,7 @@ async def test_projection_absent_and_unknown_are_honest(db_session: AsyncSession
     absent = (
         await db_session.execute(select(IncomingDocument).where(IncomingDocument.evsd_uuid == DOC_UUID))
     ).scalar_one()
-    absent_party = (
-        await db_session.execute(select(Party).where(Party.incoming_document_id == absent.id))
-    ).scalar_one()
+    absent_party = (await db_session.execute(select(Party).where(Party.incoming_document_id == absent.id))).scalar_one()
     assert source_projection(absent, absent_party).fields["transportKind"] is None
     unknown = (
         await db_session.execute(

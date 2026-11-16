@@ -617,6 +617,7 @@ class SpyPurposeTransport:
 
 # --- the participant-name lookups (ТЗ DR18 §8, EnterpriseService) -----------------
 
+
 def build_get_enterprise_by_guid_request(guid: str, *, registry_ns: str = _REGISTRY_DEFINITIONS_NS) -> str:
     """The plain SOAP envelope of a read-only GetEnterpriseByGuid v2 call."""
     from xml.sax.saxutils import escape
@@ -711,9 +712,7 @@ def parse_business_entity_by_guid(result_xml: str) -> dict[str, object]:
     root = ET.fromstring(result_xml)
     entity = next((node for node in root.iter() if _localname(node) == "businessEntity"), None)
     record = _identity_record(entity, "businessEntity")
-    record["name"] = (
-        _child_text(entity, "name") or _child_text(entity, "fullName") or _child_text(entity, "fio")
-    )
+    record["name"] = _child_text(entity, "name") or _child_text(entity, "fullName") or _child_text(entity, "fio")
     return record
 
 
@@ -772,9 +771,7 @@ class ZeepEnterpriseLookupTransport:
         return str(response.text)
 
     async def get_enterprise_by_guid(self, guid: str) -> str:
-        return await asyncio.to_thread(
-            self._post, self._enterprise_action, build_get_enterprise_by_guid_request(guid)
-        )
+        return await asyncio.to_thread(self._post, self._enterprise_action, build_get_enterprise_by_guid_request(guid))
 
     async def get_business_entity_by_guid(self, guid: str) -> str:
         return await asyncio.to_thread(

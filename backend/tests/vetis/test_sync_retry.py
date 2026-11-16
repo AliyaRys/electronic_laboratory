@@ -167,9 +167,7 @@ async def test_not_configured_is_not_retried(sync_env: SimpleNamespace) -> None:
         (403, "VETIS_AUTH_ERROR"),
     ],
 )
-async def test_permanent_problems_do_not_retry(
-    sync_env: SimpleNamespace, status: int, code: str
-) -> None:
+async def test_permanent_problems_do_not_retry(sync_env: SimpleNamespace, status: int, code: str) -> None:
     env = sync_env
     operation_id = await start(env)
     adapter = make_adapter(env, _permanent_adapter_problem(status, code))
@@ -190,9 +188,7 @@ async def test_permanent_http_401_is_not_retried(sync_env: SimpleNamespace) -> N
 
     class UnauthorizedTransport(FakeTransport):
         async def receive_result(self, application_id: str) -> str:
-            raise requests.exceptions.HTTPError(
-                "401 Client Error", response=SimpleNamespace(status_code=401)
-            )
+            raise requests.exceptions.HTTPError("401 Client Error", response=SimpleNamespace(status_code=401))
 
     await run(env, operation_id, make_adapter(env, UnauthorizedTransport([])))
     operation = await op_row(env, operation_id)
@@ -257,6 +253,7 @@ async def test_multi_page_retry_loses_no_documents(sync_env: SimpleNamespace) ->
     env = sync_env
     first, second = uuid.uuid4(), uuid.uuid4()
     operation_id = await start(env)
+
     # Attempt 1: page one is read, the SECOND page request gets the 502.
     class FlakyOnSecondReceive(FakeTransport):
         def __init__(self) -> None:
@@ -399,6 +396,3 @@ def test_classification_contract() -> None:
     assert retryable_flag is False and problem.code == "VETIS_AUTH_ERROR"
     # No credential material ever travels in the safe diagnostics.
     assert "api_key" not in sync._transport_problem(http_502).detail.lower()
-
-
-

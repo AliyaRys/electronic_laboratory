@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.examinations.models import Examination, ExaminationSample, ExaminationTombstone
 from backend.src.modules.examinations.schemas import ExaminationView
+from backend.src.modules.identity.models import User
 
 __all__ = ["get_examination", "get_tombstone", "examination_deleted", "build_view", "get_view"]
 
@@ -60,6 +61,14 @@ async def current_collection_id(db: AsyncSession, examination_id: uuid.UUID) -> 
 async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
     collection_id = await current_collection_id(db, row.id)
     findings = row.findings_snapshot
+    # DR35 §12.3/§14: the displayed specialist is the saved specialist_id; an
+    # existing pre-DR35 row keeps the audit actor as the displayed specialist
+    # (documented fallback — no fabricated assignment). The frozen ФИО is
+    # preferred; a legacy row without one resolves the display name once.
+    specialist_id = row.specialist_id if row.specialist_id is not None else row.created_by
+    specialist_name = row.specialist_name
+    if specialist_name is None:
+        specialist_name = await db.scalar(select(User.full_name).where(User.id == specialist_id))
     return ExaminationView(
         id=str(row.id),
         party_id=str(row.party_id),
@@ -77,6 +86,8 @@ async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
         direction=row.direction,
         reason=row.reason,
         created_by=str(row.created_by),
+        specialist_id=str(specialist_id),
+        specialist_name=specialist_name,
         created_at=row.created_at,
         first_completed_at=row.first_completed_at,
         revision=row.rev,

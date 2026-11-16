@@ -410,9 +410,7 @@ def _external_fields(
             else None
         ),
         "transportDocumentIssuedOn": (
-            str(transport_document.get("issueDate"))
-            if transport_document.get("issueDate") not in (None, "")
-            else None
+            str(transport_document.get("issueDate")) if transport_document.get("issueDate") not in (None, "") else None
         ),
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),

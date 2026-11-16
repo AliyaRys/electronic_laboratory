@@ -46,10 +46,7 @@ async def user_contexts(db: AsyncSession, user: User) -> list[ScopeView]:
             .join(Territory, Territory.id == DelegationGrant.territory_id)
             .where(DelegationGrant.target_id == user.id)
         )
-        return [
-            ScopeView(territory_id=territory_id, territory_name=name)
-            for territory_id, name in rows.all()
-        ]
+        return [ScopeView(territory_id=territory_id, territory_name=name) for territory_id, name in rows.all()]
     scope_rows = await db.execute(
         select(UserScope.laboratory_id, UserScope.product_scope_id, Laboratory.name)
         .join(Laboratory, Laboratory.id == UserScope.laboratory_id)
@@ -80,8 +77,10 @@ async def laboratory_options(db: AsyncSession, user: User) -> list[LaboratoryOpt
     role = UserRole(user.role)
     if role == UserRole.ADMIN:
         grants = (
-            await db.execute(select(DelegationGrant.territory_id).where(DelegationGrant.target_id == user.id))
-        ).scalars().all()
+            (await db.execute(select(DelegationGrant.territory_id).where(DelegationGrant.target_id == user.id)))
+            .scalars()
+            .all()
+        )
         if len(grants) == 0:
             return []
         rows = await db.execute(
@@ -89,18 +88,14 @@ async def laboratory_options(db: AsyncSession, user: User) -> list[LaboratoryOpt
             .where(Laboratory.territory_id.in_(grants))
             .order_by(Laboratory.name, Laboratory.id)
         )
-        return [
-            LaboratoryOptionView(laboratory_id=lid, name=name, territory_id=tid) for lid, name, tid in rows.all()
-        ]
+        return [LaboratoryOptionView(laboratory_id=lid, name=name, territory_id=tid) for lid, name, tid in rows.all()]
     rows = await db.execute(
         select(Laboratory.id, Laboratory.name, Laboratory.territory_id)
         .join(UserScope, UserScope.laboratory_id == Laboratory.id)
         .where(UserScope.user_id == user.id)
         .order_by(Laboratory.name, Laboratory.id)
     )
-    return [
-        LaboratoryOptionView(laboratory_id=lid, name=name, territory_id=tid) for lid, name, tid in rows.all()
-    ]
+    return [LaboratoryOptionView(laboratory_id=lid, name=name, territory_id=tid) for lid, name, tid in rows.all()]
 
 
 def capabilities_for(user: User) -> list[str]:

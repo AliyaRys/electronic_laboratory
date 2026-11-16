@@ -230,7 +230,9 @@ def _factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 
 
 async def test_backfill_fills_trailer_number_idempotently(
-    db_session: AsyncSession, lab, test_db_engine: AsyncEngine  # noqa: F811 - imported pytest fixture
+    db_session: AsyncSession,
+    lab,
+    test_db_engine: AsyncEngine,  # noqa: F811 - imported pytest fixture
 ) -> None:
     # A snapshot saved BEFORE the fix: no trailer_number key at all.
     old_snapshot = normalize_snapshot(parse_vet_document_list(_wrap(_xml(None)))[0]).model_dump(

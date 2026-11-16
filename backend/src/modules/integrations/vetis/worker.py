@@ -318,10 +318,7 @@ async def run_receipt_operation(
                 operation = (
                     await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id).with_for_update())
                 ).scalar_one()
-                definite = (
-                    isinstance(exc, VetisTransportError)
-                    and exc.outcome == TransportOutcome.DEFINITE_REJECTION
-                )
+                definite = isinstance(exc, VetisTransportError) and exc.outcome == TransportOutcome.DEFINITE_REJECTION
                 if definite:
                     operation.state = VetisOperationState.REJECTED
                     operation.problem_code = exc.code
@@ -571,9 +568,7 @@ async def reference_names_tick() -> dict[str, object]:
     factory = get_session_factory()
     try:
         async with factory() as session:
-            counters = await resolve_due_reference_names(
-                session, transport, contour=manifest.contour
-            )
+            counters = await resolve_due_reference_names(session, transport, contour=manifest.contour)
     except Exception as exc:  # noqa: BLE001 - an honest tick diagnostic, not a silent cron
         result = {"result": "ERROR", "problem": type(exc).__name__, "contour": manifest.contour}
         _log_reference_names_tick(result)
@@ -598,9 +593,7 @@ async def backfill_reference_names_startup() -> dict[str, int] | None:
     factory = get_session_factory()
     async with factory() as session:
         rows = (await session.execute(select(IncomingDocument))).scalars()
-        counters = await backfill_reference_names(
-            session, [(row.contour, row.source_snapshot) for row in rows]
-        )
+        counters = await backfill_reference_names(session, [(row.contour, row.source_snapshot) for row in rows])
         await session.commit()
         return counters
 

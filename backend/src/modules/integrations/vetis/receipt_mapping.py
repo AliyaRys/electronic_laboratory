@@ -18,8 +18,12 @@ VD_NS = "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"
 VU_NS = "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2"
 
 for prefix, namespace in (
-    ("apldef", APP_DEF_NS), ("apl", APP_NS), ("bs", BASE_NS),
-    ("dt", DICT_NS), ("vd", VD_NS), ("mercvu", VU_NS),
+    ("apldef", APP_DEF_NS),
+    ("apl", APP_NS),
+    ("bs", BASE_NS),
+    ("dt", DICT_NS),
+    ("vd", VD_NS),
+    ("mercvu", VU_NS),
 ):
     ET.register_namespace(prefix, namespace)
 
@@ -134,10 +138,7 @@ def _append_source_waybill(delivery: ET.Element, source_root: ET.Element) -> Non
     vet_documents = [source_root] if _local(source_root) == "vetDocument" else []
     vet_documents.extend(node for node in source_root.iter() if _local(node) == "vetDocument")
     direct_references = [
-        child
-        for document in vet_documents
-        for child in document
-        if _local(child) == "referencedDocument"
+        child for document in vet_documents for child in document if _local(child) == "referencedDocument"
     ]
     valid = [
         node
@@ -277,9 +278,7 @@ def validate_receipt_intent(intent: ReceiptIntent) -> None:
     if intent.accepted_quantity + intent.returned_quantity != intent.delivered_quantity:
         raise _invalid("Принятая и возвращаемая части не равны доставленному количеству мест.")
     if intent.decision == "ACCEPT_ALL" and (
-        intent.accepted_mass_kg != intent.delivered_mass_kg
-        or intent.returned_mass_kg
-        or intent.returned_quantity
+        intent.accepted_mass_kg != intent.delivered_mass_kg or intent.returned_mass_kg or intent.returned_quantity
     ):
         raise _invalid("Полное принятие не может содержать возврат.")
     if intent.decision == "PARTIALLY" and not (
@@ -340,9 +339,7 @@ def build_process_incoming_application(
     # lookup to the enterprise subtree instead of the first guid anywhere
     # inside consignee (live regression 2026-11-13).
     enterprise = (
-        next((item for item in consignee if _local(item) == "enterprise"), None)
-        if consignee is not None
-        else None
+        next((item for item in consignee if _local(item) == "enterprise"), None) if consignee is not None else None
     )
     receiver = _desc_text(enterprise, "guid")
     batch = next((item for item in source if _local(item) in {"batch", "consignment"}), None)

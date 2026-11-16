@@ -14,11 +14,20 @@ from backend.src.core.commands import CommandContext, format_etag, resolve_if_ma
 from backend.src.core.contracts import CommandStateView
 from backend.src.core.database import async_session
 from backend.src.core.durability import DurabilityGuard, get_durability_guard
-from backend.src.core.problems import not_found
-from backend.src.modules.arrivals.models import Party
-from backend.src.modules.examinations import commands, deletion, lifecycle, queries
+from backend.src.core.problems import ProblemError, not_found
+from backend.src.modules.arrivals.confirmation import downstream_route, ensure_confirmed
+from backend.src.modules.arrivals.models import IncomingDocument, Party
+from backend.src.modules.catalog_pricing.schemas import ResearchValue
+from backend.src.modules.examinations import commands, deletion, form_model, lifecycle, queries
 from backend.src.modules.examinations.models import Examination
-from backend.src.modules.examinations.schemas import ExaminationView, ExaminationWrite, OutcomeWrite
+from backend.src.modules.examinations.schemas import (
+    ExaminationFormView,
+    ExaminationView,
+    ExaminationWrite,
+    OutcomeWrite,
+    PricingPreviewRequest,
+    PricingPreviewResponse,
+)
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session
@@ -29,10 +38,97 @@ router = APIRouter(prefix="/examinations", tags=["Examinations"])
 __all__ = ["router"]
 
 
+def _route_conflict(detail: str) -> ProblemError:
+    return ProblemError(status=409, code="STATE_CONFLICT", title="State conflict", detail=detail)
+
+
 def _product_scope(party: Party) -> uuid.UUID | None:
     product = party.classification_snapshot.get("product")
     value = product.get("id") if isinstance(product, dict) else None
     return uuid.UUID(str(value)) if value is not None else None
+
+
+async def _party_or_404(db: AsyncSession, party_id: uuid.UUID) -> Party:
+    party = (await db.execute(select(Party).where(Party.id == party_id))).scalar_one_or_none()
+    if party is None:
+        raise not_found("Партия не найдена.")
+    return party
+
+
+@router.get("/parties/{party_id}/form", response_model=ExaminationFormView)
+async def read_examination_form(
+    party_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> ExaminationFormView:
+    """DR35 §4/§14: the frozen reconciliation-step snapshot — the single read
+    source of the create page. No SOAP and no lookup job ever runs here."""
+    identity, _actor = principal
+    party = await _party_or_404(db, party_id)
+    await authorizer.authorize(
+        db,
+        identity.actor_id,
+        "examination:read",
+        ScopeTarget(laboratory_id=party.laboratory_id, product_scope_id=_product_scope(party)),
+        hide_foreign=True,
+    )
+    await ensure_confirmed(db, party.id)
+    if await downstream_route(db, party.id) != "EXAMINATION":
+        raise _route_conflict("Подтверждённый маршрут партии не предусматривает создание местной ВСЭ.")
+    document = (
+        await db.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
+    ).scalar_one()
+    payload = await form_model.build_form_view(db, party, document, revision=party.rev)
+    await db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["ETag"] = format_etag(party.rev)
+    return ExaminationFormView.model_validate(payload)
+
+
+@router.post("/parties/{party_id}/pricing-preview", response_model=PricingPreviewResponse)
+async def pricing_preview(
+    party_id: uuid.UUID,
+    payload: PricingPreviewRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> PricingPreviewResponse:
+    """DR35 §13.3: the live pricing preview. A pure read/compute: it creates
+    NO examination, sample, event, command record or draft, calls the SAME
+    ``evaluate_and_price`` domain function as the final save, accepts no money
+    or quantity from the client and never touches VetIS."""
+    identity, _actor = principal
+    _require_csrf(request, identity.csrf_token)
+    party = await _party_or_404(db, party_id)
+    await authorizer.authorize(
+        db,
+        identity.actor_id,
+        "examination:read",
+        ScopeTarget(laboratory_id=party.laboratory_id, product_scope_id=_product_scope(party)),
+        hide_foreign=True,
+    )
+    confirmation = await ensure_confirmed(db, party.id)
+    if await downstream_route(db, party.id) != "EXAMINATION":
+        raise _route_conflict("Подтверждённый маршрут партии не предусматривает создание местной ВСЭ.")
+    snapshot = await commands.preview_pricing(
+        db,
+        party,
+        [
+            ResearchValue(indicator_id=result.indicator_id, performed=True, value=result.value)
+            for result in payload.researches
+        ],
+    )
+    await db.commit()
+    return PricingPreviewResponse(
+        snapshot=snapshot,
+        accepted_quantity=str(confirmation.accepted_quantity),
+        accepted_unit_id=confirmation.accepted_unit_id,
+        fair=snapshot.fair,
+        revision=party.rev,
+    )
 
 
 async def _mutation_scope(db: AsyncSession, examination_id: uuid.UUID) -> tuple[uuid.UUID, bool]:

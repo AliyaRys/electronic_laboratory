@@ -140,9 +140,7 @@ def extract_participants(snapshot: object) -> dict[str, dict[str, ParticipantRef
                 kind=VetisEntityKind.ENTERPRISE,
                 guid=_parse_uuid(enterprise.get("guid")),
                 ref_uuid=_parse_uuid(enterprise.get("uuid")),
-                name=str(enterprise.get("name") or top_name)
-                if (enterprise.get("name") or top_name)
-                else None,
+                name=str(enterprise.get("name") or top_name) if (enterprise.get("name") or top_name) else None,
             ),
         }
     return participants
@@ -352,9 +350,7 @@ def _backoff(failure_count: int) -> timedelta:
     return delay if delay < MAX_BACKOFF else MAX_BACKOFF
 
 
-async def schedule_vetis_lookup_recheck(
-    db: AsyncSession, *, now: datetime | None = None
-) -> int:
+async def schedule_vetis_lookup_recheck(db: AsyncSession, *, now: datetime | None = None) -> int:
     """The R-DR25-3 data-fix: rows resolved by the OLD broken name cascade.
 
     Rows whose name was written with ``source=VETIS_LOOKUP`` may carry a name
@@ -374,8 +370,7 @@ async def schedule_vetis_lookup_recheck(
         update(VetisReferenceName)
         .where(
             VetisReferenceName.source == "VETIS_LOOKUP",
-            VetisReferenceName.next_check_at.is_(None)
-            | (VetisReferenceName.next_check_at > current),
+            VetisReferenceName.next_check_at.is_(None) | (VetisReferenceName.next_check_at > current),
         )
         .values(next_check_at=current, updated_at=current)
     )
@@ -458,9 +453,7 @@ async def _apply_lookup_result(
     row.updated_at = now
 
 
-async def _apply_lookup_failure(
-    db: AsyncSession, row: VetisReferenceName, problem: str, *, now: datetime
-) -> None:
+async def _apply_lookup_failure(db: AsyncSession, row: VetisReferenceName, problem: str, *, now: datetime) -> None:
     """A transport/API error keeps the previous name and schedules a retry."""
     row.last_problem_code = problem
     row.failure_count = row.failure_count + 1
@@ -540,9 +533,7 @@ async def resolve_due_reference_names(
             if isinstance(record, dict) and record.get("problem") == "VETIS_REFERENCE_GUID_MISMATCH":
                 # The response GUID did not match the requested key: never
                 # applied — a diagnostic + retry instead (§8).
-                await _apply_lookup_failure(
-                    db, row, "VETIS_REFERENCE_GUID_MISMATCH", now=datetime.now(UTC)
-                )
+                await _apply_lookup_failure(db, row, "VETIS_REFERENCE_GUID_MISMATCH", now=datetime.now(UTC))
                 retried += 1
             else:
                 await _apply_lookup_result(db, row, record, now=datetime.now(UTC))
@@ -594,12 +585,8 @@ def compose_reference_transport(manifest: object) -> EnterpriseLookupPort:
         profile = load_secret_profile(profile_path)
         gateway_user = profile.gateway_user
         gateway_password = profile.gateway_password
-    enterprise_action = manifest.soap_actions.get(
-        "enterprise_by_guid", "getEnterpriseByGuidRequest"
-    )
-    business_entity_action = manifest.soap_actions.get(
-        "business_entity_by_guid", "getBusinessEntityByGUIDRequest"
-    )
+    enterprise_action = manifest.soap_actions.get("enterprise_by_guid", "getEnterpriseByGuidRequest")
+    business_entity_action = manifest.soap_actions.get("business_entity_by_guid", "getBusinessEntityByGUIDRequest")
     return ZeepEnterpriseLookupTransport(
         endpoint=manifest.enterprise_endpoint,
         enterprise_action=enterprise_action,

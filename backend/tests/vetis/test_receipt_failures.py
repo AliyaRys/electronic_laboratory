@@ -212,9 +212,7 @@ async def test_enabled_confirmation_freezes_one_intent_and_outbox(receipt_env: S
     assert (await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))).scalar_one() == 1
 
 
-async def test_documentary_quantity_without_package_source_is_absent(
-    receipt_env: SimpleNamespace, monkeypatch
-) -> None:
+async def test_documentary_quantity_without_package_source_is_absent(receipt_env: SimpleNamespace, monkeypatch) -> None:
     """ТЗ DR8 §13: the intent keeps the documentary quantity ABSENT when the
     source carries no package quantity — the mass is never a fallback."""
     import copy as _copy
@@ -320,9 +318,7 @@ async def test_soap_fault_is_rejected_not_unknown(receipt_env: SimpleNamespace, 
         assert saved.problem_detail == "Incorrect request fixture"
 
 
-async def test_unknown_is_closed_only_after_fresh_confirmed_read(
-    receipt_env: SimpleNamespace, monkeypatch
-) -> None:
+async def test_unknown_is_closed_only_after_fresh_confirmed_read(receipt_env: SimpleNamespace, monkeypatch) -> None:
     monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
     preview = await build_receipt_preview(
         receipt_env.db,
@@ -609,9 +605,7 @@ async def test_source_changed_after_preview_blocks_submit_without_outbox(
             issue_date=preview.intent.issue_date,
         )
     assert error.value.code == "REVISION_CONFLICT"
-    assert (
-        await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))
-    ).scalar_one() == 0
+    assert (await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))).scalar_one() == 0
 
 
 async def test_checksum_mismatch_is_not_masked_as_revision_success(receipt_env: SimpleNamespace) -> None:

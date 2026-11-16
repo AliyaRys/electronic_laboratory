@@ -57,6 +57,13 @@ class Examination(Base):
     outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
     direction: Mapped[str | None] = mapped_column(String(16), nullable=True)
     reason: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # DR35 §12.3: the specialist of the ВСЭ is a distinct audited entity, not
+    # the audit actor. ``specialist_name`` freezes the ФИО at save time so the
+    # historical display survives a later user block.
+    specialist_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    specialist_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )

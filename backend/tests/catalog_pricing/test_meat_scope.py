@@ -253,7 +253,9 @@ async def test_norm_is_not_shared_between_laboratories(db_session: AsyncSession)
             "party_id": str(uuid.uuid4()),
             "laboratory_id": str(lab_b),
             "context": "VSE",
-            "results": [{"indicator_id": str(_mandatory.TEMPERATURE_INDICATOR_ID), "performed": True, "value": "3"}],
+            "results": [
+                {"indicator_id": str(_mandatory.TEMPERATURE_INDICATOR_ID), "performed": True, "value": "3"}
+            ],
             "product_species_id": str(uuid.uuid4()),
             "accepted_quantity": "1",
             "accepted_unit_id": "kg",
@@ -307,18 +309,10 @@ async def test_migration_merges_equivalent_and_keeps_conflicts_unresolved(test_d
                 " VALUES (%s, %s, %s, %s, 1, 'DECIMAL', '°C', %s, %s, true),"
                 "        (%s, %s, %s, %s, 1, 'DECIMAL', '°C', %s, %s, true)",
                 (
-                    str(lab),
-                    str(uuid.uuid4()),
-                    str(uuid.uuid4()),
-                    str(indicator),
-                    rule_equal,
-                    '{"name": "методика"}',
-                    str(lab),
-                    str(uuid.uuid4()),
-                    str(uuid.uuid4()),
-                    str(indicator),
-                    rule_equal,
-                    '{"name": "методика"}',
+                    str(lab), str(uuid.uuid4()), str(uuid.uuid4()), str(indicator),
+                    rule_equal, '{"name": "методика"}',
+                    str(lab), str(uuid.uuid4()), str(uuid.uuid4()), str(indicator),
+                    rule_equal, '{"name": "методика"}',
                 ),
             )
             # Конфликтующая группа того же показателя ДРУГОЙ лаборатории.
@@ -329,18 +323,10 @@ async def test_migration_merges_equivalent_and_keeps_conflicts_unresolved(test_d
                 " VALUES (%s, %s, %s, %s, 1, 'DECIMAL', '°C', %s, %s, true),"
                 "        (%s, %s, %s, %s, 1, 'DECIMAL', '°C', %s, %s, true)",
                 (
-                    str(other),
-                    str(uuid.uuid4()),
-                    str(uuid.uuid4()),
-                    str(indicator),
-                    '{"type": "interval", "lower": "0", "upper": "4"}',
-                    '{"name": "методика"}',
-                    str(other),
-                    str(uuid.uuid4()),
-                    str(uuid.uuid4()),
-                    str(indicator),
-                    '{"type": "interval", "lower": "0", "upper": "8"}',
-                    '{"name": "методика"}',
+                    str(other), str(uuid.uuid4()), str(uuid.uuid4()), str(indicator),
+                    '{"type": "interval", "lower": "0", "upper": "4"}', '{"name": "методика"}',
+                    str(other), str(uuid.uuid4()), str(uuid.uuid4()), str(indicator),
+                    '{"type": "interval", "lower": "0", "upper": "8"}', '{"name": "методика"}',
                 ),
             )
             connection.commit()

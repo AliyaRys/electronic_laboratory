@@ -658,7 +658,9 @@ async def run_sync(
             await db.commit()
             return
         contour = binding.contour
-        observed_uuids = sorted(value for value in observed if _parseable_uuid(value))
+        observed_uuids = sorted(
+            value for value in observed if _parseable_uuid(value)
+        )
         # (1) Observed documents of this laboratory/contour: the observation
         # timestamp refreshes EVERY pass (that is the §4 semantics of
         # last_seen_sync_at; the freshness index columns stay untouched, so
@@ -699,18 +701,20 @@ async def run_sync(
         # Fix round 1: ONLY the transition is written — an already-stale row
         # keeps its ORIGINAL deactivation timestamp (presence_changed_at) and
         # is not touched again; marked_not_current counts transitions.
-        missing = await db.execute(
-            update(IncomingDocument)
-            .where(
-                IncomingDocument.laboratory_id == operation.laboratory_id,
-                IncomingDocument.contour == contour,
-                ~IncomingDocument.evsd_uuid.in_([uuid.UUID(value) for value in observed_uuids]),
-                IncomingDocument.source_presence != "NOT_IN_CURRENT_CONFIRMED_LIST",
-            )
-            .values(
-                source_presence="NOT_IN_CURRENT_CONFIRMED_LIST",
-                source_presence_reason="not_in_confirmed_list",
-                presence_changed_at=checkpoint,
+        missing = (
+            await db.execute(
+                update(IncomingDocument)
+                .where(
+                    IncomingDocument.laboratory_id == operation.laboratory_id,
+                    IncomingDocument.contour == contour,
+                    ~IncomingDocument.evsd_uuid.in_([uuid.UUID(value) for value in observed_uuids]),
+                    IncomingDocument.source_presence != "NOT_IN_CURRENT_CONFIRMED_LIST",
+                )
+                .values(
+                    source_presence="NOT_IN_CURRENT_CONFIRMED_LIST",
+                    source_presence_reason="not_in_confirmed_list",
+                    presence_changed_at=checkpoint,
+                )
             )
         )
         marked_not_current = int(missing.rowcount or 0)  # type: ignore[attr-defined]
@@ -960,4 +964,8 @@ def command_state_view(operation: VetisOperation) -> CommandStateView:
 
 async def load_operation_state(db: AsyncSession, operation_id: uuid.UUID) -> VetisOperation | None:
     """Resolve one VetIS operation row for GET /operations/:id (scope-checked upstream)."""
-    return (await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id))).scalar_one_or_none()
+    return (
+        await db.execute(
+            select(VetisOperation).where(VetisOperation.id == operation_id)
+        )
+    ).scalar_one_or_none()

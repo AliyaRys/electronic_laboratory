@@ -310,9 +310,7 @@ async def _import_snapshot(db_session: AsyncSession, lab_id: uuid.UUID, snapshot
 
 
 async def test_backfill_fills_dates_idempotently_and_keeps_local_facts(
-    db_session: AsyncSession,
-    lab,
-    test_db_engine: AsyncEngine,  # noqa: F811 - imported pytest fixture
+    db_session: AsyncSession, lab, test_db_engine: AsyncEngine  # noqa: F811 - imported pytest fixture
 ) -> None:
     # A snapshot saved BEFORE the fix: no typed date structures at all.
     old_snapshot = _snapshot_dict("", "")
@@ -371,9 +369,7 @@ async def test_backfill_fills_dates_idempotently_and_keeps_local_facts(
 
 
 async def test_backfill_without_raw_xml_is_an_honest_error(
-    db_session: AsyncSession,
-    lab,
-    test_db_engine: AsyncEngine,  # noqa: F811 - imported pytest fixture
+    db_session: AsyncSession, lab, test_db_engine: AsyncEngine  # noqa: F811 - imported pytest fixture
 ) -> None:
     await _import_snapshot(db_session, lab.id, _snapshot_dict("", ""))
     await db_session.commit()

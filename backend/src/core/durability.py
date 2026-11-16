@@ -167,7 +167,7 @@ class PostgresDurabilityGuard:
                     )
                 ).scalar_one()
             )
-        except BackupReadinessError, SQLAlchemyError, OSError, TypeError, ValueError:
+        except (BackupReadinessError, SQLAlchemyError, OSError, TypeError, ValueError):
             return False
 
     async def wait_flushed(self, lsn: str) -> bool:

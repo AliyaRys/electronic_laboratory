@@ -57,7 +57,7 @@ def business_entity_response(
     name_xml = f"<ent:fullName>{name}</ent:fullName>" if name else ""
     return (
         '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-        "<soapenv:Body><ws:getBusinessEntityByGuidResponse "
+        '<soapenv:Body><ws:getBusinessEntityByGuidResponse '
         'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
         '<ent:businessEntity xmlns:ent="http://api.vetrf.ru/schema/cdm/dictionary/businessEntity/v2" '
         'xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
@@ -73,7 +73,7 @@ def enterprise_response(guid: uuid.UUID, *, active: bool = True, last: bool = Tr
     """The GetEnterpriseByGuid v2 answer shape with controllable checks."""
     return (
         '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-        "<soapenv:Body><ws:getEnterpriseByGuidResponse "
+        '<soapenv:Body><ws:getEnterpriseByGuidResponse '
         'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
         '<dt:enterprise xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
         f"<bs:uuid>{uuid.UUID(int=1)}</bs:uuid>"
@@ -233,7 +233,9 @@ async def test_4_pending_business_entity_only_get_business_entity_by_guid(
     assert [call["operation"] for call in spy.calls] == ["GetBusinessEntityByGUID"]
 
 
-async def test_5_pending_enterprise_only_get_enterprise_by_guid(db_session: AsyncSession, spy_enterprise) -> None:
+async def test_5_pending_enterprise_only_get_enterprise_by_guid(
+    db_session: AsyncSession, spy_enterprise
+) -> None:
     await _pending_rows(
         db_session,
         {
@@ -249,7 +251,9 @@ async def test_5_pending_enterprise_only_get_enterprise_by_guid(db_session: Asyn
     assert [call["operation"] for call in spy.calls] == ["GetEnterpriseByGuid"]
 
 
-async def test_6_success_resolves_receiver_rows_and_the_read_model(db_session: AsyncSession, spy_enterprise) -> None:
+async def test_6_success_resolves_receiver_rows_and_the_read_model(
+    db_session: AsyncSession, spy_enterprise
+) -> None:
     await _pending_rows(db_session, receivers_guid_only_snapshot())
     spy = spy_enterprise(
         enterprise_responses=[enterprise_response(RECEIVER_ENT)],
@@ -280,7 +284,9 @@ async def test_6_success_resolves_receiver_rows_and_the_read_model(db_session: A
     assert overrides["receiverEnterpriseNameSource"] == "VETIS_LOOKUP"
 
 
-async def test_7_failures_keep_the_prior_name_and_schedule_backoff(db_session: AsyncSession, spy_enterprise) -> None:
+async def test_7_failures_keep_the_prior_name_and_schedule_backoff(
+    db_session: AsyncSession, spy_enterprise
+) -> None:
     """Timeout, a wrong GUID echo and inactive/not-last/absent-name answers."""
     seeded = {
         "vdDocument": {

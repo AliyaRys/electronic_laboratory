@@ -323,7 +323,9 @@ def build_reconciliation_view(
         ),
         fair=row.fair,
         services=[ServiceItem.model_validate(item) for item in row.services],
-        pricing=(PricingSnapshot.model_validate(row.pricing_snapshot) if row.pricing_snapshot is not None else None),
+        pricing=(
+            PricingSnapshot.model_validate(row.pricing_snapshot) if row.pricing_snapshot is not None else None
+        ),
         actor_id=str(row.actor_id),
         saved_at=row.saved_at,
         completed_at=row.completed_at,
@@ -335,7 +337,9 @@ def build_reconciliation_view(
     )
 
 
-async def _price_check_services(work: UnitOfWork, party: Party, saved: ReconciliationWrite) -> PricingSnapshot:
+async def _price_check_services(
+    work: UnitOfWork, party: Party, saved: ReconciliationWrite
+) -> PricingSnapshot:
     """ТЗ DR11 §5, owner decision DR14: pricing of the two CHECK services.
 
     The CHECK tariffs are scoped by the party's laboratory ONLY; the party's
@@ -508,7 +512,9 @@ async def save_reconciliation(
 
 async def resolved_participant_names(db: AsyncSession, document_row: IncomingDocumentRow) -> dict[str, str | None]:
     """The flat participant-name overrides of one document (ТЗ DR18 §9)."""
-    participants = await resolve_participants(db, VetisContour(document_row.contour), document_row.source_snapshot)
+    participants = await resolve_participants(
+        db, VetisContour(document_row.contour), document_row.source_snapshot
+    )
     return participant_name_overrides(participants)
 
 

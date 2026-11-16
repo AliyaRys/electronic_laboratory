@@ -53,7 +53,7 @@ def purpose_page(records: list[dict[str, object]], *, total: int, offset: int) -
 
     return (
         '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
-        "<soap:Body><v2:getPurposeListResponse "
+        '<soap:Body><v2:getPurposeListResponse '
         'xmlns:v2="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2" '
         'xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" '
         'xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
@@ -168,7 +168,9 @@ async def test_full_pass_paginates_until_total(test_db_engine: AsyncEngine) -> N
     )
     second = purpose_page([{"guid": str(uuid.UUID(int=160)), "name": "назначение 160"}], total=161, offset=160)
     spy = SpyPurposeTransport([first, second])
-    result = await run_purpose_sync("PILOT", transport=spy, session_factory=_factory(test_db_engine), page_count=160)
+    result = await run_purpose_sync(
+        "PILOT", transport=spy, session_factory=_factory(test_db_engine), page_count=160
+    )
     assert result["result"] == "SUCCESS"
     assert len(spy.calls) == 2
     assert spy.calls[0] == {"offset": 0, "count": 160}
@@ -184,7 +186,9 @@ async def test_full_pass_paginates_until_total(test_db_engine: AsyncEngine) -> N
 
 
 async def test_partial_failure_never_moves_checkpoint_or_corrupts(test_db_engine: AsyncEngine) -> None:
-    good = purpose_page([{"guid": str(uuid.UUID(int=1)), "name": "старое название"}], total=300, offset=0)
+    good = purpose_page(
+        [{"guid": str(uuid.UUID(int=1)), "name": "старое название"}], total=300, offset=0
+    )
 
     class FailingTransport(SpyPurposeTransport):
         async def get_purpose_list_page(self, *, offset: int, count: int) -> str:
@@ -276,7 +280,9 @@ async def test_disappeared_records_are_marked_not_deleted(test_db_engine: AsyncE
         total=2,
         offset=0,
     )
-    await run_purpose_sync("PILOT", transport=SpyPurposeTransport([first]), session_factory=_factory(test_db_engine))
+    await run_purpose_sync(
+        "PILOT", transport=SpyPurposeTransport([first]), session_factory=_factory(test_db_engine)
+    )
     second = purpose_page([{"guid": str(uuid.UUID(int=1)), "name": "один"}], total=1, offset=0)
     result = await run_purpose_sync(
         "PILOT", transport=SpyPurposeTransport([second]), session_factory=_factory(test_db_engine), force=True
@@ -286,7 +292,9 @@ async def test_disappeared_records_are_marked_not_deleted(test_db_engine: AsyncE
     async with factory() as db:
         assert await db.scalar(select(func.count()).select_from(MercuryPurposeGuid)) == 2
         gone = (
-            await db.execute(select(MercuryPurposeGuid).where(MercuryPurposeGuid.guid == uuid.UUID(int=2)))
+            await db.execute(
+                select(MercuryPurposeGuid).where(MercuryPurposeGuid.guid == uuid.UUID(int=2))
+            )
         ).scalar_one()
         assert gone.active is False and gone.is_last is False
 
@@ -320,7 +328,9 @@ async def test_concurrent_due_workers_cannot_both_fetch(test_db_engine: AsyncEng
         # The first worker is mid-fetch with the lock held; a second due worker
         # must skip BEFORE its transport is ever called.
         second_transport = SlowTransport()
-        second = await run_purpose_sync("PILOT", transport=second_transport, session_factory=_factory(test_db_engine))
+        second = await run_purpose_sync(
+            "PILOT", transport=second_transport, session_factory=_factory(test_db_engine)
+        )
         assert second["result"] == "SKIPPED_OVERLAP"
         assert second_transport.calls == 0
     finally:
@@ -385,3 +395,4 @@ async def test_second_run_is_unchanged_and_state_stays(test_db_engine: AsyncEngi
     result = await run_purpose_sync("PILOT", transport=spy, session_factory=_factory(test_db_engine), force=True)
     assert result["upserted"] == 0 and result["unchanged"] == 1
     assert result["result"] == "SUCCESS"
+

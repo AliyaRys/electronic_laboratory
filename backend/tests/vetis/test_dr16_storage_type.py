@@ -71,9 +71,7 @@ def _document(storage_code: str | None) -> str:
 
 
 def _kept_snapshot(storage_code: str | None):
-    entries = parse_vet_document_list(
-        f'<w xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2">{_document(storage_code)}</w>'
-    )
+    entries = parse_vet_document_list(f'<w xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2">{_document(storage_code)}</w>')
     kept, _, _ = filter_entries(entries, SCOPE)
     assert len(kept) == 1
     return normalize_snapshot(kept[0])
@@ -123,16 +121,16 @@ def test_exactly_one_source_code_is_read_namespace_aware() -> None:
     assert consignment is not None
     codes = [
         (node.text or "").strip()
-        for node in consignment.findall(
-            "vd:transportStorageType", {"vd": "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"}
-        )
+        for node in consignment.findall("vd:transportStorageType", {"vd": "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"})
     ]
     assert codes == ["CHILLED"]
 
 
 def test_raw_xml_and_document_uuid_are_untouched_by_storage_normalization() -> None:
     raw = _document("CHILLED")
-    entries = parse_vet_document_list(f'<w xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2">{raw}</w>')
+    entries = parse_vet_document_list(
+        f'<w xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2">{raw}</w>'
+    )
     assert len(entries) == 1
     assert entries[0].evsd_uuid == uuid.UUID("e13bda81-7cf6-4b2b-b1aa-3c99e25adaac")
     # The parser never rewrites the source document; the raw text keeps the

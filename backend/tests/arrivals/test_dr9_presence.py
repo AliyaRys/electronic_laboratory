@@ -327,14 +327,18 @@ async def _receipt_rows(
         )
     )
     await db.commit()
-    reconciliation = (await db.execute(select(Reconciliation).where(Reconciliation.party_id == party.id))).scalar_one()
+    reconciliation = (
+        await db.execute(select(Reconciliation).where(Reconciliation.party_id == party.id))
+    ).scalar_one()
     source = (
         await db.execute(select(VetisSourceDocument).where(VetisSourceDocument.evsd_uuid == document_row.evsd_uuid))
     ).scalar_one()
     return reconciliation, source
 
 
-async def _preview(db: AsyncSession, rows: tuple[Reconciliation, VetisSourceDocument]) -> object:
+async def _preview(
+    db: AsyncSession, rows: tuple[Reconciliation, VetisSourceDocument]
+) -> object:
     from backend.src.modules.integrations.vetis.receipt import build_receipt_preview
 
     reconciliation, source = rows

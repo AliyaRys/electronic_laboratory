@@ -161,7 +161,9 @@ def test_invalid_calendar_combination_is_a_controlled_diagnostic() -> None:
 """
     entry = parse_vet_document_list(_wrap(_xml(production, "")))[0]
     # The controlled diagnostic names the field and the raw value...
-    assert entry.date_problems == [{"field": "dateOfProduction", "part": "firstDate", "value": "2026-02-30"}]
+    assert entry.date_problems == [
+        {"field": "dateOfProduction", "part": "firstDate", "value": "2026-02-30"}
+    ]
     # ...the structure is never fabricated, and the import of the remaining
     # requisites continues.
     batch = normalize_snapshot(entry).vd_document.batch

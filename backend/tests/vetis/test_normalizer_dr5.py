@@ -82,7 +82,7 @@ REAL_DOC = """
 
 ENVELOPE = (
     '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
-    "<soap:Body><receiveApplicationResultResponse "
+    '<soap:Body><receiveApplicationResultResponse '
     'xmlns="http://api.vetrf.ru/schema/cdm/application/ws-definitions">'
     '<getVetDocumentListResponse xmlns:vu="http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2">'
     '<vd:vetDocumentList count="1" total="1" offset="0" '
@@ -94,9 +94,7 @@ ENVELOPE = (
 
 
 def parse_one(xml: str = REAL_DOC) -> NormalizedEntry:
-    entries = parse_vet_document_list(
-        f'<root xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2">{xml}</root>'
-    )
+    entries = parse_vet_document_list(f'<root xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2">{xml}</root>')
     assert len(entries) == 1
     return entries[0]
 
@@ -189,9 +187,9 @@ def test_quantity_never_falls_back_to_volume() -> None:
 
 def test_batch_quantity_is_never_a_package_fallback() -> None:
     """§5.2: even a present `vd:batch/vd:quantity` never becomes the source quantity."""
-    doc = (
-        REAL_DOC.split("<vd:packageList>")[0] + "<vd:quantity>3</vd:quantity>" + REAL_DOC.split("</vd:packageList>")[1]
-    )
+    doc = REAL_DOC.split("<vd:packageList>")[0] + "<vd:quantity>3</vd:quantity>" + REAL_DOC.split(
+        "</vd:packageList>"
+    )[1]
     entry = parse_one(doc)
     assert entry.package_quantity is None
     snapshot = normalize_snapshot(entry)
@@ -209,9 +207,9 @@ def _doc_with_packages(packages_xml: str) -> str:
 
 def test_only_maximal_level_counts() -> None:
     xml = _doc_with_packages(
-        "<dt:package><dt:level>4</dt:level><dt:packingType><dt:name>Коробка</dt:name></dt:packingType>"
+        '<dt:package><dt:level>4</dt:level><dt:packingType><dt:name>Коробка</dt:name></dt:packingType>'
         "<dt:quantity>12</dt:quantity></dt:package>"
-        "<dt:package><dt:level>6</dt:level><dt:packingType><dt:name>Крюк</dt:name></dt:packingType>"
+        '<dt:package><dt:level>6</dt:level><dt:packingType><dt:name>Крюк</dt:name></dt:packingType>'
         "<dt:quantity>8</dt:quantity></dt:package>"
     )
     entry = parse_one(xml)
@@ -221,11 +219,11 @@ def test_only_maximal_level_counts() -> None:
 
 def test_several_packages_of_maximal_level_are_summed() -> None:
     xml = _doc_with_packages(
-        "<dt:package><dt:level>6</dt:level><dt:packingType><dt:name>Крюк</dt:name></dt:packingType>"
+        '<dt:package><dt:level>6</dt:level><dt:packingType><dt:name>Крюк</dt:name></dt:packingType>'
         "<dt:quantity>5</dt:quantity></dt:package>"
-        "<dt:package><dt:level>6</dt:level><dt:packingType><dt:name>Ящик</dt:name></dt:packingType>"
+        '<dt:package><dt:level>6</dt:level><dt:packingType><dt:name>Ящик</dt:name></dt:packingType>'
         "<dt:quantity>3</dt:quantity></dt:package>"
-        "<dt:package><dt:level>4</dt:level><dt:packingType><dt:name>Коробка</dt:name></dt:packingType>"
+        '<dt:package><dt:level>4</dt:level><dt:packingType><dt:name>Коробка</dt:name></dt:packingType>'
         "<dt:quantity>20</dt:quantity></dt:package>"
     )
     entry = parse_one(xml)
@@ -236,7 +234,7 @@ def test_several_packages_of_maximal_level_are_summed() -> None:
 
 def test_absent_quantity_stays_absent() -> None:
     xml = _doc_with_packages(
-        "<dt:package><dt:level>6</dt:level><dt:packingType><dt:name>Крюк</dt:name></dt:packingType></dt:package>"
+        '<dt:package><dt:level>6</dt:level><dt:packingType><dt:name>Крюк</dt:name></dt:packingType></dt:package>'
     )
     entry = parse_one(xml)
     assert entry.package_quantity is None
@@ -247,8 +245,8 @@ def test_absent_quantity_stays_absent() -> None:
 
 def test_unparseable_level_never_crashes_the_batch() -> None:
     xml = _doc_with_packages(
-        "<dt:package><dt:level>abc</dt:level><dt:quantity>8</dt:quantity></dt:package>"
-        "<dt:package><dt:level>6</dt:level><dt:quantity>2</dt:quantity></dt:package>"
+        '<dt:package><dt:level>abc</dt:level><dt:quantity>8</dt:quantity></dt:package>'
+        '<dt:package><dt:level>6</dt:level><dt:quantity>2</dt:quantity></dt:package>'
     )
     entry = parse_one(xml)
     assert entry.package_quantity == "2"
@@ -284,9 +282,7 @@ def test_plain_date_is_not_timezone_shifted() -> None:
 
 def test_parsing_is_namespace_aware() -> None:
     # A document in a foreign namespace must NOT match the vd: paths.
-    foreign = (
-        '<vd:vetDocument xmlns:vd="http://example.com/other"><vd:vetDType>TRANSPORT</vd:vetDType></vd:vetDocument>'
-    )
+    foreign = '<vd:vetDocument xmlns:vd="http://example.com/other"><vd:vetDType>TRANSPORT</vd:vetDType></vd:vetDocument>'
     entries = parse_vet_document_list(foreign)
     assert entries == []
 

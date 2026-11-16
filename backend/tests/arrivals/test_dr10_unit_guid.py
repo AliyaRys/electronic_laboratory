@@ -155,7 +155,9 @@ async def test_saved_reconciliation_units_are_normalized_at_save(db_session) -> 
     ctx = CommandContext(actor_id=actor.id, idempotency_key=str(uuid.uuid4()), expected_revision=owner.rev)
     await save_reconciliation(ctx, owner.id, payload, uow=db_session)  # type: ignore[arg-type]
     await db_session.commit()
-    row = (await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == owner.id))).scalar_one()
+    row = (
+        await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == owner.id))
+    ).scalar_one()
     # §8-3: an empty client unit is inherited from the source snapshot.
     assert row.delivered_unit_id == UNIT_GUID
     assert row.accepted_unit_id == UNIT_GUID
@@ -168,7 +170,9 @@ async def test_saved_reconciliation_units_are_normalized_at_save(db_session) -> 
     ctx = CommandContext(actor_id=actor.id, idempotency_key=str(uuid.uuid4()), expected_revision=row.rev)
     await save_reconciliation(ctx, owner.id, payload, uow=db_session)  # type: ignore[arg-type]
     await db_session.commit()
-    row = (await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == owner.id))).scalar_one()
+    row = (
+        await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == owner.id))
+    ).scalar_one()
     assert row.delivered_unit_id == UNIT_GUID
     assert row.accepted_unit_id == UNIT_GUID
     assert row.returned_unit_id == UNIT_GUID

@@ -183,7 +183,9 @@ async def build_receipt_preview(
         if selected_return_date is None:
             raise _problem(422, "VALIDATION_ERROR", "Для частичного гашения и полного возврата нужна дата возврата.")
         if selected_return_date.tzinfo is None or selected_return_date > datetime.now(UTC):
-            raise _problem(422, "VALIDATION_ERROR", "Дата возврата должна содержать часовой пояс и не быть в будущем.")
+            raise _problem(
+                422, "VALIDATION_ERROR", "Дата возврата должна содержать часовой пояс и не быть в будущем."
+            )
     # `issueDate` is the server time of the request formation; the frozen
     # timestamp may be echoed by the submit request so the fingerprint of the
     # re-built preview stays identical (one frozen intent).

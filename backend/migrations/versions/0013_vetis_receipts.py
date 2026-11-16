@@ -52,7 +52,9 @@ def upgrade() -> None:
         "vetis_operations",
         ["party_id"],
         unique=True,
-        postgresql_where=sa.text("kind = 'RECEIPT' AND state NOT IN ('CONFIRMED','REJECTED')"),
+        postgresql_where=sa.text(
+            "kind = 'RECEIPT' AND state NOT IN ('CONFIRMED','REJECTED')"
+        ),
     )
     op.create_index("ix_vetis_receipt_poll_due", "vetis_operations", ["kind", "state", "next_poll_at"])
 
@@ -63,20 +65,9 @@ def downgrade() -> None:
     op.drop_constraint("uq_vetis_operations_application", "vetis_operations", type_="unique")
     op.drop_constraint("uq_vetis_operations_local_tx", "vetis_operations", type_="unique")
     for name in (
-        "poll_attempts",
-        "next_poll_at",
-        "submitted_at",
-        "confirmed_at",
-        "confirmed_by",
-        "diagnostics",
-        "evidence",
-        "intent",
-        "fingerprint",
-        "application_id",
-        "local_transaction_id",
-        "reconciliation_revision",
-        "source_revision",
-        "source_checksum",
+        "poll_attempts", "next_poll_at", "submitted_at", "confirmed_at", "confirmed_by",
+        "diagnostics", "evidence", "intent", "fingerprint", "application_id",
+        "local_transaction_id", "reconciliation_revision", "source_revision", "source_checksum",
     ):
         op.drop_column("vetis_operations", name)
     op.drop_constraint("vetis_operations_state_valid", "vetis_operations", type_="check")

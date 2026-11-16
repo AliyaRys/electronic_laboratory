@@ -527,7 +527,9 @@ async def test_vse_tariff_rejects_laboratory_uuid_as_species(db_session) -> None
         await commands.create_tariff(db_session, payload)
     assert created.value.status == 422
     assert created.value.code == "VALIDATION_ERROR"
-    assert any("Вид продукции не может совпадать с лабораторией" in item.message for item in created.value.errors)
+    assert any(
+        "Вид продукции не может совпадать с лабораторией" in item.message for item in created.value.errors
+    )
 
     row = Tariff(
         laboratory_id=lab,
@@ -547,7 +549,9 @@ async def test_vse_tariff_rejects_laboratory_uuid_as_species(db_session) -> None
             payload.model_copy(update={"product_species_id": lab}),
         )
     assert updated.value.status == 422
-    assert any("Вид продукции не может совпадать с лабораторией" in item.message for item in updated.value.errors)
+    assert any(
+        "Вид продукции не может совпадать с лабораторией" in item.message for item in updated.value.errors
+    )
 
     # The same laboratory-uuid species under a CHECK code normalizes to NULL:
     check_payload = payload.model_copy(update={"service_code": "PRODUCT_IDENTIFICATION"})

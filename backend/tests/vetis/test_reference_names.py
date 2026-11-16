@@ -1,4 +1,4 @@
-"""ТЗ DR18 §11 backend tests: the contour-scoped participant-name cache.
+﻿"""ТЗ DR18 §11 backend tests: the contour-scoped participant-name cache.
 
 The ten named contract tests of spec §11 live in this module plus the
 arrivals API module (``backend/tests/arrivals/test_dr18_participant_names.py``).
@@ -124,7 +124,7 @@ def spy_enterprise():
 
 ENTERPRISE_RESPONSE = (
     '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-    "<soapenv:Body><ws:getEnterpriseByGuidResponse "
+    '<soapenv:Body><ws:getEnterpriseByGuidResponse '
     'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
     '<dt:enterprise xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
     f"<bs:uuid>{uuid.UUID(int=1)}</bs:uuid>"
@@ -138,7 +138,7 @@ ENTERPRISE_RESPONSE = (
 
 BUSINESS_ENTITY_RESPONSE = (
     '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-    "<soapenv:Body><ws:getBusinessEntityByGuidResponse "
+    '<soapenv:Body><ws:getBusinessEntityByGuidResponse '
     'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
     '<ent:businessEntity xmlns:ent="http://api.vetrf.ru/schema/cdm/dictionary/businessEntity/v2" xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
     f"<bs:uuid>{uuid.UUID(int=2)}</bs:uuid>"
@@ -166,7 +166,8 @@ async def test_1_xml_names_saved_on_the_right_level(db_session: AsyncSession) ->
     from backend.src.modules.integrations.vetis.models import VetisEntityKind, VetisReferenceName
 
     rows = {
-        (row.entity_kind, row.guid): row for row in (await db_session.execute(select(VetisReferenceName))).scalars()
+        (row.entity_kind, row.guid): row
+        for row in (await db_session.execute(select(VetisReferenceName))).scalars()
     }
     sender_be = rows[(VetisEntityKind.BUSINESS_ENTITY.value, SENDER_BE)]
     sender_ent = rows[(VetisEntityKind.ENTERPRISE.value, SENDER_ENT)]
@@ -217,7 +218,10 @@ async def test_dr21_enterprise_named_creates_job_only_for_business_entity(
     }
     counters = await upsert_reference_names(db_session, _PILOT, mixed)
     await db_session.commit()
-    rows = {row.entity_kind: row for row in (await db_session.execute(select(VetisReferenceName))).scalars()}
+    rows = {
+        row.entity_kind: row
+        for row in (await db_session.execute(select(VetisReferenceName))).scalars()
+    }
     assert counters["created"] == 2 and set(rows) == {"BUSINESS_ENTITY", "ENTERPRISE"}
     # The named enterprise never enters the queue: its name is honest SOURCE_XML.
     enterprise = rows["ENTERPRISE"]
@@ -322,7 +326,9 @@ async def test_5_enterprise_lookup_success(db_session: AsyncSession, spy_enterpr
     await db_session.commit()
     assert counters["resolved"] >= 1
     row = (
-        await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT))
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT)
+        )
     ).scalar_one()
     assert row.name == "Предприятие «Мясопром»"
     assert row.source == "VETIS_LOOKUP" and row.status == "RESOLVED"
@@ -343,7 +349,9 @@ async def test_6_business_entity_name_fullname_fio(db_session: AsyncSession, spy
     await db_session.commit()
     assert counters["resolved"] >= 1
     row = (
-        await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_BE))
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_BE)
+        )
     ).scalar_one()
     # ent:name is absent → ent:fullName is used (then ent:fio).
     assert row.name == "ОАО «Мясопром»"
@@ -360,7 +368,9 @@ async def test_7_error_keeps_name_and_retries(db_session: AsyncSession, spy_ente
     # once per 24 h — the tick only picks genuinely due entries).
 
     named_row = (
-        await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT))
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT)
+        )
     ).scalar_one()
     named_row.next_check_at = datetime.now(UTC)
     await db_session.commit()
@@ -370,7 +380,9 @@ async def test_7_error_keeps_name_and_retries(db_session: AsyncSession, spy_ente
     await db_session.commit()
     assert counters["retried"] >= 1
     row = (
-        await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT))
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT)
+        )
     ).scalar_one()
     assert row.name == "Предприятие «Мясопром»"  # the previous good name survives
     assert row.status == "ERROR"
@@ -386,7 +398,7 @@ async def test_7_error_keeps_name_and_retries(db_session: AsyncSession, spy_ente
     await db_session.commit()
     stale = (
         '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-        "<soapenv:Body><ws:getEnterpriseByGuidResponse "
+        '<soapenv:Body><ws:getEnterpriseByGuidResponse '
         'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
         '<dt:enterprise xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
         f"<bs:guid>{SENDER_ENT}</bs:guid>"
@@ -417,7 +429,9 @@ async def test_8_backfill_idempotent(db_session: AsyncSession) -> None:
     assert second["seen"] == first["seen"]
 
 
-async def test_9_enrichment_never_touches_source_or_facts(db_session: AsyncSession, spy_enterprise, name_lab) -> None:
+async def test_9_enrichment_never_touches_source_or_facts(
+    db_session: AsyncSession, spy_enterprise, name_lab
+) -> None:
     evsd = uuid.uuid4()
     lab_id = name_lab.laboratory.id
     raw = "<vd:vetDocument>исходный XML</vd:vetDocument>"
@@ -533,8 +547,10 @@ async def test_read_path_kind_isolation_same_guid(db_session: AsyncSession) -> N
     await upsert_reference_names(db_session, _PILOT, mixed)
     await db_session.commit()
     rows = (
-        (await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.guid == shared))).scalars().all()
-    )
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == shared)
+        )
+    ).scalars().all()
     assert len(rows) == 2
     for row in rows:
         row.name = "Хозяйствующий субъект" if row.entity_kind == "BUSINESS_ENTITY" else "Предприятие"
@@ -555,7 +571,7 @@ async def test_guid_echo_mismatch_never_applied(db_session: AsyncSession, spy_en
     stranger = uuid.UUID("bbbbbbbb-0000-4000-8000-0000000000bb")
     mismatch = (
         '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-        "<soapenv:Body><ws:getEnterpriseByGuidResponse "
+        '<soapenv:Body><ws:getEnterpriseByGuidResponse '
         'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
         '<dt:enterprise xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" '
         'xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
@@ -569,7 +585,9 @@ async def test_guid_echo_mismatch_never_applied(db_session: AsyncSession, spy_en
     await db_session.commit()
     assert counters["retried"] >= 1
     row = (
-        await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT))
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_ENT)
+        )
     ).scalar_one()
     assert row.name is None  # the foreign name is never applied
     assert row.last_problem_code == "VETIS_REFERENCE_GUID_MISMATCH"
@@ -601,13 +619,12 @@ def test_extract_participants_keeps_levels() -> None:
 
 # --- R-DR25: the STRICT top-level name cascade -----------------------------------
 
-
 def _business_entity_variant(inner: str) -> str:
     """One GetBusinessEntityByGUID answer whose businessEntity carries ONLY
     the given inner XML (besides the pinned identity fields)."""
     return (
         '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-        "<soapenv:Body><ws:getBusinessEntityByGuidResponse "
+        '<soapenv:Body><ws:getBusinessEntityByGuidResponse '
         'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
         '<dt:businessEntity xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2" '
         'xmlns:bs="http://api.vetrf.ru/schema/cdm/base">'
@@ -624,7 +641,7 @@ def _business_entity_variant(inner: str) -> str:
 
 ADDRESS_ONLY_INNER = (
     "<dt:juridicalAddress>"
-    "<dt:country><dt:name>Российская Федерация</dt:name></dt:country>"
+    '<dt:country><dt:name>Российская Федерация</dt:name></dt:country>'
     "<dt:region><dt:name>Республика Татарстан</dt:name></dt:region>"
     "<dt:district><dt:name>Высокогорский район</dt:name></dt:district>"
     "<dt:locality><dt:name>с. Высокая Гора</dt:name></dt:locality>"
@@ -687,7 +704,7 @@ def test_enterprise_never_takes_a_name_from_a_nested_address() -> None:
     )
     envelope = (
         '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-        "<soapenv:Body><ws:getEnterpriseByGuidResponse "
+        '<soapenv:Body><ws:getEnterpriseByGuidResponse '
         'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2">'
         f"{nested}"
         "</ws:getEnterpriseByGuidResponse></soapenv:Body></soapenv:Envelope>"
@@ -696,12 +713,17 @@ def test_enterprise_never_takes_a_name_from_a_nested_address() -> None:
     assert parsed["name"] is None  # the country/region names are never the name
 
 
-async def test_recheck_schedules_only_vetis_lookup_rows(db_session: AsyncSession, spy_enterprise) -> None:
+async def test_recheck_schedules_only_vetis_lookup_rows(
+    db_session: AsyncSession, spy_enterprise
+) -> None:
     """R-DR25-3: the data-fix re-check is programmatic, idempotent and never
     touches SOURCE_XML rows; no write method is ever reachable."""
     await upsert_reference_names(db_session, _PILOT, guid_only_snapshot())
     await db_session.commit()
-    rows = {row.guid: row for row in (await db_session.execute(select(VetisReferenceName))).scalars()}
+    rows = {
+        row.guid: row
+        for row in (await db_session.execute(select(VetisReferenceName))).scalars()
+    }
     # All rows were resolved long ago and are not due anymore; one carries a
     # (possibly wrongly-resolved) lookup name, one a source name.
     future = datetime.now(UTC) + timedelta(hours=20)
@@ -720,7 +742,10 @@ async def test_recheck_schedules_only_vetis_lookup_rows(db_session: AsyncSession
     scheduled = await schedule_vetis_lookup_recheck(db_session)
     await db_session.commit()
     assert scheduled == 1
-    updated = {row.guid: row for row in (await db_session.execute(select(VetisReferenceName))).scalars()}
+    updated = {
+        row.guid: row
+        for row in (await db_session.execute(select(VetisReferenceName))).scalars()
+    }
     assert updated[SENDER_BE].next_check_at <= datetime.now(UTC)  # re-resolution due now
     assert updated[SENDER_ENT].next_check_at == future  # SOURCE_XML stays untouched
     # Idempotent: a repeated run schedules nothing new.
@@ -729,7 +754,9 @@ async def test_recheck_schedules_only_vetis_lookup_rows(db_session: AsyncSession
     # The next tick re-resolves the scheduled row through the READ-ONLY
     # boundary only — every recorded operation is a lookup, never a write.
     spy = spy_enterprise(
-        business_entity_responses=[_business_entity_variant("<dt:fio>Хусаинова Гульнур Мансуровна</dt:fio>")]
+        business_entity_responses=[
+            _business_entity_variant("<dt:fio>Хусаинова Гульнур Мансуровна</dt:fio>")
+        ]
     )
     counters = await resolve_due_reference_names(db_session, spy, contour=_PILOT)
     await db_session.commit()
@@ -737,6 +764,9 @@ async def test_recheck_schedules_only_vetis_lookup_rows(db_session: AsyncSession
     for call in spy.calls:
         assert call["operation"] in ("GetEnterpriseByGuid", "GetBusinessEntityByGUID")
     fixed = (
-        await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_BE))
+        await db_session.execute(
+            select(VetisReferenceName).where(VetisReferenceName.guid == SENDER_BE)
+        )
     ).scalar_one()
     assert fixed.name == "Хусаинова Гульнур Мансуровна"
+

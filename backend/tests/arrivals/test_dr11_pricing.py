@@ -100,7 +100,9 @@ async def _import_party(env: object, **document_kwargs: object):
 
 
 async def saved_row(db: AsyncSession, party_id: uuid.UUID) -> Reconciliation | None:
-    return (await db.execute(select(Reconciliation).where(Reconciliation.party_id == party_id))).scalar_one_or_none()
+    return (
+        await db.execute(select(Reconciliation).where(Reconciliation.party_id == party_id))
+    ).scalar_one_or_none()
 
 
 # --- §9-1/§9-2: the full save prices BOTH services server-side -------------------

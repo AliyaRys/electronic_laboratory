@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.models import IncomingDocument, Party, Reconciliation
+from backend.src.modules.arrivals.reconciliation import source_projection
+from backend.src.modules.arrivals.validation import FIELD_SPECS, _comparison_source_text
 from backend.src.modules.identity.models import OutboxEntry
 from backend.src.modules.integrations.vetis.contracts import (
     ReceiptIntent,
@@ -29,7 +31,10 @@ from backend.src.modules.integrations.vetis.models import (
     VetisOperationState,
     VetisSourceDocument,
 )
-from backend.src.modules.integrations.vetis.receipt_mapping import build_process_incoming_application
+from backend.src.modules.integrations.vetis.receipt_mapping import (
+    DISCREPANCY_FIELD_LABELS,
+    build_process_incoming_application,
+)
 
 __all__ = ["build_receipt_preview", "queue_receipt", "write_enabled"]
 
@@ -165,11 +170,23 @@ async def build_receipt_preview(
         raise _problem(422, "VALIDATION_ERROR", "Единица сверки не совпадает с исходным эВСД.")
 
     discrepancies: list[dict[str, object]] = []
-    for field_id, item in reconciliation.checks.items():
-        if field_id == "CHK-F35" or not isinstance(item, dict) or item.get("matches") is not False:
+    # ТЗ DR38 §5: русские названия полей и исходные значения берутся из
+    # закреплённого read model (checksum-verified snapshot); порядок items —
+    # стабильный порядок полей сверки FIELD_SPECS, а не порядок dict checks.
+    source_fields = source_projection(document, party).fields
+    for spec in FIELD_SPECS:
+        if spec.field_id == "CHK-F35" or not isinstance(item := reconciliation.checks.get(spec.field_id), dict):
+            continue
+        if item.get("matches") is not False:
             continue
         discrepancies.append(
-            {"field_id": field_id, "reason": item.get("reason") or "MISMATCH", "actual": item.get("actual")}
+            {
+                "field_id": spec.field_id,
+                "label": DISCREPANCY_FIELD_LABELS.get(spec.field_id, spec.field_id),
+                "source": _comparison_source_text(source_fields, spec),
+                "actual": item.get("actual"),
+                "reason": item.get("reason") or "MISMATCH",
+            }
         )
     reason = reconciliation.checks.get("CHK-F35", {})
     reason = reason if isinstance(reason, dict) else {}
@@ -183,9 +200,7 @@ async def build_receipt_preview(
         if selected_return_date is None:
             raise _problem(422, "VALIDATION_ERROR", "Для частичного гашения и полного возврата нужна дата возврата.")
         if selected_return_date.tzinfo is None or selected_return_date > datetime.now(UTC):
-            raise _problem(
-                422, "VALIDATION_ERROR", "Дата возврата должна содержать часовой пояс и не быть в будущем."
-            )
+            raise _problem(422, "VALIDATION_ERROR", "Дата возврата должна содержать часовой пояс и не быть в будущем.")
     # `issueDate` is the server time of the request formation; the frozen
     # timestamp may be echoed by the submit request so the fingerprint of the
     # re-built preview stays identical (one frozen intent).

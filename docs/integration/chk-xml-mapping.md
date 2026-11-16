@@ -80,9 +80,17 @@ XML preview строится только из закреплённой реви
 - `vetInspection` (`CORRESPONDS`/`MISMATCH`/`UNSUPERVISED`) выбирается отдельно
   от результата документарной сверки.
 - `OTHER_REASON` всегда требует текст. Блокирующее расхождение допускает только
-  полный возврат. Причина возврата передаётся в `authentication/specialMarks`
-  строкой `Причина возврата: <ID>`; для `OTHER_REASON` после ID добавляется
-  пояснение до 240 символов.
+  полный возврат. Причина возврата передаётся ровно одним элементом
+  `authentication/specialMarks` строкой `Причина возврата: <ID>`; для
+  `OTHER_REASON` после ID добавляется пояснение до 240 символов. Существующие
+  особые отметки объединяются с этой фразой в одно значение, а не дублируются.
+- При `docInspection=MISMATCH` описание расхождений находится в
+  `deliveryFacts/docInspection/info` (после `responsible → result`), а для
+  принятия всей/части ещё и в `discrepancyReport/description` (после
+  `reason/name`); элемент `info` внутри `discrepancyReport` запрещён схемой
+  `DiscrepancyReport`. Для `RETURN_ALL` описание остаётся только в
+  `docInspection/info`, акт не создаётся. Причина возврата
+  (`specialMarks`) и причина/описание акта — разные данные.
 - `localTransactionId` — локальная неизменяемая идентичность, `applicationId` —
   отдельный ответ шлюза; одно не подменяет другое.
 - Перед сетью журнал долговечно переходит в `SUBMITTING`. Потеря ответа submit

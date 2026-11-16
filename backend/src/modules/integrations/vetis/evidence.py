@@ -7,7 +7,9 @@ from decimal import Decimal
 from xml.etree import ElementTree as ET
 
 from backend.src.modules.arrivals.ports import ReceiptEvidence
+from backend.src.modules.arrivals.validation import OTHER_REASON
 from backend.src.modules.integrations.vetis.contracts import ExternalResult, ReceiptIntent
+from backend.src.modules.integrations.vetis.receipt_mapping import format_return_reason
 
 __all__ = ["parse_receipt_result"]
 
@@ -117,15 +119,15 @@ def _real_evidence(
                 if returned_mass == intent.returned_mass_kg and intent.returned_quantity > 0:
                     quantity_ok = quantity_ok and places == intent.returned_quantity
             special_marks = [(node.text or "").strip() for node in _nodes(document, "specialMarks")]
-            # ТЗ DR8 §6.2: the exact CODE is one of the marks; the Russian
-            # label is never accepted as proof of the reason.
-            if intent.return_reason_code == "OTHER_REASON":
+            # ТЗ DR38 §6: причина возврата приходит ОДНИМ specialMarks в
+            # формате «Причина возврата: CODE [текст]»; русская подпись кода
+            # никогда не является доказательством причины.
+            if intent.return_reason_code == OTHER_REASON:
                 reason_ok = reason_ok and (
-                    intent.return_reason_code in special_marks
-                    and f"OTHER_REASON: {(intent.return_reason_text or '').strip()}" in special_marks
+                    format_return_reason(intent.return_reason_code, intent.return_reason_text) in special_marks
                 )
             else:
-                reason_ok = reason_ok and (intent.return_reason_code or "") in special_marks
+                reason_ok = reason_ok and (format_return_reason(intent.return_reason_code) in special_marks)
     accepted_mass = Decimal("0")
     accepted_quantity = Decimal("0")
     stock_found = False

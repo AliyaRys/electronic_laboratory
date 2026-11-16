@@ -89,7 +89,11 @@ export function useContextScope(): { userId: string | null; labId: string | null
 
 /**
  * Sync the local dirty flag into the store consumed by {@link DirtyLeaveDialog}
- * (single blocker instance, rendered by the layout).
+ * (single blocker instance, rendered by the layout), and guard a dirty tab
+ * close/reload with ``beforeunload`` (DR34 §11): the browser's own confirm is
+ * shown only while the form is dirty, the listener is removed on unmount and
+ * whenever the flag clears, so a completed save or an confirmed leave never
+ * triggers it.
  */
 export function useDirtyGuard(isDirty: boolean, label = ""): void {
   useEffect(() => {
@@ -98,6 +102,21 @@ export function useDirtyGuard(isDirty: boolean, label = ""): void {
       useDirtyStore.getState().setDirty(false);
     };
   }, [isDirty, label]);
+
+  useEffect(() => {
+    if (!isDirty) {
+      return undefined;
+    }
+    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      // Chrome/Edge require returnValue to be set (a string, often empty).
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [isDirty]);
 }
 
 /**

@@ -44,6 +44,7 @@ from backend.src.modules.identity.passwords import (
     verify_password,
 )
 from backend.src.modules.identity.schemas import (
+    AssignableOptionsView,
     ChangePasswordRequest,
     CsrfResponse,
     LaboratoryOptionView,
@@ -388,6 +389,26 @@ async def list_users(
         page=page,
         page_size=queries.PAGE_SIZE,
     )
+
+
+@users_router.get("/assignable", response_model=AssignableOptionsView)
+async def assignable_options(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> AssignableOptionsView:
+    """Server-authoritative assignment options for the create form (DR34 §7.2).
+
+    Read-only and scoped: it answers the delegable roles, territories,
+    laboratories and product areas of the caller only, so the form never shows
+    a foreign area or a raw UUID. It never replaces the POST-time delegation
+    check (FT-ADM-01).
+    """
+    _, actor = principal
+    await authorizer.authorize(db, actor.id, "users:create", None)
+    response.headers["Cache-Control"] = "no-store"
+    return await queries.assignable_options(db, actor)
 
 
 @users_router.post("", status_code=201, response_model=UserView)

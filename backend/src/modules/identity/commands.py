@@ -11,6 +11,7 @@ administrator of the territory.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +25,7 @@ from backend.src.modules.identity.models import (
     CommandStatus,
     DelegationGrant,
     Laboratory,
+    Territory,
     User,
     UserEvent,
     UserRole,
@@ -31,11 +33,17 @@ from backend.src.modules.identity.models import (
 )
 from backend.src.modules.identity.passwords import hash_password, validate_password
 from backend.src.modules.identity.schemas import UserWrite
+from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
+
+# The meat product type of the local VetIS level-2 classification (productType=1,
+# migration 0005). Kept local, exactly like in queries.py.
+_MEAT_PRODUCT_TYPE = 1
 
 __all__ = [
     "PAGE_SIZE",
     "REDACTED",
     "allowed_territories",
+    "delegatable_territories",
     "user_territories",
     "load_target",
     "create_user",
@@ -102,6 +110,27 @@ def allowed_territories(snapshot: AccessSnapshot) -> frozenset[uuid.UUID]:
     )
 
 
+def delegatable_territories(snapshot: AccessSnapshot, role: UserRole) -> frozenset[uuid.UUID]:
+    """Territories where the actor may delegate exactly ``role`` (FT-ADM-01).
+
+    A ``may_delegate=True`` grant of the ADMIN role enables delegating all four
+    roles inside its subtree (O-08: any of the four roles within the delegated
+    authority); a grant of a working role enables only that role. Nothing is
+    ever issued above, wider than or outside the granted subtree, and an ADMIN
+    role alone (``may_delegate=False`` or no grant) delegates nothing.
+    """
+    result: set[uuid.UUID] = set()
+    for grant_role, grant_territory in snapshot.delegatable_grants:
+        if grant_role != UserRole.ADMIN and grant_role != role:
+            continue
+        result.update(
+            territory
+            for territory in snapshot.territory_parents
+            if _is_descendant(territory, frozenset({grant_territory}), snapshot.territory_parents)
+        )
+    return frozenset(result)
+
+
 async def user_territories(db: AsyncSession, user_id: uuid.UUID) -> frozenset[uuid.UUID]:
     """Territories the user works in: scope laboratories plus delegated territories."""
     scope_rows = await db.execute(
@@ -149,14 +178,36 @@ async def _resolve_scopes(
     *,
     allow_empty: bool = False,
 ) -> list[tuple[uuid.UUID, uuid.UUID]]:
-    """Validate laboratory assignments against the delegated territory."""
+    """Validate laboratory assignments against the delegable territory (FT-ADM-01)."""
     if not scopes and not allow_empty:
         raise validation_error([ProblemItem(path="scopes", message="Назначьте хотя бы одну область.")])
     if role == UserRole.ANALYST and len(scopes) != 1:
         raise validation_error([ProblemItem(path="scopes", message="Аналитику назначается ровно одна лаборатория.")])
+    # DR34 §7.4: the HEAD of the laboratory is appointed for exactly one
+    # laboratory; a laboratory switcher never appears in his working screen.
+    # An update may still detach all scopes (allow_empty), as before.
+    if role == UserRole.HEAD and len(scopes) > 1:
+        raise validation_error([ProblemItem(path="scopes", message="Заведующему назначается ровно одна лаборатория.")])
     laboratory_ids = [laboratory_id for laboratory_id, _ in scopes]
     rows = await db.execute(select(Laboratory).where(Laboratory.id.in_(laboratory_ids)))
     laboratories = {item.id: item for item in rows.scalars()}
+    # DR34 §7.2: a claimed product area must exist in the same local VetIS
+    # level-2 read model the /assignable options are served from, so a forged
+    # product GUID cannot be written into a scope.
+    product_ids = [
+        product_scope_id for _, product_scope_id in scopes if product_scope_id is not None
+    ]
+    known_products: set[uuid.UUID] = set()
+    if product_ids:
+        product_rows = await db.execute(
+            select(MercuryProductGuidLvl2.guid).where(
+                MercuryProductGuidLvl2.guid.in_(product_ids),
+                MercuryProductGuidLvl2.product_type == _MEAT_PRODUCT_TYPE,
+                MercuryProductGuidLvl2.active.is_(True),
+                MercuryProductGuidLvl2.is_last.is_(True),
+            )
+        )
+        known_products = set(product_rows.scalars())
     errors: list[ProblemItem] = []
     pairs: list[tuple[uuid.UUID, uuid.UUID]] = []
     for index, (laboratory_id, product_scope_id) in enumerate(scopes):
@@ -166,6 +217,11 @@ async def _resolve_scopes(
             continue
         if laboratory.territory_id not in allowed:
             raise access_denied("Назначение вне делегированной области управления.")
+        if product_scope_id is not None and product_scope_id not in known_products:
+            errors.append(
+                ProblemItem(path=f"scopes.{index}.product_scope_id", message="Продуктовая область не найдена.")
+            )
+            continue
         # A missing product means the whole laboratory (HEAD/ANALYST semantics);
         # the composite primary key requires a non-NULL third column.
         pairs.append((laboratory.id, product_scope_id or laboratory.id))
@@ -198,19 +254,59 @@ async def _current_scope_pairs(db: AsyncSession, user_id: uuid.UUID) -> set[tupl
 async def create_user(
     db: AsyncSession, *, actor_id: uuid.UUID, snapshot: AccessSnapshot, payload: UserWrite, record: CommandRecord | None
 ) -> User:
-    """Create a user of an issuable role inside the delegated territory (API-02)."""
-    if payload.role == UserRole.ADMIN:
-        raise access_denied("Выдача полномочий администратора выполняется закрытым bootstrap-CLI.")
+    """Create a user of a delegable role inside the delegated area (API-02, FT-ADM-01).
+
+    The ADMIN target is no longer rejected unconditionally: an empowered
+    administrator may create a further administrator with a ``DelegationGrant``
+    inside his own ``may_delegate=True`` subtree (O-08). User + scope/grant +
+    history are written in one transaction; a refused intent leaves no partial
+    records, and history never carries a password or hash.
+    """
     password = checked_password(payload.password, payload.confirmation)
     login = payload.login.strip()
     if not login:
         raise validation_error([ProblemItem(path="login", message="Логин не может быть пустым.")])
-    pairs = await _resolve_scopes(
-        db,
-        payload.role,
-        [(item.laboratory_id, item.product_scope_id) for item in payload.scopes],
-        allowed_territories(snapshot),
-    )
+    grant_territory: tuple[uuid.UUID, str] | None = None
+    if payload.role == UserRole.ADMIN:
+        # An administrator is created with a delegation grant, never with
+        # working scopes; the target territory must be delegable by the actor.
+        if payload.territory_id is None:
+            raise validation_error([ProblemItem(path="territory_id", message="Выберите территорию назначения.")])
+        if payload.scopes:
+            raise validation_error(
+                [ProblemItem(path="scopes", message="Администратору не назначаются рабочие области.")]
+            )
+        # DR34 §8.2: the target territory and the actor's delegation grants are
+        # re-read under row locks inside this transaction, so a grant revoked
+        # after the authorization snapshot was taken cannot slip past this
+        # check: either the revocation committed before the lock acquisition
+        # (the fresh read no longer sees it → 403) or it waits for this
+        # transaction's commit (fully serialized, no TOCTOU granted write).
+        territory = (
+            await db.execute(select(Territory).where(Territory.id == payload.territory_id).with_for_update())
+        ).scalar_one_or_none()
+        fresh_grants = (
+            await db.execute(
+                select(DelegationGrant).where(DelegationGrant.target_id == actor_id).with_for_update()
+            )
+        ).scalars().all()
+        fresh_snapshot = replace(
+            snapshot,
+            delegatable_grants=frozenset(
+                (UserRole(item.role), item.territory_id) for item in fresh_grants if item.may_delegate
+            ),
+        )
+        if territory is None or territory.id not in delegatable_territories(fresh_snapshot, UserRole.ADMIN):
+            raise access_denied("Назначение вне делегированных полномочий.")
+        grant_territory = (territory.id, territory.name)
+        pairs: list[tuple[uuid.UUID, uuid.UUID]] = []
+    else:
+        pairs = await _resolve_scopes(
+            db,
+            payload.role,
+            [(item.laboratory_id, item.product_scope_id) for item in payload.scopes],
+            delegatable_territories(snapshot, payload.role),
+        )
     existing = (await db.execute(select(User).where(User.login == login))).scalar_one_or_none()
     if existing is not None:
         raise duplicate_login()
@@ -229,22 +325,38 @@ async def create_user(
     uow = UnitOfWork(db)
     try:
         await db.flush()
-        db.add_all(
-            UserScope(user_id=user.id, laboratory_id=laboratory_id, product_scope_id=product)
-            for laboratory_id, product in pairs
-        )
+        if grant_territory is not None:
+            db.add(
+                DelegationGrant(
+                    grantor_id=actor_id,
+                    target_id=user.id,
+                    role=UserRole.ADMIN,
+                    territory_id=grant_territory[0],
+                    may_delegate=True,
+                )
+            )
+        else:
+            db.add_all(
+                UserScope(user_id=user.id, laboratory_id=laboratory_id, product_scope_id=product)
+                for laboratory_id, product in pairs
+            )
+        changed_fields: dict[str, object] = {
+            "login": login,
+            "full_name": user.full_name,
+            "email": user.email,
+            "role": payload.role.value,
+        }
+        # A safe area description rides in the history; never a password/hash.
+        if grant_territory is not None:
+            changed_fields["territory"] = {"territory_id": str(grant_territory[0]), "name": grant_territory[1]}
+        else:
+            changed_fields["scopes"] = _scope_fields(pairs)
         _event(
             db,
             target_id=user.id,
             actor_id=actor_id,
             action="create",
-            changed_fields={
-                "login": login,
-                "full_name": user.full_name,
-                "email": user.email,
-                "role": payload.role.value,
-                "scopes": _scope_fields(pairs),
-            },
+            changed_fields=changed_fields,
         )
         if record is not None and record.status != CommandStatus.SUCCESS:
             await recorder.complete(uow, record, user.id)
@@ -262,7 +374,7 @@ async def update_user(
     if payload.password is not None or payload.confirmation is not None:
         raise validation_error([ProblemItem(path="password", message="Пароль задаётся отдельными операциями.")])
     if payload.role == UserRole.ADMIN:
-        raise access_denied("Выдача полномочий администратора выполняется закрытым bootstrap-CLI.")
+        raise access_denied("Роль администратора выдаётся делегированием, а не изменением учётной записи.")
     login = payload.login.strip()
     if not login:
         raise validation_error([ProblemItem(path="login", message="Логин не может быть пустым.")])

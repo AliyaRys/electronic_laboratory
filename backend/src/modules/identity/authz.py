@@ -47,6 +47,10 @@ class AccessSnapshot:
     delegated_territories: frozenset[uuid.UUID]
     territory_parents: dict[uuid.UUID, uuid.UUID | None]
     laboratory_territories: dict[uuid.UUID, uuid.UUID]
+    # DR34 (FT-ADM-01): (role, territory) pairs the actor may delegate onward.
+    # Only grants with ``may_delegate=True`` enter here; a plain ADMIN role or a
+    # ``may_delegate=False`` grant implies no delegation right anywhere.
+    delegatable_grants: frozenset[tuple[UserRole, uuid.UUID]] = frozenset()
 
 
 class DecisionEngine(Protocol):
@@ -155,13 +159,26 @@ def attributes_allow(snapshot: AccessSnapshot, action: str, attributes: dict[str
 
 
 async def load_access_snapshot(session: AsyncSession, actor_id: uuid.UUID) -> AccessSnapshot:
-    user = (await session.execute(select(User).where(User.id == actor_id))).scalar_one_or_none()
+    """Authorization snapshot with the mutable grant state read under row locks.
+
+    The actor row and his ``DelegationGrant`` rows are read ``FOR UPDATE`` (the
+    same lock idiom as every other identity command, e.g. ``load_target``), so a
+    concurrent grant revocation serializes behind this transaction instead of
+    slipping between the authorization read and the subsequent write (DR34 §8.2,
+    TOCTOU). Reference tables (territories, laboratories) are stable dictionary
+    data and are not locked.
+    """
+    user = (
+        await session.execute(select(User).where(User.id == actor_id).with_for_update())
+    ).scalar_one_or_none()
     if user is None:
         raise not_found()
     scopes = (await session.execute(select(UserScope).where(UserScope.user_id == actor_id))).scalars().all()
     grants = (
-        (await session.execute(select(DelegationGrant).where(DelegationGrant.target_id == actor_id))).scalars().all()
-    )
+        await session.execute(
+            select(DelegationGrant).where(DelegationGrant.target_id == actor_id).with_for_update()
+        )
+    ).scalars().all()
     territories = (await session.execute(select(Territory))).scalars().all()
     laboratories = (await session.execute(select(Laboratory))).scalars().all()
     return AccessSnapshot(
@@ -172,6 +189,9 @@ async def load_access_snapshot(session: AsyncSession, actor_id: uuid.UUID) -> Ac
         delegated_territories=frozenset(item.territory_id for item in grants),
         territory_parents={item.id: item.parent_id for item in territories},
         laboratory_territories={item.id: item.territory_id for item in laboratories},
+        delegatable_grants=frozenset(
+            (UserRole(item.role), item.territory_id) for item in grants if item.may_delegate
+        ),
     )
 
 

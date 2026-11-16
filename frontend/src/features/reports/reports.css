@@ -1,6 +1,126 @@
 /* Reporting screens (R03): list, creation, view and the operational page.
    Derived from the working-screen tokens (shared/ui/ui.css). */
 
+/* The reports hub (DR37 §6): the composition and geometry of
+   analyst_makets/analyst-reports.html built on the shared tokens and the
+   shared button — not a second design system. */
+.vse-reports-hub {
+  width: min(1180px, calc(100% - 48px));
+  margin-inline: auto;
+  padding-block: 24px 64px;
+}
+
+.vse-reports-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.vse-reports-title-row h1 {
+  margin: 0;
+  font-size: clamp(27px, 2.5vw, 32px);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.vse-reports-subtitle {
+  margin: 7px 0 0;
+  max-width: 720px;
+  color: var(--app-muted);
+}
+
+.vse-reports-lab {
+  margin: 4px 0 0;
+  font-weight: 640;
+  color: var(--app-muted-readable);
+}
+
+.vse-reports-card {
+  overflow-x: auto;
+  border: 1px solid var(--app-line);
+  border-radius: 15px;
+  background: var(--app-panel);
+  box-shadow: 0 8px 26px #17323a0a;
+}
+
+.vse-reports-hub-list {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.vse-reports-hub-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+  padding: 15px 16px;
+  background: var(--app-panel);
+}
+
+.vse-reports-hub-name {
+  font-weight: 760;
+  font-size: 15px;
+}
+
+.vse-reports-hub-meta {
+  margin-top: 2px;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.vse-reports-hub-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+/* The saved rows share the same row-card language as the hub items. */
+.vse-report-row {
+  align-items: center;
+  gap: 12px 24px;
+  padding: 12px 16px;
+  border-radius: 13px;
+  border-color: var(--app-line);
+}
+
+@media (max-width: 720px) {
+  .vse-reports-hub {
+    width: min(100% - 32px, 1180px);
+    padding-top: 16px;
+  }
+
+  .vse-reports-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .vse-reports-hub-item,
+  .vse-report-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vse-reports-hub-actions,
+  .vse-report-row .app-button {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .vse-reports-hub {
+    width: min(100% - 24px, 1180px);
+  }
+}
+
 .vse-report-block {
   margin-block: 16px;
   padding: 12px 16px;

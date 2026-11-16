@@ -224,5 +224,3 @@ export async function fetchReportFile(
   }
 }
 
-/** The roles allowed to see any reporting screen (AT-20: ADMIN is forbidden). */
-export const REPORT_ROLES: ReadonlySet<string> = new Set(["HEAD", "ANALYST"]);

@@ -7,6 +7,23 @@ const longUser: HeaderUser = {
   initials: "АМ",
 };
 
+/** Selected laboratory of the story examples (contextual DR37 links). */
+const LAB = "11111111-2222-4333-8444-555555555555";
+
+const selectedLabLinks = {
+  brand: `/labs/${LAB}/arrivals?queue=expected`,
+  arrivals: `/labs/${LAB}/arrivals?queue=expected`,
+  journal: `/labs/${LAB}/examinations`,
+  reports: `/labs/${LAB}/reports`,
+};
+
+const samplesOnlyLinks = {
+  brand: `/labs/${LAB}/arrivals?queue=expected`,
+  arrivals: `/labs/${LAB}/arrivals?queue=expected`,
+  journal: `/labs/${LAB}/examinations`,
+  reports: `/labs/${LAB}/reports`,
+};
+
 const meta: Meta<typeof AppHeader> = {
   title: "F02/AppHeader",
   component: AppHeader,
@@ -23,6 +40,7 @@ export const WorkMeat: Story = {
     product: "meat",
     active: "arrivals",
     institution: "Лаборатория ВСЭ №1 г. Казань",
+    links: selectedLabLinks,
     onLogout: () => undefined,
   },
 };
@@ -33,6 +51,31 @@ export const WorkMilk: Story = {
     product: "milk",
     active: "journal",
     institution: "Лаборатория ВСЭ №1 г. Казань",
+    links: selectedLabLinks,
+    onLogout: () => undefined,
+  },
+};
+/** VET: «Отчёты» leads into the section, but the hub shows only «Учёт проб». */
+export const VetSamplesOnly: Story = {
+  args: {
+    mode: "work",
+    user,
+    product: "meat",
+    active: "reports",
+    institution: "Лаборатория ВСЭ №1 г. Казань",
+    links: samplesOnlyLinks,
+    onLogout: () => undefined,
+  },
+};
+/** HEAD: all reporting directions of the own laboratory. */
+export const HeadAllReports: Story = {
+  args: {
+    mode: "work",
+    user,
+    product: "meat",
+    active: "reports",
+    institution: "Лаборатория ВСЭ №1 г. Казань",
+    links: selectedLabLinks,
     onLogout: () => undefined,
   },
 };
@@ -45,12 +88,34 @@ export const Admin: Story = {
     onLogout: () => undefined,
   },
 };
-export const Analyst: Story = {
+/** DR37: the administrator never gets a reports item (FT-RPT-01). */
+export const AdminWithoutReports: Story = {
+  args: {
+    mode: "admin",
+    user,
+    active: "users",
+    institution: "Главная ветеринарная лаборатория",
+    onLogout: () => undefined,
+  },
+};
+/** ANALYST inside the selected laboratory: «Отчёты» is the active item. */
+export const AnalystSelectedLab: Story = {
   args: {
     mode: "analyst",
     user,
     active: "reports",
     institution: "Аналитический отдел",
+    links: selectedLabLinks,
+    onLogout: () => undefined,
+  },
+};
+/** ANALYST before the choice: the honest /labs selection, no guessed lab. */
+export const AnalystNoLab: Story = {
+  args: {
+    mode: "analyst",
+    user,
+    institution: "Аналитический отдел",
+    links: { reports: "/labs" },
     onLogout: () => undefined,
   },
 };
@@ -64,6 +129,7 @@ export const LongData: Story = {
     product: "milk",
     active: "directories",
     institution: "ГБУ «Центральное управление государственной ветеринарной службы Республики Татарстан»",
+    links: selectedLabLinks,
     onLogout: () => undefined,
   },
 };
@@ -71,7 +137,14 @@ export const NoUser: Story = {
   args: { mode: "no-products", user: null, onLogout: () => undefined },
 };
 export const Narrow: Story = {
-  args: { mode: "work", user: longUser, product: "milk", active: "arrivals", onLogout: () => undefined },
+  args: {
+    mode: "work",
+    user: longUser,
+    product: "milk",
+    active: "arrivals",
+    links: selectedLabLinks,
+    onLogout: () => undefined,
+  },
   decorators: [
     (Story) => (
       <div style={{ width: 390 }}>

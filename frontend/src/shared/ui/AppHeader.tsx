@@ -25,9 +25,13 @@ export interface HeaderLinks {
   arrivals?: string;
   journal?: string;
   directories?: string;
+  /**
+   * The contextual reports link; its PRESENCE (not the mode) renders the
+   * «Отчёты» item — the shell computes it from real capabilities (DR37 §3):
+   * a link is never a proof of access, the server re-checks every request.
+   */
   reports?: string;
   adminUsers?: string;
-  adminReports?: string;
   profile?: string;
 }
 
@@ -183,7 +187,21 @@ export function AppHeader({
     (mode === "admin" ? "/users" : mode === "analyst" ? "/labs" : workMode ? "/labs" : "/profile");
   const profileHref = links.profile ?? "/profile";
 
-  const nav: React.ReactElement[] =
+  // The reports item renders whenever the shell provides its contextual link
+  // (work and analyst modes); ADMIN never gets a reports item (FT-RPT-01).
+  const reportsItem = (mode: "analyst" | "work"): React.ReactElement | null =>
+    links.reports !== undefined ? (
+      <NavLink
+        key="reports"
+        id={mode === "analyst" ? "analyst-reports-link" : "reports-link"}
+        href={links.reports}
+        label="Отчёты"
+        icon="admin-reports"
+        active={active === "reports"}
+      />
+    ) : null;
+
+  const nav =
     mode === "admin"
       ? [
           <NavLink
@@ -193,14 +211,6 @@ export function AppHeader({
             label="Управление пользователями"
             icon="admin-users"
             active={active === "users"}
-          />,
-          <NavLink
-            key="reports"
-            id="admin-reports-link"
-            href={links.adminReports ?? "/labs"}
-            label="Отчёты"
-            icon="admin-reports"
-            active={active === "reports"}
           />,
         ]
       : mode === "analyst"
@@ -229,14 +239,7 @@ export function AppHeader({
               icon="directories-classic"
               active={active === "directories"}
             />,
-            <NavLink
-              key="reports"
-              id="analyst-reports-link"
-              href={links.reports ?? "/labs"}
-              label="Отчёты"
-              icon="admin-reports"
-              active={active === "reports"}
-            />,
+            ...(links.reports !== undefined ? [reportsItem("analyst")] : []),
           ]
         : workMode
           ? [
@@ -264,6 +267,7 @@ export function AppHeader({
                 icon="directories-classic"
                 active={active === "directories"}
               />,
+              ...(links.reports !== undefined ? [reportsItem("work")] : []),
             ]
           : [];
 

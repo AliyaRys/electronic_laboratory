@@ -58,7 +58,7 @@ const payload = {
   official: false,
 };
 
-function me(role: string): Record<string, unknown> {
+function me(role: string, capabilities: string[] = REPORT_CAPS): Record<string, unknown> {
   return {
     id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     full_name: "Тестовый пользователь",
@@ -68,9 +68,27 @@ function me(role: string): Record<string, unknown> {
     role,
     active: true,
     scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-    capabilities: [],
+    capabilities,
     revision: 1,
   };
+}
+
+/** DR37: the reporting capability set of a HEAD/ANALYST fixture. */
+const REPORT_CAPS = [
+  "sample:read",
+  "report:operational",
+  "report:5vet-list",
+  "report:5vet-read",
+  "report:5vet-preview",
+  "report:5vet-save",
+  "report:5vet-delete",
+  "report:5vet-export",
+];
+
+async function mockMe(page: Page, role = "HEAD", capabilities: string[] = REPORT_CAPS): Promise<void> {
+  await page.route("**/api/v1/me", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me(role, capabilities)) }),
+  );
 }
 
 function summary(id: string, year: number, half: number): Record<string, unknown> {
@@ -85,12 +103,6 @@ function summary(id: string, year: number, half: number): Record<string, unknown
     saved_by: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     rev: 1,
   };
-}
-
-async function mockMe(page: Page, role = "HEAD"): Promise<void> {
-  await page.route("**/api/v1/me", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me(role)) }),
-  );
 }
 
 async function expectAlertCount(page: Page, text: string): Promise<void> {
@@ -248,12 +260,12 @@ test.describe("report list", () => {
       }),
     );
     await page.goto(`/labs/${LAB}/reports`);
-    const link = page.getByRole("link", { name: /2026, I полугодие/ });
+    const link = page.getByRole("link", { name: "Открыть: 2026, I полугодие" });
     await link.focus();
     await expect(link).toBeFocused();
-    await expect(page.getByRole("link", { name: "Операционный отчёт" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Учёт проб" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Создать отчёт 5-вет" })).toBeEnabled();
+    await expect(page.getByRole("link", { name: "Открыть: Операционные показатели" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Открыть: Учёт проб" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Создать отчёт" })).toBeEnabled();
   });
 });
 
@@ -415,5 +427,150 @@ test.describe("operational report", () => {
     await expect(page.getByText("говядина")).toBeVisible();
     await expect(page.getByText("12.6")).toBeVisible();
     await shot(page, "operational");
+  });
+});
+
+test.describe("DR37: analyst reporting journey", () => {
+  const OTHER = "99999999-8888-4777-8666-555555555555";
+
+  async function mockHub(page: Page, options?: { deniedLabs?: string[] }): Promise<void> {
+    await page.route("**/api/v1/contexts/laboratories", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{ laboratory_id: LAB, name: "Лаборатория №1 г. Казань" }]),
+      }),
+    );
+    await page.route("**/api/v1/reports/5vet*", (route: Route) => {
+      const url = new URL(route.request().url());
+      const laboratoryId = url.searchParams.get("laboratory_id");
+      if (options?.deniedLabs?.includes(laboratoryId ?? "")) {
+        return route.fulfill({
+          status: 403,
+          contentType: "application/problem+json",
+          body: JSON.stringify({
+            code: "ACCESS_DENIED",
+            title: "Forbidden",
+            status: 403,
+            detail: "Нет доступа к отчётам этой лаборатории.",
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+      });
+    });
+  }
+
+  test("the analyst selects a laboratory and keeps the same labId through the header and the hub", async ({
+    page,
+  }) => {
+    await mockMe(page, "ANALYST");
+    await mockHub(page);
+    await page.route("**/api/v1/reports/operational", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          processed_parties: 7,
+          product_identifications: 12,
+          transport_inspections: 3,
+          current_sample_balances: [],
+          period: { date_from: "2026-10-01T00:00:00Z", date_to: "2026-11-01T00:00:00Z" },
+        }),
+      }),
+    );
+    await page.route("**/api/v1/samples/*", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) }),
+    );
+
+    await page.goto(`/labs/${LAB}/reports`);
+    await shot(page, "dr37-analyst-hub");
+    // The header keeps the reports link inside the selected laboratory.
+    const reportsLink = page.locator("#analyst-reports-link");
+    await expect(reportsLink).toHaveAttribute("href", `/labs/${LAB}/reports`);
+    await expect(reportsLink).toHaveAttribute("aria-current", "page");
+    // The human-readable laboratory name is visible, not a UUID.
+    await expect(page.getByText("Лаборатория №1 г. Казань")).toBeVisible();
+    // Three permitted directions with the real create affordance.
+    await expect(page.getByText("Форма 5-вет (раздел III)")).toBeVisible();
+    await expect(page.getByText("Операционные показатели")).toBeVisible();
+    await expect(page.getByText("Учёт проб")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Создать отчёт" })).toBeEnabled();
+
+    // Opening every direction keeps the same laboratory context.
+    await page.getByRole("link", { name: "Открыть: Операционные показатели" }).click();
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/reports/operational`));
+    await expect(page.locator("#analyst-reports-link")).toHaveAttribute(
+      "href",
+      `/labs/${LAB}/reports`,
+    );
+    await page.goBack();
+    await page.getByRole("link", { name: "Открыть: Учёт проб" }).click();
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/reports/samples`));
+    await expect(page.locator("#analyst-reports-link")).toHaveAttribute(
+      "href",
+      `/labs/${LAB}/reports`,
+    );
+    // Back to the hub keeps the laboratory (never /labs, never arrivals).
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/reports$`));
+  });
+
+  test("refresh on a reports URL keeps the selected laboratory", async ({ page }) => {
+    await mockMe(page, "ANALYST");
+    await mockHub(page);
+    await page.goto(`/labs/${LAB}/reports`);
+    await expect(page.getByText("Учёт проб")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("Учёт проб")).toBeVisible();
+    await expect(page.locator("#analyst-reports-link")).toHaveAttribute("href", `/labs/${LAB}/reports`);
+  });
+
+  test("a foreign laboratory URL answers the honest denial without leaking data", async ({ page }) => {
+    await mockMe(page, "ANALYST");
+    await mockHub(page, { deniedLabs: [OTHER] });
+    await page.goto(`/labs/${OTHER}/reports`);
+    // The server denial is rendered; no saved reports or metrics are shown.
+    await expect(page.locator(".app-status").first()).toBeVisible();
+    await expect(page.getByText("Форма 5-вет (раздел III)")).toBeVisible();
+    await expect(page.locator(".vse-reports-list")).toHaveCount(0);
+  });
+
+  test("role matrix: VET sees only sample accounting, ADMIN gets no item and a denied URL", async ({
+    page,
+  }) => {
+    await mockMe(page, "VET", ["sample:read"]);
+    await mockHub(page);
+    await page.route("**/api/v1/samples/*", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) }),
+    );
+    await page.goto(`/labs/${LAB}/reports`);
+    await expect(page.getByText("Учёт проб")).toBeVisible();
+    await expect(page.getByText("Форма 5-вет (раздел III)")).toHaveCount(0);
+    await expect(page.getByText("Операционные показатели")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Создать отчёт" })).toHaveCount(0);
+    await shot(page, "dr37-vet-samples-only");
+
+    // ADMIN: no header item at all; a direct URL is denied without requests.
+    const reportGets: string[] = [];
+    await page.route("**/api/v1/reports/5vet*", (route) => {
+      reportGets.push(route.request().url());
+      return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.route("**/api/v1/me", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(me("ADMIN", [])),
+      }),
+    );
+    await page.goto(`/labs/${LAB}/reports`);
+    await expect(page.locator("#analyst-reports-link")).toHaveCount(0);
+    await expect(page.getByText(/Раздел отчётов недоступен/)).toBeVisible();
+    expect(reportGets).toEqual([]);
+    await shot(page, "dr37-admin-denied");
   });
 });

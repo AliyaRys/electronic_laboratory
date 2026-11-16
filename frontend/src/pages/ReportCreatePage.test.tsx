@@ -32,7 +32,7 @@ function me(role = "HEAD"): Record<string, unknown> {
     role,
     active: true,
     scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-    capabilities: [],
+    capabilities: role === "HEAD" ? ["report:5vet-preview", "report:5vet-save"] : [],
     revision: 1,
   };
 }
@@ -213,5 +213,25 @@ describe("ReportCreatePage", () => {
     const codeErrors = await screen.findAllByText("Код обязателен и не может быть пустым.");
     expect(codeErrors.length).toBe(7);
     expect(saveCounter).toBe(0);
+  });
+});
+
+describe("ReportCreatePage capability guard (DR37)", () => {
+  it("a user without preview+save capabilities gets the forbidden state and no preview POST", async () => {
+    let previewPosts = 0;
+    server.use(
+      http.get("*/api/v1/me", () => HttpResponse.json(me("ANALYST"))),
+      http.post("*/api/v1/reports/5vet/preview", () => {
+        previewPosts += 1;
+        return HttpResponse.json(signedPreview());
+      }),
+    );
+    renderPage();
+    expect(
+      await screen.findByText(
+        "Создание отчёта недоступно: у вас нет полномочий формирования и сохранения 5-вет.",
+      ),
+    ).toBeVisible();
+    expect(previewPosts).toBe(0);
   });
 });

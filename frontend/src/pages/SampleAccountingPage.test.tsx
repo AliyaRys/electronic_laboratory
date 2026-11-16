@@ -25,7 +25,7 @@ const server = setupServer(
       role,
       active: true,
       scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-      capabilities: [],
+      capabilities: role === "VET" ? ["sample:read"] : ["sample:read", "report:5vet-list", "report:5vet-read"],
       revision: 1,
     });
   }),
@@ -81,7 +81,12 @@ function renderPage(role = "VET"): {
         role,
         active: true,
         scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-        capabilities: [],
+        capabilities:
+          role === "VET"
+            ? ["sample:read"]
+            : role === "ADMIN"
+              ? []
+              : ["sample:read", "report:5vet-list", "report:5vet-read"],
         revision: 1,
       }),
     ),
@@ -160,5 +165,36 @@ describe("SampleAccountingPage", () => {
       expect(body["externalVsdNumber"]).toBe("ВСД-001");
       expect(body["expectedMassKg"]).toBe("12.6");
     });
+  });
+});
+
+describe("SampleAccountingPage capability guard (DR37)", () => {
+  it("a user without sample:read gets the forbidden state and no sample GET", async () => {
+    let sampleGets = 0;
+    server.use(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          full_name: "Тестовый пользователь",
+          login: "tester",
+          email: "tester@example.test",
+          position: null,
+          role: "ADMIN",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: [],
+          revision: 1,
+        }),
+      ),
+      http.get("*/api/v1/samples/balances", () => {
+        sampleGets += 1;
+        return HttpResponse.json([]);
+      }),
+    );
+    renderPage("ADMIN");
+    expect(
+      await screen.findByText("Учёт проб недоступен: у вас нет полномочия чтения проб."),
+    ).toBeVisible();
+    expect(sampleGets).toBe(0);
   });
 });

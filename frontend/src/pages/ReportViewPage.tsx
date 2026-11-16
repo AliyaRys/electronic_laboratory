@@ -14,6 +14,8 @@ import { StatusView } from "../shared/ui/StatusView";
 import { ReportMatrix } from "../features/reports/ReportMatrix";
 import { ReportActions } from "../features/reports/ReportActions";
 import { fetchReport, reportKey, type ReportSnapshotView } from "../features/reports/api";
+import { reportAccess } from "../features/reports/reportCapabilities";
+import { useMe } from "../shared/api/me";
 
 export function ReportViewPage(): React.ReactElement {
   return (
@@ -30,13 +32,27 @@ function isProblem(data: unknown): data is { code: string; detail: string; trace
 function ReportViewContent(): React.ReactElement {
   const { labId, reportId } = useParams<{ labId: string; reportId: string }>();
   const navigate = useNavigate();
+  const me = useMe();
+  const access = reportAccess(me.user?.capabilities);
 
   const report = useQuery({
     queryKey: reportKey(reportId ?? ""),
     queryFn: ({ signal }) => fetchReport(reportId ?? "", signal),
-    enabled: reportId !== undefined,
+    // Without ``report:5vet-read`` the snapshot endpoint is never requested.
+    enabled: reportId !== undefined && access.read5vet,
   });
 
+  if (me.user !== null && !access.read5vet) {
+    return (
+      <div className="vse-app vse-page">
+        <h1>Отчёт 5-вет (раздел III)</h1>
+        <StatusView
+          state="forbidden"
+          title="Просмотр отчёта недоступен: у вас нет полномочия чтения отчётов."
+        />
+      </div>
+    );
+  }
   if (reportId === undefined) {
     return (
       <div className="vse-app vse-page">
@@ -127,6 +143,8 @@ function ReportViewContent(): React.ReactElement {
           />
           <ReportActions
             view={view}
+            canExport={access.export5vet}
+            canDelete={access.delete5vet}
             onDeleted={() => navigate(`/labs/${labId}/reports`, { replace: true })}
           />
         </>

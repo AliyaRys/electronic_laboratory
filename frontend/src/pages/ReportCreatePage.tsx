@@ -32,6 +32,7 @@ import {
 } from "../features/reports/api";
 import { useDirtyStore } from "../entities/session/context";
 import { useDirtyGuard } from "../features/context/SwitchContext";
+import { reportAccess } from "../features/reports/reportCapabilities";
 
 const CODE_KEYS = CODE_FIELDS.map((field) => field.key);
 
@@ -160,11 +161,14 @@ function ReportCreateContent(): React.ReactElement {
     );
   };
 
-  if (me.user !== null && (me.user.role === "VET" || me.user.role === "ADMIN")) {
+  if (me.user !== null && !reportAccess(me.user?.capabilities).create5vet) {
     return (
       <div className="vse-app vse-page">
         <h1>Создание отчёта</h1>
-        <StatusView state="forbidden" title="Создание отчёта доступно только заведующему и аналитику." />
+        <StatusView
+          state="forbidden"
+          title="Создание отчёта недоступно: у вас нет полномочий формирования и сохранения 5-вет."
+        />
       </div>
     );
   }

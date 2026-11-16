@@ -608,13 +608,28 @@ async def test_self_protection_and_role_issuance(admin_env: SimpleNamespace) -> 
         )
         assert escalated.status_code == 403, escalated.text
 
+        # DR34 (FT-ADM-01, O-08): the empowered administrator may create a
+        # further administrator with a DelegationGrant inside his subtree.
         new_admin = await http.post(
             "/api/v1/users",
-            json=_write("api-admin", lab=admin_env.own_lab.id, product=None, role="ADMIN"),
+            json={
+                "full_name": "Новый администратор",
+                "login": "api-admin",
+                "email": "api-admin@example.test",
+                "role": "ADMIN",
+                "scopes": [],
+                "territory_id": str(admin_env.district.id),
+                "password": NEW_PASSWORD,
+                "confirmation": NEW_PASSWORD,
+            },
             headers={**auth, "Idempotency-Key": "k-admin"},
         )
-        assert new_admin.status_code == 403, new_admin.text
-        assert await _count_users(admin_env.db, "api-admin") == 0
+        assert new_admin.status_code == 201, new_admin.text
+        assert new_admin.json()["role"] == "ADMIN"
+        assert all(
+            item["laboratory_id"] is None for item in new_admin.json()["scopes"]
+        ), "созданному администратору не выдаются рабочие области"
+        admin_id = uuid.UUID(str(new_admin.json()["id"]))
 
         head_created = await http.post(
             "/api/v1/users",
@@ -623,12 +638,59 @@ async def test_self_protection_and_role_issuance(admin_env: SimpleNamespace) -> 
         )
         assert head_created.status_code == 201, head_created.text
 
+    # Without a delegable ADMIN grant the same creation is refused and
+    # leaves no records. A separate client block: the nested override teardown
+    # would otherwise strip the outer client's overrides.
+    restricted = User(
+        login="restricted-admin",
+        full_name="Ограниченный администратор",
+        email="restricted@example.test",
+        password_hash=hash_password(ADMIN_PASSWORD),
+        role=UserRole.ADMIN,
+        active=True,
+    )
+    admin_env.db.add(restricted)
+    await admin_env.db.commit()
+    async with _client_for(admin_env) as second:
+        await _login(second, "restricted-admin")
+        refused = await second.post(
+            "/api/v1/users",
+            json={
+                "full_name": "Подменный администратор",
+                "login": "forged-admin",
+                "email": "forged@example.test",
+                "role": "ADMIN",
+                "scopes": [],
+                "territory_id": str(admin_env.district.id),
+                "password": NEW_PASSWORD,
+                "confirmation": NEW_PASSWORD,
+            },
+            headers={**_csrf(second.cookies.get("vse_csrf", "")), "Idempotency-Key": "k-admin-2"},
+        )
+        assert refused.status_code == 403, refused.text
+    assert await _count_users(admin_env.db, "forged-admin") == 0
+
+    # The created administrator carries his own delegation grant and can
+    # log in, but has no working scopes and no working data.
+    grants = (
+        await admin_env.db.execute(select(DelegationGrant).where(DelegationGrant.target_id == admin_id))
+    ).scalars().all()
+    assert len(grants) == 1 and grants[0].may_delegate is True and grants[0].role == UserRole.ADMIN
+    scopes = (await admin_env.db.execute(select(UserScope).where(UserScope.user_id == admin_id))).scalars().all()
+    assert scopes == []
+    actor_scopes = (
+        await admin_env.db.execute(select(UserScope).where(UserScope.user_id == admin_env.chief.id))
+    ).scalars().all()
+    assert actor_scopes == [], "создание администратора не даёт actor рабочие области"
+
     async with _client_for(admin_env) as http:
-        await _login(http, "managing-head", NEW_PASSWORD)
-        denied = await http.get("/api/v1/users")
-        assert denied.status_code == 403
+        await _login(http, "api-admin", NEW_PASSWORD)
+        # The created administrator can enter the administration section.
+        allowed = await http.get("/api/v1/users")
+        assert allowed.status_code == 200, allowed.text
+        # …but he has no working data and sees no foreign laboratory.
         denied_view = await http.get(f"/api/v1/users/{admin_env.vet.id}")
-        assert denied_view.status_code == 403
+        assert denied_view.status_code == 200, "пользователь внутри делегированной области виден"
 
 
 # --- Viewing another user never changes the current one ------------------------

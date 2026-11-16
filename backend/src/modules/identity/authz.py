@@ -47,6 +47,10 @@ class AccessSnapshot:
     delegated_territories: frozenset[uuid.UUID]
     territory_parents: dict[uuid.UUID, uuid.UUID | None]
     laboratory_territories: dict[uuid.UUID, uuid.UUID]
+    # DR34 (FT-ADM-01): (role, territory) pairs the actor may delegate onward.
+    # Only grants with ``may_delegate=True`` enter here; a plain ADMIN role or a
+    # ``may_delegate=False`` grant implies no delegation right anywhere.
+    delegatable_grants: frozenset[tuple[UserRole, uuid.UUID]] = frozenset()
 
 
 class DecisionEngine(Protocol):
@@ -172,6 +176,9 @@ async def load_access_snapshot(session: AsyncSession, actor_id: uuid.UUID) -> Ac
         delegated_territories=frozenset(item.territory_id for item in grants),
         territory_parents={item.id: item.parent_id for item in territories},
         laboratory_territories={item.id: item.territory_id for item in laboratories},
+        delegatable_grants=frozenset(
+            (UserRole(item.role), item.territory_id) for item in grants if item.may_delegate
+        ),
     )
 
 

@@ -19,17 +19,40 @@ from backend.src.modules.identity.models import (
     UserScope,
 )
 from backend.src.modules.identity.policies import PERMISSION_MATRIX
-from backend.src.modules.identity.schemas import LaboratoryOptionView, ScopeView, UserEventView, UserView
+from backend.src.modules.identity.schemas import (
+    AssignableOptionsView,
+    AssignableRoleOptions,
+    LaboratoryOptionView,
+    ProductAreaOptionView,
+    ScopeView,
+    TerritoryOptionView,
+    UserEventView,
+    UserView,
+)
+from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
+
+# The meat product type of the local VetIS level-2 classification (productType=1,
+# migration 0005). Kept local: the pricing module owns its own constant.
+_MEAT_PRODUCT_TYPE = 1
 
 __all__ = [
     "PAGE_SIZE",
     "user_contexts",
     "laboratory_options",
+    "assignable_options",
     "capabilities_for",
     "build_user_view",
     "user_page",
     "history_page",
 ]
+
+# Human-readable role names of the creation form (DR34 §7.1).
+ROLE_TITLES: dict[UserRole, str] = {
+    UserRole.VET: "Ветеринарный врач",
+    UserRole.HEAD: "Заведующий лабораторией",
+    UserRole.ANALYST: "Аналитик",
+    UserRole.ADMIN: "Администратор",
+}
 
 
 async def user_contexts(db: AsyncSession, user: User) -> list[ScopeView]:
@@ -107,6 +130,116 @@ def capabilities_for(user: User) -> list[str]:
     """Casbin actions the user's role permits; scope is always checked separately."""
     role = UserRole(user.role)
     return sorted(action for action, roles in PERMISSION_MATRIX.items() if role in roles)
+
+
+def _subtree_territories(
+    parents: dict[uuid.UUID, uuid.UUID | None],
+    root: uuid.UUID,
+) -> list[uuid.UUID]:
+    """The granted territory plus every descendant inside its subtree."""
+    return [territory for territory in parents if territory == root or _walks_to(territory, root, parents)]
+
+
+def _walks_to(territory: uuid.UUID, root: uuid.UUID, parents: dict[uuid.UUID, uuid.UUID | None]) -> bool:
+    current: uuid.UUID | None = territory
+    while current is not None:
+        if current == root:
+            return True
+        current = parents.get(current)
+    return False
+
+
+async def _product_area_options(db: AsyncSession) -> list[ProductAreaOptionView]:
+    """Named product areas for a VET scope (DR34 §7.2).
+
+    The ids/names come from the local VetIS level-2 classification read model
+    (migration 0005); nothing is invented and nothing is written. An unseeded
+    dictionary honestly answers an empty list.
+    """
+    rows = await db.execute(
+        select(MercuryProductGuidLvl2.guid, MercuryProductGuidLvl2.name)
+        .where(
+            MercuryProductGuidLvl2.product_type == _MEAT_PRODUCT_TYPE,
+            MercuryProductGuidLvl2.active.is_(True),
+            MercuryProductGuidLvl2.is_last.is_(True),
+        )
+        .order_by(MercuryProductGuidLvl2.name)
+    )
+    seen: dict[uuid.UUID, str] = {}
+    for guid, name in rows.all():
+        seen.setdefault(guid, name.strip())
+    return [
+        ProductAreaOptionView(product_area_id=guid, name=name)
+        for guid, name in sorted(seen.items(), key=lambda pair: pair[1])
+    ]
+
+
+async def assignable_options(db: AsyncSession, actor: User) -> AssignableOptionsView:
+    """Server-authoritative assignment options of the caller (DR34 §7.2, O-08).
+
+    Only the delegable subset is exposed: a role appears with its allowed
+    territories/laboratories only when the caller holds a ``may_delegate=True``
+    grant that enables it (an ADMIN-role grant enables all four roles inside
+    its subtree, a working-role grant only that role). The caller's own ADMIN
+    role never widens the answer, foreign areas never appear, and the endpoint
+    does not replace the POST-time delegation check.
+    """
+    grants = (
+        await db.execute(
+            select(DelegationGrant.role, DelegationGrant.territory_id).where(
+                DelegationGrant.target_id == actor.id,
+                DelegationGrant.may_delegate.is_(True),
+            )
+        )
+    ).all()
+    if not grants:
+        return AssignableOptionsView(roles=[])
+
+    parents = {item.id: item.parent_id for item in (await db.execute(select(Territory))).scalars().all()}
+    name_rows = await db.execute(select(Territory.id, Territory.name))
+    territory_names = dict(name_rows.all())
+    laboratories = (
+        await db.execute(
+            select(Laboratory.id, Laboratory.name, Laboratory.territory_id).order_by(Laboratory.name, Laboratory.id)
+        )
+    ).all()
+
+    roles: list[AssignableRoleOptions] = []
+    for role in UserRole:
+        roots = [
+            territory_id for grant_role, territory_id in grants if grant_role == UserRole.ADMIN or grant_role == role
+        ]
+        if not roots:
+            continue
+        allowed_territories: set[uuid.UUID] = set()
+        for root in roots:
+            allowed_territories.update(_subtree_territories(parents, root))
+        ordered = sorted(allowed_territories, key=lambda tid: territory_names.get(tid, ""))
+        role_territories = (
+            [
+                TerritoryOptionView(territory_id=territory_id, name=territory_names.get(territory_id) or "")
+                for territory_id in ordered
+            ]
+            if role == UserRole.ADMIN
+            else []
+        )
+        role_laboratories = [
+            LaboratoryOptionView(laboratory_id=lid, name=name, territory_id=tid)
+            for lid, name, tid in laboratories
+            if tid in allowed_territories
+        ]
+        product_areas = await _product_area_options(db) if role == UserRole.VET else []
+        roles.append(
+            AssignableRoleOptions(
+                role=role,
+                label=ROLE_TITLES[role],
+                territories=role_territories,
+                laboratories=role_laboratories,
+                product_areas=product_areas,
+                max_laboratories=1 if role in (UserRole.HEAD, UserRole.ANALYST) else None,
+            )
+        )
+    return AssignableOptionsView(roles=roles)
 
 
 async def build_user_view(db: AsyncSession, user: User) -> UserView:

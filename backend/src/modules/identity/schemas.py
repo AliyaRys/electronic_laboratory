@@ -23,6 +23,10 @@ __all__ = [
     "ScopeView",
     "UserView",
     "UserEventView",
+    "TerritoryOptionView",
+    "ProductAreaOptionView",
+    "AssignableRoleOptions",
+    "AssignableOptionsView",
 ]
 
 
@@ -86,6 +90,10 @@ class UserWrite(BaseModel):
     scopes: list[ScopeInput] = Field(default_factory=list)
     password: str | None = None
     confirmation: str | None = None
+    # DR34 (FT-ADM-01): the target territory of a new ADMIN; working roles keep
+    # deriving their territory from the laboratory scopes. The form never types
+    # this id by hand — it is chosen from the server-side assignable options.
+    territory_id: uuid.UUID | None = None
 
     @field_validator("email")
     @classmethod
@@ -154,3 +162,43 @@ class LoginResponse(BaseModel):
     user: UserView
     contexts: list[ScopeView]
     csrf_token: str
+
+
+class TerritoryOptionView(BaseModel):
+    """One named territory the actor may delegate ADMIN over (DR34 §7.2)."""
+
+    territory_id: uuid.UUID
+    name: str
+
+
+class ProductAreaOptionView(BaseModel):
+    """One named product area available for a VET scope (DR34 §7.2).
+
+    The ids come from the local VetIS classification read model; the endpoint
+    exposes only its human-readable selection set — it stays read-only.
+    """
+
+    product_area_id: uuid.UUID
+    name: str
+
+
+class AssignableRoleOptions(BaseModel):
+    """The server-authoritative assignment set for ONE role (DR34 §7.2).
+
+    ``laboratories``/``territories`` carry only the delegated subset; empty
+    sets mean the role cannot be delegated by the caller at all. Selection
+    multiplicity rules the form needs ride along as ``max_laboratories``.
+    """
+
+    role: UserRole
+    label: str
+    territories: list[TerritoryOptionView] = Field(default_factory=list)
+    laboratories: list[LaboratoryOptionView] = Field(default_factory=list)
+    product_areas: list[ProductAreaOptionView] = Field(default_factory=list)
+    max_laboratories: int | None = None
+
+
+class AssignableOptionsView(BaseModel):
+    """Read-only scoped options of ``GET /users/assignable`` (DR34 §7.2)."""
+
+    roles: list[AssignableRoleOptions]

@@ -627,6 +627,41 @@
   overflow-wrap: anywhere;
 }
 
+/* TEXT research (DR36 §9): a calm row in the common geometry — no yellow
+   diagnostic, no fields, no configure button. */
+.vse-catalog-text-row {
+  grid-template-columns: 1fr;
+}
+
+/* Square ＋/− buttons of the mockup (§11.1): 43 × 43 px, r9. */
+.app-button.vse-catalog-sq {
+  display: inline-grid;
+  place-items: center;
+  width: 43px;
+  min-width: 43px;
+  padding: 0;
+  border-radius: 9px;
+  font-size: 20px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+/* Loading skeleton (§15.1): keeps the real row size. */
+.vse-catalog-skeleton {
+  height: 89px;
+  border: 1px solid var(--app-line, #dfe9e9);
+  border-radius: 13px;
+  background: linear-gradient(100deg, #f0f6f6 40%, #f8fbfb 50%, #f0f6f6 60%);
+  background-size: 200% 100%;
+  animation: vse-catalog-shimmer 1.4s ease infinite;
+}
+
+@keyframes vse-catalog-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
 /* Revision conflict choice (§12.6): read-only comparison + explicit pick. */
 .vse-catalog-conflict {
   border: 1px solid #f0b6b6;

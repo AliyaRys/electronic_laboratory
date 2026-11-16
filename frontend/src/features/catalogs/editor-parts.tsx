@@ -282,9 +282,7 @@ export interface NormRowProps {
   readOnly?: boolean | undefined;
   /** Optional business details of the norm (currently boundary inclusivity). */
   details?: React.ReactNode | undefined;
-  /** The source of the methodology (§6.1 «источник» column of the row). */
-  source?: string | undefined;
-  /** Calm secondary action of the row (e.g. «Удалить норму», §11.5). */
+  /** Calm secondary action of the row, folded into «Дополнительные настройки». */
   secondary?: React.ReactNode | undefined;
   /** Active 409 resolution state (§12.6): server values vs the user's draft. */
   conflict?: { serverValue: string; draftValue: string } | undefined;
@@ -305,7 +303,6 @@ export function NormRow({
   busy = false,
   readOnly = false,
   details,
-  source,
   secondary,
   conflict,
   onKeepMine,
@@ -335,7 +332,6 @@ export function NormRow({
       <div className="vse-catalog-norm-info">
         <div className="vse-catalog-norm-name">{name}</div>
         {meta !== undefined ? <div className="vse-catalog-norm-meta">{meta}</div> : null}
-        {source !== undefined ? <div className="vse-catalog-norm-meta">Источник: {source}</div> : null}
         {error !== undefined ? (
           <p className="app-field-message app-field-error" id={errorId} role="alert">
             {error}
@@ -343,7 +339,7 @@ export function NormRow({
         ) : null}
         {details !== undefined ? (
           <details className="vse-catalog-details">
-            <summary>Настройка границ</summary>
+            <summary>Дополнительные настройки</summary>
             {details}
           </details>
         ) : null}
@@ -376,6 +372,8 @@ export interface QualitativeRow {
   onRemove?: (() => void) | undefined;
   /** Editable text of a manually added variant (registry rows stay readonly). */
   onValueChange?: ((next: string) => void) | undefined;
+  /** The focus moves into the just-added (still empty) field (§11.2). */
+  focus?: boolean | undefined;
 }
 
 export interface QualitativeBlockProps {
@@ -386,9 +384,9 @@ export interface QualitativeBlockProps {
   error?: string | undefined;
   busy?: boolean | undefined;
   readOnly?: boolean | undefined;
-  /** Metadata details of the rule (version/source): never lost, only folded. */
+  /** Metadata/secondary actions of the rule, folded into «Дополнительные действия». */
   details?: React.ReactNode | undefined;
-  /** Calm secondary action of the block (e.g. «Удалить норму», §11.5). */
+  /** Calm secondary action of the block (e.g. «Удалить норму»), folded. */
   secondary?: React.ReactNode | undefined;
 }
 
@@ -404,16 +402,32 @@ export function QualitativeBlock({
   details,
   secondary,
 }: QualitativeBlockProps): React.ReactElement {
+  const overflow =
+    details !== undefined || secondary !== undefined ? (
+      <details className="vse-catalog-details">
+        <summary>Дополнительные действия</summary>
+        {details}
+        {secondary}
+      </details>
+    ) : null;
   return (
     <article className="vse-catalog-qual" data-busy={busy ? "true" : undefined}>
       <div className="vse-catalog-qual-head">
         <div>
           <h2>{title}</h2>
           {description !== undefined ? <p>{description}</p> : null}
+          {overflow}
         </div>
         {onAdd !== undefined && !readOnly ? (
-          <Button type="button" onClick={onAdd} disabled={busy} aria-label="Добавить вариант">
-            Добавить вариант
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onAdd}
+            disabled={busy}
+            className="vse-catalog-sq"
+            ariaLabel="Добавить вариант"
+          >
+            ＋
           </Button>
         ) : null}
       </div>
@@ -428,6 +442,7 @@ export function QualitativeBlock({
                 value={row.value}
                 readOnly={row.onValueChange === undefined}
                 aria-label={`Вариант результата: ${row.value}`}
+                autoFocus={row.focus === true}
                 onChange={(event) => row.onValueChange?.(event.target.value)}
               />
             </div>
@@ -449,9 +464,10 @@ export function QualitativeBlock({
                 variant="secondary"
                 onClick={row.onRemove}
                 disabled={busy}
-                aria-label={`Удалить вариант: ${row.value}`}
+                className="vse-catalog-sq"
+                ariaLabel={`Удалить вариант: ${row.value}`}
               >
-                Удалить
+                −
               </Button>
             ) : (
               <span />
@@ -464,13 +480,6 @@ export function QualitativeBlock({
           {error}
         </p>
       ) : null}
-      {details !== undefined ? (
-        <details className="vse-catalog-details">
-          <summary>Методика и версия</summary>
-          {details}
-        </details>
-      ) : null}
-      {secondary !== undefined ? <div className="vse-catalog-norm-secondary">{secondary}</div> : null}
     </article>
   );
 }

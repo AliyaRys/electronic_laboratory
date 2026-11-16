@@ -118,4 +118,41 @@ test.describe("catalogs", () => {
     await page.getByRole("button", { name: "Отмена" }).click();
     await expect(page.getByTestId("bulk-coverage")).toHaveCount(0);
   });
+
+  test("test_head_saves_first_norm_then_updates_it", async ({ page }) => {
+    // DR36 §21: the FIRST setup of a norm happens directly in the row (no
+    // «Настроить»), saved by «Сохранить справочник» via the real POST; then
+    // the same row is edited and saved via the real PUT (If-Match).
+    const methods = `/catalogs?laboratory_id=${seed.labAId}&area=meat&tab=methods`;
+    await loginTo(page, seed.users.head, methods);
+    await expect(page.getByRole("heading", { name: "Диапазоны нормы" })).toBeVisible();
+
+    const ph = INDICATORS.find((item) => item.code === "VSE-F25") as (typeof INDICATORS)[number];
+    const lower = page.getByLabel(`Норма от: ${ph.name}`);
+    const upper = page.getByLabel(`Норма до: ${ph.name}`);
+    await lower.fill("5");
+    await upper.fill("7");
+    await page.getByRole("button", { name: "Сохранить справочник" }).click();
+    await expect(page.getByText("Справочник норм сохранён.")).toBeVisible();
+
+    // The row keeps its draft value after the refetch — the norm is active.
+    await expect(lower).toHaveValue("5");
+
+    // The saved norm is edited in the same row: a REAL update, not a create.
+    await lower.fill("5.5");
+    await page.getByRole("button", { name: "Сохранить справочник" }).click();
+    await expect(page.getByText("Справочник норм сохранён.")).toBeVisible();
+    await expect(lower).toHaveValue("5.5");
+
+    // The saved rule is served by the read model, matched by indicator_id.
+    const rules = await page.request.get(
+      `/api/v1/catalogs/methods/context?laboratory_id=${seed.labAId}&area=meat`,
+    );
+    expect(rules.ok()).toBe(true);
+    const context = (await rules.json()) as {
+      active_rules: { rule: { lower: string; upper: string }; indicator_id: string }[];
+    };
+    const saved = context.active_rules.find((item) => item.indicator_id === ph.id);
+    expect(saved?.rule).toMatchObject({ lower: "5.5", upper: "7" });
+  });
 });

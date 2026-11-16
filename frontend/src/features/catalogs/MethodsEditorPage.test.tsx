@@ -1,9 +1,10 @@
 ﻿/**
- * «Нормы исследований» editor page (ТЗ DR31 §12 frontend scenarios): the page
- * opens immediately with the full VSE-F18–F29 registry for «Мясо и
- * мясопродукты», has NO species/state selectors, URL parameters or GUIDs, the
- * first norm is configured directly from its row («Настроить») and
- * «Сохранить справочник» saves the dirty rows with honest per-row results.
+ * «Нормы исследований» editor page (ТЗ DR36 §19): the page opens immediately
+ * with the full VSE-F18–F29 registry for «Мясо и мясопродукты» inside ONE
+ * section «Диапазоны нормы»; unset interval rows show their «Норма от/до»
+ * fields directly (NO «Настроить» button), qualitative blocks use square
+ * ＋/− buttons and «Сохранить справочник» saves only the dirty rows with
+ * honest per-row results.
  */
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -181,17 +182,34 @@ describe("MethodsEditorPage", () => {
   it("opens immediately with the full registry, the readonly area and no species/state selectors", async () => {
     renderEditor();
     await screen.findByTestId("methods-area-name");
+    // §19.1: ONE h1 and ONE section header «Диапазоны нормы».
+    expect(screen.getAllByRole("heading", { level: 1, name: "Нормы исследований" })).toHaveLength(1);
+    expect(screen.getAllByRole("heading", { name: "Диапазоны нормы" })).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Диапазоны нормы" })).not.toHaveTextContent(
+      "Нормы исследований",
+    );
+    // §19.2: the mockup lead and the calm category line.
+    expect(
+      screen.getByText(
+        "Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("methods-area-name")).toHaveTextContent("Мясо и мясопродукты");
     for (const indicator of INDICATORS) {
       expect(screen.getByText(indicator.name)).toBeInTheDocument();
     }
     // F30/F31 are party dictionaries, never catalog norms.
     expect(screen.queryByText("Инвазионные болезни")).toBeNull();
-    expect(screen.queryByText("Незаразные болезни")).toBeNull();
-    // The F23 TEXT row carries a readonly explanation instead of a norm.
-    expect(screen.getAllByText("Не настроено").length).toBe(INDICATORS.length - 1);
-    expect(screen.getAllByRole("button", { name: "Настроить" }).length).toBe(INDICATORS.length - 1);
+    expect(screen.queryByText("Инвазионные болезни")).toBeNull();
+    // §19.4: the unset interval row has BOTH fields right away…
+    const unset = (await screen.findByText(temperature.name)).closest("article") as HTMLElement;
+    expect(within(unset).getByLabelText(normLabel(temperature.name, "от"))).toHaveValue("");
+    expect(within(unset).getByLabelText(normLabel(temperature.name, "до"))).toHaveValue("");
+    // …and a calm «Не настроено» signature instead of a button.
+    expect(within(unset).getByText("Не настроено")).toBeInTheDocument();
+    // §19.5: no «Настроить» action exists anywhere.
+    expect(screen.queryByRole("button", { name: "Настроить" })).toBeNull();
     // The readonly context of the product area; no selectors, no GUIDs.
-    expect(screen.getByTestId("methods-area-name")).toHaveTextContent("Мясо и мясопродукты");
     expect(screen.queryByLabelText("Продукция")).toBeNull();
     expect(screen.queryByLabelText("Состояние продукции")).toBeNull();
     expect(screen.queryByText(/UUID/)).toBeNull();
@@ -200,8 +218,37 @@ describe("MethodsEditorPage", () => {
     expect(listRequests).toBe(0);
     // No technical «Добавить норму» form exists.
     expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
-    // The canonical conditional flag of F21 is annotated.
-    expect(screen.getAllByText("Обязательно для указанных видов продукции").length).toBeGreaterThan(0);
+    // The canonical conditional flag of F21 is annotated (joined meta line).
+    expect(
+      screen.getAllByText((_, element) =>
+        element?.textContent?.includes("Обязательно для указанных видов продукции") ?? false,
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("keeps the technical metadata off the main surface (source, version, delete)", async () => {
+    const act = userEvent.setup();
+    activeRules = [intervalRule({})];
+    renderEditor();
+    await screen.findByLabelText(normLabel(microscopy.name, "от"));
+    // §19.11: no source/version/UUID on the surface.
+    expect(screen.queryByText(/Источник/)).toBeNull();
+    expect(screen.queryByText(/Методика и версия/)).toBeNull();
+    expect(screen.queryByText(/Настройка границ/)).toBeNull();
+    // §19.12: the delete action stays available in the folded overflow and
+    // goes through the confirming dialog.
+    const row = screen.getByLabelText(normLabel(microscopy.name, "от")).closest("article") as HTMLElement;
+    await act.click(within(row).getByText("Дополнительные настройки"));
+    await act.click(within(row).getByRole("button", { name: "Удалить норму: Микроскопия" }));
+    expect(await screen.findByRole("dialog", { name: /Удалить действующую норму\?/i })).toBeInTheDocument();
+    expect(screen.getByText(/Удаление действующей нормы заблокирует/)).toBeInTheDocument();
+    await act.click(screen.getByRole("button", { name: "Отмена" }));
+  });
+
+  it("save is disabled until a row is edited (§19.13)", async () => {
+    renderEditor();
+    await screen.findByTestId("methods-area-name");
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
   });
 
   it("a problem of the context keeps the honest screen, never an empty catalog", async () => {
@@ -213,16 +260,11 @@ describe("MethodsEditorPage", () => {
     expect(await screen.findAllByText(/Область продукции не поддерживается/i)).not.toHaveLength(0);
   });
 
-  it("the first norm is configured directly from the row and POSTs only the code and rule", async () => {
+  it("the first norm is typed directly into the row and POSTs only the code and rule", async () => {
     const act = userEvent.setup();
     renderEditor();
     await screen.findByTestId("methods-area-name");
-    const unsetRow = (await screen.findByText(temperature.name)).closest("article");
-    await act.click(within(unsetRow as HTMLElement).getByRole("button", { name: "Настроить" }));
-    // The row editor appears inline: subject fields only.
-    await waitFor(() =>
-      expect(within(unsetRow as HTMLElement).queryByRole("button", { name: "Настроить" })).toBeNull(),
-    );
+    // §10.2: no «Настроить» step — the fields wait for the input right away.
     const lower = await screen.findByLabelText(normLabel(temperature.name, "от"));
     expect(screen.queryByLabelText("Тип результата")).toBeNull();
     expect(screen.queryByLabelText("Единица измерения нормы")).toBeNull();
@@ -250,10 +292,24 @@ describe("MethodsEditorPage", () => {
     expect(payload["source"]).toBeUndefined();
     // The configured row appears through the context refetch, no page reload.
     expect(await screen.findByLabelText(normLabel(temperature.name, "от"))).toHaveValue("0");
-    expect(screen.getAllByText("Не настроено").length).toBe(INDICATORS.length - 2);
+    // The remaining unset INTERVAL rows keep the «Не настроено» signature.
+    expect(screen.getAllByText("Не настроено").length).toBe(3);
+  });
+
+  it("empty unset rows are never sent when other rows are saved (§19.6)", async () => {
+    const act = userEvent.setup();
+    renderEditor();
+    await screen.findByTestId("methods-area-name");
+    // Touch nothing but the temperature row; every other unset row stays empty.
+    await act.type(await screen.findByLabelText(normLabel(temperature.name, "от")), "0");
+    await act.type(screen.getByLabelText(normLabel(temperature.name, "до")), "6");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
+    expect(postSpy.mock.calls[0][0]["code"]).toBe("VSE-F20");
   });
 
   it("renders interval rows with the unit and only business boundary settings", async () => {
+    const act = userEvent.setup();
     activeRules = [
       intervalRule({}),
       intervalRule({
@@ -271,7 +327,11 @@ describe("MethodsEditorPage", () => {
     // The unit suffix of the row comes from the canonical registry.
     expect(screen.getAllByText("ед.").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Версия записи/)).toBeNull();
-    expect(screen.getAllByText(/Источник: методика/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Источник/)).toBeNull();
+    // The inclusivity checkboxes live in the folded overflow of the row.
+    const row = screen.getByLabelText(normLabel(microscopy.name, "от")).closest("article") as HTMLElement;
+    await act.click(within(row).getByText("Дополнительные настройки"));
+    expect(within(row).getByLabelText(/нижняя граница включена/)).toBeChecked();
   });
 
   it("a null upper boundary stays empty and is sent as a string, never as 0", async () => {
@@ -321,12 +381,14 @@ describe("MethodsEditorPage", () => {
       }),
     ];
     renderEditor();
-    await screen.findByRole("heading", { name: cooking.name });
+    const block = (await screen
+      .findByRole("heading", { name: cooking.name })
+      .then((heading) => heading.closest("article"))) as HTMLElement;
     for (const option of cooking.options ?? []) {
-      const input = await screen.findByLabelText(`Вариант результата: ${option.label}`);
+      const input = await within(block).findByLabelText(`Вариант результата: ${option.label}`);
       expect(input).toHaveValue(option.label);
     }
-    const selects = screen.getAllByLabelText(/Оценка/);
+    const selects = within(block).getAllByLabelText(/Оценка/);
     expect((selects[0] as HTMLSelectElement).value).toBe("norm");
     expect((selects[1] as HTMLSelectElement).value).toBe("deviation");
   });
@@ -345,9 +407,11 @@ describe("MethodsEditorPage", () => {
       }),
     ];
     renderEditor();
-    await screen.findByRole("heading", { name: cooking.name });
-    expect((screen.getAllByLabelText(/Оценка/)[0] as HTMLSelectElement).value).toBe("norm");
-    await act.selectOptions(screen.getAllByLabelText(/Оценка/)[1], "norm");
+    const block = (await screen
+      .findByRole("heading", { name: cooking.name })
+      .then((heading) => heading.closest("article"))) as HTMLElement;
+    expect((within(block).getAllByLabelText(/Оценка/)[0] as HTMLSelectElement).value).toBe("norm");
+    await act.selectOptions(within(block).getAllByLabelText(/Оценка/)[1], "norm");
     await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
     await waitFor(() => expect(putSpy).toHaveBeenCalledTimes(1));
     const payload = putSpy.mock.calls[0][0] as { rule: { accepted_values: string[] } };
@@ -359,8 +423,6 @@ describe("MethodsEditorPage", () => {
     const act = userEvent.setup();
     renderEditor();
     await screen.findByTestId("methods-area-name");
-    const temperatureRow = (await screen.findByText(temperature.name)).closest("article");
-    await act.click(within(temperatureRow as HTMLElement).getByRole("button", { name: "Настроить" }));
     await act.type(await screen.findByLabelText(normLabel(temperature.name, "от")), "0");
     await act.type(screen.getByLabelText(normLabel(temperature.name, "до")), "6");
     postFailures = 1;
@@ -371,13 +433,127 @@ describe("MethodsEditorPage", () => {
     expect(screen.getByLabelText(normLabel(temperature.name, "от"))).toHaveValue("0");
   });
 
-  it("a TEXT research shows the honest readonly explanation, never a numeric editor", async () => {
+  it("a 409 keeps the draft and offers the honest resolution choice (§19.14)", async () => {
+    const act = userEvent.setup();
+    server.use(
+      http.put("*/api/v1/catalogs/methods/:id", () =>
+        HttpResponse.json(
+          { code: "REVISION_CONFLICT", detail: "Запись была изменена другим пользователем." },
+          { status: 409 },
+        ),
+      ),
+    );
+    activeRules = [intervalRule({})];
+    renderEditor();
+    const lower = await screen.findByLabelText(normLabel(microscopy.name, "от"));
+    await act.clear(lower);
+    await act.type(lower, "1");
+    await act.type(screen.getByLabelText(normLabel(microscopy.name, "до")), "20");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(screen.getByTestId("catalog-conflict")).toBeInTheDocument());
+    // The draft stays visible for the comparison and the choice.
+    expect(lower).toHaveValue("1");
+    expect(screen.getByRole("button", { name: "Сохранить моё значение" })).toBeInTheDocument();
+  });
+
+  it("a TEXT research shows the calm explanation in the common geometry", async () => {
     const bacterioscopy = INDICATORS.find((item) => item.code === "VSE-F23") as (typeof INDICATORS)[number];
     renderEditor();
-    await screen.findByText(/автоматическая оценка нормы для этого исследования не применяется/i);
+    await screen.findByText("Результат вводится текстом; диапазон нормы не задаётся.");
     expect(screen.getByText(bacterioscopy.name)).toBeInTheDocument();
-    const configureButtons = screen.queryAllByRole("button", { name: "Настроить" });
-    expect(configureButtons.length).toBeLessThan(INDICATORS.length);
+    expect(screen.queryByRole("button", { name: "Настроить" })).toBeNull();
+  });
+
+  it("a qualitative block uses the square ＋/− buttons and removable custom variants (§19.9/§19.10)", async () => {
+    const act = userEvent.setup();
+    const first = (cooking.options ?? [])[0] as { label: string };
+    activeRules = [
+      intervalRule({
+        id: "bbbbbbbb-0000-4000-8000-000000000003",
+        indicator_id: cooking.id,
+        result_schema: "ENUM",
+        unit_id: "",
+        rule: { type: "qualitative", accepted_values: [first.label] },
+      }),
+    ];
+    renderEditor();
+    await screen.findByRole("heading", { name: cooking.name });
+    // Square add button of the mockup, no text button.
+    expect(screen.getAllByRole("button", { name: "Добавить вариант" }).length).toBeGreaterThan(0);
+    const block = screen.getByRole("heading", { name: cooking.name }).closest("article") as HTMLElement;
+    const registryRows = (cooking.options ?? []).length;
+    await act.click(within(block).getByRole("button", { name: "Добавить вариант" }));
+    // A custom empty row was appended (an extra Оценка select) and is
+    // removable with the square −.
+    await waitFor(() =>
+      expect(within(block).getAllByLabelText(/Оценка/).length).toBe(registryRows + 1),
+    );
+    const removeButtons = within(block).getAllByRole("button", { name: /^Удалить вариант:/ });
+    // §19.10: only the custom variant can be removed — registry variants
+    // keep the reserved third column without an active −.
+    expect(removeButtons.length).toBe(1);
+    // Registry variants stay readonly: their inputs cannot change.
+    const registryInput = within(block).getByLabelText(`Вариант результата: ${first.label}`);
+    expect(registryInput).toHaveAttribute("readonly");
+    // §11.2/IMPORTANT-1: a just-added variant that stays EMPTY is not a
+    // change — the save stays disabled and no PUT carries the empty value.
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+    // The focus moved into the new field.
+    expect(within(block).getAllByLabelText(/Вариант результата:/)[registryRows]).toHaveFocus();
+    await act.type(within(block).getAllByLabelText(/Вариант результата:/)[registryRows], "Соленый вкус");
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeEnabled();
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalled());
+    expect((putSpy.mock.calls[0][0] as { rule: { accepted_values: string[] } }).rule.accepted_values).toContain(
+      "Соленый вкус",
+    );
+  });
+
+  it("an added but never filled variant is dropped: no request and no payload value (§11.2)", async () => {
+    const act = userEvent.setup();
+    const first = (cooking.options ?? [])[0] as { label: string };
+    activeRules = [
+      intervalRule({
+        id: "bbbbbbbb-0000-4000-8000-000000000003",
+        indicator_id: cooking.id,
+        result_schema: "ENUM",
+        unit_id: "",
+        rule: { type: "qualitative", accepted_values: [first.label] },
+      }),
+    ];
+    renderEditor();
+    const block = (await screen
+      .findByRole("heading", { name: cooking.name })
+      .then((heading) => heading.closest("article"))) as HTMLElement;
+    await act.click(within(block).getByRole("button", { name: "Добавить вариант" }));
+    await waitFor(() => expect(within(block).getAllByLabelText(/Оценка/).length).toBe((cooking.options ?? []).length + 1));
+    // The row itself is NOT dirty while the field stays empty.
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+    expect(putSpy).not.toHaveBeenCalled();
+    // The unset (create) path behaves the same: no POST without a value.
+    const unsetBlock = (await screen
+      .findByRole("heading", { name: "Реакция с сернокислой медью" })
+      .then((heading) => heading.closest("article"))) as HTMLElement;
+    await act.click(within(unsetBlock).getByRole("button", { name: "Добавить вариант" }));
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+    expect(postSpy).not.toHaveBeenCalled();
+    // A typed custom variant IS sent; the still-empty second one is dropped.
+    const reaction = INDICATORS.find((item) => item.code === "VSE-F27") as (typeof INDICATORS)[number];
+    const reactionRows = (reaction.options ?? []).length;
+    await act.click(within(unsetBlock).getByRole("button", { name: "Добавить вариант" }));
+    await act.type(
+      within(unsetBlock).getAllByLabelText(/Вариант результата:/)[reactionRows],
+      "Бурой окраски нет",
+    );
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(postSpy).toHaveBeenCalled());
+    const payload = postSpy.mock.calls[0][0] as { code: string; rule: { accepted_values: string[] } };
+    expect(payload.code).toBe("VSE-F27");
+    // The registry variants plus the typed extra; the never-filled added
+    // variant is absent and no empty string travels (§11.2).
+    expect(payload.rule.accepted_values).toContain("Бурой окраски нет");
+    expect(payload.rule.accepted_values).not.toContain("");
+    expect(payload.rule.accepted_values).toHaveLength((reaction.options ?? []).length + 1);
   });
 
   it("a reader without edit rights sees no configure or delete actions", async () => {

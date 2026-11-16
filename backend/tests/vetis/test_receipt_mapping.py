@@ -585,9 +585,7 @@ def test_six_contract_scenarios(mismatch: bool, decision: str) -> None:
         "vetInspection",
         "decision",
     ]
-    doc_inspection = next(
-        child for child in facts if child.tag.rsplit("}", 1)[-1] == "docInspection"
-    )
+    doc_inspection = next(child for child in facts if child.tag.rsplit("}", 1)[-1] == "docInspection")
     assert doc_inspection.tag == f"{VD}docInspection"
     expected = ["responsible", "result"] + (["info"] if mismatch else [])
     assert child_locals(doc_inspection) == expected

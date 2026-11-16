@@ -38,9 +38,7 @@ async def dr10_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespace:
     territory = Territory(name="Тестовая территория DR10")
     db_session.add(territory)
     await db_session.flush()
-    lab = Laboratory(
-        territory_id=territory.id, name="Тестовая лаборатория DR10", address="адрес", organization="ГБУ"
-    )
+    lab = Laboratory(territory_id=territory.id, name="Тестовая лаборатория DR10", address="адрес", organization="ГБУ")
     actor = User(
         login=f"vet-{uuid.uuid4()}",
         full_name="Ветеринар fixture",

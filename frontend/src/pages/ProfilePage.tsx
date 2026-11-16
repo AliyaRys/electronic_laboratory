@@ -18,6 +18,7 @@ import { Navigate } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { changePassword, ROLE_LABELS, type Problem } from "../features/identity/api";
 import { PasswordForm } from "../features/identity/PasswordForm";
+import { CapabilityTags } from "../features/identity/CapabilityTag";
 import { InfoField } from "../shared/ui/InfoField";
 import { Icon } from "../shared/ui/Icon";
 import { performLogout } from "../features/context/SwitchContext";
@@ -99,17 +100,7 @@ function ProfileContent(): React.ReactElement {
           </div>
           <div className="vse-profile-access">
             <p className="app-info-label">Права доступа</p>
-            <div className="vse-profile-rights">
-              {user.capabilities.length === 0 ? (
-                <span>Прав не назначено.</span>
-              ) : (
-                user.capabilities.map((capability) => (
-                  <span className="vse-profile-right-tag" key={capability}>
-                    {capability}
-                  </span>
-                ))
-              )}
-            </div>
+            <CapabilityTags capabilities={user.capabilities} />
           </div>
         </section>
         <section className="vse-profile-details-card" aria-label="Данные пользователя">

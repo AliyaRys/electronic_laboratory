@@ -517,6 +517,13 @@
 .vse-profile-right-tag {
   display: inline-flex;
   align-items: center;
+  /* DR33 (ТЗ §8.1): CSS-only visual truncation — the full Russian name stays
+     in the DOM/accessible name and the tooltip. No JS-side cutting. */
+  max-width: 240px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   min-height: 26px;
   border: 1px solid #c9e6e2;
   border-radius: 99px;

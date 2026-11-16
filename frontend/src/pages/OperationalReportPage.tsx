@@ -15,9 +15,9 @@ import { Button } from "../shared/ui/Button";
 import {
   fetchOperational,
   operationalKey,
-  REPORT_ROLES,
   type OperationalView,
 } from "../features/reports/api";
+import { reportAccess } from "../features/reports/reportCapabilities";
 
 export function OperationalReportPage(): React.ReactElement {
   return (
@@ -35,8 +35,7 @@ function OperationalContent(): React.ReactElement {
   const { labId } = useParams<{ labId: string }>();
   const [params, setParams] = useSearchParams();
   const me = useMe();
-  const role = me.user?.role ?? null;
-  const allowed = role !== null && REPORT_ROLES.has(role);
+  const access = reportAccess(me.user?.capabilities);
 
   const today = new Date();
   const defaultFrom = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 10);
@@ -47,14 +46,18 @@ function OperationalContent(): React.ReactElement {
   const report = useQuery({
     queryKey: operationalKey(labId ?? "", from, to),
     queryFn: ({ signal }) => fetchOperational(labId ?? "", from, to, signal),
-    enabled: labId !== undefined && allowed && role !== null,
+    // Without ``report:operational`` the metrics endpoint is never requested.
+    enabled: labId !== undefined && me.user !== null && access.operational,
   });
 
-  if (me.user !== null && !allowed) {
+  if (me.user !== null && !access.operational) {
     return (
       <div className="vse-app vse-page">
         <h1>Операционный отчёт</h1>
-        <StatusView state="forbidden" title="Раздел доступен только заведующему и аналитику." />
+        <StatusView
+          state="forbidden"
+          title="Операционные показатели недоступны: у вас нет соответствующего полномочия."
+        />
       </div>
     );
   }

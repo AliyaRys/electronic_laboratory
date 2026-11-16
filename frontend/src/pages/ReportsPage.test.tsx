@@ -94,6 +94,7 @@ function renderPage(path = `/labs/${LAB}/reports`): void {
           <Route path="/labs/:labId/reports" element={<ReportsPage />} />
           <Route path="/labs/:labId/reports/new" element={<div>Создание</div>} />
           <Route path="/labs" element={<div>Выбор лаборатории</div>} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/labs/:labId/reports/operational" element={<div>Операционные показатели</div>} />
           <Route path="/labs/:labId/reports/samples" element={<div>Учёт проб экран</div>} />
         </Routes>
@@ -112,7 +113,7 @@ describe("ReportsPage hub (DR37)", () => {
     expect(await screen.findByText("Форма 5-вет (раздел III)")).toBeVisible();
     expect(screen.getByText("Операционные показатели")).toBeVisible();
     expect(screen.getByText("Учёт проб")).toBeVisible();
-    const link = screen.getByRole("link", { name: /2026, I полугодие/ });
+    const link = await screen.findByRole("link", { name: "Открыть: 2026, I полугодие" });
     expect(link.getAttribute("href")).toContain(`/labs/${LAB}/reports/${REPORT}`);
   });
 
@@ -123,9 +124,9 @@ describe("ReportsPage hub (DR37)", () => {
     );
     renderPage();
     await screen.findByText("Форма 5-вет (раздел III)");
-    const operational = screen.getByRole("link", { name: /Открыть.*Операционные показатели|Операционные показатели/ });
+    const operational = screen.getByRole("link", { name: "Открыть: Операционные показатели" });
     expect(operational.getAttribute("href")).toBe(`/labs/${LAB}/reports/operational`);
-    const samples = screen.getByRole("link", { name: /Учёт проб/ });
+    const samples = screen.getByRole("link", { name: "Открыть: Учёт проб" });
     expect(samples.getAttribute("href")).toBe(`/labs/${LAB}/reports/samples`);
   });
 
@@ -190,7 +191,7 @@ describe("ReportsPage hub (DR37)", () => {
 
   it("without a laboratory the page explains and links to the honest selection", async () => {
     server.use(http.get("*/api/v1/me", () => HttpResponse.json(me("ANALYST"))));
-    renderPage("/labs");
+    renderPage("/reports");
     expect(await screen.findByText(/Лаборатория не выбрана|Выберите лабораторию/)).toBeVisible();
     const choose = screen.getByRole("link", { name: "Выбрать лабораторию" });
     expect(choose.getAttribute("href")).toBe("/labs");

@@ -30,7 +30,7 @@ function me(role = "HEAD"): Record<string, unknown> {
     role,
     active: true,
     scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-    capabilities: [],
+    capabilities: role === "HEAD" ? ["report:operational"] : [],
     revision: 1,
   };
 }
@@ -97,6 +97,12 @@ describe("OperationalReportPage", () => {
   it("VET gets the forbidden state (AT-20: врач видит только пробы)", async () => {
     server.use(http.get("*/api/v1/me", () => HttpResponse.json(me("VET"))));
     renderPage();
-    expect(await screen.findByText("Раздел доступен только заведующему и аналитику.")).toBeVisible();
+    expect(
+      await screen.findByText(
+        "Операционные показатели недоступны: у вас нет соответствующего полномочия.",
+      ),
+    ).toBeVisible();
+    // The forbidden screen never triggers the metrics request.
+    await new Promise((resolve) => setTimeout(resolve, 50));
   });
 });

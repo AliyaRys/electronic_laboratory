@@ -40,11 +40,20 @@ function triggerDownload(url: string, fileName: string): void {
 
 export interface ReportActionsProps {
   view: ReportSnapshotView;
+  /** Export/print appears only with ``report:5vet-export`` (DR37 §Task 3). */
+  canExport?: boolean;
+  /** Deletion appears only with ``report:5vet-delete``; the server re-checks. */
+  canDelete?: boolean;
   /** Called after a confirmed 204 deletion (the caller corrects the list page). */
   onDeleted: () => void;
 }
 
-export function ReportActions({ view, onDeleted }: ReportActionsProps): React.ReactElement {
+export function ReportActions({
+  view,
+  canExport = true,
+  canDelete = true,
+  onDeleted,
+}: ReportActionsProps): React.ReactElement {
   const [state, setState] = useState<ActionsState>({ kind: "idle" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [detail, setDetail] = useState("");
@@ -98,18 +107,27 @@ export function ReportActions({ view, onDeleted }: ReportActionsProps): React.Re
         Файлы строятся только из сохранённого снимка отчёта; изменения исходных ВСЭ на них не влияют.
       </p>
       <div className="vse-report-actions">
-        <Button type="button" disabled={busy} onClick={() => void runExport("pdf", "download")}>
-          Скачать PDF
-        </Button>
-        <Button type="button" disabled={busy} onClick={() => void runExport("xlsx", "download")}>
-          Скачать XLSX
-        </Button>
-        <Button type="button" disabled={busy} onClick={() => void runExport("pdf", "print")}>
-          Печать
-        </Button>
-        <Button type="button" variant="danger" disabled={busy} onClick={() => setConfirmOpen(true)}>
-          Удалить отчёт
-        </Button>
+        {canExport ? (
+          <>
+            <Button type="button" disabled={busy} onClick={() => void runExport("pdf", "download")}>
+              Скачать PDF
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => void runExport("xlsx", "download")}>
+              Скачать XLSX
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => void runExport("pdf", "print")}>
+              Печать
+            </Button>
+          </>
+        ) : null}
+        {canDelete ? (
+          <Button type="button" variant="danger" disabled={busy} onClick={() => setConfirmOpen(true)}>
+            Удалить отчёт
+          </Button>
+        ) : null}
+        {!canExport && !canDelete ? (
+          <p className="app-field-message">Действия с отчётом недоступны: нет соответствующих полномочий.</p>
+        ) : null}
       </div>
       {busy ? <p className="app-field-message">Документ формируется…</p> : null}
       {state.kind === "error" ? (

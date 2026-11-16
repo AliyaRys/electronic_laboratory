@@ -34,9 +34,9 @@ import { DisposalDialog } from "../features/samples/DisposalDialog";
 import { DisposalHistory } from "../features/samples/DisposalHistory";
 import { useMe } from "../shared/api/me";
 import { StatusView } from "../shared/ui/StatusView";
+import { reportAccess } from "../features/reports/reportCapabilities";
 
 const DISPOSAL_ROLES = new Set(["VET", "HEAD"]);
-const REPORT_ROLES = new Set(["HEAD", "ANALYST"]);
 
 export function SampleAccountingPage(): React.ReactElement {
   return (
@@ -59,18 +59,19 @@ function SampleAccountingContent(): React.ReactElement {
   const collectionPage = Math.max(1, Number.parseInt(params.get("collections") ?? "1", 10) || 1);
 
   const role = me.user?.role ?? null;
+  const access = reportAccess(me.user?.capabilities);
   const canDispose = role !== null && DISPOSAL_ROLES.has(role);
-  const canReadReports = role !== null && REPORT_ROLES.has(role);
+  const canReadReports = access.list5vet || access.read5vet;
 
   const balances = useQuery({
     queryKey: balancesKey(labId ?? ""),
     queryFn: ({ signal }) => fetchBalances(labId ?? "", signal),
-    enabled: labId !== undefined,
+    enabled: labId !== undefined && me.user !== null && access.samples,
   });
   const collections = useQuery({
     queryKey: collectionsKey(labId ?? "", collectionPage),
     queryFn: ({ signal }) => fetchCollections({ laboratory_id: labId ?? "", page: collectionPage }, signal),
-    enabled: labId !== undefined,
+    enabled: labId !== undefined && me.user !== null && access.samples,
   });
   const disposals = useQuery({
     queryKey: disposalsKey(labId ?? "", historyFrom, historyTo, historyPage),
@@ -84,9 +85,17 @@ function SampleAccountingContent(): React.ReactElement {
         },
         signal,
       ),
-    enabled: labId !== undefined,
+    enabled: labId !== undefined && me.user !== null && access.samples,
   });
 
+  if (me.user !== null && !access.samples) {
+    return (
+      <div className="vse-app vse-page">
+        <h1>Учёт проб</h1>
+        <StatusView state="forbidden" title="Учёт проб недоступен: у вас нет полномочия чтения проб." />
+      </div>
+    );
+  }
   if (labId === undefined) {
     return (
       <div className="vse-app vse-page">

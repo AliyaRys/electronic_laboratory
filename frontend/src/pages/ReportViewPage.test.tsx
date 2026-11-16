@@ -74,7 +74,7 @@ describe("ReportViewPage", () => {
           role: "HEAD",
           active: true,
           scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-          capabilities: [],
+          capabilities: ["report:5vet-read", "report:5vet-export", "report:5vet-delete"],
           revision: 1,
         }),
       ),
@@ -100,7 +100,7 @@ describe("ReportViewPage", () => {
           role: "HEAD",
           active: true,
           scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-          capabilities: [],
+          capabilities: ["report:5vet-read", "report:5vet-export", "report:5vet-delete"],
           revision: 1,
         }),
       ),
@@ -128,7 +128,7 @@ describe("ReportViewPage", () => {
           role: "HEAD",
           active: true,
           scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-          capabilities: [],
+          capabilities: ["report:5vet-read", "report:5vet-export", "report:5vet-delete"],
           revision: 1,
         }),
       ),
@@ -158,7 +158,7 @@ describe("ReportViewPage", () => {
           role: "HEAD",
           active: true,
           scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-          capabilities: [],
+          capabilities: ["report:5vet-read", "report:5vet-export", "report:5vet-delete"],
           revision: 1,
         }),
       ),
@@ -177,5 +177,63 @@ describe("ReportViewPage", () => {
     await user.click(screen.getByRole("button", { name: "Скачать PDF" }));
     expect(await screen.findByText(/Файл не сформирован/)).toBeVisible();
     expect(pdf).toContain(`/api/v1/reports/5vet/${REPORT}/export.pdf`);
+  });
+});
+
+describe("ReportViewPage capability guard (DR37)", () => {
+  it("a user without report:5vet-read gets the forbidden state and no snapshot GET", async () => {
+    let snapshotGets = 0;
+    server.use(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          full_name: "Тестовый пользователь",
+          login: "tester",
+          email: "tester@example.test",
+          position: null,
+          role: "ADMIN",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: [],
+          revision: 1,
+        }),
+      ),
+      http.get(`*/api/v1/reports/5vet/${REPORT}`, () => {
+        snapshotGets += 1;
+        return HttpResponse.json(snapshotView());
+      }),
+    );
+    renderView();
+    expect(
+      await screen.findByText("Просмотр отчёта недоступен: у вас нет полномочия чтения отчётов."),
+    ).toBeVisible();
+    expect(snapshotGets).toBe(0);
+  });
+
+  it("export and delete actions disappear without their capabilities", async () => {
+    server.use(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          full_name: "Тестовый пользователь",
+          login: "tester",
+          email: "tester@example.test",
+          position: null,
+          role: "HEAD",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: ["report:5vet-read"],
+          revision: 1,
+        }),
+      ),
+      http.get(`*/api/v1/reports/5vet/${REPORT}`, () => HttpResponse.json(snapshotView())),
+    );
+    renderView();
+    await screen.findByText("Матрица сохранённого отчёта");
+    expect(screen.queryByRole("button", { name: "Скачать PDF" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Удалить отчёт" })).toBeNull();
+    expect(
+      screen.getByText("Действия с отчётом недоступны: нет соответствующих полномочий."),
+    ).toBeVisible();
   });
 });

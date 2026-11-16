@@ -80,7 +80,10 @@ async def dr10_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespace:
     party = Party(
         incoming_document_id=document.id,
         laboratory_id=lab.id,
-        classification_snapshot={"product": {"name": "Мясо"}, "unit": {"id": UNIT_GUID, "name": None}},
+        classification_snapshot={
+            "product": {"id": "product-1", "name": "Мясо"},
+            "unit": {"id": UNIT_GUID, "name": None},
+        },
     )
     db_session.add(party)
     await db_session.flush()

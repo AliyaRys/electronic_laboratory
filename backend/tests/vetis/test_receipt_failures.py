@@ -81,7 +81,7 @@ async def receipt_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespa
     party = Party(
         incoming_document_id=document.id,
         laboratory_id=lab.id,
-        classification_snapshot={"product": {"name": "Мясо"}},
+        classification_snapshot={"product": {"id": "product-1", "name": "Мясо"}},
     )
     db_session.add(party)
     await db_session.flush()

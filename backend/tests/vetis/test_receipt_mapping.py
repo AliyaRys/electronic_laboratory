@@ -511,7 +511,8 @@ def test_existing_special_marks_are_merged_not_lost() -> None:
     assert len(marks) == 1
     assert "Груз осмотрен, клеймо сохранено" in marks[0]
     assert "старая причина" not in marks[0]
-    assert marks[0].startswith("Причина возврата: OTHER_REASON")
+    assert marks[0].endswith("Причина возврата: OTHER_REASON Обезличенная причина возврата")
+    assert marks[0].count("Причина возврата:") == 1
 
 
 SOURCE_XML_MULTI_PACKAGE = SOURCE_XML.replace(
@@ -594,9 +595,14 @@ def test_six_contract_scenarios(mismatch: bool, decision: str) -> None:
     if mismatch and decision != "RETURN_ALL":
         report = next(node for node in request if node.tag.rsplit("}", 1)[-1] == "discrepancyReport")
         assert report.tag == f"{VU}discrepancyReport"
-        assert child_locals(report) == ["reason", "description"]
+        # document fields → reason → description (ТЗ DR38 §1).
+        assert child_locals(report) == ["issueNumber", "reason", "description"]
     # Состав партий: принятая/возвращаемая части по матрице.
-    deliveries = {child.tag.rsplit("}", 1)[-1]: child for child in request}
+    deliveries = {
+        child.tag.rsplit("}", 1)[-1]: child
+        for child in request
+        if child.tag.rsplit("}", 1)[-1] in {"delivery", "returnedDelivery"}
+    }
     assert set(deliveries) == ({"delivery"} if decision == "ACCEPT_ALL" else {"delivery", "returnedDelivery"})
     accepted = _consignment(xml, returned=False)
     returned = _consignment(xml, returned=True)

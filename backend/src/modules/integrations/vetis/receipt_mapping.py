@@ -8,6 +8,7 @@ from decimal import Decimal
 from xml.etree import ElementTree as ET
 
 from backend.src.core.problems import ProblemError
+from backend.src.modules.arrivals.validation import OTHER_REASON, RETURN_REASON_CODES
 from backend.src.modules.integrations.vetis.contracts import ReceiptIntent
 
 APP_DEF_NS = "http://api.vetrf.ru/schema/cdm/application/ws-definitions"
@@ -18,16 +19,108 @@ VD_NS = "http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"
 VU_NS = "http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2"
 
 for prefix, namespace in (
-    ("apldef", APP_DEF_NS), ("apl", APP_NS), ("bs", BASE_NS),
-    ("dt", DICT_NS), ("vd", VD_NS), ("mercvu", VU_NS),
+    ("apldef", APP_DEF_NS),
+    ("apl", APP_NS),
+    ("bs", BASE_NS),
+    ("dt", DICT_NS),
+    ("vd", VD_NS),
+    ("mercvu", VU_NS),
 ):
     ET.register_namespace(prefix, namespace)
 
-__all__ = ["build_process_incoming_application", "validate_receipt_intent"]
+__all__ = [
+    "build_discrepancy_description",
+    "build_process_incoming_application",
+    "format_return_reason",
+    "validate_receipt_intent",
+]
+
+# ТЗ DR38 §5: русские названия сравниваемых полей сверки (ФТ v2.0 10-field-catalog,
+# раздел 2) для акта несоответствия; технические CHK-ID пользователю не показываются.
+DISCREPANCY_FIELD_LABELS: dict[str, str] = {
+    "CHK-F05": "Отправитель — название предприятия",
+    "CHK-F06": "Отправитель — владелец продукции",
+    "CHK-F07": "Получатель — название предприятия",
+    "CHK-F08": "Получатель — владелец продукции",
+    "CHK-F09": "Вид транспорта",
+    "CHK-F10": "Номер ТС",
+    "CHK-F11": "Номер прицепа",
+    "CHK-F12": "Способ хранения продукции при перевозке",
+    "CHK-F13": "Состояние грузового отделения",
+    "CHK-F14": "Совместная перевозка с другими грузами",
+    "CHK-F15": "Тип продукции",
+    "CHK-F16": "Продукция",
+    "CHK-F17": "Вид продукции",
+    "CHK-F18": "Название продукции",
+    "CHK-F19": "Производитель",
+    "CHK-F20": "Количество",
+    "CHK-F21": "Вес, кг",
+    "CHK-F22": "Дата выработки",
+    "CHK-F23": "Срок годности",
+    "CHK-F25": "Тип транспортного документа",
+    "CHK-F26": "Номер транспортного документа",
+    "CHK-F27": "Дата оформления транспортного документа",
+}
+
+# Понятная причина акта несоответствия для vd:discrepancyReport/vd:reason/vd:name
+# (пример владельца из раздела 4 API REQUESTS.txt, без технических кодов).
+ACT_REASON_NAME = "Причина несоответствия (акт)"
+
+RETURN_REASON_PREFIX = "Причина возврата: "
+
+# ТЗ DR38 §5: предохранитель объёма текста акта. Официальные типы DeliveryInspection/
+# DiscrepancyReport (help.vetrf.ru) задают xs:string БЕЗ максимальной длины; константа
+# страхует от практических лимитов шины и никогда не приводит к тихой обрезке.
+MAX_DISCREPANCY_TEXT = 2000
+
+# ТЗ DR38 §6: specialMarks — тип bs:Text без ограничения длины (help.vetrf.ru);
+# тот же предохранитель объединённого текста особых отметок.
+MAX_SPECIAL_MARKS_TEXT = 2000
 
 
 def _invalid(detail: str) -> ProblemError:
     return ProblemError(status=422, code="VALIDATION_ERROR", title="Validation error", detail=detail)
+
+
+def build_discrepancy_description(items: list[dict[str, object]]) -> str:
+    """Одно детерминированное описание расхождений из полного набора items.
+
+    ТЗ DR38 §5: для каждого элемента — русское название поля (без технических
+    CHK-ID), исходное значение из закреплённого source и фактическое значение
+    пользователя с причиной; порядок items задаётся вызывающей стороной
+    (стабильный порядок полей сверки), значения не перечитываются из ВСД.
+    """
+    parts: list[str] = []
+    for item in items:
+        field_id = str(item.get("field_id") or "")
+        label = str(item.get("label") or "") or DISCREPANCY_FIELD_LABELS.get(field_id) or field_id
+        fragment = label or "Расхождение"
+        source = item.get("source")
+        actual = item.get("actual")
+        reason = str(item.get("reason") or "")
+        if source not in (None, ""):
+            fragment = f"{fragment}: в ВСД {source}"
+        if actual not in (None, ""):
+            fragment = f"{fragment}, фактически {actual}"
+        if reason:
+            fragment = f"{fragment} ({reason})"
+        parts.append(fragment)
+    return "; ".join(parts)
+
+
+def format_return_reason(code: str | None, text: str | None = None) -> str:
+    """ТЗ DR38 §6: ровно одна фраза «Причина возврата: CODE [текст]»."""
+    normalized = (code or "").strip()
+    if not normalized:
+        raise _invalid("Код причины возврата не задан.")
+    if normalized == OTHER_REASON:
+        explanation = (text or "").strip()
+        if not explanation:
+            raise _invalid("Для причины OTHER_REASON требуется пояснение.")
+        if len(explanation) > 240:
+            raise _invalid("Пояснение причины OTHER_REASON не должно превышать 240 символов.")
+        return f"{RETURN_REASON_PREFIX}OTHER_REASON {explanation}"
+    return f"{RETURN_REASON_PREFIX}{normalized}"
 
 
 def _text(parent: ET.Element, namespace: str, name: str, value: object) -> ET.Element:
@@ -134,10 +227,7 @@ def _append_source_waybill(delivery: ET.Element, source_root: ET.Element) -> Non
     vet_documents = [source_root] if _local(source_root) == "vetDocument" else []
     vet_documents.extend(node for node in source_root.iter() if _local(node) == "vetDocument")
     direct_references = [
-        child
-        for document in vet_documents
-        for child in document
-        if _local(child) == "referencedDocument"
+        child for document in vet_documents for child in document if _local(child) == "referencedDocument"
     ]
     valid = [
         node
@@ -239,14 +329,21 @@ def _delivery(
         purpose = _find_local(authentication, "purpose")
         if purpose is None:
             raise _invalid("Исходный XML не содержит назначение груза; неполный возвратный ВСД не формируется.")
+        # ТЗ DR38 §6: исходные особые отметки не теряются молча — они
+        # объединяются с фразой причины возврата в ОДНО значение specialMarks;
+        # старая фраза причины возврата не дублируется.
+        existing_marks: list[str] = []
         for child in list(authentication):
             if _local(child) == "specialMarks":
+                text = (child.text or "").strip()
+                if text and not text.startswith(RETURN_REASON_PREFIX):
+                    existing_marks.append(text)
                 authentication.remove(child)
-        # ТЗ DR8 §6.2: the exact reason code first; OTHER_REASON adds its own
-        # text as a separate mark. The Russian label is never sent.
-        _text(authentication, VD_NS, "specialMarks", intent.return_reason_code or "")
-        if intent.return_reason_code == "OTHER_REASON" and (intent.return_reason_text or "").strip():
-            _text(authentication, VD_NS, "specialMarks", f"OTHER_REASON: {intent.return_reason_text.strip()}")
+        segments = existing_marks + [format_return_reason(intent.return_reason_code, intent.return_reason_text)]
+        combined = "; ".join(segments)
+        if len(combined) > MAX_SPECIAL_MARKS_TEXT:
+            raise _invalid("Объединённые особые отметки превышают допустимый объём; сократите исходные отметки.")
+        _text(authentication, VD_NS, "specialMarks", combined)
         certificate.append(authentication)
     return delivery
 
@@ -277,9 +374,7 @@ def validate_receipt_intent(intent: ReceiptIntent) -> None:
     if intent.accepted_quantity + intent.returned_quantity != intent.delivered_quantity:
         raise _invalid("Принятая и возвращаемая части не равны доставленному количеству мест.")
     if intent.decision == "ACCEPT_ALL" and (
-        intent.accepted_mass_kg != intent.delivered_mass_kg
-        or intent.returned_mass_kg
-        or intent.returned_quantity
+        intent.accepted_mass_kg != intent.delivered_mass_kg or intent.returned_mass_kg or intent.returned_quantity
     ):
         raise _invalid("Полное принятие не может содержать возврат.")
     if intent.decision == "PARTIALLY" and not (
@@ -301,6 +396,9 @@ def validate_receipt_intent(intent: ReceiptIntent) -> None:
             raise _invalid("Для возврата требуется причина возврата.")
         if not (intent.return_reason_code.strip() == intent.return_reason_code and intent.return_reason_code):
             raise _invalid("Код причины возврата недопустим.")
+        # ТЗ DR38 §6: код обязан входить в справочник ProcessIncomingConsignment v2.
+        if intent.return_reason_code not in RETURN_REASON_CODES:
+            raise _invalid("Код причины возврата не входит в справочник Меркурия.")
         # ТЗ DR8 §9: the returned delivery carries the ENTERED return date.
         if intent.return_date is None:
             raise _invalid("Для возврата требуется дата возврата.")
@@ -340,9 +438,7 @@ def build_process_incoming_application(
     # lookup to the enterprise subtree instead of the first guid anywhere
     # inside consignee (live regression 2026-11-13).
     enterprise = (
-        next((item for item in consignee if _local(item) == "enterprise"), None)
-        if consignee is not None
-        else None
+        next((item for item in consignee if _local(item) == "enterprise"), None) if consignee is not None else None
     )
     receiver = _desc_text(enterprise, "guid")
     batch = next((item for item in source if _local(item) in {"batch", "consignment"}), None)
@@ -378,36 +474,36 @@ def build_process_incoming_application(
 
     facts = ET.SubElement(request, f"{{{VU_NS}}}deliveryFacts")
     _text(facts, VD_NS, "vetCertificatePresence", "ELECTRONIC")
+    description = ""
+    if intent.doc_inspection == "MISMATCH":
+        # ТЗ DR38 §5: описание расхождений строится ОДИН раз из всех items
+        # закреплённого intent; значения — frozen source/reconciliation.
+        description = build_discrepancy_description(intent.discrepancy_items)
+        if len(description) > MAX_DISCREPANCY_TEXT:
+            raise _invalid("Описание расхождений превышает допустимый объём; сократите причины полей.")
     for name, result in (("docInspection", intent.doc_inspection), ("vetInspection", intent.vet_inspection)):
         inspection = ET.SubElement(facts, f"{{{VD_NS}}}{name}")
         responsible = ET.SubElement(inspection, f"{{{VD_NS}}}responsible")
         _text(responsible, VD_NS, "login", intent.initiator)
         _text(inspection, VD_NS, "result", result)
+        # ТЗ DR38 §1: vd:info принадлежит типу DeliveryInspection и находится
+        # внутри docInspection ПОСЛЕ responsible → result; для CORRESPONDS
+        # поле не создаётся.
+        if name == "docInspection" and intent.doc_inspection == "MISMATCH":
+            _text(inspection, VD_NS, "info", description)
     _text(facts, VD_NS, "decision", intent.decision)
 
+    # ТЗ DR38 §4.3: акт несоответствия — только MISMATCH + ACCEPT_ALL/PARTIALLY;
+    # для RETURN_ALL описание остаётся только в docInspection/info.
     if intent.doc_inspection == "MISMATCH" and intent.decision != "RETURN_ALL":
         report = ET.SubElement(request, f"{{{VU_NS}}}discrepancyReport")
         if intent.act_number:
             _text(report, VD_NS, "issueNumber", intent.act_number)
-        # ТЗ DR8 §9: the full discrepancy report carries EVERY item with its
-        # source, actual fact and reason (never only the first one).
-        parts: list[str] = []
-        for item in intent.discrepancy_items:
-            field_id = str(item.get("field_id") or "")
-            source_value = item.get("source")
-            actual = item.get("actual")
-            reason = str(item.get("reason") or "")
-            fragment = field_id
-            if source_value not in (None, ""):
-                fragment = f"{fragment}: в ВСД {source_value}"
-            if actual not in (None, ""):
-                fragment = f"{fragment}, фактически {actual}"
-            if reason:
-                fragment = f"{fragment} ({reason})"
-            parts.append(fragment.strip(": ,"))
         reason = ET.SubElement(report, f"{{{VD_NS}}}reason")
-        _text(reason, VD_NS, "name", intent.discrepancy_items[0].get("reason") or "MISMATCH")
-        _text(report, VD_NS, "info", "; ".join(parts))
+        _text(reason, VD_NS, "name", ACT_REASON_NAME)
+        # ТЗ DR38 §1: тип DiscrepancyReport допускает после данных документа
+        # только reason (name) и description; запрещённый vd:info удалён.
+        _text(report, VD_NS, "description", description)
     if intent.decision in {"PARTIALLY", "RETURN_ALL"}:
         _delivery(
             request,

@@ -60,11 +60,12 @@
     <vd:transportInfo><vd:transportType>1</vd:transportType></vd:transportInfo>
     <vd:transportStorageType>FROZEN</vd:transportStorageType>
     <vd:accompanyingForms>
-      <vd:vetCertificate><bs:uuid>source-evsd</bs:uuid></vd:vetCertificate>
-      <vd:authentication>
-        <vd:purpose><bs:guid>purpose-guid</bs:guid></vd:purpose>
-        <vd:specialMarks>Причина возврата: QUANTITY_DISCREPANCY</vd:specialMarks>
-      </vd:authentication>
+      <vd:vetCertificate>
+        <vd:authentication>
+          <vd:purpose><bs:guid>purpose-guid</bs:guid></vd:purpose>
+          <vd:specialMarks>Причина возврата: QUANTITY_DISCREPANCY</vd:specialMarks>
+        </vd:authentication>
+      </vd:vetCertificate>
     </vd:accompanyingForms>
   </mercvu:returnedDelivery>
 </mercvu:processIncomingConsignmentRequest>

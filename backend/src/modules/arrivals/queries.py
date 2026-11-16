@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from datetime import datetime
 from typing import Any, Literal, cast
 
 from sqlalchemy import Column, MetaData, String, Table, func, select
@@ -211,8 +212,20 @@ async def arrival_page(
     query: str | None,
     page: int,
     sort: str | None = None,
+    reconciled_from: datetime | None = None,
+    reconciled_to: datetime | None = None,
 ) -> tuple[list[Party], list[IncomingDocument], int]:
-    """A page of arrivals for one laboratory (API-01 paging semantics)."""
+    """A page of arrivals for one laboratory (API-01 paging semantics).
+
+    ТЗ DR39 §3: ``reconciled_from/to`` (a half-open instant range computed
+    from the user's московский day/period) filter the COMPLETED reconciliation
+    date in SQL; the same WHERE serves the rows and ``total`` and both run
+    BEFORE offset/limit. Sorting is queue-aware: EXPECTED sorts by the ВСД
+    issue date (DR15), WORK/ACCEPTED by ``Reconciliation.completed_at`` —
+    ``nulls last`` in BOTH directions, the stable tie-breaker stays
+    ``Party.created_at DESC, Party.id DESC`` and the unique left join never
+    duplicates a row.
+    """
     exams_available = await _examinations_available(db)
     conditions: list[Any] = [
         Party.laboratory_id == laboratory_id,  # scope first — before count/search
@@ -225,29 +238,50 @@ async def arrival_page(
         conditions.append(_result_condition(result.upper(), exams_available))
     if query and query.strip():
         conditions.append(_search_condition(query))
+    # ТЗ DR39: an active date filter excludes a NULL completed_at by itself
+    # (a NULL comparison is never true) — no fictional rows ever pass.
+    if reconciled_from is not None:
+        conditions.append(Reconciliation.completed_at >= reconciled_from)
+    if reconciled_to is not None:
+        conditions.append(Reconciliation.completed_at < reconciled_to)
     where = conditions[0]
     for condition in conditions[1:]:
         where = where & condition
 
+    reconciliation_join = Reconciliation.party_id == Party.id
     total = int(
-        (await db.execute(select(func.count()).select_from(Party).join(IncomingDocument).where(where))).scalar_one()
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(Party)
+                .join(IncomingDocument)
+                .outerjoin(Reconciliation, reconciliation_join)
+                .where(where)
+            )
+        ).scalar_one()
     )
     current = max(page, 1)
-    # DR15 §5.3: the sort is the ВСД issue date from the source snapshot (the
-    # same value the column «Дата оформления ВСД» shows) — never Party.created_at
-    # or a sync/fetched date. It runs in SQL BEFORE count/offset/limit; missing
-    # or malformed dates are SQL NULL (path traversal on non-object JSON never
-    # errors) and keep an explicit deterministic position at the END in both
-    # directions; the stable tie-breaker stays Party.created_at DESC / id DESC.
+    # DR15 §5.3: the EXPECTED sort is the ВСД issue date from the source
+    # snapshot. ТЗ DR39 §3: WORK/ACCEPTED sort by the COMPLETED reconciliation
+    # date (never Party.created_at or a confirmation date) — missing dates
+    # keep an explicit deterministic position at the END in both directions;
+    # the stable tie-breaker stays Party.created_at DESC / id DESC.
     issue_date = IncomingDocument.source_snapshot["vdDocument"]["issueDate"].astext
+    completed = Reconciliation.completed_at
     order: list[Any] = [Party.created_at.desc(), Party.id.desc()]
-    if sort == "asc":
+    if label in ("WORK", "ACCEPTED"):
+        if sort == "asc":
+            order.insert(0, completed.asc().nulls_last())
+        else:  # default (and explicit desc): the latest completed сверка first.
+            order.insert(0, completed.desc().nulls_last())
+    elif sort == "asc":
         order.insert(0, issue_date.asc().nulls_last())
     else:  # default (and explicit desc): the newest issued ВСД first.
         order.insert(0, issue_date.desc().nulls_last())
     rows = await db.execute(
         select(Party, IncomingDocument)
         .join(IncomingDocument, IncomingDocument.id == Party.incoming_document_id)
+        .outerjoin(Reconciliation, reconciliation_join)
         .where(where)
         .order_by(*order)
         .offset((current - 1) * PAGE_SIZE)

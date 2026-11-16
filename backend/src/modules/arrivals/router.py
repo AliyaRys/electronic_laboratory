@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.commands import CommandContext, format_etag, resolve_if_match
 from backend.src.core.contracts import Page
 from backend.src.core.database import async_session
-from backend.src.core.problems import not_found
+from backend.src.core.problems import ProblemItem, not_found, validation_error
 from backend.src.modules.arrivals import commands, queries, reconciliation
 from backend.src.modules.arrivals.models import IncomingDocument, Party, Reconciliation
-from backend.src.modules.arrivals.schemas import IncomingView, ReconciliationView, ReconciliationWrite
+from backend.src.modules.arrivals.schemas import (
+    IncomingView,
+    ReconciliationView,
+    ReconciliationWrite,
+    StrictCalendarDate,
+)
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session
@@ -40,6 +45,72 @@ class SyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     laboratory_id: uuid.UUID
+
+
+def _datetime_with_offset(value: datetime) -> datetime:
+    """ТЗ DR39 §3: a user range bound always carries its timezone offset."""
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        raise ValueError("Дата должна содержать смещение часового пояса.")
+    return value
+
+
+def _reconciled_bounds(
+    queue: str | None,
+    reconciled_on: str | None,
+    reconciled_from: datetime | None,
+    reconciled_to: datetime | None,
+) -> tuple[datetime | None, datetime | None]:
+    """Validate the ACCEPTED-only reconciliation-date filter (ТЗ DR39 §3).
+
+    ``reconciled_on`` is one московский day as the half-open range
+    ``[00:00, next day 00:00)`` (the ``moscowDayRange`` semantics); a range
+    needs BOTH bounds with ``from <= to``. Everything else is an honest 422,
+    never a silently ignored parameter.
+    """
+    if reconciled_on is None and reconciled_from is None and reconciled_to is None:
+        return None, None
+    if queue != "ACCEPTED":
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="reconciled_on",
+                    message="Фильтр даты сверки данных доступен только в очереди «Завершенные».",
+                )
+            ]
+        )
+    if reconciled_on is not None and (reconciled_from is not None or reconciled_to is not None):
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="reconciled_on",
+                    message="Фильтр даты сверки не допускает одновременный выбор дня и диапазона.",
+                )
+            ]
+        )
+    if (reconciled_from is None) != (reconciled_to is None):
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="reconciled_to",
+                    message="Укажите обе границы диапазона даты сверки данных.",
+                )
+            ]
+        )
+    if reconciled_on is not None:
+        day = datetime.fromisoformat(f"{reconciled_on}T00:00:00+03:00")
+        next_day = datetime.fromisoformat(f"{reconciled_on}T00:00:00+03:00") + timedelta(days=1)
+        return day, next_day
+    assert reconciled_from is not None and reconciled_to is not None  # noqa: S101 - shape checked above
+    if reconciled_from > reconciled_to:
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="reconciled_to",
+                    message="Начало диапазона даты сверки не может быть позже его конца.",
+                )
+            ]
+        )
+    return reconciled_from, reconciled_to
 
 
 class ReceiptPreviewRequest(BaseModel):
@@ -112,10 +183,15 @@ async def list_arrivals(
     page: Annotated[int, Query(ge=1)] = 1,
     # DR15 §5.2: sort by the ВСД issue date; an unknown value is an honest 422.
     sort: Literal["asc", "desc"] | None = None,
+    # ТЗ DR39 §3: the ACCEPTED-only filter of the completed reconciliation date.
+    reconciled_on: StrictCalendarDate | None = None,
+    reconciled_from: Annotated[datetime, AfterValidator(_datetime_with_offset)] | None = None,
+    reconciled_to: Annotated[datetime, AfterValidator(_datetime_with_offset)] | None = None,
 ) -> Page[IncomingView]:
     """A scoped page of arrivals (queue/result filters, search, stable order)."""
     identity, actor = principal
     await authorizer.authorize(db, identity.actor_id, "arrivals:list", ScopeTarget(laboratory_id=laboratory_id))
+    reconciled_bounds = _reconciled_bounds(queue, reconciled_on, reconciled_from, reconciled_to)
     parties, documents, total = await queries.arrival_page(
         db,
         laboratory_id=laboratory_id,
@@ -124,6 +200,8 @@ async def list_arrivals(
         query=q,
         page=page,
         sort=sort,
+        reconciled_from=reconciled_bounds[0],
+        reconciled_to=reconciled_bounds[1],
     )
     # ТЗ DR39: the summaries of ONE page are loaded with ONE bulk read — the
     # author name never triggers a per-row user read and never any VetIS call.

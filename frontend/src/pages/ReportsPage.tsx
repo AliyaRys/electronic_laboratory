@@ -26,6 +26,7 @@ import {
   type ReportSummaryPage,
 } from "../features/reports/api";
 import { reportAccess } from "../features/reports/reportCapabilities";
+import { ReportHubItem } from "../features/reports/ReportHubItem";
 
 export function ReportsPage(): React.ReactElement {
   return (
@@ -145,48 +146,26 @@ function ReportsContent(): React.ReactElement {
       <section className="vse-reports-card" aria-label="Направления отчётов">
         <div className="vse-reports-hub-list">
           {access.list5vet || access.read5vet ? (
-            <article className="vse-reports-hub-item">
-              <div>
-                <div className="vse-reports-hub-name">Форма 5-вет (раздел III)</div>
-                <div className="vse-reports-hub-meta">{fiveVetMeta ?? "Список сохранённых отчётов недоступен."}</div>
-              </div>
-            </article>
+            <ReportHubItem
+              name="Форма 5-вет (раздел III)"
+              meta={fiveVetMeta ?? "Список сохранённых отчётов недоступен."}
+            />
           ) : null}
           {access.operational ? (
-            <article className="vse-reports-hub-item">
-              <div>
-                <div className="vse-reports-hub-name">Операционные показатели</div>
-                <div className="vse-reports-hub-meta">
-                  Показатели работы лаборатории за выбранный период.
-                </div>
-              </div>
-              <div className="vse-reports-hub-actions">
-                <Link
-                  className="app-button secondary"
-                  to={`/labs/${labId}/reports/operational`}
-                  aria-label="Открыть: Операционные показатели"
-                >
-                  Открыть
-                </Link>
-              </div>
-            </article>
+            <ReportHubItem
+              name="Операционные показатели"
+              meta="Показатели работы лаборатории за выбранный период."
+              to={`/labs/${labId}/reports/operational`}
+              actionLabel="Открыть: Операционные показатели"
+            />
           ) : null}
           {access.samples ? (
-            <article className="vse-reports-hub-item">
-              <div>
-                <div className="vse-reports-hub-name">Учёт проб</div>
-                <div className="vse-reports-hub-meta">Остатки проб и история утилизации.</div>
-              </div>
-              <div className="vse-reports-hub-actions">
-                <Link
-                  className="app-button secondary"
-                  to={`/labs/${labId}/reports/samples`}
-                  aria-label="Открыть: Учёт проб"
-                >
-                  Открыть
-                </Link>
-              </div>
-            </article>
+            <ReportHubItem
+              name="Учёт проб"
+              meta="Остатки проб и история утилизации."
+              to={`/labs/${labId}/reports/samples`}
+              actionLabel="Открыть: Учёт проб"
+            />
           ) : null}
         </div>
       </section>

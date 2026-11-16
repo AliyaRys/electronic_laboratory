@@ -189,8 +189,8 @@ export function AppHeader({
 
   // The reports item renders whenever the shell provides its contextual link
   // (work and analyst modes); ADMIN never gets a reports item (FT-RPT-01).
-  const reportsLink =
-    (workMode || mode === "analyst") && links.reports !== undefined ? (
+  const reportsItem = (mode: "analyst" | "work"): React.ReactElement | null =>
+    links.reports !== undefined ? (
       <NavLink
         key="reports"
         id={mode === "analyst" ? "analyst-reports-link" : "reports-link"}
@@ -201,7 +201,7 @@ export function AppHeader({
       />
     ) : null;
 
-  const nav: React.ReactElement[] =
+  const nav =
     mode === "admin"
       ? [
           <NavLink
@@ -239,7 +239,7 @@ export function AppHeader({
               icon="directories-classic"
               active={active === "directories"}
             />,
-            reportsLink,
+            ...(links.reports !== undefined ? [reportsItem("analyst")] : []),
           ]
         : workMode
           ? [
@@ -267,7 +267,7 @@ export function AppHeader({
                 icon="directories-classic"
                 active={active === "directories"}
               />,
-              reportsLink,
+              ...(links.reports !== undefined ? [reportsItem("work")] : []),
             ]
           : [];
 

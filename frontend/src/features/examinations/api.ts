@@ -19,6 +19,13 @@ export type OutcomeWrite = components["schemas"]["OutcomeWrite"];
 export type CommandStateView = components["schemas"]["CommandStateView"];
 export type SampleSelection = ExaminationWrite["sample"];
 export type ResearchWrite = ExaminationWrite["researches"][number];
+/** DR35 §4: the frozen reconciliation-step read model of the create page. */
+export type ExaminationFormView = components["schemas"]["ExaminationFormView"];
+/** DR35 §13.3: the server pricing preview (the same snapshot the save stores). */
+export type PricingPreviewResponse = components["schemas"]["PricingPreviewResponse"];
+export type PricingSnapshotView = PricingPreviewResponse["snapshot"];
+/** The body of the preview: only the fully performed researches (§13.3). */
+export type PricingPreviewRequestBody = { researches: ResearchWrite[] };
 
 /** Minimal openapi-fetch result shape (see features/samples/api.ts). */
 interface RawResult<TData> {
@@ -56,6 +63,36 @@ export async function fetchExamination(
       params: { path: { examination_id: examinationId } },
       signal: signal ?? null,
     }) as Promise<RawResult<ExaminationView>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+/** DR35 §4: the create-page read model — the frozen snapshot, no lookup. */
+export async function fetchExaminationForm(
+  partyId: string,
+  signal?: AbortSignal | null,
+): Promise<ExaminationFormView | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/examinations/parties/{party_id}/form", {
+      params: { path: { party_id: partyId } },
+      signal: signal ?? null,
+    }) as Promise<RawResult<ExaminationFormView>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+/** DR35 §13.3: the live pricing preview (read/compute, never mutates). */
+export async function fetchPricingPreview(
+  partyId: string,
+  payload: PricingPreviewRequestBody,
+  signal?: AbortSignal | null,
+): Promise<PricingPreviewResponse | Problem> {
+  const settled = await settle(
+    apiClient.POST("/api/v1/examinations/parties/{party_id}/pricing-preview", {
+      params: { path: { party_id: partyId } },
+      body: payload,
+      signal: signal ?? null,
+    }) as Promise<RawResult<PricingPreviewResponse>>,
   );
   return "problem" in settled ? settled.problem : settled.data;
 }

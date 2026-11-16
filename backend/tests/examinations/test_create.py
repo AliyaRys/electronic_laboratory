@@ -58,6 +58,15 @@ async def env(db_session: AsyncSession) -> SimpleNamespace:
         active=True,
     )
     db_session.add_all([lab, actor])
+    await db_session.flush()
+    # DR35 §12.3: the actor is an eligible specialist for every meat species
+    # this suite creates cards for.
+    db_session.add_all(
+        [
+            UserScope(user_id=actor.id, laboratory_id=lab.id, product_scope_id=species)
+            for species in (PORK, HORSE, PORK_OFFAL, HORSE_OFFAL, BEEF)
+        ]
+    )
     await db_session.commit()
     return SimpleNamespace(lab=lab, actor=actor)
 
@@ -165,7 +174,14 @@ async def party_with_confirmation(
     return party
 
 
-def payload(number: str = " 001 ", *, trich: bool = True, mode: str = "COMPLETED") -> ExaminationWrite:
+def payload(
+    number: str = " 001 ",
+    *,
+    trich: bool = True,
+    mode: str = "COMPLETED",
+    specialist_id: uuid.UUID | None = None,
+    expected_total: str | None = None,
+) -> ExaminationWrite:
     researches: list[dict[str, object]] = [
         {"indicatorId": str(ORGANOLEPTIC_INDICATOR_ID), "kind": "BOOLEAN", "value": True},
         {"indicatorId": str(IDENTIFICATION_INDICATOR_ID), "kind": "BOOLEAN", "value": True},
@@ -180,6 +196,10 @@ def payload(number: str = " 001 ", *, trich: bool = True, mode: str = "COMPLETED
         "researches": researches,
         "sample": {"mode": "NEW", "collectedOn": str(date.today()), "massKg": "0.8"},
         "sentToLab": mode == "WAITING",
+        # DR35 §12.3/§13.5: a new card names its specialist explicitly and a
+        # COMPLETED save confirms the previewed total (4 места × 1,25 ₽ × N).
+        "specialistId": str(specialist_id) if specialist_id else None,
+        "expectedTotal": expected_total,
     }
     if mode == "COMPLETED":
         data.update({"outcome": "FIT", "direction": "SALE"})
@@ -195,7 +215,12 @@ async def test_atomic_complete_saves_pricing_sample_and_trimmed_number(
 ) -> None:
     await configure(db_session, env.lab.id, PORK, trich=True)
     party = await party_with_confirmation(db_session, env.lab.id, PORK)
-    view = await save_examination(context(env.actor.id), party.id, payload(), uow=db_session)
+    view = await save_examination(
+        context(env.actor.id),
+        party.id,
+        payload(specialist_id=env.actor.id, expected_total="20.00"),
+        uow=db_session,
+    )
     await db_session.commit()
 
     assert view.number == "001"
@@ -235,7 +260,12 @@ async def test_conditional_trichinelloscopy_for_exact_four_products_but_not_beef
     # beef party (one norm set per laboratory), only the beef tariffs are new.
     await configure(db_session, lab_id, BEEF, trich=False, norms=False)
     beef = await party_with_confirmation(db_session, lab_id, BEEF)
-    view = await save_examination(context(actor_id), beef.id, payload(number="B-1", trich=False), uow=db_session)
+    view = await save_examination(
+        context(actor_id),
+        beef.id,
+        payload(number="B-1", trich=False, specialist_id=actor_id, expected_total="15.00"),
+        uow=db_session,
+    )
     await db_session.commit()
     assert view.status == "COMPLETED"
 
@@ -244,9 +274,19 @@ async def test_idempotent_replay_does_not_duplicate_sample(db_session: AsyncSess
     await configure(db_session, env.lab.id, BEEF, trich=False)
     party = await party_with_confirmation(db_session, env.lab.id, BEEF)
     key = str(uuid.uuid4())
-    first = await save_examination(context(env.actor.id, key), party.id, payload(trich=False), uow=db_session)
+    first = await save_examination(
+        context(env.actor.id, key),
+        party.id,
+        payload(trich=False, specialist_id=env.actor.id, expected_total="15.00"),
+        uow=db_session,
+    )
     await db_session.commit()
-    replay = await save_examination(context(env.actor.id, key), party.id, payload(trich=False), uow=db_session)
+    replay = await save_examination(
+        context(env.actor.id, key),
+        party.id,
+        payload(trich=False, specialist_id=env.actor.id, expected_total="15.00"),
+        uow=db_session,
+    )
     await db_session.commit()
     assert replay.id == first.id
     assert await db_session.scalar(select(func.count()).select_from(SampleCollection)) == 1
@@ -256,7 +296,10 @@ async def test_waiting_save_has_no_final_outcome(db_session: AsyncSession, env: 
     await configure(db_session, env.lab.id, BEEF, trich=False)
     party = await party_with_confirmation(db_session, env.lab.id, BEEF)
     view = await save_examination(
-        context(env.actor.id), party.id, payload(number="W-1", trich=False, mode="WAITING"), uow=db_session
+        context(env.actor.id),
+        party.id,
+        payload(number="W-1", trich=False, mode="WAITING", specialist_id=env.actor.id),
+        uow=db_session,
     )
     await db_session.commit()
     assert view.status == "WAITING"
@@ -270,12 +313,22 @@ async def test_number_is_unique_per_laboratory_but_allowed_in_another(
     lab_id, territory_id, actor_id = env.lab.id, env.lab.territory_id, env.actor.id
     await configure(db_session, lab_id, BEEF, trich=False)
     first_party = await party_with_confirmation(db_session, lab_id, BEEF)
-    await save_examination(context(actor_id), first_party.id, payload(number=" 001 ", trich=False), uow=db_session)
+    await save_examination(
+        context(actor_id),
+        first_party.id,
+        payload(number=" 001 ", trich=False, specialist_id=actor_id, expected_total="15.00"),
+        uow=db_session,
+    )
     await db_session.commit()
 
     second_party = await party_with_confirmation(db_session, lab_id, BEEF)
     with pytest.raises(ProblemError) as raised:
-        await save_examination(context(actor_id), second_party.id, payload(number="001", trich=False), uow=db_session)
+        await save_examination(
+            context(actor_id),
+            second_party.id,
+            payload(number="001", trich=False, specialist_id=actor_id, expected_total="15.00"),
+            uow=db_session,
+        )
     await db_session.rollback()
     assert raised.value.code == "STATE_CONFLICT"
 
@@ -287,9 +340,17 @@ async def test_number_is_unique_per_laboratory_but_allowed_in_another(
     )
     db_session.add(other_lab)
     await db_session.commit()
+    # DR35 §12.3: the same actor is also an eligible specialist of the other lab.
+    db_session.add(UserScope(user_id=actor_id, laboratory_id=other_lab.id, product_scope_id=BEEF))
+    await db_session.commit()
     await configure(db_session, other_lab.id, BEEF, trich=False)
     other_party = await party_with_confirmation(db_session, other_lab.id, BEEF)
-    view = await save_examination(context(actor_id), other_party.id, payload(number="001", trich=False), uow=db_session)
+    view = await save_examination(
+        context(actor_id),
+        other_party.id,
+        payload(number="001", trich=False, specialist_id=actor_id, expected_total="15.00"),
+        uow=db_session,
+    )
     await db_session.commit()
     assert view.number == "001" and view.laboratory_id == str(other_lab.id)
 
@@ -307,7 +368,10 @@ async def test_parallel_create_yields_one_card_and_one_sample(
         async with factory() as session:
             try:
                 view = await save_examination(
-                    context(actor_id), party_id, payload(number=number, trich=False), uow=session
+                    context(actor_id),
+                    party_id,
+                    payload(number=number, trich=False, specialist_id=actor_id, expected_total="15.00"),
+                    uow=session,
                 )
                 await session.commit()
                 return view.id
@@ -331,7 +395,13 @@ async def test_injected_failure_after_sample_rolls_back_everything(
         raise RuntimeError("injected")
 
     with pytest.raises(RuntimeError, match="injected"):
-        await save_examination(context(env.actor.id), party.id, payload(trich=False), uow=db_session, after_sample=fail)
+        await save_examination(
+            context(env.actor.id),
+            party.id,
+            payload(trich=False, specialist_id=env.actor.id, expected_total="15.00"),
+            uow=db_session,
+            after_sample=fail,
+        )
     await db_session.rollback()
     assert await db_session.scalar(select(func.count()).select_from(Examination)) == 0
     assert await db_session.scalar(select(func.count()).select_from(SampleCollection)) == 0
@@ -340,7 +410,7 @@ async def test_injected_failure_after_sample_rolls_back_everything(
 async def test_create_and_read_api_contract(db_session: AsyncSession, test_db_engine, env: SimpleNamespace) -> None:
     await configure(db_session, env.lab.id, BEEF, trich=False)
     party = await party_with_confirmation(db_session, env.lab.id, BEEF)
-    db_session.add(UserScope(user_id=env.actor.id, laboratory_id=env.lab.id, product_scope_id=BEEF))
+    # The fixture already makes the actor an eligible specialist.
     await db_session.commit()
     api_env = SimpleNamespace(
         engine=test_db_engine,
@@ -351,7 +421,9 @@ async def test_create_and_read_api_contract(db_session: AsyncSession, test_db_en
     async with _client_for(api_env) as (http, identity):
         created = await http.post(
             f"/api/v1/examinations/parties/{party.id}",
-            json=payload(number="API-001", trich=False).model_dump(mode="json", by_alias=True),
+            json=payload(
+                number="API-001", trich=False, specialist_id=env.actor.id, expected_total="15.00"
+            ).model_dump(mode="json", by_alias=True),
             headers={
                 "x-csrf-token": identity.csrf_token,
                 "origin": "http://test",

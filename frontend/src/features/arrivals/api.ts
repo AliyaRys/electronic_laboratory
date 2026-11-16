@@ -222,24 +222,10 @@ export const CHECK_SERVICE_NAMES: Readonly<Record<string, string>> = Object.free
 
 /**
  * ТЗ DR24 §5: the string-only decimal presentation of a quantity — the value
- * never passes through a JavaScript number (no `parseFloat`, no `toFixed`, no
- * arithmetic), so a long or precise source string keeps every significant
- * digit. Only INSIGNIFICANT trailing zeros of the fractional part are dropped
- * and the decimal point is shown as a comma at presentation. An intermediate
- * user input («60,», a trailing point) is returned untouched, an empty string
- * stays empty and any non-decimal text (labels, numbers) passes through.
+ * never passes through a JavaScript number (DR35 moved the formatter to the
+ * shared domain module so every screen reuses ONE implementation).
  */
-export function formatDecimalDisplay(value: string | null | undefined): string {
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  if (trimmed === "" || /[.,]$/.test(trimmed)) return trimmed;
-  const normalized = trimmed.replace(",", ".");
-  const dot = normalized.indexOf(".");
-  if (dot === -1) return normalized;
-  const fraction = normalized.slice(dot + 1).replace(/0+$/, "");
-  const integer = normalized.slice(0, dot);
-  return fraction === "" ? integer : `${integer}.${fraction}`.replace(".", ",");
-}
+export { formatDecimalDisplay } from "../../shared/lib/domain";
 
 /**
  * ТЗ DR24 §5: the canonical decimal string of a user input per the existing

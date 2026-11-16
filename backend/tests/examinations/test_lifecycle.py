@@ -71,12 +71,15 @@ async def env(db_session: AsyncSession) -> SimpleNamespace:
         active=True,
     )
     db_session.add_all([lab, actor])
+    await db_session.flush()
+    # DR35 §12.3: the actor is an eligible specialist of the laboratory.
+    db_session.add(UserScope(user_id=actor.id, laboratory_id=lab.id, product_scope_id=BEEF))
     await db_session.commit()
     return SimpleNamespace(lab=lab, actor=actor)
 
 
-def waiting_payload(number: str = "L-1") -> ExaminationWrite:
-    return payload(number=number, trich=False, mode="WAITING")
+def waiting_payload(number: str = "L-1", *, specialist_id: uuid.UUID | None = None) -> ExaminationWrite:
+    return payload(number=number, trich=False, mode="WAITING", specialist_id=specialist_id)
 
 
 def with_temperature(base: ExaminationWrite, value: str) -> ExaminationWrite:
@@ -131,7 +134,7 @@ async def do_complete(
 async def create_waiting(
     db: AsyncSession, env: SimpleNamespace, party_id: uuid.UUID, clock: Clock, number: str = "L-1"
 ) -> tuple[uuid.UUID, ExaminationWrite]:
-    base = waiting_payload(number)
+    base = waiting_payload(number, specialist_id=env.actor.id)
     await save_examination(context(env.actor.id), party_id, base, uow=db, clock=clock)
     await db.commit()
     return await examination_id_of(db, party_id), base
@@ -289,7 +292,7 @@ async def test_outcome_matrix(db_session: AsyncSession, env: SimpleNamespace) ->
     await configure(db_session, lab_id, BEEF, trich=False)
     party = await party_with_confirmation(db_session, lab_id, BEEF)
     clock = StepClock(CREATED_ON)
-    completed = payload(number="L-2", trich=False)
+    completed = payload(number="L-2", trich=False, specialist_id=env.actor.id, expected_total="15.00")
     await save_examination(context(env.actor.id), party.id, completed, uow=db_session, clock=clock)
     await db_session.commit()
     exam_id = await examination_id_of(db_session, party.id)
@@ -308,7 +311,7 @@ async def test_existing_indicator_keeps_pinned_price(db_session: AsyncSession, e
     await configure(db_session, lab_id, BEEF, trich=False)
     party = await party_with_confirmation(db_session, lab_id, BEEF)
     clock = StepClock(CREATED_ON)
-    completed = payload(number="L-3", trich=False)
+    completed = payload(number="L-3", trich=False, specialist_id=env.actor.id, expected_total="15.00")
     first = await save_examination(context(env.actor.id), party.id, completed, uow=db_session, clock=clock)
     await db_session.commit()
     pinned_total = first.pricing["total"]
@@ -332,7 +335,7 @@ async def test_existing_indicator_keeps_pinned_price(db_session: AsyncSession, e
 
 @pytest.fixture
 async def api_env(db_session: AsyncSession, test_db_engine, env: SimpleNamespace) -> SimpleNamespace:
-    db_session.add(UserScope(user_id=env.actor.id, laboratory_id=env.lab.id, product_scope_id=BEEF))
+    # The env fixture already grants the actor the BEEF scope.
     await db_session.commit()
     return SimpleNamespace(
         db=db_session,
@@ -348,7 +351,11 @@ async def _completed_card(db: AsyncSession, lab_id: uuid.UUID, actor_id: uuid.UU
     await configure(db, lab_id, BEEF, trich=False)
     party = await party_with_confirmation(db, lab_id, BEEF)
     await save_examination(
-        context(actor_id), party.id, payload(number="API-L", trich=False), uow=db, clock=StepClock(CREATED_ON)
+        context(actor_id),
+        party.id,
+        payload(number="API-L", trich=False, specialist_id=actor_id, expected_total="15.00"),
+        uow=db,
+        clock=StepClock(CREATED_ON),
     )
     await db.commit()
     exam_id = await examination_id_of(db, party.id)
@@ -363,7 +370,7 @@ async def _completed_card(db: AsyncSession, lab_id: uuid.UUID, actor_id: uuid.UU
 async def test_extra_fields_and_stale_revision_rejected(db_session: AsyncSession, api_env: SimpleNamespace) -> None:
     env = api_env
     exam_id = await _completed_card(env.db, env.lab.id, env.vet.id)
-    body = payload(number="API-L", trich=False).model_dump(mode="json", by_alias=True)
+    body = payload(number="API-L", trich=False, expected_total="15.00").model_dump(mode="json", by_alias=True)
 
     async with _client_for(env) as (http, identity):
         headers = {
@@ -410,7 +417,7 @@ async def test_extra_fields_and_stale_revision_rejected(db_session: AsyncSession
 async def test_revoked_assignment_is_honest(db_session: AsyncSession, api_env: SimpleNamespace) -> None:
     env = api_env
     exam_id = await _completed_card(env.db, env.lab.id, env.vet.id)
-    body = payload(number="API-L", trich=False).model_dump(mode="json", by_alias=True)
+    body = payload(number="API-L", trich=False, expected_total="15.00").model_dump(mode="json", by_alias=True)
     async with _client_for(env) as (http, identity):
         headers = {
             "x-csrf-token": identity.csrf_token,
@@ -425,3 +432,40 @@ async def test_revoked_assignment_is_honest(db_session: AsyncSession, api_env: S
         denied = await http.put(f"/api/v1/examinations/{exam_id}", json=body, headers=headers)
         assert denied.status_code in (403, 404), denied.text
         assert denied.json()["code"] in {"ACCESS_DENIED", "NOT_FOUND"}
+
+
+async def test_foreign_party_form_and_pricing_are_not_disclosed(
+    db_session: AsyncSession, api_env: SimpleNamespace
+) -> None:
+    """§18 #19 (router level): a foreign laboratory's form view and pricing
+    preview are never disclosed — an honest 404/403 and no data leakage."""
+    env = api_env
+    foreign_lab = Laboratory(
+        territory_id=env.lab.territory_id, name="Чужая лаборатория", address="Б", organization="ГБУ"
+    )
+    env.db.add(foreign_lab)
+    await env.db.commit()
+    await configure(env.db, foreign_lab.id, BEEF, trich=False)
+    party = await party_with_confirmation(env.db, foreign_lab.id, BEEF)
+    secret = {
+        "product": {"id": str(BEEF), "name": "Секретная продукция"},
+        "subProduct": {"id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "name": "вид"},
+    }
+    party.classification_snapshot = secret
+    await env.db.commit()
+
+    async with _client_for(env) as (http, identity):
+        headers = {"x-csrf-token": identity.csrf_token, "origin": "http://test"}
+        form = await http.get(f"/api/v1/examinations/parties/{party.id}/form")
+        preview = await http.post(
+            f"/api/v1/examinations/parties/{party.id}/pricing-preview",
+            json={"researches": []},
+            headers=headers,
+        )
+    for response, label in ((form, "form view"), (preview, "pricing preview")):
+        assert response.status_code in (403, 404), f"{label}: {response.status_code} {response.text}"
+        assert response.json()["code"] in {"ACCESS_DENIED", "NOT_FOUND"}
+        text = response.text
+        # No party data and no names are leaked through the error either.
+        assert "Секретная продукция" not in text
+        assert "expectedTotal" not in text and "lines" not in text and "total" not in text

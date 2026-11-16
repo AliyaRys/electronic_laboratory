@@ -154,7 +154,12 @@ async def previous_party(
 
 
 async def completed_exam(db: AsyncSession, env: SimpleNamespace, party_id: uuid.UUID, number: str) -> uuid.UUID:
-    await save_examination(context(env.actor.id), party_id, payload(number=number, trich=False), uow=db)
+    await save_examination(
+        context(env.actor.id),
+        party_id,
+        payload(number=number, trich=False, specialist_id=env.actor.id, expected_total="15.00"),
+        uow=db,
+    )
     await db.commit()
     return (await db.execute(select(Examination.id).where(Examination.party_id == party_id))).scalar_one()
 
@@ -263,7 +268,10 @@ async def test_waiting_examination_blocks_document(db_session: AsyncSession, env
     await configure(db_session, lab_id, BEEF, trich=False)
     party = await party_with_confirmation(db_session, lab_id, BEEF)
     await save_examination(
-        context(env.actor.id), party.id, payload(number="W-D", trich=False, mode="WAITING"), uow=db_session
+        context(env.actor.id),
+        party.id,
+        payload(number="W-D", trich=False, mode="WAITING", specialist_id=env.actor.id),
+        uow=db_session,
     )
     await db_session.commit()
 
@@ -280,7 +288,10 @@ async def test_unfit_examination_blocks_document(db_session: AsyncSession, env: 
     await configure(db_session, lab_id, BEEF, trich=False)
     party = await party_with_confirmation(db_session, lab_id, BEEF)
     await save_examination(
-        context(env.actor.id), party.id, payload(number="U-D", trich=False, mode="WAITING"), uow=db_session
+        context(env.actor.id),
+        party.id,
+        payload(number="U-D", trich=False, mode="WAITING", specialist_id=env.actor.id),
+        uow=db_session,
     )
     await db_session.commit()
     exam_id = (await db_session.execute(select(Examination.id).where(Examination.party_id == party.id))).scalar_one()

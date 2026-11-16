@@ -15,7 +15,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { fetchArrival } from "../features/arrivals/api";
 import type { IncomingView, Problem } from "../features/arrivals/api";
-import { fetchCollections, type CollectionView } from "../features/samples/api";
+import { fetchExaminationForm, type ExaminationFormView } from "../features/examinations/api";
 import { ExaminationForm } from "../features/examinations/ExaminationForm";
 import { StatusView } from "../shared/ui/StatusView";
 import { useMe } from "../shared/api/me";
@@ -44,20 +44,21 @@ function ExaminationCreateContent(): React.ReactElement {
     queryFn: ({ signal }) => fetchArrival(partyId ?? "", signal),
     enabled: partyId !== undefined,
   });
-  const collections = useQuery({
-    queryKey: [labId ?? null, partyId ?? null, "available-collections"],
-    queryFn: ({ signal }) => fetchCollections({ laboratory_id: labId ?? "", page: 1 }, signal),
-    enabled: labId !== undefined,
+  // DR35 §4: the frozen reconciliation-step read model (participants, product
+  // type, accepted volume, required researches, scoped specialists) — the
+  // single read source of the create page; no SOAP and no lookup job runs here.
+  const formView = useQuery({
+    queryKey: [labId ?? null, partyId ?? null, "examination-form"],
+    queryFn: ({ signal }) => fetchExaminationForm(partyId ?? "", signal),
+    enabled: partyId !== undefined,
   });
 
   const arrivalProblem = problemOf(arrival.data);
-  const collectionProblem = problemOf(collections.data);
+  const formProblem = problemOf(formView.data);
   const party: IncomingView | null =
     arrival.data !== undefined && !("code" in arrival.data) ? arrival.data : null;
-  const allCollections: CollectionView[] =
-    collections.data !== undefined && !("code" in collections.data)
-      ? (collections.data as { items: CollectionView[] }).items
-      : [];
+  const form: ExaminationFormView | null =
+    formView.data !== undefined && !("code" in formView.data) ? formView.data : null;
 
   // The party already has a card: creation is impossible (one card per
   // party), so the doctor goes straight to the existing card.
@@ -89,7 +90,6 @@ function ExaminationCreateContent(): React.ReactElement {
           <span className="vse-req">*</span> обязательные поля
         </div>
       </div>
-      {me.user !== null ? <p className="vse-arrival-hint">{`Специалист: ${me.user.full_name}`}</p> : null}
       {arrivalProblem !== null ? (
         <StatusView
           state={arrivalProblem.status === 404 ? "not-found" : "network-error"}
@@ -101,14 +101,14 @@ function ExaminationCreateContent(): React.ReactElement {
           detail={arrivalProblem.detail}
           onRetry={() => void arrival.refetch()}
         />
-      ) : collectionProblem !== null ? (
+      ) : formProblem !== null && formProblem.status !== 404 ? (
         <StatusView
           state="network-error"
-          title="Не удалось загрузить доступные пробы."
-          detail={collectionProblem.detail}
-          onRetry={() => void collections.refetch()}
+          title="Не удалось загрузить данные формы."
+          detail={formProblem.detail}
+          onRetry={() => void formView.refetch()}
         />
-      ) : arrival.isLoading || collections.isLoading ? (
+      ) : arrival.isLoading || formView.isLoading ? (
         <StatusView state="loading" title="Загрузка карточки ВСЭ…" />
       ) : party === null ? (
         <StatusView state="not-found" title="Поступление не найдено." />
@@ -119,21 +119,17 @@ function ExaminationCreateContent(): React.ReactElement {
           detail="Карточка ВСЭ создаётся только по подтверждённой партии (FT-ARR-14)."
         />
       ) : (
-        <>
-          <ExaminationForm
-            party={party}
-            view={null}
-            today={new Date().toISOString().slice(0, 10)}
-            availableCollections={allCollections.filter(
-              (collection) => collection.party_id === party.party_id && collection.disposal_id === null,
-            )}
-            specialistName={me.user?.full_name}
-            onSaved={(created) => {
-              void navigate(`/labs/${labId}/examinations/${created.id}`);
-            }}
-            onCancel={() => void navigate(-1)}
-          />
-        </>
+        <ExaminationForm
+          party={party}
+          view={null}
+          today={new Date().toISOString().slice(0, 10)}
+          formView={form}
+          currentUserId={me.user?.id ?? null}
+          onSaved={(created) => {
+            void navigate(`/labs/${labId}/examinations/${created.id}`);
+          }}
+          onCancel={() => void navigate(-1)}
+        />
       )}
     </div>
   );

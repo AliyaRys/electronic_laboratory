@@ -34,14 +34,16 @@ from backend.src.core.commands import (
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.confirmation import downstream_route
 from backend.src.modules.arrivals.models import Party
-from backend.src.modules.catalog_pricing.schemas import PricingSnapshot, ResearchValue
+from backend.src.modules.catalog_pricing.schemas import PricingSnapshot, ResearchValue, parse_decimal
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
-from backend.src.modules.examinations.commands import pricing_request_for
+from backend.src.modules.examinations.commands import _price_conflict, _resolve_specialist, pricing_request_for
 from backend.src.modules.examinations.models import Examination, ExaminationSample
 from backend.src.modules.examinations.queries import build_view, get_examination, get_view
 from backend.src.modules.examinations.schemas import ExaminationView, ExaminationWrite, OutcomeWrite
 from backend.src.modules.examinations.validation import validate_researches
 from backend.src.modules.identity.models import CommandStatus, TechnicalEvent
+from backend.src.modules.samples.models import SampleCollection
+from backend.src.modules.samples.schemas import EditSample, NewSample
 from backend.src.modules.samples.service import apply_sample
 
 __all__ = ["update_examination", "complete_waiting"]
@@ -49,6 +51,10 @@ __all__ = ["update_examination", "complete_waiting"]
 
 def _conflict(detail: str) -> ProblemError:
     return ProblemError(status=409, code="STATE_CONFLICT", title="State conflict", detail=detail)
+
+
+def _validation(detail: str) -> ProblemError:
+    return ProblemError(status=422, code="VALIDATION_ERROR", title="Validation error", detail=detail)
 
 
 def _day_closed() -> ProblemError:
@@ -150,14 +156,47 @@ async def update_examination(
     )
     previous_pricing = row.pricing_snapshot
     pricing = await evaluate_and_price(work, pricing_request, PricingSnapshot.model_validate(previous_pricing))
+    # DR35 §13.5: the same completion gate as the first save: a COMPLETED save
+    # must confirm the previewed total (validation error when missing, managed
+    # conflict on mismatch).
+    if payload.mode == "COMPLETED":
+        if payload.expected_total is None:
+            raise _validation("Подтвердите предварительный расчёт стоимости")
+        if parse_decimal(payload.expected_total) != parse_decimal(pricing.total):
+            raise _price_conflict(payload.expected_total, pricing.total)
+    # DR35 §12.3: an edit may reassign the specialist within the scoped list;
+    # created_by stays the immutable audit actor. A missing specialist keeps
+    # the card's current specialist (never the operator of the save).
+    if payload.specialist_id is None:
+        specialist_id, specialist_name = row.specialist_id, row.specialist_name
+    else:
+        specialist_id, specialist_name = await _resolve_specialist(
+            db, party, payload.specialist_id, ctx.actor_id
+        )
 
     # 9. The sample selection is applied through the same internal contract;
     #    the card keeps exactly one current link (the schema is one link per
     #    card), while every earlier collection fact stays in the ledger.
-    collection = await apply_sample(db, ctx.actor_id, row.party_id, row.id, payload.sample)
+    #    DR35 §11.3: an ordinary edit is NEVER a new physical selection — when
+    #    the card already links a collection, a NEW-shaped body is applied as a
+    #    correction of that same fact (revision-guarded), and REUSE stays the
+    #    re-link of a not-disposed fact.
     link = (
         await db.execute(select(ExaminationSample).where(ExaminationSample.examination_id == row.id).with_for_update())
     ).scalar_one_or_none()
+    selection: object = payload.sample
+    if link is not None and isinstance(payload.sample, NewSample):
+        current = (
+            await db.execute(select(SampleCollection).where(SampleCollection.id == link.collection_id))
+        ).scalar_one()
+        selection = EditSample(
+            mode="EDIT",
+            collection_id=link.collection_id,
+            expected_revision=current.rev or 1,
+            collected_on=payload.sample.collected_on,
+            mass_kg=str(payload.sample.mass_kg),
+        )
+    collection = await apply_sample(db, ctx.actor_id, row.party_id, row.id, selection)
     if link is None:
         db.add(ExaminationSample(examination_id=row.id, collection_id=collection.id))
     else:
@@ -168,6 +207,8 @@ async def update_examination(
     row.number = payload.number
     row.stamp = payload.stamp
     row.sent_to_lab = payload.sent_to_lab
+    row.specialist_id = specialist_id
+    row.specialist_name = specialist_name
     row.research_snapshot = [
         cast(dict[str, object], result.model_dump(mode="json", by_alias=True)) for result in payload.researches
     ]

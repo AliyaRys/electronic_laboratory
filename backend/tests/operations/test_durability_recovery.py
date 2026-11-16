@@ -108,9 +108,7 @@ def test_fresh_verified_readiness_manifest_is_accepted(tmp_path: Path) -> None:
         ("keyring_available", False),
     ],
 )
-def test_readiness_manifest_rejects_missing_safety_evidence(
-    tmp_path: Path, field: str, value: bool
-) -> None:
+def test_readiness_manifest_rejects_missing_safety_evidence(tmp_path: Path, field: str, value: bool) -> None:
     now = datetime.now(UTC)
     payload = {
         "schema_version": 1,

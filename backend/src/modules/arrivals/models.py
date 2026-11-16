@@ -93,6 +93,10 @@ class Party(Base):
         UUID(as_uuid=True), ForeignKey("laboratories.id", ondelete="RESTRICT")
     )
     classification_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
+    # DR35 §4/§14: the frozen create-page snapshot (participants, product type,
+    # accepted volume, revisions). Backfilled repeatably by the read model and
+    # never overwriting a non-empty frozen value.
+    form_snapshot: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     rev: Mapped[int] = mapped_column(BigInteger, default=1, server_default=text("1"))
 

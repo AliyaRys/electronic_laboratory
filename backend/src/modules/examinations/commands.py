@@ -13,23 +13,76 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.src.core.clock import Clock
 from backend.src.core.commands import IdempotencyRecorder, UnitOfWork, canonical_request_hash
 from backend.src.core.contracts import CommandContext
-from backend.src.core.problems import ProblemError
+from backend.src.core.problems import ProblemError, ProblemItem
 from backend.src.modules.arrivals.confirmation import downstream_route, ensure_confirmed
 from backend.src.modules.arrivals.models import Party, Reconciliation
-from backend.src.modules.catalog_pricing.schemas import PricingRequest, ResearchValue
+from backend.src.modules.catalog_pricing.schemas import PricingRequest, ResearchValue, parse_decimal
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
 from backend.src.modules.examinations.models import Examination, ExaminationSample
 from backend.src.modules.examinations.queries import build_view, get_view
 from backend.src.modules.examinations.schemas import ExaminationView, ExaminationWrite
+from backend.src.modules.examinations.specialists import is_eligible_specialist, specialist_not_allowed
 from backend.src.modules.examinations.validation import validate_researches
-from backend.src.modules.identity.models import CommandStatus, TechnicalEvent
+from backend.src.modules.identity.models import CommandStatus, TechnicalEvent, User
+from backend.src.modules.samples.schemas import ReuseSample
 from backend.src.modules.samples.service import apply_sample
 
-__all__ = ["save_examination", "pricing_request_for"]
+__all__ = ["save_examination", "preview_pricing", "pricing_request_for"]
 
 
 def _conflict(detail: str) -> ProblemError:
     return ProblemError(status=409, code="STATE_CONFLICT", title="State conflict", detail=detail)
+
+
+def _reuse_rejected() -> ProblemError:
+    """DR35 §11.2: a new card performs a NEW physical selection — REUSE is
+    refused honestly, including a forged API request."""
+    return ProblemError(
+        status=422,
+        code="VALIDATION_ERROR",
+        title="Validation error",
+        detail="Создание ВСЭ выполняет только новый отбор пробы; повторное использование недоступно.",
+    )
+
+
+def _price_conflict(expected: str, actual: str) -> ProblemError:
+    """DR35 §13.5: a price that changed between the confirmed preview and the
+    final save is never saved silently — the user re-confirms the new amount."""
+    return ProblemError(
+        status=409,
+        code="PRICE_CONFLICT",
+        title="Price conflict",
+        detail=(
+            "Стоимость изменилась с момента предварительного расчёта; подтвердите новый расчёт перед завершением ВСЭ."
+        ),
+        errors=[ProblemItem(path="expectedTotal", field_id="VSE", message=actual)],
+    )
+
+
+def _validation(detail: str) -> ProblemError:
+    return ProblemError(status=422, code="VALIDATION_ERROR", title="Validation error", detail=detail)
+
+
+async def _resolve_specialist(
+    uow: AsyncSession, party: Party, specialist_id: uuid.UUID | None, actor_id: uuid.UUID
+) -> tuple[uuid.UUID, str]:
+    """DR35 §12.3: the chosen specialist, validated against the scoped list.
+
+    A new card requires an explicit specialist: the audit actor (operator of
+    the save) is never silently substituted for the displayed specialist.
+    """
+    if specialist_id is None:
+        raise _validation("Выберите специалиста Госветслужбы")
+    if not await is_eligible_specialist(uow, specialist_id, party.laboratory_id, _product_scope_id(party)):
+        raise specialist_not_allowed()
+    user = (await uow.execute(select(User).where(User.id == specialist_id))).scalar_one()
+    return specialist_id, user.full_name
+
+
+def _product_scope_id(party: Party) -> uuid.UUID | None:
+    product = party.classification_snapshot.get("product")
+    value = product.get("id") if isinstance(product, dict) else None
+    return uuid.UUID(str(value)) if value is not None else None
 
 
 def _classification_id(party: Party, key: str) -> uuid.UUID:
@@ -86,6 +139,16 @@ async def pricing_request_for(
     )
 
 
+async def preview_pricing(db: AsyncSession, party: Party, results: list[ResearchValue]) -> object:
+    """DR35 §13.3: the preview computation of the SAME domain function.
+
+    Pure read/compute on the caller's session: no row is written, no commit,
+    no idempotency record, no event — the caller may safely roll back.
+    """
+    request = await pricing_request_for(db, party, results)
+    return await evaluate_and_price(UnitOfWork(db), request, None)
+
+
 async def save_examination(
     ctx: CommandContext,
     party_id: uuid.UUID,
@@ -121,6 +184,12 @@ async def save_examination(
     await ensure_confirmed(uow, party_id)
     if await downstream_route(uow, party_id) != "EXAMINATION":
         raise _conflict("Подтверждённый маршрут партии не предусматривает создание местной ВСЭ.")
+    # DR35 §11.2: a new card performs a NEW physical selection only.
+    if isinstance(payload.sample, ReuseSample):
+        raise _reuse_rejected()
+    # DR35 §12.3: the specialist is validated against the scoped list BEFORE
+    # any write; audit actor and specialist stay distinct facts.
+    specialist_id, specialist_name = await _resolve_specialist(uow, party, payload.specialist_id, ctx.actor_id)
     await validate_researches(uow, party, payload)
 
     duplicate_number = await uow.scalar(
@@ -141,6 +210,13 @@ async def save_examination(
         ],
     )
     pricing = await evaluate_and_price(work, pricing_request, None)
+    # DR35 §13.5: a COMPLETED save must confirm the previewed total. A missing
+    # confirmation is a validation error; a mismatch is a managed conflict.
+    if payload.mode == "COMPLETED":
+        if payload.expected_total is None:
+            raise _validation("Подтвердите предварительный расчёт стоимости")
+        if parse_decimal(payload.expected_total) != parse_decimal(pricing.total):
+            raise _price_conflict(payload.expected_total, pricing.total)
 
     now = (clock or Clock()).now()
     examination_id = uuid.uuid4()
@@ -168,6 +244,8 @@ async def save_examination(
         direction=payload.direction,
         reason=payload.reason.strip() if payload.reason is not None else None,
         created_by=ctx.actor_id,
+        specialist_id=specialist_id,
+        specialist_name=specialist_name,
         created_at=now,
         first_completed_at=now if payload.mode == "COMPLETED" else None,
         rev=1,

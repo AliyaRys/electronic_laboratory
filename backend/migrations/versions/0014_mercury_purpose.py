@@ -88,11 +88,7 @@ def _seed(connection: sa.Connection) -> None:
             .values(**values)
             .on_conflict_do_update(
                 index_elements=["contour", "guid"],
-                set_={
-                    key: value
-                    for key, value in values.items()
-                    if key not in ("contour", "guid", "synchronized_at")
-                },
+                set_={key: value for key, value in values.items() if key not in ("contour", "guid", "synchronized_at")},
             )
         )
 
@@ -131,12 +127,8 @@ def upgrade() -> None:
         sa.Column("records", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("pages", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("problem_code", sa.String(128), nullable=True),
-        sa.Column(
-            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
-        ),
-        sa.CheckConstraint(
-            "contour IN ('PILOT','PRODUCTION')", name="mercury_purpose_sync_contour_valid"
-        ),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="mercury_purpose_sync_contour_valid"),
         sa.CheckConstraint("failures >= 0", name="mercury_purpose_sync_failures_positive"),
     )
     _seed(op.get_bind())

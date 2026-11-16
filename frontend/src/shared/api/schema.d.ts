@@ -816,6 +816,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/examinations/parties/{party_id}/form": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Examination Form
+         * @description DR35 §4/§14: the frozen reconciliation-step snapshot — the single read
+         *     source of the create page. No SOAP and no lookup job ever runs here.
+         */
+        get: operations["read_examination_form_api_v1_examinations_parties__party_id__form_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/examinations/parties/{party_id}/pricing-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pricing Preview
+         * @description DR35 §13.3: the live pricing preview. A pure read/compute: it creates
+         *     NO examination, sample, event, command record or draft, calls the SAME
+         *     ``evaluate_and_price`` domain function as the final save, accepts no money
+         *     or quantity from the client and never touches VetIS.
+         */
+        post: operations["pricing_preview_api_v1_examinations_parties__party_id__pricing_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/examinations/parties/{party_id}": {
         parameters: {
             query?: never;
@@ -1570,6 +1614,16 @@ export interface components {
             /** Masskg */
             massKg: string;
         };
+        /**
+         * EligibleSpecialist
+         * @description One scoped specialist option (active VET/HEAD with the ВСЭ right).
+         */
+        EligibleSpecialist: {
+            /** Id */
+            id: string;
+            /** Fullname */
+            fullName: string;
+        };
         /** EnumResearch */
         EnumResearch: {
             /**
@@ -1586,6 +1640,43 @@ export interface components {
             value: string;
             /** Othertext */
             otherText?: string | null;
+        };
+        /**
+         * ExaminationFormView
+         * @description API-05 ``ExaminationFormView``: the single read source of the create page.
+         *
+         *     Everything is read from the frozen reconciliation step (the party snapshot
+         *     plus the frozen confirmation): no SOAP, no GUID re-resolution, no lookup
+         *     job on open (§4.1).
+         */
+        ExaminationFormView: {
+            /** Party Id */
+            party_id: string;
+            /** Laboratory Id */
+            laboratory_id: string;
+            /** Participants */
+            participants: {
+                [key: string]: components["schemas"]["FormParticipantEntry"];
+            };
+            product: components["schemas"]["FormClassificationEntry"];
+            sub_product?: components["schemas"]["FormClassificationEntry"] | null;
+            product_item?: components["schemas"]["FormClassificationEntry"] | null;
+            unit?: components["schemas"]["FormClassificationEntry"] | null;
+            /** Product Type */
+            product_type?: number | null;
+            /** Product Type Label */
+            product_type_label: string | null;
+            accepted: components["schemas"]["FormAccepted"];
+            /** Required Research Ids */
+            required_research_ids: string[];
+            /** Eligible Specialists */
+            eligible_specialists: components["schemas"]["EligibleSpecialist"][];
+            /** Source Revision */
+            source_revision: string;
+            /** Reconciliation Revision */
+            reconciliation_revision: number | null;
+            /** Revision */
+            revision: number;
         };
         /** ExaminationView */
         ExaminationView: {
@@ -1623,6 +1714,10 @@ export interface components {
             reason: string | null;
             /** Created By */
             created_by: string;
+            /** Specialist Id */
+            specialist_id: string;
+            /** Specialist Name */
+            specialist_name: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1657,6 +1752,10 @@ export interface components {
             sentToLab: boolean;
             /** Sample */
             sample: components["schemas"]["NewSample"] | components["schemas"]["ReuseSample"] | components["schemas"]["EditSample"];
+            /** Specialistid */
+            specialistId?: string | null;
+            /** Expectedtotal */
+            expectedTotal?: string | null;
             /** Outcome */
             outcome?: ("FIT" | "UNFIT") | null;
             /** Direction */
@@ -1676,6 +1775,40 @@ export interface components {
             fields: {
                 [key: string]: string | null;
             };
+        };
+        /**
+         * FormAccepted
+         * @description The accepted volume FROZEN by the confirmed reconciliation (§7.2).
+         */
+        FormAccepted: {
+            /** Masskg */
+            massKg: string;
+            /** Quantity */
+            quantity: string;
+            /** Unitid */
+            unitId: string;
+            /** Unitname */
+            unitName: string | null;
+        };
+        /** FormClassificationEntry */
+        FormClassificationEntry: {
+            /** Id */
+            id: string | null;
+            /** Name */
+            name: string | null;
+        };
+        /**
+         * FormParticipantEntry
+         * @description One frozen participant display value with its honest name state.
+         *
+         *     A missing name stays ``state='MISSING'`` with ``name=None`` — the UI shows
+         *     «Название не получено», never a GUID/UUID and never «—» for a known id.
+         */
+        FormParticipantEntry: {
+            /** Name */
+            name: string | null;
+            /** State */
+            state: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2086,6 +2219,31 @@ export interface components {
             evaluation?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * PricingPreviewRequest
+         * @description DR35 §13.3: only the data needed to know which researches are fully
+         *     performed. No money, no quantity, no totals are ever accepted.
+         */
+        PricingPreviewRequest: {
+            /** Researches */
+            researches?: (components["schemas"]["BooleanResearch"] | components["schemas"]["IntegerResearch"] | components["schemas"]["DecimalResearch"] | components["schemas"]["EnumResearch"] | components["schemas"]["TextResearch"] | components["schemas"]["DosimetryResearch"])[];
+        };
+        /**
+         * PricingPreviewResponse
+         * @description DR35 §13.3: the typed preview — the SAME ``PricingSnapshot`` the final
+         *     save persists, plus the frozen quantity context it was computed from.
+         */
+        PricingPreviewResponse: {
+            snapshot: components["schemas"]["PricingSnapshot"];
+            /** Acceptedquantity */
+            acceptedQuantity: string;
+            /** Acceptedunitid */
+            acceptedUnitId: string;
+            /** Fair */
+            fair: boolean;
+            /** Revision */
+            revision: number;
         };
         /**
          * PricingRequest
@@ -4768,6 +4926,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DisposalView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_examination_form_api_v1_examinations_parties__party_id__form_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExaminationFormView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pricing_preview_api_v1_examinations_parties__party_id__pricing_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PricingPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingPreviewResponse"];
                 };
             };
             /** @description Validation Error */

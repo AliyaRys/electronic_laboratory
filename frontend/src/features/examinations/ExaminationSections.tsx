@@ -1,13 +1,19 @@
 /**
- * ExaminationSections (DR30): the readonly party facts re-composed into the
- * mockup sections of electronic-vse-journal.html. The data stays exactly the
- * confirmed party's facts (SC-033/034) — only the composition and the readonly
- * presentation follow the reference; empty values are honest «—» and no
- * mockup demo data is ever shown.
+ * ExaminationSections (DR30 composition, DR35 data rules): the readonly party
+ * facts re-composed into the mockup sections of electronic-vse-journal.html.
+ *
+ * DR35 §5/§6/§7/§8: the data comes from the unified read model — «Предприятие»
+ * and «Хозяйствующий субъект» in BOTH participant cards (never «Название
+ * предприятия»/«Владелец продукции», never a swapped enterprise/owner), the
+ * product type in Russian through the shared formatter, the accepted mass and
+ * the ACCEPTED QUANTITY of the confirmed reconciliation formatted without a
+ * JS number (no unit GUID is ever shown), and the obsolete
+ * «Партия подтверждена внешним результатом» note is gone (§8).
  */
 import type { IncomingView } from "../arrivals/api";
+import { participantName } from "../arrivals/api";
+import { formatDecimalDisplay, productTypeLabel } from "../../shared/lib/domain";
 import { FormSection } from "../../shared/ui/FormSection";
-import { InfoField } from "../../shared/ui/InfoField";
 import { ReadonlyField } from "../../shared/ui/ReadonlyField";
 
 /** Section «Сведения об экспертизе»: the document facts of the party. */
@@ -39,7 +45,7 @@ export function ExaminationFactsSection({
   );
 }
 
-/** One participant card of the mockup (title, предприятие, владелец продукции). */
+/** One participant card of the mockup (title, Предприятие, Хозяйствующий субъект). */
 export function ParticipantCard({
   title,
   enterprise,
@@ -52,8 +58,8 @@ export function ParticipantCard({
   return (
     <article className="vse-participant vse-span6" aria-label={title}>
       <h3>{title}</h3>
-      <ReadonlyField label="Название предприятия" value={enterprise} multiline />
-      <ReadonlyField label="Владелец продукции" value={owner} />
+      <ReadonlyField label="Предприятие" value={enterprise} multiline />
+      <ReadonlyField label="Хозяйствующий субъект" value={owner} />
     </article>
   );
 }
@@ -65,13 +71,28 @@ export function ParticipantCard({
  */
 export function ParticipantsSection({
   party,
+  participants,
   children,
 }: {
   party: IncomingView;
+  /** DR35 §5: the unified read-model participant names, when the form view is loaded. */
+  participants?: Readonly<Record<string, { name: string | null; state: string } | undefined>> | undefined;
   children: React.ReactNode;
 }): React.ReactElement {
-  const sender = party.external.fields;
   const classification = party.classification;
+  const name = (key: string, fallback: string): string => {
+    const entry = participants?.[key];
+    return entry !== undefined && entry.name !== null && entry.name.trim() !== "" ? entry.name : fallback;
+  };
+  const senderEnterprise = name("senderEnterprise", participantName(party, "sender", "enterprise").value);
+  const senderOwner = name("senderOwner", participantName(party, "sender", "owner").value);
+  const receiverEnterprise = name(
+    "receiverEnterprise",
+    participantName(party, "receiver", "enterprise").value,
+  );
+  const receiverOwner = name("receiverOwner", participantName(party, "receiver", "owner").value);
+  const confirmation = party.confirmation;
+  const productType = productTypeLabel(classification.productType);
   return (
     <FormSection
       icon="exam-participants"
@@ -79,21 +100,14 @@ export function ParticipantsSection({
       description="Сведения об отправителе, получателе и классификация продукции."
     >
       <div className="vse-exam-grid">
-        <ParticipantCard
-          title="Сведения об отправителе"
-          enterprise={sender.consignor ?? ""}
-          owner={sender.consignorOwner ?? ""}
-        />
+        <ParticipantCard title="Сведения об отправителе" enterprise={senderEnterprise} owner={senderOwner} />
         <ParticipantCard
           title="Сведения о получателе"
-          enterprise={sender.consignee ?? ""}
-          owner={sender.consigneeOwner ?? ""}
+          enterprise={receiverEnterprise}
+          owner={receiverOwner}
         />
         <div className="vse-span6">
-          <ReadonlyField
-            label="Тип продукции"
-            value={classification.productType != null ? String(classification.productType) : ""}
-          />
+          <ReadonlyField label="Тип продукции" value={productType} />
         </div>
         <div className="vse-span6">
           <ReadonlyField label="Продукция" value={classification.product?.name ?? ""} />
@@ -107,21 +121,16 @@ export function ParticipantsSection({
         <div className="vse-span4">
           <ReadonlyField
             label="Принятый вес, кг"
-            value={party.confirmation !== null ? String(party.confirmation.accepted_mass_kg) : ""}
+            value={confirmation !== null ? formatDecimalDisplay(confirmation.accepted_mass_kg) : ""}
           />
         </div>
         <div className="vse-span4">
           <ReadonlyField
-            label="Принятое количество"
-            value={
-              party.confirmation !== null
-                ? `${party.confirmation.accepted_quantity} ${party.confirmation.accepted_unit_id}`
-                : ""
-            }
+            label="Принятое количество мест, шт."
+            value={confirmation !== null ? formatDecimalDisplay(confirmation.accepted_quantity) : ""}
           />
         </div>
         {children}
-        <p className="vse-confirm-note vse-span12">Партия подтверждена внешним результатом</p>
       </div>
     </FormSection>
   );
@@ -135,8 +144,12 @@ export function PartyReadonlyFacts({
   party: IncomingView;
   headline?: string;
 }): React.ReactElement {
-  const sender = party.external.fields;
   const classification = party.classification;
+  const confirmation = party.confirmation;
+  const senderEnterprise = participantName(party, "sender", "enterprise");
+  const senderOwner = participantName(party, "sender", "owner");
+  const receiverEnterprise = participantName(party, "receiver", "enterprise");
+  const receiverOwner = participantName(party, "receiver", "owner");
   return (
     <section className="vse-exam-block" aria-label={headline}>
       <h3>{headline}</h3>
@@ -150,24 +163,28 @@ export function PartyReadonlyFacts({
           <dd>{party.external.fields.issuedOn ?? "—"}</dd>
         </div>
         <div>
-          <dt>Отправитель — предприятие</dt>
-          <dd>{sender.consignor ?? "—"}</dd>
+          <dt>Отправитель — Предприятие</dt>
+          <dd>{senderEnterprise.value}</dd>
         </div>
         <div>
-          <dt>Отправитель — владелец</dt>
-          <dd>{sender.consignorOwner ?? "—"}</dd>
+          <dt>Отправитель — Хозяйствующий субъект</dt>
+          <dd>{senderOwner.value}</dd>
         </div>
         <div>
-          <dt>Получатель — предприятие</dt>
-          <dd>{sender.consignee ?? "—"}</dd>
+          <dt>Получатель — Предприятие</dt>
+          <dd>{receiverEnterprise.value}</dd>
         </div>
         <div>
-          <dt>Получатель — владелец</dt>
-          <dd>{sender.consigneeOwner ?? "—"}</dd>
+          <dt>Получатель — Хозяйствующий субъект</dt>
+          <dd>{receiverOwner.value}</dd>
         </div>
         <div>
           <dt>Тип продукции</dt>
-          <dd>{classification.productType ?? "—"}</dd>
+          <dd>
+            {typeof classification.productType === "number"
+              ? productTypeLabel(classification.productType)
+              : "Название типа продукции не получено"}
+          </dd>
         </div>
         <div>
           <dt>Продукция</dt>
@@ -183,18 +200,15 @@ export function PartyReadonlyFacts({
         </div>
         <div>
           <dt>Принятый вес, кг</dt>
-          <dd>{party.confirmation?.accepted_mass_kg ?? "—"}</dd>
+          <dd>{confirmation !== null ? formatDecimalDisplay(confirmation.accepted_mass_kg) : "—"}</dd>
         </div>
         <div>
-          <dt>Принятое количество</dt>
-          <dd>
-            {party.confirmation !== null
-              ? `${party.confirmation.accepted_quantity} ${party.confirmation.accepted_unit_id}`
-              : "—"}
-          </dd>
+          <dt>Принятое количество мест, шт.</dt>
+          <dd>{confirmation !== null ? formatDecimalDisplay(confirmation.accepted_quantity) : "—"}</dd>
         </div>
       </dl>
-      <InfoField label="Статус приёмки" value="Партия подтверждена внешним результатом" />
+      {/* DR35 §8: the confirm-note is deliberately gone — the ability to open
+          the creation IS the confirmation sign; provenance stays in data. */}
     </section>
   );
 }

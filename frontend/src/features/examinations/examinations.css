@@ -72,21 +72,6 @@
   font-size: 14px;
 }
 
-/* The compact «Партия подтверждена внешним результатом» hint (DR30 §6.5.6):
-   a quiet secondary tag, never a dominant block. */
-.vse-confirm-note {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  padding: 3px 9px;
-  border: 1px solid var(--app-mercury-line);
-  border-radius: 99px;
-  background: var(--app-mercury-bg);
-  color: var(--app-muted-readable);
-  font-size: 12px;
-  font-weight: 650;
-}
-
 /* --- Research cards (mockup .research / .research.primary) -------------------- */
 .vse-research-grid {
   display: grid;

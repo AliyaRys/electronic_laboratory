@@ -121,8 +121,7 @@ def downgrade() -> None:
     count = bind.execute(sa.text("SELECT count(*) FROM tariffs WHERE product_species_id IS NULL")).scalar_one()
     if count:
         raise RuntimeError(
-            "downgrade 0017: найдены тарифы без вида продукции "
-            f"({count}); перенесите или удалите их перед откатом."
+            f"downgrade 0017: найдены тарифы без вида продукции ({count}); перенесите или удалите их перед откатом."
         )
     op.drop_index("uq_tariff_lab_species_code_unit", table_name="tariffs")
     op.drop_index("uq_tariff_lab_code_unit_check", table_name="tariffs")

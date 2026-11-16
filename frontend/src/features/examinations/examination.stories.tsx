@@ -11,6 +11,7 @@ import { ExaminationForm } from "./ExaminationForm";
 import { OutcomeFields, outcomeText } from "./OutcomeFields";
 import { PartyReadonlyFacts } from "./ExaminationSections";
 import { ResearchFields } from "./ResearchFields";
+import { PricingSection } from "./PricingPreview";
 import { Button } from "../../shared/ui/Button";
 import { DeleteDialog } from "./DeleteDialog";
 import { JournalRow } from "../../pages/ExaminationJournalPage";
@@ -18,10 +19,13 @@ import { emptyOutcome, emptyResearch, type ExaminationFormValues, type ResearchE
 import { INDICATORS } from "./indicators";
 import type { CollectionView } from "../samples/api";
 import type { IncomingView } from "../arrivals/api";
-import type { ExaminationView } from "./api";
+import type { ExaminationFormView, ExaminationView, PricingSnapshotView } from "./api";
 
 const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const PARTY = "9c1b2d3e-1111-4222-8333-444444444444";
+const ME = "77777777-7777-4777-8777-777777777777";
+const OTHER = "88888888-8888-4888-8888-888888888888";
+const TRICHINELLA_ID = "adf96c8a-a6d6-50c4-9ec9-86f058b329f1";
 
 const party: IncomingView = {
   id: "3f0e6d2a-1111-4222-8333-444444444444",
@@ -34,24 +38,30 @@ const party: IncomingView = {
     fields: {
       documentUuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac",
       issuedOn: "2026-11-03",
-      consignor: "КФХ Шайдуллин Азат Рашидович (422336, Республика Татарстан, Кайбицкий район, с. Молькеево)",
-      consignorOwner: "Шайдуллин Азат Рашидович, ИНН: 210803077517",
-      consignee:
+      senderEnterprise:
+        "КФХ Шайдуллин Азат Рашидович (422336, Республика Татарстан, Кайбицкий район, с. Молькеево)",
+      senderEnterpriseNameSource: "SOURCE_XML",
+      senderOwner: "Шайдуллин Азат Рашидович, ИНН: 210803077517",
+      senderOwnerNameSource: "SOURCE_XML",
+      receiverEnterprise:
         "Акционерное общество «Агропромышленный парк „Казань“» (420061, г. Казань, Аграрная ул., д. 2)",
-      consigneeOwner: "Хусаинова Зельфия Тимергалиевна, ИНН: 210302212275",
+      receiverEnterpriseNameSource: "SOURCE_XML",
+      receiverOwner: "Хусаинова Зельфия Тимергалиевна, ИНН: 210302212275",
+      receiverOwnerNameSource: "SOURCE_XML",
     },
   },
   classification: {
+    productType: 1,
     product: { id: "p", name: "Мясо и мясопродукты" },
     subProduct: { id: "sp", name: "Говядина" },
     productItem: { id: "pi", name: "Говядина в четвертинах охлаждённая" },
     unit: { id: "u", name: "штука" },
   },
-  documentary: { mass_kg: "140.5", quantity: "2", unit_id: "шт" },
+  documentary: { mass_kg: "140.500000", quantity: "5.000000", unit_id: "шт" },
   confirmation: {
     id: "c1000000-0000-4000-8000-000000000001",
-    accepted_mass_kg: "140.5",
-    accepted_quantity: "2",
+    accepted_mass_kg: "140.500000",
+    accepted_quantity: "5.000000",
     accepted_unit_id: "шт",
     returned_mass_kg: "0",
     returned_quantity: "0",
@@ -94,8 +104,31 @@ const savedCard: ExaminationView = {
   direction: null,
   reason: null,
   created_by: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+  specialist_id: ME,
+  specialist_name: "Кузнецова Алиса Викторовна",
   created_at: "2026-11-07T10:00:00Z",
   first_completed_at: null,
+  revision: 1,
+};
+
+const formView: ExaminationFormView = {
+  party_id: PARTY,
+  laboratory_id: LAB,
+  participants: {},
+  product: { id: "p", name: "Мясо и мясопродукты" },
+  sub_product: null,
+  product_item: null,
+  unit: null,
+  product_type: 1,
+  product_type_label: "Мясо и мясопродукты",
+  accepted: { massKg: "140.500000", quantity: "5.000000", unitId: "шт", unitName: "штука" },
+  required_research_ids: [],
+  eligible_specialists: [
+    { id: ME, fullName: "Кузнецова Алиса Викторовна" },
+    { id: OTHER, fullName: "Сафина Лилия Рустамовна" },
+  ],
+  source_revision: "1f0e6d2a-1111-4222-8333-444444444444",
+  reconciliation_revision: 1,
   revision: 1,
 };
 
@@ -125,9 +158,10 @@ const formRender = () =>
       view={null}
       today="2026-11-07"
       availableCollections={[collection]}
+      formView={formView}
+      currentUserId={ME}
       onSaved={() => undefined}
       onCancel={() => undefined}
-      specialistName="Кузнецова Алиса Викторовна"
     />,
   );
 
@@ -136,15 +170,15 @@ export const ФормаНовая: StoryObj = {
   parameters: { viewport: { defaultViewport: "desktop" } },
 };
 
-/** REUSE is the default sample entry whenever an available collection exists. */
-export const ПробаПовторноеИспользование: StoryObj = {
+/** DR35 §11: every new card performs a NEW physical selection. */
+export const ПробаНовыйОтбор: StoryObj = {
   render: formRender,
   parameters: {
     viewport: { defaultViewport: "desktop" },
     docs: {
       description: {
         story:
-          "По умолчанию выбран режим «Использовать имеющуюся пробу» (REUSE) с доступной пробой той же партии.",
+          "Решение владельца DR35: для каждой новой карточки выполняется только новый отбор пробы (REUSE исключён).",
       },
     },
   },
@@ -163,6 +197,7 @@ function researchValues(performed: Record<string, Partial<ResearchEntry>>): Exam
     researches[def.id] = emptyResearch({ performed: def.mandatory, ...performed[def.id] });
   }
   return {
+    specialistId: ME,
     number: "",
     stamp: "",
     sentToLab: false,
@@ -174,19 +209,30 @@ function researchValues(performed: Record<string, Partial<ResearchEntry>>): Exam
   };
 }
 
-const researchRender = (values: ExaminationFormValues) => (
-  <ResearchFields values={values} view={null} disabled={false} onChange={() => undefined} />
+const researchRender = (
+  values: ExaminationFormValues,
+  requiredResearchIds: ReadonlySet<string> = new Set(),
+) => (
+  <ResearchFields
+    values={values}
+    view={null}
+    disabled={false}
+    requiredResearchIds={requiredResearchIds}
+    onChange={() => undefined}
+  />
 );
 
+/** DR35: требуемые исследования приходят с сервера (required_research_ids)
+ * и закрепляются за партией, а не выбираются на форме. */
 export const ТрихинеллоскопияОбязательна: StoryObj = {
   render: () =>
-    researchRender(researchValues({ "adf96c8a-a6d6-50c4-9ec9-86f058b329f1": { performed: true } })),
+    researchRender(researchValues({ [TRICHINELLA_ID]: { performed: true } }), new Set([TRICHINELLA_ID])),
   parameters: {
     viewport: { defaultViewport: "desktop" },
     docs: {
       description: {
         story:
-          "Свинина/конина: трихинеллоскопия добавлена в composition (условие обязательности остаётся на сервере по справочнику Меркурия).",
+          "Свинина/конина: трихинеллоскопия закреплена сервером (required_research_ids) и недоступна для снятия; condition остаётся в справочнике Меркурия.",
       },
     },
   },
@@ -232,6 +278,8 @@ export const ФормаДлинныеЗначения: StoryObj = {
         view={null}
         today="2026-11-07"
         availableCollections={[]}
+        formView={formView}
+        currentUserId={ME}
         onSaved={() => undefined}
         onCancel={() => undefined}
       />,
@@ -247,9 +295,10 @@ export const ОжиданиеПравкаБезИтога: StoryObj<typeof Exami
     view: savedCard,
     today: "2026-11-07",
     availableCollections: [collection],
+    formView,
+    currentUserId: ME,
     onSaved: () => undefined,
     onCancel: () => undefined,
-    specialistName: "Кузнецова Алиса Викторовна",
   },
   parameters: {
     viewport: { defaultViewport: "desktop" },
@@ -349,6 +398,66 @@ export const ДиалогУдаления: StoryObj<typeof DeleteDialog> = {
     onClose: () => undefined,
     onDeleted: () => undefined,
   },
+};
+
+const pricingSnapshot: PricingSnapshotView = {
+  lines: [
+    {
+      service_code: "liver",
+      name: "Исследование на гельминтозы (печень)",
+      quantity: "4.000000",
+      unit_id: "place",
+      unit_price: "100.00",
+      amount: "400.00",
+    },
+    {
+      service_code: "muscle",
+      name: "Исследование мышечной ткани",
+      quantity: "4.000000",
+      unit_id: "place",
+      unit_price: "100.00",
+      amount: "400.00",
+    },
+  ],
+  total: "1200.00",
+  currency: "RUB",
+  fair: false,
+};
+
+/** DR35 §13: the live pricing section renders the server snapshot verbatim —
+ * money is never computed in the browser. */
+export const ПредварительныйРасчёт: StoryObj = {
+  render: () => (
+    <div className="vse-app" style={{ maxWidth: 640 }}>
+      <PricingSection
+        state={{ status: "success", snapshot: pricingSnapshot }}
+        disabled={false}
+        onRetry={() => undefined}
+      />
+    </div>
+  ),
+  parameters: {
+    viewport: { defaultViewport: "desktop" },
+    docs: {
+      description: {
+        story:
+          "Предварительный расчёт стоимости: те же строки и итог, что сохранит финальная оценка (тот же evaluate_and_price).",
+      },
+    },
+  },
+};
+
+export const ПредварительныйРасчётУзкийЭкран: StoryObj = {
+  render: () => (
+    <div className="vse-app" style={{ maxWidth: 420 }}>
+      <PricingSection
+        state={{ status: "success", snapshot: pricingSnapshot }}
+        disabled={false}
+        onRetry={() => undefined}
+      />
+    </div>
+  ),
+  parameters: { viewport: { defaultViewport: "mobile1" } },
 };
 
 /** The readonly outcome text helper (used by the view page). */

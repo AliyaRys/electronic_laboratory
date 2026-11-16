@@ -1,17 +1,15 @@
 /**
- * ResearchFields (FT-VSE-03–05, E04): the typed VSE research cards.
+ * ResearchFields (FT-VSE-03–05, E04, DR35 §9/§10): the typed VSE research cards.
  *
- * Mandatory indicators (organoleptic, identification, temperature) are always
- * present and cannot be removed. Optional indicators appear only through an
- * explicit «Добавить …» button and leave through an accessible remove button.
- * «Иное (указать)» requires an explanation text, the disease rows (invasive /
- * noncontagious) belong to {@link FindingsFields}. No medical value is ever
- * invented: every control starts empty (UI-03).
- *
- * DR30: the composition follows electronic-vse-journal.html — mandatory cards
- * wear the calm `.research.primary` tint, optional ones are plain cards, the
- * dashed «＋ Добавить …» zone sits under the cards; the user-facing texts stay
- * domain words without FT numbers (§6.6.9).
+ * Universally mandatory indicators (organoleptic, identification, temperature)
+ * are always present and cannot be removed. DR35 §9: the party's REQUIRED set
+ * comes from the server read model — trichinelloscopy for the four pinned
+ * GUID groups is a primary card without a remove control and never appears in
+ * the «Добавить …» zone; the frontend never guesses by name. Optional
+ * indicators appear only through an explicit «Добавить …» button (the compact
+ * dashed mockup style) and leave through an accessible remove button. The
+ * disease rows (invasive / noncontagious) keep the existing FindingsFields
+ * logic; the collapsed state is a compact add-button without a heavy block.
  */
 import { type ReactNode } from "react";
 import type { ExaminationView } from "./api";
@@ -29,6 +27,8 @@ export interface ResearchFieldsProps {
   /** The saved card being edited (snapshot warnings use it). */
   view: ExaminationView | null;
   disabled: boolean;
+  /** DR35 §9.3: the party's required indicator ids from the server read model. */
+  requiredResearchIds: ReadonlySet<string>;
   onChange: (values: ExaminationFormValues) => void;
   /** Rendered under the cards: server-side pricing warnings come here. */
   children?: ReactNode;
@@ -38,6 +38,7 @@ export function ResearchFields({
   values,
   view,
   disabled,
+  requiredResearchIds,
   onChange,
   children,
 }: ResearchFieldsProps): React.ReactElement {
@@ -45,9 +46,11 @@ export function ResearchFields({
     onChange({ ...values, researches: { ...values.researches, [id]: next } });
   };
   const notes = pricingNotes(values, view);
+  const isRequired = (id: string): boolean =>
+    INDICATORS.find((def) => def.id === id)?.mandatory === true || requiredResearchIds.has(id);
   const addButtons = INDICATORS.filter(
     (def) =>
-      def.mandatory === false &&
+      !isRequired(def.id) &&
       values.researches[def.id] !== undefined &&
       values.researches[def.id].performed === false,
   );
@@ -59,8 +62,8 @@ export function ResearchFields({
       description="Результаты основных и дополнительных исследований ветеринарно-санитарной экспертизы."
     >
       <p className="vse-exam-note">
-        Обязательные исследования нельзя пропустить; обязательность трихинеллоскопии для конкретной продукции
-        проверяет сервер по справочнику Меркурия.
+        Обязательные исследования нельзя пропустить; обязательность трихинеллоскопии определяет сервер по
+        классификации партии.
       </p>
       <div className="vse-research-grid">
         {INDICATORS.map((def) => {
@@ -76,7 +79,7 @@ export function ResearchFields({
               kind={def.kind}
               unit={def.unit}
               options={def.options}
-              mandatory={def.mandatory}
+              required={isRequired(def.id)}
               entry={entry}
               disabled={disabled}
               onChange={(next) => setEntry(def.id, next)}
@@ -140,7 +143,7 @@ interface ResearchCardProps {
   kind: string;
   unit?: string | undefined;
   options?: readonly { value: string; label: string; other?: boolean }[] | undefined;
-  mandatory: boolean;
+  required: boolean;
   entry: ResearchEntry;
   disabled: boolean;
   onChange: (entry: ResearchEntry) => void;
@@ -153,7 +156,7 @@ function ResearchCard({
   kind,
   unit,
   options,
-  mandatory,
+  required,
   entry,
   disabled,
   onChange,
@@ -162,9 +165,9 @@ function ResearchCard({
     <header className="vse-research-head">
       <h4>
         {name}
-        {mandatory ? <span aria-hidden="true"> *</span> : null}
+        {required ? <span aria-hidden="true"> *</span> : null}
       </h4>
-      {!mandatory ? (
+      {!required ? (
         <button
           type="button"
           className="vse-research-remove"
@@ -179,31 +182,46 @@ function ResearchCard({
   );
   const label = name + (unit !== undefined ? `, ${unit}` : "");
   return (
-    <article className={mandatory ? "vse-research primary" : "vse-research"}>
+    <article className={required ? "vse-research primary" : "vse-research"}>
       {heading}
       {kind === "BOOLEAN" ? (
-        <div className="vse-research-marks" role="radiogroup" aria-label={label}>
-          <label className="vse-comparison-mark">
-            <input
-              type="radio"
-              name={`research-${id}`}
-              checked={entry.value === "true"}
-              disabled={disabled}
-              onChange={() => onChange({ ...entry, value: "true" })}
-            />
-            Не обнаружено
-          </label>
-          <label className="vse-comparison-mark">
-            <input
-              type="radio"
-              name={`research-${id}`}
-              checked={entry.value === "false"}
-              disabled={disabled}
-              onChange={() => onChange({ ...entry, value: "false" })}
-            />
-            Обнаружено
-          </label>
-        </div>
+        required ? (
+          <select
+            value={entry.value}
+            disabled={disabled}
+            aria-label={label}
+            onChange={(event) => onChange({ ...entry, value: event.target.value })}
+          >
+            <option value="" disabled>
+              Выберите результат
+            </option>
+            <option value="true">Соответствует</option>
+            <option value="false">Не соответствует</option>
+          </select>
+        ) : (
+          <div className="vse-research-marks" role="radiogroup" aria-label={label}>
+            <label className="vse-comparison-mark">
+              <input
+                type="radio"
+                name={`research-${id}`}
+                checked={entry.value === "true"}
+                disabled={disabled}
+                onChange={() => onChange({ ...entry, value: "true" })}
+              />
+              Не обнаружено
+            </label>
+            <label className="vse-comparison-mark">
+              <input
+                type="radio"
+                name={`research-${id}`}
+                checked={entry.value === "false"}
+                disabled={disabled}
+                onChange={() => onChange({ ...entry, value: "false" })}
+              />
+              Обнаружено
+            </label>
+          </div>
+        )
       ) : null}
       {kind === "INTEGER" || kind === "DECIMAL" || kind === "TEXT" ? (
         <input
@@ -309,8 +327,8 @@ export function FindingsFields({
   };
   return (
     <div className="vse-findings">
-      <h3 className="vse-findings-title">{title}</h3>
-      {hint !== undefined ? <p className="vse-findings-hint">{hint}</p> : null}
+      {items.length > 0 ? <h3 className="vse-findings-title">{title}</h3> : null}
+      {items.length > 0 && hint !== undefined ? <p className="vse-findings-hint">{hint}</p> : null}
       {items.map((item, index) => (
         <div className={withLocation ? "vse-finding-row" : "vse-finding-row single"} key={index}>
           <select

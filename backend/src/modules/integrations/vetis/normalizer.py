@@ -225,9 +225,7 @@ def _is_calendar_date(value: str) -> bool:
     return True
 
 
-def _goods_date(
-    container: ET.Element | None, field_label: str
-) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+def _goods_date(container: ET.Element | None, field_label: str) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     """DR20 §5.1/§5.2: one typed ``vd:GoodsDate`` (single / interval / informal).
 
     Namespace-aware ``vd:firstDate|secondDate|informalDate``; a single date
@@ -348,9 +346,7 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
     production, production_problems = _goods_date(
         _find(batch, "vd:dateOfProduction") if batch is not None else None, "dateOfProduction"
     )
-    expiry, expiry_problems = _goods_date(
-        _find(batch, "vd:expiryDate") if batch is not None else None, "expiryDate"
-    )
+    expiry, expiry_problems = _goods_date(_find(batch, "vd:expiryDate") if batch is not None else None, "expiryDate")
     authentication = _find(element, "vd:authentication")
     purpose = _find(authentication, "vd:purpose") if authentication is not None else None
     return NormalizedEntry(
@@ -533,9 +529,7 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
                 "level": package.get("level"),
                 "packingType": _external_ref(packing),
                 "quantity": package.get("quantity"),
-                "productMarks": [
-                    ProductMark.model_validate(mark) for mark in (package.get("productMarks") or [])
-                ],
+                "productMarks": [ProductMark.model_validate(mark) for mark in (package.get("productMarks") or [])],
             }
         )
     purpose = PurposeRef(

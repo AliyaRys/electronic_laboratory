@@ -68,7 +68,7 @@ from backend.src.modules.identity.session import (
 
 # The Alembic head revision this build expects. Guarded by a test so it cannot
 # drift from the migration file.
-CURRENT_SCHEMA_REVISION = "0019_meat_scope_methods"
+CURRENT_SCHEMA_REVISION = "0020_dr35_specialist"
 
 __all__ = ["router", "CURRENT_SCHEMA_REVISION"]
 

@@ -32,7 +32,12 @@ async function mockSamples(page: Page, seed: Seed): Promise<void> {
         role: seed.role,
         active: true,
         scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-        capabilities: [],
+        // DR37: the sample accounting screen needs ``sample:read``; the
+        // analyst additionally reads saved reports (the 5-вет link).
+        capabilities:
+          seed.role === "VET"
+            ? ["sample:read", "sample:dispose"]
+            : ["sample:read", "report:5vet-list", "report:5vet-read"],
         revision: 3,
       }),
     }),

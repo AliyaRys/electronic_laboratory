@@ -32,6 +32,11 @@ __all__ = [
     "PEROXIDASE_INDICATOR_ID",
     "DOSIMETRY_INDICATOR_ID",
     "MANDATORY_INDICATOR_IDS",
+    "MEAT_AREA_CODE",
+    "MEAT_AREA_NAME",
+    "MANUAL_SOURCE_NAME",
+    "INDICATOR_BY_CODE",
+    "indicator_by_code",
     "CatalogIndicatorDef",
     "CATALOG_INDICATORS",
     "ensure_mandatory_registry_configured",
@@ -210,6 +215,30 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
 # VSE-F30 «Инвазионные болезни» and VSE-F31 «Незаразные болезни» are the party
 # dictionaries of ФТ 10, never method-rule norms; they are deliberately absent
 # from CATALOG_INDICATORS.
+
+
+# The single supported product area of the methods catalog (DR31 §4): the
+# stable category code of «Мясо и мясопродукты» (Mercury productType = 1).
+MEAT_AREA_CODE = "meat"
+MEAT_AREA_NAME = "Мясо и мясопродукты"
+
+MANUAL_SOURCE_NAME = "Ручная настройка справочника норм"
+
+# Stable code → canonical definition; the write contract is keyed by code
+# (VSE-F18–F29) and every technical field is resolved from this registry.
+INDICATOR_BY_CODE: dict[str, CatalogIndicatorDef] = {item.code: item for item in CATALOG_INDICATORS}
+
+
+def indicator_by_code(code: str) -> CatalogIndicatorDef:
+    """Resolve a stable VSE-F code against the canonical registry.
+
+    An unknown code raises ``LookupError``: no arbitrary indicator may ever be
+    created from a client-supplied identifier (ТЗ DR31 §8.4).
+    """
+    try:
+        return INDICATOR_BY_CODE[code]
+    except KeyError:
+        raise LookupError(f"Неизвестный код исследования: {code}") from None
 
 
 def ensure_mandatory_registry_configured() -> None:

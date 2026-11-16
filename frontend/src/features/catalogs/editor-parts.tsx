@@ -374,6 +374,8 @@ export interface QualitativeRow {
   norm: boolean;
   onNormChange?: ((norm: boolean) => void) | undefined;
   onRemove?: (() => void) | undefined;
+  /** Editable text of a manually added variant (registry rows stay readonly). */
+  onValueChange?: ((next: string) => void) | undefined;
 }
 
 export interface QualitativeBlockProps {
@@ -424,8 +426,9 @@ export function QualitativeBlock({
                 id={`qual-value-${row.key}`}
                 type="text"
                 value={row.value}
-                readOnly
+                readOnly={row.onValueChange === undefined}
                 aria-label={`Вариант результата: ${row.value}`}
+                onChange={(event) => row.onValueChange?.(event.target.value)}
               />
             </div>
             <div className="vse-catalog-field">
@@ -473,6 +476,10 @@ export function QualitativeBlock({
 }
 
 /* --- Save summary ------------------------------------------------------------ */
+
+/** The acceptance warning of deleting an ACTIVE rule (FT-CAL-05/07, ADR-020). */
+export const DELETE_WARNING =
+  "Удаление действующей нормы заблокирует сохранение будущих расчётов: новые результаты нельзя будет рассчитать. Старый снимок цен останется прежним — сохранённые расчёты не пересчитываются.";
 
 export interface SaveSummaryProps {
   state: "success" | "partial" | "error";

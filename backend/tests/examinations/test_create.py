@@ -62,7 +62,21 @@ async def env(db_session: AsyncSession) -> SimpleNamespace:
     return SimpleNamespace(lab=lab, actor=actor)
 
 
-async def configure(db: AsyncSession, lab_id: uuid.UUID, species: uuid.UUID, *, trich: bool) -> None:
+async def configure(
+    db: AsyncSession,
+    lab_id: uuid.UUID,
+    species: uuid.UUID,
+    *,
+    trich: bool,
+    norms: bool = True,
+) -> None:
+    """Seed the laboratory's meat norms (once) and the species' VSE tariffs.
+
+    DR31: the norms are NOT species-scoped any more — the second configure
+    call of a test (another species of the same laboratory) re-uses the SAME
+    active meat norms and only adds that species' tariffs (DR14 keeps the
+    species binding of VSE tariffs).
+    """
     definitions = [
         (ORGANOLEPTIC_INDICATOR_ID, "BOOLEAN_MATCH", {"type": "qualitative", "accepted_values": ["true"]}),
         (IDENTIFICATION_INDICATOR_ID, "BOOLEAN_MATCH", {"type": "qualitative", "accepted_values": ["true"]}),
@@ -77,20 +91,21 @@ async def configure(db: AsyncSession, lab_id: uuid.UUID, species: uuid.UUID, *, 
             (TRICHINELLA_INDICATOR_ID, "BOOLEAN_MATCH", {"type": "qualitative", "accepted_values": ["true"]})
         )
     for indicator, schema, rule in definitions:
-        db.add(
-            MethodRule(
-                laboratory_id=lab_id,
-                product_species_id=species,
-                product_state_id=STATE,
-                indicator_id=indicator,
-                version=1,
-                result_schema=schema,
-                unit_id="service",
-                rule=rule,
-                source={"name": str(indicator)},
-                active=True,
+        if norms:
+            db.add(
+                MethodRule(
+                    laboratory_id=lab_id,
+                    product_species_id=species,
+                    product_state_id=STATE,
+                    indicator_id=indicator,
+                    version=1,
+                    result_schema=schema,
+                    unit_id="service",
+                    rule=rule,
+                    source={"name": str(indicator)},
+                    active=True,
+                )
             )
-        )
         db.add(
             Tariff(
                 laboratory_id=lab_id,
@@ -216,8 +231,9 @@ async def test_conditional_trichinelloscopy_for_exact_four_products_but_not_beef
     assert raised.value.code == "VALIDATION_ERROR"
 
     # The rollback also removed fixture rows created in the same transaction,
-    # so build the independent beef case afresh.
-    await configure(db_session, lab_id, BEEF, trich=False)
+    # so build the independent beef case afresh: the SAME meat norms serve the
+    # beef party (one norm set per laboratory), only the beef tariffs are new.
+    await configure(db_session, lab_id, BEEF, trich=False, norms=False)
     beef = await party_with_confirmation(db_session, lab_id, BEEF)
     view = await save_examination(context(actor_id), beef.id, payload(number="B-1", trich=False), uow=db_session)
     await db_session.commit()

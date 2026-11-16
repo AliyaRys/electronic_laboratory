@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from backend.src.core.commands import UnitOfWork
 from backend.src.core.database import async_session
 from backend.src.core.problems import ProblemError
+from backend.src.modules.catalog_pricing import mandatory as _mandatory
 from backend.src.modules.catalog_pricing.models import CheckServiceRule, MethodRule, Tariff
 from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot, ResearchValue
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
@@ -656,17 +657,10 @@ async def api_env(db_session: AsyncSession) -> SimpleNamespace:
 async def test_catalog_crud_and_etag(api_env: SimpleNamespace) -> None:
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
-        species, state, indicator = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
         payload = {
             "laboratory_id": lab_id,
-            "product_species_id": species,
-            "product_state_id": state,
-            "indicator_id": indicator,
-            "result_schema": "DECIMAL",
-            "unit_id": "kg",
+            "code": "VSE-F20",
             "rule": {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True},
-            "source": {"name": "методика", "edition": "2023", "reference": "п.4"},
-            "version": 1,
         }
         response = await http.post("/api/v1/catalogs/methods", json=payload, headers=_csrf_headers(api_env))
         assert response.status_code == 201, response.text
@@ -674,10 +668,10 @@ async def test_catalog_crud_and_etag(api_env: SimpleNamespace) -> None:
         rule_id = created["id"]
         assert response.headers["ETag"] == '"1"'
         assert created["active"] is True
+        assert created["product_area_code"] == "meat"
+        assert created["unit_id"] == "°C"  # the canonical registry unit, server-side
 
-        listed = await http.get(
-            "/api/v1/catalogs/methods", params={"laboratory_id": lab_id, "product_species_id": species}
-        )
+        listed = await http.get("/api/v1/catalogs/methods", params={"laboratory_id": lab_id})
         assert listed.status_code == 200
         assert listed.json()["total"] == 1
 
@@ -685,18 +679,19 @@ async def test_catalog_crud_and_etag(api_env: SimpleNamespace) -> None:
         assert fetched.status_code == 200
         assert fetched.headers["ETag"] == '"1"'
 
+        changed = {**payload, "rule": {"type": "interval", "lower": "0", "upper": "6"}}
         updated = await http.put(
             f"/api/v1/catalogs/methods/{rule_id}",
-            json={**payload, "unit_id": "piece"},
+            json=changed,
             headers={**_csrf_headers(api_env), "If-Match": '"1"'},
         )
         assert updated.status_code == 200, updated.text
-        assert updated.json()["unit_id"] == "piece"
+        assert updated.json()["rule"]["upper"] == "6"
         assert updated.headers["ETag"] == '"2"'
 
         stale = await http.put(
             f"/api/v1/catalogs/methods/{rule_id}",
-            json={**payload, "unit_id": "piece"},
+            json=changed,
             headers={**_csrf_headers(api_env), "If-Match": '"1"'},
         )
         assert stale.status_code == 409
@@ -714,27 +709,20 @@ async def test_catalog_crud_and_etag(api_env: SimpleNamespace) -> None:
 async def test_method_version_turnover_keeps_one_active(api_env: SimpleNamespace) -> None:
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
-        species, state, indicator = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
         base = {
             "laboratory_id": lab_id,
-            "product_species_id": species,
-            "product_state_id": state,
-            "indicator_id": indicator,
-            "result_schema": "DECIMAL",
-            "unit_id": "kg",
+            "code": "VSE-F20",
             "rule": {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True},
-            "source": {"name": "методика"},
-            "version": 1,
         }
         first = await http.post("/api/v1/catalogs/methods", json=base, headers=_csrf_headers(api_env))
         assert first.status_code == 201
         second = await http.post(
-            "/api/v1/catalogs/methods", json={**base, "version": 2}, headers=_csrf_headers(api_env)
+            "/api/v1/catalogs/methods",
+            json={**base, "rule": {"type": "interval", "lower": "0", "upper": "6"}},
+            headers=_csrf_headers(api_env),
         )
         assert second.status_code == 201, second.text
-        listed = (
-            await http.get("/api/v1/catalogs/methods", params={"laboratory_id": lab_id, "product_species_id": species})
-        ).json()
+        listed = (await http.get("/api/v1/catalogs/methods", params={"laboratory_id": lab_id})).json()
         active = [item for item in listed["items"] if item["active"]]
         assert len(active) == 1 and active[0]["version"] == 2
 
@@ -828,26 +816,21 @@ async def test_readiness_lists_missing_configuration(api_env: SimpleNamespace) -
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
         species = str(uuid.uuid4())
-        state = str(uuid.uuid4())
         indicators = sorted(MANDATORY_INDICATOR_IDS, key=str)
 
         def method_payload(indicator: str) -> dict[str, object]:
+            from backend.src.modules.catalog_pricing.mandatory import CATALOG_INDICATORS
+
+            definition = next(item for item in CATALOG_INDICATORS if str(item.id) == indicator)
+            interval = definition.result_schema in ("DECIMAL", "INTEGER_NONNEGATIVE", "DOSIMETRY_PAIR")
             return {
                 "laboratory_id": lab_id,
-                "product_species_id": species,
-                "product_state_id": state,
-                "indicator_id": indicator,
-                "result_schema": "DECIMAL",
-                "unit_id": "kg",
-                "rule": {
-                    "type": "interval",
-                    "lower": "0",
-                    "upper": "14",
-                    "lower_inclusive": True,
-                    "upper_inclusive": True,
-                },
-                "source": {"name": "методика"},
-                "version": 1,
+                "code": definition.code,
+                "rule": (
+                    {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True}
+                    if interval
+                    else {"type": "qualitative", "accepted_values": ["Соответствует"]}
+                ),
             }
 
         first = str(indicators[0])
@@ -914,25 +897,20 @@ async def test_readiness_and_pricing_do_not_bind_money_to_measurement_unit(api_e
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
         species = str(uuid.uuid4())
-        state = str(uuid.uuid4())
 
         def method_payload(indicator: str) -> dict[str, object]:
+            from backend.src.modules.catalog_pricing.mandatory import CATALOG_INDICATORS
+
+            definition = next(item for item in CATALOG_INDICATORS if str(item.id) == indicator)
+            interval = definition.result_schema in ("DECIMAL", "INTEGER_NONNEGATIVE", "DOSIMETRY_PAIR")
             return {
                 "laboratory_id": lab_id,
-                "product_species_id": species,
-                "product_state_id": state,
-                "indicator_id": indicator,
-                "result_schema": "DECIMAL",
-                "unit_id": "kg",
-                "rule": {
-                    "type": "interval",
-                    "lower": "0",
-                    "upper": "14",
-                    "lower_inclusive": True,
-                    "upper_inclusive": True,
-                },
-                "source": {"name": "методика"},
-                "version": 1,
+                "code": definition.code,
+                "rule": (
+                    {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True}
+                    if interval
+                    else {"type": "qualitative", "accepted_values": ["Соответствует"]}
+                ),
             }
 
         def tariff_payload(indicator: str, unit: str) -> dict[str, object]:
@@ -968,16 +946,13 @@ async def test_readiness_and_pricing_do_not_bind_money_to_measurement_unit(api_e
 async def test_pricing_preview_endpoint(api_env: SimpleNamespace) -> None:
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
-        species, state, indicator = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        species = str(uuid.uuid4())
+        indicator = str(_mandatory.TEMPERATURE_INDICATOR_ID)
         await http.post(
             "/api/v1/catalogs/methods",
             json={
                 "laboratory_id": lab_id,
-                "product_species_id": species,
-                "product_state_id": state,
-                "indicator_id": indicator,
-                "result_schema": "DECIMAL",
-                "unit_id": "kg",
+                "code": "VSE-F20",
                 "rule": {
                     "type": "interval",
                     "lower": "0",
@@ -985,8 +960,6 @@ async def test_pricing_preview_endpoint(api_env: SimpleNamespace) -> None:
                     "lower_inclusive": True,
                     "upper_inclusive": True,
                 },
-                "source": {"name": "методика"},
-                "version": 1,
             },
             headers=_csrf_headers(api_env),
         )
@@ -1013,7 +986,6 @@ async def test_pricing_preview_endpoint(api_env: SimpleNamespace) -> None:
                 "results": [{"indicator_id": indicator, "performed": True, "value": "3"}],
                 "fair": False,
                 "product_species_id": species,
-                "product_state_id": state,
                 "accepted_quantity": "3",
                 "accepted_unit_id": "kg",
             },
@@ -1034,7 +1006,6 @@ async def test_pricing_preview_endpoint(api_env: SimpleNamespace) -> None:
                 "results": [{"indicator_id": str(uuid.uuid4()), "performed": True}],
                 "fair": False,
                 "product_species_id": species,
-                "product_state_id": state,
                 "accepted_quantity": "3",
                 "accepted_unit_id": "kg",
             },
@@ -1053,7 +1024,6 @@ async def test_pricing_preview_endpoint(api_env: SimpleNamespace) -> None:
                 "results": [{"indicator_id": indicator, "performed": True}],
                 "fair": False,
                 "product_species_id": species,
-                "product_state_id": state,
                 "accepted_quantity": "3",
                 "accepted_unit_id": "kg",
                 "unit_price": "0.00",
@@ -1212,17 +1182,10 @@ async def test_classification_replace_and_delete(api_env: SimpleNamespace) -> No
 async def test_idempotency_and_revision_requirements(api_env: SimpleNamespace) -> None:
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
-        species, state, indicator = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
         payload = {
             "laboratory_id": lab_id,
-            "product_species_id": species,
-            "product_state_id": state,
-            "indicator_id": indicator,
-            "result_schema": "DECIMAL",
-            "unit_id": "kg",
+            "code": "VSE-F20",
             "rule": {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True},
-            "source": {"name": "методика"},
-            "version": 1,
         }
         key = str(uuid.uuid4())
         key_headers = {**_csrf_headers(api_env), "Idempotency-Key": key}
@@ -1384,17 +1347,10 @@ async def test_parallel_puts_same_if_match_conflict(api_env: SimpleNamespace) ->
 
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)
-        species, state, indicator = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
         payload = {
             "laboratory_id": lab_id,
-            "product_species_id": species,
-            "product_state_id": state,
-            "indicator_id": indicator,
-            "result_schema": "DECIMAL",
-            "unit_id": "kg",
+            "code": "VSE-F20",
             "rule": {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True},
-            "source": {"name": "методика"},
-            "version": 1,
         }
         created = await http.post("/api/v1/catalogs/methods", json=payload, headers=_csrf_headers(api_env))
         assert created.status_code == 201
@@ -1403,12 +1359,12 @@ async def test_parallel_puts_same_if_match_conflict(api_env: SimpleNamespace) ->
         results = await asyncio.gather(
             http.put(
                 f"/api/v1/catalogs/methods/{rule_id}",
-                json={**payload, "unit_id": "piece"},
+                json={**payload, "rule": {"type": "interval", "lower": "0", "upper": "6"}},
                 headers={**_csrf_headers(api_env), "If-Match": '"1"'},
             ),
             http.put(
                 f"/api/v1/catalogs/methods/{rule_id}",
-                json={**payload, "unit_id": "gram"},
+                json={**payload, "rule": {"type": "interval", "lower": "0", "upper": "8"}},
                 headers={**_csrf_headers(api_env), "If-Match": '"1"'},
             ),
         )
@@ -1448,14 +1404,8 @@ async def test_read_only_role_cannot_edit_catalog(api_env: SimpleNamespace) -> N
         env = SimpleNamespace(**{**api_env.__dict__, "csrf": response.json()["csrf_token"]})
         payload = {
             "laboratory_id": str(api_env.lab.id),
-            "product_species_id": str(uuid.uuid4()),
-            "product_state_id": str(uuid.uuid4()),
-            "indicator_id": str(uuid.uuid4()),
-            "result_schema": "DECIMAL",
-            "unit_id": "kg",
+            "code": "VSE-F20",
             "rule": {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True},
-            "source": {"name": "методика"},
-            "version": 1,
         }
         denied = await http.post("/api/v1/catalogs/methods", json=payload, headers=_csrf_headers(env))
         assert denied.status_code == 403, denied.text

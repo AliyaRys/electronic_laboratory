@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.catalog_pricing import mandatory as _mandatory
+from backend.src.modules.catalog_pricing.mandatory import MEAT_AREA_CODE
 from backend.src.modules.catalog_pricing.models import (
     CheckServiceRule,
     MethodRule,
@@ -28,7 +29,6 @@ from backend.src.modules.catalog_pricing.schemas import (
     ReadinessMissing,
     TariffView,
 )
-from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
 
 __all__ = [
     "PAGE_SIZE",
@@ -55,8 +55,7 @@ def method_rule_view(row: MethodRule) -> MethodRuleView:
         {
             "id": row.id,
             "laboratory_id": row.laboratory_id,
-            "product_species_id": row.product_species_id,
-            "product_state_id": row.product_state_id,
+            "product_area_code": row.product_area_code,
             "indicator_id": row.indicator_id,
             "version": row.version,
             "result_schema": row.result_schema,
@@ -66,6 +65,8 @@ def method_rule_view(row: MethodRule) -> MethodRuleView:
             "effective_from": _iso(row.effective_from),
             "active": row.active,
             "revision": row.rev,
+            "product_species_id": row.product_species_id,
+            "product_state_id": row.product_state_id,
         }
     )
 
@@ -122,19 +123,21 @@ def _page(items: list[Any], total: int, page: int) -> tuple[list[Any], int, int,
 
 
 async def method_rule_page(
-    db: AsyncSession, laboratory_id: UUID, product_species_id: UUID, page: int
+    db: AsyncSession, laboratory_id: UUID, page: int
 ) -> tuple[list[MethodRuleView], int]:
-    scope = (
-        select(func.count())
-        .select_from(MethodRule)
-        .where(MethodRule.laboratory_id == laboratory_id, MethodRule.product_species_id == product_species_id)
-    )
+    """The method-rule page of one laboratory's meat catalog (DR31 §9).
+
+    The scope is the laboratory and the product area only: species/state GUIDs
+    are not part of the key and are never used to filter or group the rows.
+    """
+    meat_term = (MethodRule.laboratory_id == laboratory_id) & (MethodRule.product_area_code == MEAT_AREA_CODE)
+    scope = select(func.count()).select_from(MethodRule).where(meat_term)
     total = int((await db.execute(scope)).scalar_one())
     rows = (
         (
             await db.execute(
                 select(MethodRule)
-                .where(MethodRule.laboratory_id == laboratory_id, MethodRule.product_species_id == product_species_id)
+                .where(meat_term)
                 .order_by(MethodRule.active.desc(), MethodRule.indicator_id, MethodRule.version.desc(), MethodRule.id)
                 .offset((page - 1) * PAGE_SIZE)
                 .limit(PAGE_SIZE)
@@ -215,21 +218,24 @@ async def classification_page(
     return [classification_view(row) for row in rows], total
 
 
-async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: UUID) -> Readiness:
-    """Report missing configuration inputs for a working scope (API-03).
+async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: UUID | None = None) -> Readiness:
+    """Report missing configuration inputs for the single meat set (DR31 §8.6).
 
-    The mandatory research set is owned by the functional requirements, not by
-    the catalog: every mandatory indicator needs an active norm and a tariff,
-    and the two CHECK services need their applicability rule and tariff.
+    The mandatory F18–F20 researches need one active norm of the
+    ``laboratory + meat`` scope — never one per species. The conditional F21
+    (trichinelloscopy) is a PARTY-level rule decided by the four exact GUID
+    groups during the examination evaluation; it is never demanded here for
+    every species. A species (when the caller has one) only narrows the tariff
+    checks, which stay outside this task's scope change.
     """
     missing: list[ReadinessMissing] = []
 
     for indicator in sorted(_mandatory.MANDATORY_INDICATOR_IDS, key=str):
         rule = (
             await db.execute(
-                select(MethodRule).where(
+                select(MethodRule.id).where(
                     MethodRule.laboratory_id == laboratory_id,
-                    MethodRule.product_species_id == product_species_id,
+                    MethodRule.product_area_code == MEAT_AREA_CODE,
                     MethodRule.indicator_id == indicator,
                     MethodRule.active,
                 )
@@ -246,57 +252,26 @@ async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: U
         # Price is independent from the clinical norm and its measurement
         # unit. A tariff can be configured before the methodologist supplies
         # INPUT-02, and pricing later resolves it by the stable service code.
-        tariff = (
-            await db.execute(
-                select(Tariff.id)
-                .where(
-                    Tariff.laboratory_id == laboratory_id,
-                    Tariff.product_species_id == product_species_id,
-                    Tariff.service_code == str(indicator),
+        if product_species_id is not None:
+            tariff = (
+                await db.execute(
+                    select(Tariff.id)
+                    .where(
+                        Tariff.laboratory_id == laboratory_id,
+                        Tariff.product_species_id == product_species_id,
+                        Tariff.service_code == str(indicator),
+                    )
+                    .limit(1)
                 )
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if tariff is None:
-            missing.append(
-                ReadinessMissing(
-                    input_id=f"tariff:{indicator}",
-                    field="tariffs",
-                    message="Отсутствует тариф обязательного показателя.",
+            ).scalar_one_or_none()
+            if tariff is None:
+                missing.append(
+                    ReadinessMissing(
+                        input_id=f"tariff:{indicator}",
+                        field="tariffs",
+                        message="Отсутствует тариф обязательного показателя.",
+                    )
                 )
-            )
-
-    # Conditional trichinelloscopy (E01 policy mapping): a species flagged in
-    # the VetIS dictionary read model (MercuryProductGuidLvl2) without an
-    # active norm for the conditional F21 indicator is reported honestly —
-    # never demanded for species without the flag.
-    trichinella_required = (
-        await db.execute(
-            select(MercuryProductGuidLvl2.guid).where(
-                MercuryProductGuidLvl2.guid == product_species_id,
-                MercuryProductGuidLvl2.requires_trichinelloscopy.is_(True),
-            )
-        )
-    ).first()
-    if trichinella_required is not None:
-        rule = (
-            await db.execute(
-                select(MethodRule.id).where(
-                    MethodRule.laboratory_id == laboratory_id,
-                    MethodRule.product_species_id == product_species_id,
-                    MethodRule.indicator_id == _mandatory.TRICHINELLA_INDICATOR_ID,
-                    MethodRule.active,
-                )
-            )
-        ).scalar_one_or_none()
-        if rule is None:
-            missing.append(
-                ReadinessMissing(
-                    input_id=f"method:{_mandatory.TRICHINELLA_INDICATOR_ID}",
-                    field="method_rules",
-                    message="Для этой продукции требуется трихинеллоскопия: отсутствует норма показателя.",
-                )
-            )
 
     # CHECK applicability rules are global single-row configuration; their
     # coverage is asserted by the C02 editor tests, not per-laboratory readiness.

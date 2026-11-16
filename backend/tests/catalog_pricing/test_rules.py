@@ -126,16 +126,23 @@ def test_interval_requires_lower_le_upper() -> None:
 def test_method_rule_write_rejects_extra_fields() -> None:
     payload = {
         "laboratory_id": str(uuid.uuid4()),
-        "product_species_id": str(uuid.uuid4()),
-        "product_state_id": str(uuid.uuid4()),
-        "indicator_id": str(uuid.uuid4()),
-        "result_schema": "DECIMAL",
-        "unit_id": "kg",
+        "code": "VSE-F20",
         "rule": {"type": "interval", "lower": "0", "upper": "14", "lower_inclusive": True, "upper_inclusive": True},
-        "source": {"name": "методика", "edition": "2023", "reference": "п.4"},
-        "version": 1,
     }
-    assert MethodRuleWrite.model_validate(payload).unit_id == "kg"
+    assert MethodRuleWrite.model_validate(payload).code == "VSE-F20"
+    with pytest.raises(ValidationError):
+        # The legacy technical fields are never accepted from the client.
+        MethodRuleWrite.model_validate(
+            {
+                **payload,
+                "product_species_id": str(uuid.uuid4()),
+                "product_state_id": str(uuid.uuid4()),
+                "result_schema": "DECIMAL",
+                "unit_id": "kg",
+                "source": {"name": "методика"},
+                "version": 1,
+            }
+        )
     with pytest.raises(ValidationError):
         MethodRuleWrite.model_validate({**payload, "price": "10.00"})
 

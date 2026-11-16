@@ -21,6 +21,7 @@ from sqlalchemy import select
 from backend.src.core.commands import UnitOfWork
 from backend.src.core.problems import ProblemError, ProblemItem
 from backend.src.modules.catalog_pricing import mandatory as _mandatory
+from backend.src.modules.catalog_pricing.mandatory import MEAT_AREA_CODE
 from backend.src.modules.catalog_pricing.models import CheckServiceRule, MethodRule, Tariff
 from backend.src.modules.catalog_pricing.schemas import (
     DECIMAL_SCHEMAS,
@@ -156,13 +157,15 @@ def _combine(statuses: set[str]) -> str:
     return "IN_NORM"
 
 
-async def _active_rule(
-    uow: UnitOfWork, laboratory_id: UUID, species: UUID, state: UUID, indicator: UUID
-) -> MethodRule | None:
+async def _active_rule(uow: UnitOfWork, laboratory_id: UUID, indicator: UUID) -> MethodRule | None:
+    """The active meat-scope norm of one indicator (DR31 §8.5).
+
+    The lookup key is ``laboratory + meat + indicator``: no species or state
+    term exists, so one norm serves every meat position of the laboratory.
+    """
     statement = select(MethodRule).where(
         MethodRule.laboratory_id == laboratory_id,
-        MethodRule.product_species_id == species,
-        MethodRule.product_state_id == state,
+        MethodRule.product_area_code == MEAT_AREA_CODE,
         MethodRule.indicator_id == indicator,
         MethodRule.active,
     )
@@ -263,10 +266,9 @@ def _quantity(request: PricingRequest) -> str:
 
 async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: PricingSnapshot | None) -> list[PricingLine]:
     species = request.product_species_id
-    state = request.product_state_id
-    if species is None or state is None:
+    if species is None:
         raise configuration_missing(
-            "Расчёт ВСЭ требует вид и состояние продукции партии.", path="product_species_id", field_id="VSE"
+            "Расчёт ВСЭ требует вид продукции партии.", path="product_species_id", field_id="VSE"
         )
     previous_by_indicator = _previous_lines_by_indicator(previous)
     quantity = _quantity(request)
@@ -285,7 +287,8 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
         if pinned is not None:
             snapshot_rule = _rule_from_snapshot(pinned)
         else:
-            snapshot_rule = await _active_rule(uow, laboratory_id, species, state, indicator)
+            # DR31 §8.5: the norm lookup carries NO species/state terms.
+            snapshot_rule = await _active_rule(uow, laboratory_id, indicator)
         if snapshot_rule is None:
             # A missing norm blocks, including the fair calculation (INPUT-02).
             raise configuration_missing(
@@ -312,7 +315,7 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
             PricingLine.model_validate(
                 {
                     "service_code": str(indicator),
-                    "name": str(snapshot_rule.source.get("name", "Исследование")),
+                    "name": _indicator_name(indicator, snapshot_rule.source),
                     "unit_id": snapshot_rule.unit_id,
                     "quantity": quantity,
                     "unit_price": unit_price,
@@ -323,6 +326,16 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
             )
         )
     return lines
+
+
+def _indicator_name(indicator: UUID, source: dict[str, Any]) -> str:
+    """The human-readable research name: the canonical registry first, the
+    snapshot provenance as the honest fallback (never a bare UUID)."""
+    for item in _mandatory.CATALOG_INDICATORS:
+        if item.id == indicator:
+            return item.name
+    name = source.get("name")
+    return name if isinstance(name, str) and name.strip() else "Исследование"
 
 
 def _lab_id(request: PricingRequest) -> UUID:
@@ -340,8 +353,7 @@ def _rule_from_snapshot(line: PricingLine) -> MethodRule | None:
         return None
     rule = MethodRule(
         laboratory_id=UUID(int=0),
-        product_species_id=UUID(int=0),
-        product_state_id=UUID(int=0),
+        product_area_code=MEAT_AREA_CODE,
         indicator_id=UUID(int=0),
         version=int(snapshot.get("method_version", 1)),
         result_schema=str(snapshot.get("result_schema", "DECIMAL")),

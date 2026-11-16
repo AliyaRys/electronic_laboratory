@@ -122,12 +122,10 @@ async def get_methods_context(
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
     laboratory_id: uuid.UUID,
     area: str = MEAT_AREA_CODE,
-    product_species_id: uuid.UUID | None = None,
-    product_state_id: uuid.UUID | None = None,
 ) -> MethodsContext:
-    """The scoped editor context (DR28 §7 variant B): laboratory, resolved
-    product species/state of the chosen human-readable area, the full
-    VSE-F18–F29 indicator catalog, the active rules and the missing ones."""
+    """The editor context (DR31 §8.3): laboratory + product area, the full
+    VSE-F18–F29 indicator catalog, the active rules and the missing ones.
+    No species/state parameters exist and no Mercury data is consulted."""
     identity, _ = principal
     await authorizer.authorize(
         db,
@@ -136,7 +134,7 @@ async def get_methods_context(
         ScopeTarget(laboratory_id=laboratory_id, product_scope_id=None),
     )
     response.headers["Cache-Control"] = "no-store"
-    return await methods_context(db, laboratory_id, area, product_species_id, product_state_id)
+    return await methods_context(db, laboratory_id, area)
 
 
 @_catalogs.get("/methods", response_model=Page[MethodRuleView])
@@ -146,17 +144,17 @@ async def list_methods(
     principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
     laboratory_id: uuid.UUID,
-    product_species_id: uuid.UUID,
     page: Annotated[int, Query(ge=1)] = 1,
 ) -> Page[MethodRuleView]:
+    """The method-rule page of the laboratory's single meat catalog (DR31)."""
     identity, _actor = principal
     await authorizer.authorize(
         db,
         identity.actor_id,
         "catalog:read",
-        ScopeTarget(laboratory_id=laboratory_id, product_scope_id=product_species_id),
+        ScopeTarget(laboratory_id=laboratory_id, product_scope_id=None),
     )
-    items, total = await queries.method_rule_page(db, laboratory_id, product_species_id, page)
+    items, total = await queries.method_rule_page(db, laboratory_id, page)
     _set_collection_headers(response, items)
     return Page[MethodRuleView](items=items, total=total, page=page, page_size=queries.PAGE_SIZE)
 
@@ -177,7 +175,7 @@ async def create_method(
         db,
         identity.actor_id,
         "catalog:create",
-        ScopeTarget(laboratory_id=payload.laboratory_id, product_scope_id=payload.product_species_id),
+        ScopeTarget(laboratory_id=payload.laboratory_id, product_scope_id=None),
     )
     uow = UnitOfWork(db)
     request_hash = canonical_request_hash(payload.model_dump(mode="json"), None)
@@ -219,7 +217,7 @@ async def get_method(
         db,
         identity.actor_id,
         "catalog:read",
-        ScopeTarget(laboratory_id=row.laboratory_id, product_scope_id=row.product_species_id),
+        ScopeTarget(laboratory_id=row.laboratory_id, product_scope_id=None),
     )
     response.headers["ETag"] = format_etag(row.rev)
     response.headers["Cache-Control"] = "no-store"
@@ -246,7 +244,7 @@ async def update_method(
         db,
         identity.actor_id,
         "catalog:update",
-        ScopeTarget(laboratory_id=row.laboratory_id, product_scope_id=row.product_species_id),
+        ScopeTarget(laboratory_id=row.laboratory_id, product_scope_id=None),
     )
     ensure_revision(expected, row.rev)
     row = await commands.update_method_rule(db, row, payload)
@@ -274,7 +272,7 @@ async def delete_method(
         db,
         identity.actor_id,
         "catalog:delete",
-        ScopeTarget(laboratory_id=row.laboratory_id, product_scope_id=row.product_species_id),
+        ScopeTarget(laboratory_id=row.laboratory_id, product_scope_id=None),
     )
     ensure_revision(expected, row.rev)
     await commands.delete_method_rule(db, row)
@@ -625,8 +623,10 @@ async def get_readiness(
     principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
     laboratory_id: uuid.UUID,
-    product_species_id: uuid.UUID,
+    product_species_id: uuid.UUID | None = None,
 ) -> Readiness:
+    """DR31 §8.6: readiness of the single meat set; the species (when present)
+    only narrows the tariff checks — norms are never species-scoped."""
     identity, _ = principal
     await authorizer.authorize(
         db,

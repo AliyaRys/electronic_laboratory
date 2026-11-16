@@ -55,6 +55,17 @@ async def env(db_session: AsyncSession) -> SimpleNamespace:
         active=True,
     )
     db_session.add_all([lab, actor])
+    await db_session.flush()
+    from backend.src.modules.identity.models import UserScope
+
+    # DR35 §12.3: the actor is an eligible specialist (any product scope) so
+    # the explicit-specialist requirement of a new card can be satisfied.
+    db_session.add_all(
+        [
+            UserScope(user_id=actor.id, laboratory_id=lab.id, product_scope_id=BEEF),
+            UserScope(user_id=actor.id, laboratory_id=lab.id, product_scope_id=PORK),
+        ]
+    )
     await db_session.commit()
     return SimpleNamespace(lab=lab, actor=actor)
 
@@ -333,13 +344,18 @@ async def test_create_rejects_reuse_sample(db_session: AsyncSession, env: Simple
 async def test_same_day_edit_creates_no_new_collection(db_session: AsyncSession, env: SimpleNamespace) -> None:
     await configure(db_session, env.lab.id, BEEF, trich=False)
     party = await dr35_party(db_session, env, BEEF)
-    created = await save_examination(context(env.actor.id), party.id, payload(), uow=db_session)
+    created = await save_examination(
+        context(env.actor.id),
+        party.id,
+        payload(specialist_id=env.actor.id, expected_total="18.75"),
+        uow=db_session,
+    )
     await db_session.commit()
     collection_before = await db_session.scalar(select(func.count()).select_from(SampleCollection))
     await update_examination(
         CommandContext(actor_id=env.actor.id, idempotency_key=str(uuid.uuid4()), expected_revision=created.revision),
         created.id,
-        payload(number="DR35-2"),
+        payload(number="DR35-2", specialist_id=env.actor.id, expected_total="18.75"),
         uow=db_session,
     )
     await db_session.commit()
@@ -366,7 +382,12 @@ async def test_specialist_is_distinct_from_audit_actor(db_session: AsyncSession,
     db_session.add(UserScope(user_id=other.id, laboratory_id=env.lab.id, product_scope_id=BEEF))
     party = await dr35_party(db_session, env, BEEF)
     await db_session.commit()
-    view = await save_examination(context(env.actor.id), party.id, payload(specialist_id=other.id), uow=db_session)
+    view = await save_examination(
+        context(env.actor.id),
+        party.id,
+        payload(specialist_id=other.id, expected_total="18.75"),
+        uow=db_session,
+    )
     await db_session.commit()
     assert view.created_by == str(env.actor.id)
     assert view.specialist_id == str(other.id)
@@ -416,7 +437,12 @@ async def test_existing_row_without_specialist_keeps_audit_actor_display(
 ) -> None:
     await configure(db_session, env.lab.id, BEEF, trich=False)
     party = await dr35_party(db_session, env, BEEF)
-    created = await save_examination(context(env.actor.id), party.id, payload(), uow=db_session)
+    created = await save_examination(
+        context(env.actor.id),
+        party.id,
+        payload(specialist_id=env.actor.id, expected_total="18.75"),
+        uow=db_session,
+    )
     await db_session.commit()
     row = (await db_session.execute(select(Examination).where(Examination.id == uuid.UUID(created.id)))).scalar_one()
     row.specialist_id = None
@@ -455,7 +481,10 @@ async def test_preview_and_final_save_match(db_session: AsyncSession, env: Simpl
     preview = await preview_pricing(db_session, party, results)  # type: ignore[arg-type]
     await db_session.commit()
     view = await save_examination(
-        context(env.actor.id), party.id, payload(expected_total=preview.total), uow=db_session
+        context(env.actor.id),
+        party.id,
+        payload(specialist_id=env.actor.id, expected_total=preview.total),
+        uow=db_session,
     )
     await db_session.commit()
     assert view.pricing["total"] == preview.total == "18.75"
@@ -468,7 +497,10 @@ async def test_changed_tariff_between_preview_and_save_conflicts(
     party = await dr35_party(db_session, env, BEEF)
     with pytest.raises(ProblemError) as raised:
         await save_examination(
-            context(env.actor.id), party.id, payload(number="C-1", expected_total="999.00"), uow=db_session
+            context(env.actor.id),
+            party.id,
+            payload(number="C-1", specialist_id=env.actor.id, expected_total="999.00"),
+            uow=db_session,
         )
     await db_session.rollback()
     assert raised.value.code == "PRICE_CONFLICT"
@@ -508,11 +540,79 @@ async def test_fair_party_prices_zero_but_keeps_facts(db_session: AsyncSession, 
     assert snapshot.total == "0.00"
     assert len(snapshot.lines) == 3
     view = await save_examination(
-        context(env.actor.id), party.id, payload(number="F-1", expected_total="0.00"), uow=db_session
+        context(env.actor.id),
+        party.id,
+        payload(number="F-1", specialist_id=env.actor.id, expected_total="0.00"),
+        uow=db_session,
     )
     await db_session.commit()
     assert view.pricing["fair"] is True
     assert len(view.researches) == 3
+
+
+# --- review fixes: the completion gate and the explicit specialist -------------------
+
+
+async def test_completed_save_without_expected_total_is_refused(
+    db_session: AsyncSession, env: SimpleNamespace
+) -> None:
+    """DR35 §13.5 (review): a COMPLETED save without a confirmed preview total
+    is a 422 VALIDATION_ERROR, never a silent completion."""
+    await configure(db_session, env.lab.id, BEEF, trich=False)
+    party = await dr35_party(db_session, env, BEEF)
+    with pytest.raises(ProblemError) as raised:
+        await save_examination(
+            context(env.actor.id),
+            party.id,
+            payload(specialist_id=env.actor.id),  # no expectedTotal
+            uow=db_session,
+        )
+    await db_session.rollback()
+    assert raised.value.code == "VALIDATION_ERROR"
+    assert raised.value.detail == "Подтвердите предварительный расчёт стоимости"
+    assert await db_session.scalar(select(func.count()).select_from(Examination)) == 0
+
+
+async def test_completed_edit_without_expected_total_is_refused(
+    db_session: AsyncSession, env: SimpleNamespace
+) -> None:
+    await configure(db_session, env.lab.id, BEEF, trich=False)
+    party = await dr35_party(db_session, env, BEEF)
+    created = await save_examination(
+        context(env.actor.id),
+        party.id,
+        payload(specialist_id=env.actor.id, expected_total="18.75"),
+        uow=db_session,
+    )
+    await db_session.commit()
+    with pytest.raises(ProblemError) as raised:
+        await update_examination(
+            CommandContext(actor_id=env.actor.id, idempotency_key=str(uuid.uuid4()), expected_revision=1),
+            created.id,
+            payload(number="E-2", specialist_id=env.actor.id),  # no expectedTotal
+            uow=db_session,
+        )
+    await db_session.rollback()
+    assert raised.value.code == "VALIDATION_ERROR"
+    assert raised.value.detail == "Подтвердите предварительный расчёт стоимости"
+
+
+async def test_create_without_specialist_is_refused(db_session: AsyncSession, env: SimpleNamespace) -> None:
+    """DR35 §12.3 (review): a new card requires an explicit specialist — the
+    forged operator fallback is gone."""
+    await configure(db_session, env.lab.id, BEEF, trich=False)
+    party = await dr35_party(db_session, env, BEEF)
+    with pytest.raises(ProblemError) as raised:
+        await save_examination(
+            context(env.actor.id),
+            party.id,
+            payload(expected_total="18.75"),  # no specialistId
+            uow=db_session,
+        )
+    await db_session.rollback()
+    assert raised.value.code == "VALIDATION_ERROR"
+    assert "специалиста" in raised.value.detail
+    assert await db_session.scalar(select(func.count()).select_from(Examination)) == 0
 
 
 async def test_pricing_quantity_is_the_frozen_accepted_quantity(db_session: AsyncSession, env: SimpleNamespace) -> None:

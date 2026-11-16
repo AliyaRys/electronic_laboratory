@@ -105,7 +105,7 @@ async def saved_card(env: SimpleNamespace, number: str = "DEL-001") -> tuple[Par
     view = await save_examination(
         context(env.actor.id),
         party.id,
-        payload(number=number, trich=False),
+        payload(number=number, trich=False, specialist_id=env.actor.id, expected_total="15.00"),
         uow=env.db,
         clock=FixedClock(NOW),
     )
@@ -170,7 +170,7 @@ async def test_delete_preserves_facts_and_allows_reuse(deletion_env: SimpleNames
         await lifecycle.update_examination(
             CommandContext(actor_id=env.actor.id, idempotency_key="old-put", expected_revision=1),
             examination_id,
-            payload(number="DEL-001", trich=False),
+            payload(number="DEL-001", trich=False, expected_total="15.00"),
             uow=env.db,
             clock=FixedClock(NOW),
         )
@@ -192,7 +192,9 @@ async def test_delete_preserves_facts_and_allows_reuse(deletion_env: SimpleNames
 
     # DR35 §11.2/§11.4: a replacement card performs a NEW physical selection —
     # REUSE is no longer accepted on create; the deleted card's fact stays.
-    replacement_data = payload(number="DEL-001", trich=False).model_dump(mode="json", by_alias=True)
+    replacement_data = payload(
+        number="DEL-001", trich=False, specialist_id=actor_id, expected_total="15.00"
+    ).model_dump(mode="json", by_alias=True)
     replacement_data["sample"] = {"mode": "NEW", "collectedOn": str(date.today()), "massKg": "0.8"}
     replacement = await save_examination(
         context(actor_id, "replacement"),
@@ -383,7 +385,7 @@ async def test_concurrent_delete_and_update_have_one_serialized_winner(
                 await lifecycle.update_examination(
                     CommandContext(actor_id=actor_id, idempotency_key="update-delete-race", expected_revision=1),
                     examination_id,
-                    payload(number="DEL-UPDATE-RACE", trich=False),
+                    payload(number="DEL-UPDATE-RACE", trich=False, expected_total="15.00"),
                     uow=session,
                     clock=FixedClock(NOW),
                 )
@@ -475,7 +477,9 @@ async def test_concurrent_delete_and_recreate_never_leave_two_cards(
     party_id = party.id
     examination_id = uuid.UUID(view.id)
     actor_id = env.actor.id
-    replacement_data = payload(number="DEL-CREATE-RACE", trich=False).model_dump(mode="json", by_alias=True)
+    replacement_data = payload(
+        number="DEL-CREATE-RACE", trich=False, specialist_id=actor_id, expected_total="15.00"
+    ).model_dump(mode="json", by_alias=True)
     # DR35 §11.2: the replacement card takes a NEW physical selection.
     replacement_data["sample"] = {"mode": "NEW", "collectedOn": str(date.today()), "massKg": "0.8"}
     replacement_payload = ExaminationWrite.model_validate(replacement_data)

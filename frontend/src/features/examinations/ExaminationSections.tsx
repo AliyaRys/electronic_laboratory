@@ -92,8 +92,7 @@ export function ParticipantsSection({
   );
   const receiverOwner = name("receiverOwner", participantName(party, "receiver", "owner").value);
   const confirmation = party.confirmation;
-  const productType =
-    typeof classification.productType === "number" ? productTypeLabel(classification.productType) : "";
+  const productType = productTypeLabel(classification.productType);
   return (
     <FormSection
       icon="exam-participants"

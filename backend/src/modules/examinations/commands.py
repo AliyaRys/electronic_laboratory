@@ -59,17 +59,20 @@ def _price_conflict(expected: str, actual: str) -> ProblemError:
     )
 
 
+def _validation(detail: str) -> ProblemError:
+    return ProblemError(status=422, code="VALIDATION_ERROR", title="Validation error", detail=detail)
+
+
 async def _resolve_specialist(
     uow: AsyncSession, party: Party, specialist_id: uuid.UUID | None, actor_id: uuid.UUID
 ) -> tuple[uuid.UUID, str]:
     """DR35 §12.3: the chosen specialist, validated against the scoped list.
 
-    ``None`` keeps the documented legacy fallback: the audit actor is both the
-    operator and the displayed specialist (pre-DR35 behavior).
+    A new card requires an explicit specialist: the audit actor (operator of
+    the save) is never silently substituted for the displayed specialist.
     """
     if specialist_id is None:
-        user = (await uow.execute(select(User).where(User.id == actor_id))).scalar_one()
-        return actor_id, user.full_name
+        raise _validation("Выберите специалиста Госветслужбы")
     if not await is_eligible_specialist(uow, specialist_id, party.laboratory_id, _product_scope_id(party)):
         raise specialist_not_allowed()
     user = (await uow.execute(select(User).where(User.id == specialist_id))).scalar_one()
@@ -207,15 +210,13 @@ async def save_examination(
         ],
     )
     pricing = await evaluate_and_price(work, pricing_request, None)
-    # DR35 §13.5: the final save re-derives the price in the SAME transaction;
-    # a change against the confirmed preview is a managed conflict, never a
-    # silent save of a different amount.
-    if (
-        payload.mode == "COMPLETED"
-        and payload.expected_total is not None
-        and parse_decimal(payload.expected_total) != parse_decimal(pricing.total)
-    ):
-        raise _price_conflict(payload.expected_total, pricing.total)
+    # DR35 §13.5: a COMPLETED save must confirm the previewed total. A missing
+    # confirmation is a validation error; a mismatch is a managed conflict.
+    if payload.mode == "COMPLETED":
+        if payload.expected_total is None:
+            raise _validation("Подтвердите предварительный расчёт стоимости")
+        if parse_decimal(payload.expected_total) != parse_decimal(pricing.total):
+            raise _price_conflict(payload.expected_total, pricing.total)
 
     now = (clock or Clock()).now()
     examination_id = uuid.uuid4()

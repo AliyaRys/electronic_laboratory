@@ -56,3 +56,17 @@ Frontend (Node 26 из `C:\Users\Алия\AppData\Local\Temp\opencode\node26`):
 
 ## Storybook
 `examination.stories.tsx`: истории формы (форма, узкий экран, длинные значения, правка WAITING), `ПробаНовыйОтбор` (решение §11), `ТрихинеллоскопияОбязательна` (закреплённый GUID, `required_research_ids`), `ПредварительныйРасчёт`/`ПредварительныйРасчётУзкийЭкран` (тот же `PricingSection`, что на странице), журнал и диалог удаления.
+
+## Fix-loop (проверка 2026-11-16)
+Исправления по итогам ревью (ветка `codex/examination-create-fixes`):
+
+1. **CRITICAL — schema-revision drift:** `CURRENT_SCHEMA_REVISION` в `backend/src/modules/identity/router.py` синхронизирован с `0020_dr35_specialist`; drift-тест усилен (`backend/tests/test_platform.py::test_current_schema_revision_matches_migration_head`): константа сравнивается с фактической головной ревизией, разобранной из `backend/migrations/versions` в рантайме (не из alembic_version).
+2. **Documentation gate:** surgical-правки с пометкой supersession — `owner-decisions.md` (O-04 заменён решением владельца 2026-11-16), `05-samples.md` FT-SMP-03, `10-field-catalog.md` (ввод, VSE-F05/VSE-F16/VSE-F38, строка «Отбор»), `03-examination.md` FT-VSE-02 (оператор сохранения ≠ специалист ВСЭ, D-36 заменена), план 06-examinations (E03/E04), traceability.md (FT-SMP-03, FT-VSE-02), acceptance.md (AT-10), field-mapping.md (VSE-F16/VSE-F32).
+3. **PRICE_CONFLICT не пропускается:** сохранение COMPLETED без подтверждённого `expected_total` → 422 VALIDATION_ERROR «Подтвердите предварительный расчёт стоимости» (`commands.py` create + `lifecycle.py` edit); расхождение → 409 PRICE_CONFLICT как раньше. WAITING — прежнее правило полноты. Тесты: `test_completed_save_without_expected_total_is_refused`, `test_completed_edit_without_expected_total_is_refused`; существующие COMPLETED-фикстуры обновлены на явное `expected_total`.
+4. **§18 #19:** router-level тест `test_foreign_party_form_and_pricing_are_not_disclosed` — form-view и pricing-preview чужой партии отвечают 403/404 (NOT_FOUND/ACCESS_DENIED) без имён и данных.
+5. **MINOR:** (a) новая карточка требует явного `specialist_id` (422 «Выберите специалиста Госветслужбы», forged fallback оператора удалён; правка без specialist сохраняет текущего); (b) мёртвый CSS `.vse-confirm-note` удалён; (c) fallback пустого типа продукции в `ParticipantsSection` — «Название типа продукции не получено»; (d) единый фронтенд-источник меток типов (`shared/lib/domain.ts::productTypeLabel`) с диагностическим предупреждением через `isUnknownProductType`-логику (console.warn на неизвестный код); (e) специалист не предзаполняется чужим значением: только текущий пользователь, если он в списке — иначе пусто и явный выбор (`ExaminationForm.tsx`).
+
+### Запуски fix-loop (все в foreground)
+- `uv run --frozen ruff check backend frontend/tests/e2e` → All checks passed;
+- `uv run --frozen pytest backend/tests/examinations backend/tests/samples backend/tests/catalog_pricing backend/tests/arrivals backend/tests/documents backend/tests/reporting backend/tests/test_platform.py -q` → **430 passed**;
+- `npm run format:check` → чисто; `npm run lint` → 0 ошибок (1 существовавшее предупреждение); `npm run typecheck` → 0 ошибок; `npm test` → **424 passed**; `npm run build` и `npm run build-storybook` → успешно.

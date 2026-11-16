@@ -66,6 +66,36 @@ async def test_ready_rejects_wrong_schema(client: AsyncClient, db_session: Async
         await db_session.commit()
 
 
+def test_current_schema_revision_matches_migration_head() -> None:
+    """The declared revision equals the newest revision parsed from migrations/versions.
+
+    Parses the revision chain at runtime (not alembic_version, which is seeded
+    FROM the constant) so drift between router.py and migration files fails here.
+    """
+    import re
+
+    versions_dir = REPO_ROOT / "backend" / "migrations" / "versions"
+    revisions: dict[str, str] = {}
+    down_ids: set[str] = set()
+    for path in versions_dir.glob("*.py"):
+        if path.name.startswith("_"):
+            continue
+        text_src = path.read_text(encoding="utf-8")
+        rev_match = re.search(
+            r'^revision(?::\s*str\s*\|\s*Sequence\[str\]\s*\|\s*None)?(?::\s*str)?\s*=\s*"([^"]+)"', text_src, re.M
+        )
+        down_match = re.search(r'^down_revision[^=]*=\s*"?([0-9a-zA-Z_]+)"?', text_src, re.M)
+        assert rev_match, f"no revision in {path.name}"
+        revisions[rev_match.group(1)] = path.name
+        if down_match:
+            down_ids.add(down_match.group(1))
+    heads = [rev for rev in revisions if rev not in down_ids]
+    assert len(heads) == 1, f"expected single migration head, got {heads}"
+    assert heads[0] == CURRENT_SCHEMA_REVISION, (
+        f"CURRENT_SCHEMA_REVISION {CURRENT_SCHEMA_REVISION!r} drifted from migration head {heads[0]!r}"
+    )
+
+
 async def test_command_rollback(db_session: AsyncSession) -> None:
     """After an injected exception there is no record and no idempotency success."""
     actor_id = uuid.uuid4()

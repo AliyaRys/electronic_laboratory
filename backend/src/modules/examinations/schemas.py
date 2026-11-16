@@ -122,9 +122,9 @@ class ExaminationWrite(StrictModel):
     sent_to_lab: bool = False
     sample: SampleSelection
     # DR35 §12.3: the chosen Госветслужбы specialist — a distinct audited
-    # entity from created_by/updated_by. ``None`` keeps the documented legacy
-    # fallback (the audit actor is displayed as the specialist) so existing
-    # records and existing writers keep working.
+    # entity from created_by/updated_by. A new card requires an explicit
+    # specialist (the server refuses a forged fallback); edits keep None to
+    # preserve the current specialist.
     specialist_id: uuid.UUID | None = None
     # DR35 §13.5: the total the user saw in the CONFIRMED pricing preview.
     # Money is never computed client-side; this value only lets the final save

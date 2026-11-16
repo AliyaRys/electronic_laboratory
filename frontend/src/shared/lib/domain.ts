@@ -30,10 +30,20 @@ export const PRODUCT_TYPE_LABELS: Readonly<Record<number, string>> = Object.free
 });
 
 /** ТЗ §6: the honest label of a product type; an unknown/absent code never
- * shows a bare digit and never a fabricated name. */
+ * shows a bare digit and never a fabricated name. The single frontend source
+ * of the Mercury product-type wording (DR35 §6): every representation —
+ * readonly views, the create form and stories — formats through this map. */
 export function productTypeLabel(code: number | null | undefined): string {
   if (code === null || code === undefined) return "Название типа продукции не получено";
-  return PRODUCT_TYPE_LABELS[code] ?? `Неизвестный тип продукции (код: ${code})`;
+  const label = PRODUCT_TYPE_LABELS[code];
+  if (label === undefined) {
+    // DR35 §6: the diagnostic warning accompanies the honest unknown-code text.
+    console.warn(
+      `Неизвестный тип продукции (код: ${code}) — словарь PRODUCT_TYPE_LABELS не содержит этого кода.`,
+    );
+    return `Неизвестный тип продукции (код: ${code})`;
+  }
+  return label;
 }
 
 /** ТЗ §6: true when the code is outside the agreed map (diagnostic warning). */

@@ -121,9 +121,10 @@ export function ExaminationForm({
       sample: initialSample(view, availableCollections ?? [], today),
       sentToLab: false,
       specialistId:
-        formView?.eligible_specialists.find((option) => option.id === currentUserId)?.id ??
-        formView?.eligible_specialists[0]?.id ??
-        "",
+        // DR35 §12.3: prefill only the current user when eligible; never fall
+        // back to the first list entry — an unchosen specialist stays empty
+        // and the user must pick explicitly.
+        formView?.eligible_specialists.find((option) => option.id === currentUserId)?.id ?? "",
     }),
     [view, today, formView, currentUserId, availableCollections],
   );

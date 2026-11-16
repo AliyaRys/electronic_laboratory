@@ -53,6 +53,10 @@ def _conflict(detail: str) -> ProblemError:
     return ProblemError(status=409, code="STATE_CONFLICT", title="State conflict", detail=detail)
 
 
+def _validation(detail: str) -> ProblemError:
+    return ProblemError(status=422, code="VALIDATION_ERROR", title="Validation error", detail=detail)
+
+
 def _day_closed() -> ProblemError:
     return ProblemError(
         status=409,
@@ -152,16 +156,23 @@ async def update_examination(
     )
     previous_pricing = row.pricing_snapshot
     pricing = await evaluate_and_price(work, pricing_request, PricingSnapshot.model_validate(previous_pricing))
-    # DR35 §13.5: the same managed price conflict as the first save.
-    if (
-        payload.mode == "COMPLETED"
-        and payload.expected_total is not None
-        and parse_decimal(payload.expected_total) != parse_decimal(pricing.total)
-    ):
-        raise _price_conflict(payload.expected_total, pricing.total)
+    # DR35 §13.5: the same completion gate as the first save: a COMPLETED save
+    # must confirm the previewed total (validation error when missing, managed
+    # conflict on mismatch).
+    if payload.mode == "COMPLETED":
+        if payload.expected_total is None:
+            raise _validation("Подтвердите предварительный расчёт стоимости")
+        if parse_decimal(payload.expected_total) != parse_decimal(pricing.total):
+            raise _price_conflict(payload.expected_total, pricing.total)
     # DR35 §12.3: an edit may reassign the specialist within the scoped list;
-    # created_by stays the immutable audit actor.
-    specialist_id, specialist_name = await _resolve_specialist(db, party, payload.specialist_id, ctx.actor_id)
+    # created_by stays the immutable audit actor. A missing specialist keeps
+    # the card's current specialist (never the operator of the save).
+    if payload.specialist_id is None:
+        specialist_id, specialist_name = row.specialist_id, row.specialist_name
+    else:
+        specialist_id, specialist_name = await _resolve_specialist(
+            db, party, payload.specialist_id, ctx.actor_id
+        )
 
     # 9. The sample selection is applied through the same internal contract;
     #    the card keeps exactly one current link (the schema is one link per

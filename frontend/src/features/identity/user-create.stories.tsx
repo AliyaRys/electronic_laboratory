@@ -75,6 +75,21 @@ export const Empty: Story = {
   },
 };
 
+/** A filled form: prefilled non-secret values; passwords are never prefilled. */
+export const Filled: Story = {
+  args: {
+    options: FULL_OPTIONS,
+    initial: {
+      fullName: "Иванов Иван Иванович",
+      login: "ivanov",
+      email: "ivanov@example.test",
+      position: "Ветеринарный врач",
+    },
+    onSubmit: async () => null,
+    onCancel: () => {},
+  },
+};
+
 export const OptionsLoading: Story = {
   args: {
     options: null,

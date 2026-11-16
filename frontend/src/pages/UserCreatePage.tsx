@@ -116,6 +116,9 @@ function UserCreateContent(): React.ReactElement {
   const submit = async (payload: UserCreatePayload, intentKey: string): Promise<Problem | null> => {
     const result = await createUser(payload, intentKey);
     if ("code" in result) return result;
+    // §11: the form is no longer dirty after a successful creation, so neither
+    // the SPA blocker nor the beforeunload guard fires on the way back.
+    setDirty(false);
     leave("Пользователь создан.");
     return null;
   };

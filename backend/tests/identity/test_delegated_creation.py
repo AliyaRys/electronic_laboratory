@@ -23,7 +23,9 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine
+from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine, load_access_snapshot
+from backend.src.modules.identity.commands import ProblemError
+from backend.src.modules.identity.commands import create_user as create_user_command
 from backend.src.modules.identity.models import (
     CommandRecord,
     DelegationGrant,
@@ -35,6 +37,7 @@ from backend.src.modules.identity.models import (
     UserScope,
 )
 from backend.src.modules.identity.passwords import hash_password
+from backend.src.modules.identity.schemas import UserWrite
 from backend.src.modules.identity.session import SessionTransport
 from backend.tests.identity.test_sessions import MemoryRedis
 from backend.tests.identity.test_users import (
@@ -46,6 +49,11 @@ from backend.tests.identity.test_users import (
 )
 
 USER_PASSWORD = NEW_PASSWORD
+
+# A real product guid of the seeded VetIS level-2 dictionary (migration 0005):
+# «свинина», productType=1, active, is_last — the same read model that serves
+# the /assignable product areas.
+MEAT_PRODUCT_GUID = uuid.UUID("57a674fd-ca2b-c523-6853-72d27b4ae32c")
 
 
 @pytest.fixture
@@ -170,7 +178,7 @@ async def test_delegated_vet_creation(delegation_env: SimpleNamespace) -> None:
         await _login(http)
         response = await http.post(
             "/api/v1/users",
-            json=_payload("new-vet", role="VET", lab=env.own_lab.id, product=uuid.uuid4()),
+            json=_payload("new-vet", role="VET", lab=env.own_lab.id, product=MEAT_PRODUCT_GUID),
             headers={**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": "dr34-vet"},
         )
         assert response.status_code == 201, response.text
@@ -371,7 +379,7 @@ async def test_self_escalation_stays_impossible(delegation_env: SimpleNamespace)
 
 async def test_same_idempotency_key_never_duplicates(delegation_env: SimpleNamespace) -> None:
     env = delegation_env
-    payload = _payload("idempotent-vet", role="VET", lab=env.own_lab.id, product=uuid.uuid4())
+    payload = _payload("idempotent-vet", role="VET", lab=env.own_lab.id, product=MEAT_PRODUCT_GUID)
     async with _client_for(env) as http:
         await _login(http)
         headers = {**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": "dr34-idem"}
@@ -392,7 +400,7 @@ async def test_same_idempotency_key_never_duplicates(delegation_env: SimpleNames
 
 async def test_parallel_same_login_one_created(delegation_env: SimpleNamespace) -> None:
     env = delegation_env
-    payload = _payload("race-vet", role="VET", lab=env.own_lab.id, product=uuid.uuid4())
+    payload = _payload("race-vet", role="VET", lab=env.own_lab.id, product=MEAT_PRODUCT_GUID)
     async with _client_for(env) as first, _client_for(env) as second:
         await _login(first)
         await _login(second)
@@ -423,7 +431,7 @@ async def test_creation_history_has_no_password_or_hash(delegation_env: SimpleNa
         await _login(http)
         created = await http.post(
             "/api/v1/users",
-            json=_payload("history-vet", role="VET", lab=env.own_lab.id, product=uuid.uuid4(), password=secret),
+            json=_payload("history-vet", role="VET", lab=env.own_lab.id, product=MEAT_PRODUCT_GUID, password=secret),
             headers={**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": "dr34-history"},
         )
         assert created.status_code == 201, created.text
@@ -437,3 +445,111 @@ async def test_creation_history_has_no_password_or_hash(delegation_env: SimpleNa
         dump = json.dumps(items, ensure_ascii=False)
         assert secret not in dump
         assert "$argon2" not in dump
+
+
+# --- 13. An ADMIN grant without may_delegate delegates nothing (DR34 O-08) ------
+
+
+async def test_admin_grant_without_may_delegate_cannot_create_admin(delegation_env: SimpleNamespace) -> None:
+    env = delegation_env
+    async with _client_for(env) as http:
+        await _login(http, "restricted")
+        response = await http.post(
+            "/api/v1/users",
+            json=_payload("blocked-admin", role="ADMIN", territory=env.district.id, scopes=[]),
+            headers={**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": "dr34-no-delegate"},
+        )
+        assert response.status_code == 403, response.text
+        assert response.json()["code"] == "ACCESS_DENIED", response.text
+    assert await _count(env.db, User, "blocked-admin") == 0, "запись не создаётся"
+    grants = (await env.db.execute(select(func.count()).select_from(DelegationGrant))).scalar_one()
+    assert grants == 2, "нового делегирования нет"
+    events = (await env.db.execute(select(func.count()).select_from(UserEvent))).scalar_one()
+    assert events == 0, "история не пишется"
+
+
+# --- 14. A forged product GUID is refused before anything is written ------------
+
+
+async def test_forged_product_scope_rejected(delegation_env: SimpleNamespace) -> None:
+    env = delegation_env
+    async with _client_for(env) as http:
+        await _login(http)
+        response = await http.post(
+            "/api/v1/users",
+            json=_payload("forged-product", role="VET", lab=env.own_lab.id, product=uuid.uuid4()),
+            headers={**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": "dr34-forge-product"},
+        )
+        assert response.status_code == 422, response.text
+        problem = response.json()
+        paths = [item["path"] for item in problem["errors"]]
+        assert "scopes.0.product_scope_id" in paths, problem
+        assert problem["code"] == "VALIDATION_ERROR", problem
+    assert await _count(env.db, User, "forged-product") == 0
+    assert await _count(env.db, UserScope) == 0
+
+
+# --- 15. Revocation committed before the creation's locked re-read wins (§8.2) --
+
+
+async def test_revocation_before_locked_read_rejects_creation(delegation_env: SimpleNamespace) -> None:
+    """No TOCTOU: a grant revoked after the authorization snapshot was taken but
+    before the command's locked re-read makes the creation fail with 403 and
+    leave no records. The stale snapshot is deliberately passed to the command."""
+    env = delegation_env
+    stale_snapshot = await load_access_snapshot(env.db, env.chief.id)
+    assert (UserRole.ADMIN, env.district.id) in stale_snapshot.delegatable_grants
+
+    # A concurrent revocation commits before the creation transaction locks
+    # the grant rows.
+    grants = (
+        await env.db.execute(select(DelegationGrant).where(DelegationGrant.target_id == env.chief.id))
+    ).scalars().all()
+    for item in grants:
+        await env.db.delete(item)
+    await env.db.commit()
+
+    with pytest.raises(ProblemError) as exc_info:
+        await create_user_command(
+            env.db,
+            actor_id=env.chief.id,
+            snapshot=stale_snapshot,
+            payload=UserWrite(
+                login="revoked-admin",
+                full_name="Поздний администратор",
+                email="revoked@example.test",
+                role=UserRole.ADMIN,
+                scopes=[],
+                territory_id=env.district.id,
+                password=USER_PASSWORD,
+                confirmation=USER_PASSWORD,
+            ),
+            record=None,
+        )
+    assert exc_info.value.status == 403, str(exc_info.value)
+    assert await _count(env.db, User, "revoked-admin") == 0, "отозванное полномочие не создаёт запись"
+    assert await _count(env.db, DelegationGrant) == 1, "нового делегирования нет"
+    assert await _count(env.db, UserEvent) == 0, "история не пишется"
+
+
+async def test_creation_after_committed_revocation_http_403(delegation_env: SimpleNamespace) -> None:
+    """A revocation committed before the whole creation request answers 403."""
+    env = delegation_env
+    grants = (
+        await env.db.execute(select(DelegationGrant).where(DelegationGrant.target_id == env.chief.id))
+    ).scalars().all()
+    for item in grants:
+        await env.db.delete(item)
+    await env.db.commit()
+    async with _client_for(env) as http:
+        await _login(http)
+        response = await http.post(
+            "/api/v1/users",
+            json=_payload("after-revoke", role="ADMIN", territory=env.district.id, scopes=[]),
+            headers={**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": "dr34-revoked"},
+        )
+        assert response.status_code == 403, response.text
+    assert await _count(env.db, User, "after-revoke") == 0
+    assert await _count(env.db, DelegationGrant) == 1, "нового делегирования нет"
+
+

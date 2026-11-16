@@ -496,3 +496,119 @@ describe("product context switch", () => {
     useContextStore.getState().reset();
   });
 });
+
+describe("beforeunload dirty guard (DR34 §11)", () => {
+  function Guarded(): ReactElement {
+    const [dirty, setDirty] = useState(false);
+    useDirtyGuard(dirty, "Создание пользователя");
+    return (
+      <>
+        <button type="button" onClick={() => setDirty(true)}>
+          сделать грязной
+        </button>
+        <button type="button" onClick={() => setDirty(false)}>
+          очистить
+        </button>
+      </>
+    );
+  }
+
+  /** Spies on the window beforeunload wiring; restores the originals. */
+  function spyBeforeUnload(): { added: EventListener[]; removed: EventListener[]; restore: () => void } {
+    const added: EventListener[] = [];
+    const removed: EventListener[] = [];
+    const originalAdd = window.addEventListener.bind(window) as (
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: EventListenerOptions,
+    ) => void;
+    const originalRemove = window.removeEventListener.bind(window) as (
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: EventListenerOptions,
+    ) => void;
+    window.addEventListener = ((
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: unknown,
+    ) => {
+      if (type === "beforeunload" && listener !== null) {
+        added.push(listener as EventListener);
+      }
+      return originalAdd(type, listener, options as EventListenerOptions | undefined);
+    }) as typeof window.addEventListener;
+    window.removeEventListener = ((
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: unknown,
+    ) => {
+      if (type === "beforeunload" && listener !== null) {
+        removed.push(listener as EventListener);
+      }
+      return originalRemove(type, listener, options as EventListenerOptions | undefined);
+    }) as typeof window.removeEventListener;
+    return {
+      added,
+      removed,
+      restore: () => {
+        window.addEventListener = originalAdd;
+        window.removeEventListener = originalRemove;
+      },
+    };
+  }
+
+  it("adds the listener only while dirty, removes it on flag clear and unmount", async () => {
+    const spy = spyBeforeUnload();
+    const user = userEvent.setup();
+    const { unmount } = render(<Guarded />);
+
+    // Not dirty: nothing is registered, so closing the tab never asks.
+    expect(spy.added).toHaveLength(0);
+    expect(spy.removed).toHaveLength(0);
+
+    user.click(screen.getByRole("button", { name: "сделать грязной" }));
+    await waitFor(() => expect(spy.added).toHaveLength(1));
+    expect(spy.removed).toHaveLength(0);
+
+    // The registered handler follows the standard guard pattern.
+    const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
+    let prevented = false;
+    event.preventDefault = () => {
+      prevented = true;
+    };
+    const returnValueDescriptor = Object.getOwnPropertyDescriptor(Event.prototype, "returnValue");
+    let returnValueSeen: unknown = undefined;
+    Object.defineProperty(event, "returnValue", {
+      get: () => returnValueSeen,
+      set: (value: unknown) => {
+        returnValueSeen = value;
+      },
+    });
+    expect(() => {
+      window.dispatchEvent(event);
+    }).not.toThrow();
+    expect(prevented).toBe(true);
+    expect(returnValueSeen).toBe("");
+    if (returnValueDescriptor !== undefined) {
+      Object.defineProperty(Event.prototype, "returnValue", returnValueDescriptor);
+    }
+    if (returnValueDescriptor !== undefined) {
+      Object.defineProperty(Event.prototype, "returnValue", returnValueDescriptor);
+    }
+
+    // Clearing the dirty flag removes the very same listener again.
+    user.click(screen.getByRole("button", { name: "очистить" }));
+    await waitFor(() => expect(spy.removed).toHaveLength(1));
+    expect(spy.removed[0]).toBe(spy.added[0]);
+
+    // Unmount with a re-dirtied form also cleans up (no leaked listener).
+    user.click(screen.getByRole("button", { name: "сделать грязной" }));
+    await waitFor(() => expect(spy.added).toHaveLength(2));
+    unmount();
+    expect(spy.removed).toHaveLength(2);
+    expect(spy.removed[1]).toBe(spy.added[1]);
+    expect(useDirtyStore.getState().dirty).toBe(false);
+
+    spy.restore();
+  });
+});

@@ -11,6 +11,7 @@ administrator of the territory.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -32,6 +33,11 @@ from backend.src.modules.identity.models import (
 )
 from backend.src.modules.identity.passwords import hash_password, validate_password
 from backend.src.modules.identity.schemas import UserWrite
+from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
+
+# The meat product type of the local VetIS level-2 classification (productType=1,
+# migration 0005). Kept local, exactly like in queries.py.
+_MEAT_PRODUCT_TYPE = 1
 
 __all__ = [
     "PAGE_SIZE",
@@ -185,6 +191,23 @@ async def _resolve_scopes(
     laboratory_ids = [laboratory_id for laboratory_id, _ in scopes]
     rows = await db.execute(select(Laboratory).where(Laboratory.id.in_(laboratory_ids)))
     laboratories = {item.id: item for item in rows.scalars()}
+    # DR34 §7.2: a claimed product area must exist in the same local VetIS
+    # level-2 read model the /assignable options are served from, so a forged
+    # product GUID cannot be written into a scope.
+    product_ids = [
+        product_scope_id for _, product_scope_id in scopes if product_scope_id is not None
+    ]
+    known_products: set[uuid.UUID] = set()
+    if product_ids:
+        product_rows = await db.execute(
+            select(MercuryProductGuidLvl2.guid).where(
+                MercuryProductGuidLvl2.guid.in_(product_ids),
+                MercuryProductGuidLvl2.product_type == _MEAT_PRODUCT_TYPE,
+                MercuryProductGuidLvl2.active.is_(True),
+                MercuryProductGuidLvl2.is_last.is_(True),
+            )
+        )
+        known_products = set(product_rows.scalars())
     errors: list[ProblemItem] = []
     pairs: list[tuple[uuid.UUID, uuid.UUID]] = []
     for index, (laboratory_id, product_scope_id) in enumerate(scopes):
@@ -194,6 +217,11 @@ async def _resolve_scopes(
             continue
         if laboratory.territory_id not in allowed:
             raise access_denied("Назначение вне делегированной области управления.")
+        if product_scope_id is not None and product_scope_id not in known_products:
+            errors.append(
+                ProblemItem(path=f"scopes.{index}.product_scope_id", message="Продуктовая область не найдена.")
+            )
+            continue
         # A missing product means the whole laboratory (HEAD/ANALYST semantics);
         # the composite primary key requires a non-NULL third column.
         pairs.append((laboratory.id, product_scope_id or laboratory.id))
@@ -248,10 +276,27 @@ async def create_user(
             raise validation_error(
                 [ProblemItem(path="scopes", message="Администратору не назначаются рабочие области.")]
             )
+        # DR34 §8.2: the target territory and the actor's delegation grants are
+        # re-read under row locks inside this transaction, so a grant revoked
+        # after the authorization snapshot was taken cannot slip past this
+        # check: either the revocation committed before the lock acquisition
+        # (the fresh read no longer sees it → 403) or it waits for this
+        # transaction's commit (fully serialized, no TOCTOU granted write).
         territory = (
-            await db.execute(select(Territory).where(Territory.id == payload.territory_id))
+            await db.execute(select(Territory).where(Territory.id == payload.territory_id).with_for_update())
         ).scalar_one_or_none()
-        if territory is None or territory.id not in delegatable_territories(snapshot, UserRole.ADMIN):
+        fresh_grants = (
+            await db.execute(
+                select(DelegationGrant).where(DelegationGrant.target_id == actor_id).with_for_update()
+            )
+        ).scalars().all()
+        fresh_snapshot = replace(
+            snapshot,
+            delegatable_grants=frozenset(
+                (UserRole(item.role), item.territory_id) for item in fresh_grants if item.may_delegate
+            ),
+        )
+        if territory is None or territory.id not in delegatable_territories(fresh_snapshot, UserRole.ADMIN):
             raise access_denied("Назначение вне делегированных полномочий.")
         grant_territory = (territory.id, territory.name)
         pairs: list[tuple[uuid.UUID, uuid.UUID]] = []

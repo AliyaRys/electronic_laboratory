@@ -82,7 +82,7 @@ async def admin_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespace
     )
     db_session.add_all([own_lab, foreign_lab])
     await db_session.flush()
-    product = uuid.uuid4()
+    product = uuid.UUID("57a674fd-ca2b-c523-6853-72d27b4ae32c")  # «свинина», migration 0005 seed
     chief = User(
         login="chief",
         full_name="Главный администратор",

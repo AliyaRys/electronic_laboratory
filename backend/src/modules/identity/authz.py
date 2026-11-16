@@ -159,13 +159,26 @@ def attributes_allow(snapshot: AccessSnapshot, action: str, attributes: dict[str
 
 
 async def load_access_snapshot(session: AsyncSession, actor_id: uuid.UUID) -> AccessSnapshot:
-    user = (await session.execute(select(User).where(User.id == actor_id))).scalar_one_or_none()
+    """Authorization snapshot with the mutable grant state read under row locks.
+
+    The actor row and his ``DelegationGrant`` rows are read ``FOR UPDATE`` (the
+    same lock idiom as every other identity command, e.g. ``load_target``), so a
+    concurrent grant revocation serializes behind this transaction instead of
+    slipping between the authorization read and the subsequent write (DR34 §8.2,
+    TOCTOU). Reference tables (territories, laboratories) are stable dictionary
+    data and are not locked.
+    """
+    user = (
+        await session.execute(select(User).where(User.id == actor_id).with_for_update())
+    ).scalar_one_or_none()
     if user is None:
         raise not_found()
     scopes = (await session.execute(select(UserScope).where(UserScope.user_id == actor_id))).scalars().all()
     grants = (
-        (await session.execute(select(DelegationGrant).where(DelegationGrant.target_id == actor_id))).scalars().all()
-    )
+        await session.execute(
+            select(DelegationGrant).where(DelegationGrant.target_id == actor_id).with_for_update()
+        )
+    ).scalars().all()
     territories = (await session.execute(select(Territory))).scalars().all()
     laboratories = (await session.execute(select(Laboratory))).scalars().all()
     return AccessSnapshot(

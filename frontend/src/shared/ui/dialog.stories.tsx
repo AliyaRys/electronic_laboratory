@@ -2,6 +2,9 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { Dialog } from "./Dialog";
 import { Button } from "./Button";
+// DR32: the receipt-summary story reuses the real `.vse-receipt-*` classes of
+// the feature instead of a copied second palette.
+import "../../features/arrivals/reconciliation.css";
 
 const meta: Meta<typeof Dialog> = {
   title: "F02/Dialog",
@@ -72,4 +75,59 @@ export const LongContent: Story = {
       </div>
     </DialogHarness>
   ),
+};
+
+/** DR32 §9.3: while the confirm action is in flight the safe cancel locks. */
+export const Busy: Story = {
+  render: () => (
+    <DialogHarness
+      open
+      title="Удалить пользователя?"
+      confirmLabel="Удалить"
+      cancelLabel="Остаться"
+      danger
+      busy
+      onConfirm={() => undefined}
+    >
+      Отправка выполняется — ожидайте завершения операции.
+    </DialogHarness>
+  ),
+};
+
+/**
+ * DR32 §9.3: the receipt summary with a long fingerprint renders on the SAME
+ * portal/theme contract (`.app-dialog-layer`); the fingerprint wraps inside
+ * the card and never widens the dialog. The classes are the real ones of the
+ * receipt summary (features/arrivals/reconciliation.css).
+ */
+export const ReceiptSummaryLongFingerprint: Story = {
+  render: () => (
+    <DialogHarness
+      open
+      title="Подтвердите гашение эВСД"
+      confirmLabel="Погасить эВСД"
+      cancelLabel="Вернуться к проверке"
+      danger
+    >
+      <dl className="vse-receipt-summary">
+        <div>
+          <dt>эВСД</dt>
+          <dd>RU016:260812-005102 от 12.08.2026 08:12</dd>
+        </div>
+        <div>
+          <dt>Решение</dt>
+          <dd>Принять партию полностью</dd>
+        </div>
+        <div>
+          <dt>Отпечаток подготовленного запроса</dt>
+          <dd className="vse-receipt-fingerprint">
+            9f2c1d4e5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b
+          </dd>
+        </div>
+      </dl>
+    </DialogHarness>
+  ),
+  // The summary classes are the real receipt-summary styles of the feature
+  // (scoped `.vse-receipt-*`), so the story shows the actual contract.
+  parameters: { layout: "padded" },
 };

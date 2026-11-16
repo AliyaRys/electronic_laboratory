@@ -773,6 +773,9 @@
 .vse-receipt-fingerprint {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.78rem;
+  /* DR32 §5.4/§6.1: a long fingerprint wraps inside the card — it never
+     widens the dialog or the page. */
+  overflow-wrap: anywhere;
 }
 
 .vse-receipt-route {
@@ -835,6 +838,21 @@
   .vse-check-section-head {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  /* DR32 §6.1: on a narrow screen the receipt summary pairs rebuild into a
+     single column so terms and values never overlap inside the dialog. */
+  .vse-receipt-summary div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* DR32 §9.2.10: the receipt parameter pairs keep the page free of a
+     horizontal scroll on the narrowest supported screens. */
+  .vse-receipt-fields {
+    grid-template-columns: 1fr;
   }
 }
 

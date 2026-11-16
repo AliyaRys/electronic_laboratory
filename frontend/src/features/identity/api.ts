@@ -123,12 +123,32 @@ export async function fetchLaboratoryOptions(
   return "problem" in settled ? settled.problem : (settled.data ?? []);
 }
 
+/**
+ * Server-authoritative assignment options of the create form (DR34 §7.2,
+ * FT-ADM-01): the delegable roles, territories, laboratories and product
+ * areas of the caller only — the form shows names, the server keeps the IDs.
+ */
+export type TerritoryOption = components["schemas"]["TerritoryOptionView"];
+export type ProductAreaOption = components["schemas"]["ProductAreaOptionView"];
+export type AssignableRoleOptions = components["schemas"]["AssignableRoleOptions"];
+export type AssignableOptions = components["schemas"]["AssignableOptionsView"];
+
+export async function fetchAssignableOptions(
+  signal?: AbortSignal | null,
+): Promise<AssignableOptions | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/users/assignable", { signal: signal ?? null }) as Promise<
+      RawResult<AssignableOptions>
+    >,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
 export interface ChangePasswordInput {
   current_password: string;
   new_password: string;
   confirmation: string;
 }
-
 export async function changePassword(
   payload: ChangePasswordInput,
   signal?: AbortSignal | null,
@@ -195,6 +215,8 @@ export interface UserEditorPayload {
   scopes: components["schemas"]["ScopeInput"][];
   password?: string | null | undefined;
   confirmation?: string | null | undefined;
+  /** DR34 §7.4: the target territory of a new ADMIN (server-validated). */
+  territory_id?: string | null | undefined;
 }
 
 export async function createUser(

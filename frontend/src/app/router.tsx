@@ -13,6 +13,7 @@ import { LoginPage } from "../pages/LoginPage";
 import { RecoveryPage } from "../pages/RecoveryPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { UsersPage } from "../pages/UsersPage";
+import { UserCreatePage } from "../pages/UserCreatePage";
 import { UserEditorPage } from "../pages/UserEditorPage";
 import { UserHistoryPage } from "../pages/UserHistoryPage";
 import { AnalystLabsPage } from "../pages/AnalystLabsPage";
@@ -44,7 +45,7 @@ export const routes: RouteObject[] = [
     children: [
       { path: "/profile", element: <ProfilePage /> },
       { path: "/users", element: <UsersPage /> },
-      { path: "/users/new", element: <UserEditorPage mode="create" /> },
+      { path: "/users/new", element: <UserCreatePage /> },
       {
         path: "/users/:userId/edit",
         element: <UserEditorPage mode="edit" />,

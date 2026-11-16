@@ -7,7 +7,7 @@
 import "../features/identity/identity.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import {
   blockUser,
@@ -25,7 +25,7 @@ import { Button } from "../shared/ui/Button";
 import { Dialog } from "../shared/ui/Dialog";
 import { StatusView } from "../shared/ui/StatusView";
 import { DataTable, type DataTableRow } from "../shared/ui/DataTable";
-import { useMe } from "../shared/api/me";
+import { ME_QUERY_KEY, useMe } from "../shared/api/me";
 
 const COLUMNS = [
   { id: "user", header: "Пользователь" },
@@ -65,17 +65,24 @@ type UserAction =
   | { kind: "delete"; user: UserView };
 
 function UsersContent(): React.ReactElement {
-  const { user: me } = useMe();
+  const { user: me, loading: meLoading, errorMessage: meError } = useMe();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const queryClient = useQueryClient();
   const filters = filtersFromParams(params);
   const searchRef = useRef<HTMLInputElement>(null);
   const [action, setAction] = useState<UserAction>({ kind: "none" });
   const [actionError, setActionError] = useState("");
-  const [actionDone, setActionDone] = useState("");
+  const [actionDone, setActionDone] = useState(() => {
+    const notice = (location.state as { notice?: unknown } | null)?.notice;
+    return typeof notice === "string" ? notice : "";
+  });
 
-  const isAdmin = me === null || me.role === "ADMIN";
+  // DR34 §5.2 (FT-ACC-08/09): the create right is decided by the LOADED
+  // identity — never by the "the /me query has not answered yet" state.
+  const canCreate = me !== null && me.role === "ADMIN" && me.capabilities.includes("users:create");
+  const isAdmin = me !== null && me.role === "ADMIN" && meError === null;
 
   const query = {
     role: filters.role === "" ? null : (filters.role as UserRole),
@@ -99,6 +106,12 @@ function UsersContent(): React.ReactElement {
     if (merged.status !== "") search.set("status", merged.status);
     if (merged.page > 1) search.set("page", String(merged.page));
     setParams(search);
+  };
+
+  // §5.3: the current list URL (with q/role/status/page) rides along as the
+  // returnTo, so cancel and success both land back on the filtered list.
+  const openCreate = (): void => {
+    navigate("/users/new", { state: { returnTo: `${location.pathname}${location.search}` } });
   };
 
   const rows: DataTableRow[] = (page?.items ?? []).map((item) => ({
@@ -131,6 +144,32 @@ function UsersContent(): React.ReactElement {
 
   const current = "user" in action ? action.user : null;
 
+  if (meLoading) {
+    // §5.2: an honest loading state — no button, no premature admin query.
+    return (
+      <div className="vse-app vse-page">
+        <h1>Управление пользователями</h1>
+        <StatusView state="loading" title="Загрузка профиля…" />
+      </div>
+    );
+  }
+  if (me === null) {
+    return (
+      <div className="vse-app vse-page">
+        <h1>Управление пользователями</h1>
+        <StatusView
+          state={meError !== null ? "network-error" : "forbidden"}
+          title={meError !== null ? undefined : "Раздел доступен только администратору."}
+          detail={meError ?? undefined}
+          onRetry={
+            meError !== null
+              ? () => void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY })
+              : undefined
+          }
+        />
+      </div>
+    );
+  }
   if (!isAdmin) {
     return (
       <div className="vse-app vse-page">
@@ -140,9 +179,21 @@ function UsersContent(): React.ReactElement {
     );
   }
 
+  const adminArea = me.scopes.find((scope) => scope.territory_name !== null)?.territory_name ?? null;
+
   return (
     <div className="vse-app vse-page">
-      <h1>Управление пользователями</h1>
+      <div className="vse-users-title-row">
+        <div>
+          <h1>Управление пользователями</h1>
+          {adminArea !== null ? <p>{adminArea}</p> : null}
+        </div>
+        {canCreate ? (
+          <Button variant="primary" icon="admin-user-add" onClick={openCreate}>
+            Создать пользователя
+          </Button>
+        ) : null}
+      </div>
       <div className="vse-panel">
         <form
           className="vse-admin-controls"

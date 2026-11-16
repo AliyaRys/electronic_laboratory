@@ -20,10 +20,10 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine
 from backend.src.modules.identity.models import (
     CommandRecord,
     DelegationGrant,
@@ -34,7 +34,6 @@ from backend.src.modules.identity.models import (
     UserRole,
     UserScope,
 )
-from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine
 from backend.src.modules.identity.passwords import hash_password
 from backend.src.modules.identity.session import SessionTransport
 from backend.tests.identity.test_sessions import MemoryRedis
@@ -132,12 +131,21 @@ def _payload(
     scopes: list[dict[str, object]] | None = None,
     password: str | None = USER_PASSWORD,
 ) -> dict[str, object]:
+    if scopes is not None:
+        body_scopes = scopes
+    elif lab is None:
+        body_scopes: list[dict[str, object]] = []
+    else:
+        scope_row: dict[str, object] = {"laboratory_id": str(lab)}
+        if product is not None:
+            scope_row["product_scope_id"] = str(product)
+        body_scopes = [scope_row]
     body: dict[str, object] = {
         "full_name": "Новый сотрудник",
         "login": login,
         "email": f"{login}@example.test",
         "role": role,
-        "scopes": scopes if scopes is not None else ([] if lab is None else ([{"laboratory_id": str(lab), **({"product_scope_id": str(product)} if product else {})}])),
+        "scopes": body_scopes,
         "password": password,
         "confirmation": password,
     }
@@ -256,7 +264,7 @@ async def test_forged_role_and_territory_rejected(delegation_env: SimpleNamespac
     env = delegation_env
     async with _client_for(env) as http:
         await _login(http)
-        auth = {**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": "dr34-forge"}
+        auth = {**_csrf(http.cookies.get("vse_csrf", ""))}
         cases = [
             ("forged-territory", _payload("forged-territory", role="ADMIN", territory=env.foreign.id, scopes=[])),
             ("forged-lab", _payload("forged-lab", role="VET", lab=env.foreign_lab.id)),
@@ -265,7 +273,9 @@ async def test_forged_role_and_territory_rejected(delegation_env: SimpleNamespac
         ]
         for login_name, payload in cases:
             response = await http.post(
-                "/api/v1/users", json=payload, headers={**_csrf(http.cookies.get("vse_csrf", "")), "Idempotency-Key": f"dr34-forge-{login_name}"}
+                "/api/v1/users",
+                json=payload,
+                headers={**auth, "Idempotency-Key": f"dr34-forge-{login_name}"},
             )
             assert response.status_code in (403, 422), (login_name, response.text)
         denied = await http.post(

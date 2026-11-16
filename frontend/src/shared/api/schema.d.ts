@@ -186,6 +186,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/assignable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assignable Options */
+        get: operations["assignable_options_api_v1_users_assignable_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{user_id}": {
         parameters: {
             query?: never;
@@ -2977,6 +2994,44 @@ export interface components {
             password?: string | null;
             /** Confirmation */
             confirmation?: string | null;
+            /**
+             * Territory Id
+             * @description DR34: the target territory of a new ADMIN (chosen from the assignable options).
+             */
+            territory_id?: string | null;
+        };
+        /** TerritoryOptionView */
+        TerritoryOptionView: {
+            /** Territory Id */
+            territory_id: string;
+            /** Name */
+            name: string;
+        };
+        /** ProductAreaOptionView */
+        ProductAreaOptionView: {
+            /** Product Area Id */
+            product_area_id: string;
+            /** Name */
+            name: string;
+        };
+        /** AssignableRoleOptions */
+        AssignableRoleOptions: {
+            role: components["schemas"]["UserRole"];
+            /** Label */
+            label: string;
+            /** Territories */
+            territories: components["schemas"]["TerritoryOptionView"][];
+            /** Laboratories */
+            laboratories: components["schemas"]["LaboratoryOptionView"][];
+            /** Product Areas */
+            product_areas: components["schemas"]["ProductAreaOptionView"][];
+            /** Max Laboratories */
+            max_laboratories: number | null;
+        };
+        /** AssignableOptionsView */
+        AssignableOptionsView: {
+            /** Roles */
+            roles: components["schemas"]["AssignableRoleOptions"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -3274,6 +3329,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assignable_options_api_v1_users_assignable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignableOptionsView"];
                 };
             };
             /** @description Validation Error */

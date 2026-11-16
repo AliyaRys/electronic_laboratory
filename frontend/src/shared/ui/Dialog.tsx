@@ -61,60 +61,66 @@ export function Dialog({
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="app-dialog-overlay" />
-        <RadixDialog.Content
-          className={`app-dialog${danger ? " danger" : ""}`}
-          role="dialog"
-          aria-labelledby={titleId}
-          aria-describedby={describedBy === "" ? undefined : describedBy}
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            cancelRef.current?.focus();
-          }}
-        >
-          <RadixDialog.Title className="app-dialog-title" id={titleId}>
-            {title}
-          </RadixDialog.Title>
-          {description !== undefined && description !== "" ? (
-            <RadixDialog.Description className="app-dialog-description">
-              {description}
-            </RadixDialog.Description>
-          ) : null}
-          {children}
-          {error !== undefined && error !== "" ? (
-            <p className="app-dialog-error" id={errorId}>
-              {error}
-            </p>
-          ) : null}
-          <div className="app-dialog-actions">
-            <Button
-              ref={cancelRef}
-              onClick={() => onOpenChange(false)}
-              disabled={busy}
-              busyLabel="Отмена недоступна…"
-            >
-              {cancelLabel}
-            </Button>
-            <Button
-              variant={danger ? "danger" : "primary"}
-              onClick={onConfirm}
-              busy={busy}
-              disabled={onConfirm === undefined}
-            >
-              {confirmLabel}
-            </Button>
-          </div>
-          <RadixDialog.Close asChild>
-            <button
-              type="button"
-              className="app-dialog-close"
-              aria-label="Закрыть диалог"
-              onClick={() => onOpenChange(false)}
-            >
-              ✕
-            </button>
-          </RadixDialog.Close>
-        </RadixDialog.Content>
+        {/* DR32 §5.1: the single themed wrapper inside the portal — it carries
+            the canonical `--app-*` tokens (ui.css) so the overlay and the card
+            are themed the same way as `.vse-app` pages, in the app, tests and
+            Storybook alike. No per-page z-index or token copies anywhere. */}
+        <div className="app-dialog-layer">
+          <RadixDialog.Overlay className="app-dialog-overlay" />
+          <RadixDialog.Content
+            className={`app-dialog${danger ? " danger" : ""}`}
+            role="dialog"
+            aria-labelledby={titleId}
+            aria-describedby={describedBy === "" ? undefined : describedBy}
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              cancelRef.current?.focus();
+            }}
+          >
+            <RadixDialog.Title className="app-dialog-title" id={titleId}>
+              {title}
+            </RadixDialog.Title>
+            {description !== undefined && description !== "" ? (
+              <RadixDialog.Description className="app-dialog-description">
+                {description}
+              </RadixDialog.Description>
+            ) : null}
+            {children}
+            {error !== undefined && error !== "" ? (
+              <p className="app-dialog-error" id={errorId}>
+                {error}
+              </p>
+            ) : null}
+            <div className="app-dialog-actions">
+              <Button
+                ref={cancelRef}
+                onClick={() => onOpenChange(false)}
+                disabled={busy}
+                busyLabel="Отмена недоступна…"
+              >
+                {cancelLabel}
+              </Button>
+              <Button
+                variant={danger ? "danger" : "primary"}
+                onClick={onConfirm}
+                busy={busy}
+                disabled={onConfirm === undefined}
+              >
+                {confirmLabel}
+              </Button>
+            </div>
+            <RadixDialog.Close asChild>
+              <button
+                type="button"
+                className="app-dialog-close"
+                aria-label="Закрыть диалог"
+                onClick={() => onOpenChange(false)}
+              >
+                ✕
+              </button>
+            </RadixDialog.Close>
+          </RadixDialog.Content>
+        </div>
       </RadixDialog.Portal>
     </RadixDialog.Root>
   );

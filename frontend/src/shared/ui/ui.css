@@ -2,8 +2,16 @@
  * Canonical tokens for the new SPA working screens — ported from
  * components/app/tokens.css (DESIGN.md is absent from the repo; UX-CONTRACT.md
  * and the owners' CSS are the design authority). Values are copied verbatim.
+ *
+ * DR32 §5.1: the tokens are declared for BOTH the app root and the shared
+ * dialog portal layer. RadixDialog.Portal renders the overlay and the dialog
+ * card into document.body — outside `.vse-app` — so a portal-only subtree
+ * would lose every `var(--app-*)` value (transparent card, default font).
+ * `.app-dialog-layer` (see shared/ui/Dialog.tsx) is the ONE centralized
+ * themed wrapper inside the portal; no token copies elsewhere.
  */
-.vse-app {
+.vse-app,
+.app-dialog-layer {
   --app-ink: #17323a;
   --app-muted: #668087;
   --app-muted-readable: #566e75;
@@ -69,9 +77,21 @@
   cursor: pointer;
 }
 .vse-app :is(button, a, input, [tabindex]):focus-visible,
-.vse-app:is(button, a, input):focus-visible {
+.vse-app:is(button, a, input):focus-visible,
+/* DR32 §7.10: the visible focus ring works inside the portal too. */
+.app-dialog-layer :is(button, a, input, [tabindex]):focus-visible,
+.app-dialog-layer:is(button, a, input):focus-visible {
   outline: 3px solid var(--app-focus);
   outline-offset: 2px;
+}
+.app-dialog-layer {
+  color: var(--app-ink);
+  font: 14px/1.45 var(--app-font);
+}
+.app-dialog-layer *,
+.app-dialog-layer *::before,
+.app-dialog-layer *::after {
+  box-sizing: border-box;
 }
 
 /* --- main working area: the page never scrolls horizontally (UI-03) ---------- */

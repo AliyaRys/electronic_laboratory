@@ -77,4 +77,32 @@ describe("Dialog", () => {
     await user.click(screen.getByRole("button", { name: "Удалить" }));
     expect(screen.queryByRole("dialog", { name: "Удалить партию?" })).not.toBeInTheDocument();
   });
+
+  // DR32 §9.1: the portal subtree receives the canonical theme context — the
+  // overlay and the card live inside the single themed wrapper which is
+  // portalled to document.body (outside the render container), so
+  // `var(--app-panel)/--app-ink/--app-line` resolve there. This is a structural
+  // contract test, not a grep of the CSS text.
+  it("renders the portal content inside the shared theme layer on body", async () => {
+    const user = userEvent.setup();
+    render(<DialogHarness />);
+    await user.click(screen.getByRole("button", { name: "Удалить партию" }));
+
+    const layer = document.body.querySelector("div.app-dialog-layer");
+    expect(layer).not.toBeNull();
+
+    const overlay = layer?.querySelector(".app-dialog-overlay");
+    const content = layer?.querySelector(".app-dialog");
+    expect(overlay).not.toBeNull();
+    expect(content).not.toBeNull();
+
+    // The layer is portalled to document.body — never a descendant of the
+    // `.vse-app` page root.
+    expect(layer?.closest(".vse-app")).toBeNull();
+    expect(layer?.parentElement).toBe(document.body);
+
+    // Radix a11y contract is untouched: role, labelling and modality.
+    expect(content).toHaveAttribute("role", "dialog");
+    expect(content).toHaveAttribute("aria-labelledby", "app-dialog-title");
+  });
 });

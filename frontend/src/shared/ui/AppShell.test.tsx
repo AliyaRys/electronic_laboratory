@@ -23,9 +23,12 @@ const me: UserView = {
   role: "VET",
   active: true,
   scopes: [{ laboratory_id: "11111111-2222-4333-8444-555555555555", product_scope_id: null }],
-  capabilities: ["arrivals:read"],
+  capabilities: ["arrivals:read", "sample:read", "report:operational", "report:5vet-list", "report:5vet-read"],
   revision: 3,
 };
+
+const LAB = "11111111-2222-4333-8444-555555555555";
+const OTHER_LAB = "99999999-8888-4777-8666-555555555555";
 
 const examinationSpecialist = "Ринат Усманов";
 
@@ -48,9 +51,9 @@ function meFixture(overrides: Partial<UserView>): UserView {
   return { ...me, ...overrides };
 }
 
-function renderShellWith(overrides: Partial<UserView>): void {
+function renderShellWith(overrides: Partial<UserView>, path = "/"): void {
   server.use(http.get("*/api/v1/me", () => HttpResponse.json(meFixture(overrides))));
-  renderShell();
+  renderShell(path);
 }
 
 async function waitForUser(): Promise<void> {
@@ -139,7 +142,8 @@ describe("AppShell", () => {
     renderShellWith({ role: "ADMIN" });
     await waitForUser();
     expect(screen.getByRole("link", { name: /Управление пользователями/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Отчёты/ })).toBeInTheDocument();
+    // FT-RPT-01: the administrator has no reports item at all (DR37 §3).
+    expect(screen.queryByRole("link", { name: /Отчёты/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /Поступления/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Тип продукции/ })).toBeNull();
   });
@@ -172,5 +176,70 @@ describe("AppShell", () => {
 
     expect(useContextStore.getState().productType as ProductType).toBe("meat");
     expect(screen.getByRole("button", { name: "Тип продукции: Мясо и продукты убоя" })).toBeInTheDocument();
+  });
+});
+
+describe("AppShell contextual reports navigation (DR37)", () => {
+  const REPORT_CAPS = [
+    "sample:read",
+    "report:operational",
+    "report:5vet-list",
+    "report:5vet-read",
+    "report:5vet-preview",
+    "report:5vet-save",
+  ];
+
+  it("an ANALYST on a selected laboratory keeps «Отчёты» in that laboratory", async () => {
+    renderShellWith({ role: "ANALYST", capabilities: REPORT_CAPS }, `/labs/${OTHER_LAB}/arrivals`);
+    await waitForUser();
+    const reports = screen.getByRole("link", { name: "Отчёты" });
+    expect(reports).toHaveAttribute("href", `/labs/${OTHER_LAB}/reports`);
+    // The navigation never drops the selected laboratory back to /labs.
+    expect(reports).not.toHaveAttribute("href", "/labs");
+    expect(screen.getByRole("link", { name: "Поступления" })).toHaveAttribute(
+      "href",
+      `/labs/${OTHER_LAB}/arrivals?queue=expected`,
+    );
+  });
+
+  it("on a reports route of the selected laboratory «Отчёты» is the active item", async () => {
+    renderShellWith({ role: "ANALYST", capabilities: REPORT_CAPS }, `/labs/${OTHER_LAB}/reports`);
+    await waitForUser();
+    expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Поступления" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("an ANALYST before the laboratory choice links «Отчёты» to the honest /labs selection", async () => {
+    renderShellWith({ role: "ANALYST", capabilities: REPORT_CAPS }, "/labs");
+    await waitForUser();
+    expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("href", "/labs");
+  });
+
+  it("a VET with sample:read sees «Отчёты» pointing to the own laboratory", async () => {
+    renderShellWith({ role: "VET", capabilities: ["arrivals:read", "sample:read"] }, `/labs/${LAB}/arrivals?queue=expected`);
+    await waitForUser();
+    expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("href", `/labs/${LAB}/reports`);
+  });
+
+  it("a HEAD with report capabilities sees «Отчёты» pointing to the own laboratory", async () => {
+    renderShellWith({ role: "HEAD", capabilities: REPORT_CAPS }, `/labs/${LAB}/examinations`);
+    await waitForUser();
+    expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("href", `/labs/${LAB}/reports`);
+    expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("a user without any reporting capability has no «Отчёты» item", async () => {
+    renderShellWith({ role: "VET", capabilities: ["arrivals:read"] }, `/labs/${LAB}/arrivals?queue=expected`);
+    await waitForUser();
+    expect(screen.queryByRole("link", { name: "Отчёты" })).toBeNull();
+  });
+
+  it("the journal route marks «Журнал ВСЭ» and the users route marks the admin item active", async () => {
+    renderShellWith({ role: "ADMIN", capabilities: [] }, "/users");
+    await waitForUser();
+    expect(screen.getByRole("link", { name: /Управление пользователями/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 });

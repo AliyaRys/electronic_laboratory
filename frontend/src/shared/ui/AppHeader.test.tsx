@@ -66,12 +66,45 @@ describe("AppHeader", () => {
   it("admin and no-products modes hide the working navigation and switcher", () => {
     const { rerender } = render(<AppHeader mode="admin" user={user} onLogout={() => undefined} />);
     expect(screen.getByRole("link", { name: /Управление пользователями/ })).toBeInTheDocument();
+    // FT-RPT-01: the administrator has no reports item in the header (DR37).
+    expect(screen.queryByRole("link", { name: "Отчёты" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Тип продукции/ })).toBeNull();
     expect(screen.queryByRole("link", { name: "Поступления" })).toBeNull();
 
     rerender(<AppHeader mode="no-products" user={user} onLogout={() => undefined} />);
     expect(screen.queryByRole("link", { name: "Поступления" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Тип продукции/ })).toBeNull();
+  });
+
+  it("shows the reports item only when a contextual link is provided (DR37 §3)", () => {
+    const LAB = "11111111-2222-4333-8444-555555555555";
+    const { rerender } = render(
+      <AppHeader
+        mode="work"
+        user={user}
+        links={{ arrivals: `/labs/${LAB}/arrivals`, reports: `/labs/${LAB}/reports` }}
+        onLogout={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("href", `/labs/${LAB}/reports`);
+
+    rerender(<AppHeader mode="work" user={user} links={{}} onLogout={() => undefined} />);
+    expect(screen.queryByRole("link", { name: "Отчёты" })).toBeNull();
+  });
+
+  it("an analyst without a selected laboratory links «Отчёты» to the honest /labs choice", () => {
+    render(
+      <AppHeader
+        mode="analyst"
+        user={user}
+        active="reports"
+        links={{ reports: "/labs" }}
+        onLogout={() => undefined}
+      />,
+    );
+    const reports = screen.getByRole("link", { name: "Отчёты" });
+    expect(reports).toHaveAttribute("href", "/labs");
+    expect(reports).toHaveAttribute("aria-current", "page");
   });
 
   it("reports the logout action", async () => {

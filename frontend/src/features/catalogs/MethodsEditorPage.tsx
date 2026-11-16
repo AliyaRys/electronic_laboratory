@@ -86,13 +86,23 @@ export function intervalPayload(laboratoryId: string, code: string, draft: Metho
   };
 }
 
+/** §11.2: an ADDED variant that was never filled in is dropped — it never
+ * travels to the server and never counts as a change by itself. */
+export function draftAcceptedValues(draft: MethodDraft): string[] {
+  return [
+    ...draft.accepted,
+    ...draft.extra.filter(
+      (value) => value.trim() !== "" && !draft.accepted.includes(value),
+    ),
+  ];
+}
+
 /** The create/update payload of one qualitative draft. */
 export function qualitativePayload(laboratoryId: string, code: string, draft: MethodDraft) {
-  const accepted = [...draft.accepted, ...draft.extra.filter((value) => !draft.accepted.includes(value))];
   return {
     laboratory_id: laboratoryId,
     code,
-    rule: { type: "qualitative" as const, accepted_values: accepted },
+    rule: { type: "qualitative" as const, accepted_values: draftAcceptedValues(draft) },
   };
 }
 
@@ -228,7 +238,13 @@ export function MethodsEditorPage(): React.ReactElement {
         if (row.rule === null) {
           // A configured-from-row create draft: any entered value is dirty.
           if (row.kind === "interval") return draft.lower !== "" || draft.upper !== "";
-          return draft.accepted.length > 0 || draft.extra.length > 0;
+          // §11.3: until the FIRST change an unset qualitative block is not
+          // dirty — its accepted set starts as the registry options.
+          const initial = row.indicator?.options ?? [];
+          return (
+            draftAcceptedValues(draft).join("\u0001") !==
+            initial.filter((value) => value.trim() !== "").join("\u0001")
+          );
         }
         if (row.rule.rule.type === "interval") {
           return (
@@ -238,13 +254,8 @@ export function MethodsEditorPage(): React.ReactElement {
             draft.upperInclusive !== (row.rule.rule.upper_inclusive ?? true)
           );
         }
-        const accepted = [
-          ...draft.accepted,
-          ...draft.extra.filter((value) => !draft.accepted.includes(value)),
-        ];
-        return (
-          accepted.join("\u0001") !== row.rule.rule.accepted_values.join("\u0001") || draft.extra.length > 0
-        );
+        const accepted = draftAcceptedValues(draft);
+        return accepted.join("\u0001") !== row.rule.rule.accepted_values.join("\u0001");
       }),
     [rows, drafts],
   );
@@ -289,11 +300,7 @@ export function MethodsEditorPage(): React.ReactElement {
             continue;
           }
         } else {
-          const accepted = [
-            ...draft.accepted,
-            ...draft.extra.filter((value) => !draft.accepted.includes(value)),
-          ];
-          if (accepted.length === 0) continue;
+          if (draftAcceptedValues(draft).length === 0) continue;
         }
         const payload =
           row.kind === "interval"
@@ -342,10 +349,7 @@ export function MethodsEditorPage(): React.ReactElement {
           continue;
         }
       } else if (row.kind === "qualitative" && row.rule.rule.type === "qualitative") {
-        const accepted = [
-          ...draft.accepted,
-          ...draft.extra.filter((value) => !draft.accepted.includes(value)),
-        ];
+        const accepted = draftAcceptedValues(draft);
         if (accepted.length === 0) {
           fail("Хотя бы один вариант должен быть отмечен как «Норма».");
           continue;
@@ -406,8 +410,7 @@ export function MethodsEditorPage(): React.ReactElement {
     if (row.kind === "interval") {
       if (draft.lower !== "" && draft.upper !== "" && Number(draft.lower) > Number(draft.upper)) return;
     } else {
-      const accepted = [...draft.accepted, ...draft.extra.filter((value) => !draft.accepted.includes(value))];
-      if (accepted.length === 0) return;
+      if (draftAcceptedValues(draft).length === 0) return;
     }
     setSavePending(true);
     const payload =
@@ -534,10 +537,13 @@ export function MethodsEditorPage(): React.ReactElement {
             description="Укажите нижнюю и верхнюю границу для исследований с вводом показателей."
           />
           {/* §7.3: the category is one calm line under the lead — never a
-              technical field or an empty context container. */}
-          <p className="vse-catalog-context-note" data-testid="methods-area-name">
-            Категория продукции: {scopedContext?.product_area_name ?? ""}
-          </p>
+              technical field or an empty context container. Without an area
+              name the honest state is no line at all, not an empty label. */}
+          {scopedContext?.product_area_name ? (
+            <p className="vse-catalog-context-note" data-testid="methods-area-name">
+              Категория продукции: {scopedContext.product_area_name}
+            </p>
+          ) : null}
           <div className="vse-catalog-norm-list">
             {intervalRows.map((row) => {
               if (row.unknown) {
@@ -674,8 +680,12 @@ export function MethodsEditorPage(): React.ReactElement {
                 ...draft.extra
                   .filter((value) => !registryOptions.some((option) => option.value === value))
                   .map((value, index) => ({
-                    key: `extra-${index}-${value}`,
+                    // The index key keeps the input mounted while typing
+                    // (the row value changes on every keystroke).
+                    key: `extra-${index}`,
                     value,
+                    // §11.2: the focus moves into the just-added field.
+                    focus: value === "",
                     norm: normSet.has(value),
                     onValueChange: (next: string) =>
                       setDrafts((current) => {

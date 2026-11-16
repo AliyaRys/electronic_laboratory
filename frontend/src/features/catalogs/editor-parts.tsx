@@ -372,6 +372,8 @@ export interface QualitativeRow {
   onRemove?: (() => void) | undefined;
   /** Editable text of a manually added variant (registry rows stay readonly). */
   onValueChange?: ((next: string) => void) | undefined;
+  /** The focus moves into the just-added (still empty) field (§11.2). */
+  focus?: boolean | undefined;
 }
 
 export interface QualitativeBlockProps {
@@ -440,6 +442,7 @@ export function QualitativeBlock({
                 value={row.value}
                 readOnly={row.onValueChange === undefined}
                 aria-label={`Вариант результата: ${row.value}`}
+                autoFocus={row.focus === true}
                 onChange={(event) => row.onValueChange?.(event.target.value)}
               />
             </div>

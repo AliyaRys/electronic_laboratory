@@ -60,6 +60,73 @@ Playwright, одинаковые viewport; измерены `getComputedStyle` �
 Полностраничные снимки: `docs/implementation/DR36-screenshots/`
 (`norms-1440/1024/768/390.png` — рабочая страница, `mockup-*.png` — эталон, одинаковые viewport).
 
+## Fix-loop (ревью DR36)
+
+### IMPORTANT 1 — пустой добавленный вариант не сохраняется (§11.2)
+
+- Новый экспорт `draftAcceptedValues(draft)` (`MethodsEditorPage.tsx`): собирает принятые
+  значения, отбрасывая добавленные варианты с пустой/пробельной строкой; используется в
+  `qualitativePayload`, dirty-расчёте, save-create/save-update и «Сохранить моё значение».
+- Dirty правки: пустой `extra` больше не делает строку dirty (ни для существующей нормы, ни
+  для unset-блока — unset качественный блок сравнивается с набором вариантов реестра, поэтому
+  до первого изменения он не dirty и «Сохранить справочник» остаётся disabled).
+- Ключ строки пользовательского варианта стабилизирован (`extra-<index>`), чтобы ввод в поле
+  не перемонтировал input на каждом символе.
+- Unit-тесты: «добавил ＋, не заполнил, сохранил» → PUT/POST не вызываются (кнопка disabled),
+  заполненный вариант уходит в payload, пустой — нет (`an added but never filled variant is
+  dropped: no request and no payload value`); фокус после ＋ проверен (`toHaveFocus`).
+
+### IMPORTANT 2 — stories §18 (page-level, тот же код страницы, MSW-фикстуры)
+
+Добавлен сценарный слой (`methodsScenarioHandlers` в `mocks/catalog-editor-handlers.ts`,
+`applyScenario` в `mocks/catalog-editor-browser.ts`); новые истории в
+`editor-pages.stories.tsx`:
+
+| История | Состояние | Способ |
+| --- | --- | --- |
+| `NormsAllUnset` | полностью ненастроенный справочник, все поля сразу пустые | фикстура `rules: []` |
+| `NormsReadOnly` | роль без прав: controls readonly, без ＋/−/удаления, save недоступен | `/me` VET без capabilities |
+| `NormsLoadingSkeleton` | skeleton строк внутри секции (§15.1) | `delay` контекста |
+| `NormsNetworkError` | честная ошибка с «Повторить» | контекст 503 |
+| `NormsLongNames` | длинное название лаборатории в контексте | фикстурное имя |
+| `NormsFieldValidationError` | ошибка «Нижняя граница…» у строки | play: ввод 9>4 + сохранение |
+| `NormsPartialSave` | частичное сохранение: честная сводка | MSW PUT 422 + play |
+| `Norms409Conflict` | 409: черновик сохранён, выбор разрешения | MSW PUT 409 + play |
+
+Существующие `NormsWide`/`NormsParityDirectoryNormsEdit`/`NormsTablet`/`NormsNarrow` покрывают
+заполненные нормы, качественные блоки с registry-вариантами, tablet и 390px; добавленный
+пользовательский вариант — в unit-тестах и в истории качественного блока (`editor-parts`
+`QualitativeBlockAddRemoveError` остаётся component-level, поведение страницы проверено
+браузерной проверкой parity-истории). Проверено в браузере (storybook 6036): all-unset —
+4 пустые строки и disabled save; read-only — нет ＋/−/«Удалить норму», поля disabled;
+network-error — «Повторить»; loading — skeleton; 409/partial — play отрабатывает
+(«Сохранить моё значение» и сводка «Не удалось»).
+
+### MINOR
+
+- Фокус после ＋: поле только что добавленного пустого варианта получает фокус
+  (`QualitativeRow.focus` + `autoFocus`, focus ставится на странице, не в stories).
+- e2e: сохранённая норма сопоставляется по `indicator_id === ph.id`, а не по наличию `lower`.
+- Fallback пустой категории: строка «Категория продукции: …» не рисуется без имени области
+  (`scopedContext?.product_area_name ? … : null`) — вместо пустого хвоста после двоеточия.
+
+### Gates fix-loop
+
+- vitest `src/features/catalogs`: 7 файлов / **52 теста** — pass; весь frontend: **62 файла /
+  472 теста** — pass
+- typecheck / lint (0 errors, прежний 1 warning вне изменений) / build / build-storybook — exit 0
+- e2e `catalogs.spec.ts` (реальный backend, стек пересоздан): **3 passed**
+- Storybook в браузере: 12 историй `c02-editorpages--norms-*` зарегистрированы, сценарии
+  отрендерены и проверены (см. таблицу выше)
+
+### Честный список §18
+
+Сделано (page-level): ненастроенный справочник, read-only, loading skeleton, network error,
+validation error, partial save, 409, длинные названия, tablet, 390px, parity, заполненные нормы,
+качественные блоки с registry-вариантами. Component-level (уже были): добавленный/удаляемый
+вариант, ошибки блока (`editor-parts` stories) — поведение страницы дополнительно покрыто
+unit-тестами ＋/− и браузерной проверкой.
+
 ## Проверки
 
 | Проверка | Результат |

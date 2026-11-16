@@ -495,6 +495,65 @@ describe("MethodsEditorPage", () => {
     // Registry variants stay readonly: their inputs cannot change.
     const registryInput = within(block).getByLabelText(`Вариант результата: ${first.label}`);
     expect(registryInput).toHaveAttribute("readonly");
+    // §11.2/IMPORTANT-1: a just-added variant that stays EMPTY is not a
+    // change — the save stays disabled and no PUT carries the empty value.
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+    // The focus moved into the new field.
+    expect(within(block).getAllByLabelText(/Вариант результата:/)[registryRows]).toHaveFocus();
+    await act.type(within(block).getAllByLabelText(/Вариант результата:/)[registryRows], "Соленый вкус");
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeEnabled();
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalled());
+    expect((putSpy.mock.calls[0][0] as { rule: { accepted_values: string[] } }).rule.accepted_values).toContain(
+      "Соленый вкус",
+    );
+  });
+
+  it("an added but never filled variant is dropped: no request and no payload value (§11.2)", async () => {
+    const act = userEvent.setup();
+    const first = (cooking.options ?? [])[0] as { label: string };
+    activeRules = [
+      intervalRule({
+        id: "bbbbbbbb-0000-4000-8000-000000000003",
+        indicator_id: cooking.id,
+        result_schema: "ENUM",
+        unit_id: "",
+        rule: { type: "qualitative", accepted_values: [first.label] },
+      }),
+    ];
+    renderEditor();
+    const block = (await screen
+      .findByRole("heading", { name: cooking.name })
+      .then((heading) => heading.closest("article"))) as HTMLElement;
+    await act.click(within(block).getByRole("button", { name: "Добавить вариант" }));
+    await waitFor(() => expect(within(block).getAllByLabelText(/Оценка/).length).toBe((cooking.options ?? []).length + 1));
+    // The row itself is NOT dirty while the field stays empty.
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+    expect(putSpy).not.toHaveBeenCalled();
+    // The unset (create) path behaves the same: no POST without a value.
+    const unsetBlock = (await screen
+      .findByRole("heading", { name: "Реакция с сернокислой медью" })
+      .then((heading) => heading.closest("article"))) as HTMLElement;
+    await act.click(within(unsetBlock).getByRole("button", { name: "Добавить вариант" }));
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+    expect(postSpy).not.toHaveBeenCalled();
+    // A typed custom variant IS sent; the still-empty second one is dropped.
+    const reaction = INDICATORS.find((item) => item.code === "VSE-F27") as (typeof INDICATORS)[number];
+    const reactionRows = (reaction.options ?? []).length;
+    await act.click(within(unsetBlock).getByRole("button", { name: "Добавить вариант" }));
+    await act.type(
+      within(unsetBlock).getAllByLabelText(/Вариант результата:/)[reactionRows],
+      "Бурой окраски нет",
+    );
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(postSpy).toHaveBeenCalled());
+    const payload = postSpy.mock.calls[0][0] as { code: string; rule: { accepted_values: string[] } };
+    expect(payload.code).toBe("VSE-F27");
+    // The registry variants plus the typed extra; the never-filled added
+    // variant is absent and no empty string travels (§11.2).
+    expect(payload.rule.accepted_values).toContain("Бурой окраски нет");
+    expect(payload.rule.accepted_values).not.toContain("");
+    expect(payload.rule.accepted_values).toHaveLength((reaction.options ?? []).length + 1);
   });
 
   it("a reader without edit rights sees no configure or delete actions", async () => {

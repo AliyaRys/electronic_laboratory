@@ -144,7 +144,7 @@ test.describe("catalogs", () => {
     await expect(page.getByText("Справочник норм сохранён.")).toBeVisible();
     await expect(lower).toHaveValue("5.5");
 
-    // The saved rule is served by the read model.
+    // The saved rule is served by the read model, matched by indicator_id.
     const rules = await page.request.get(
       `/api/v1/catalogs/methods/context?laboratory_id=${seed.labAId}&area=meat`,
     );
@@ -152,7 +152,7 @@ test.describe("catalogs", () => {
     const context = (await rules.json()) as {
       active_rules: { rule: { lower: string; upper: string }; indicator_id: string }[];
     };
-    const saved = context.active_rules.find((item) => item.rule.lower !== undefined);
+    const saved = context.active_rules.find((item) => item.indicator_id === ph.id);
     expect(saved?.rule).toMatchObject({ lower: "5.5", upper: "7" });
   });
 });

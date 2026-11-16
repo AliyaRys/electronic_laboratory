@@ -3,11 +3,14 @@
  * pages render on the SAME components the production pages use, with fixture
  * data only — no demo prices from the HTML mockups, no credentials.
  */
-import { http, HttpResponse, type HttpHandler } from "msw";
+import { http, HttpResponse, type HttpHandler, delay } from "msw";
 import { INDICATORS } from "../features/examinations/indicators";
 
 const LAB = "11111111-2222-4333-8444-555555555555";
 const SPECIES = "33333333-3333-4333-8333-333333333333";
+
+/** The active temperature rule of the fixture (§18 scenarios target it). */
+export const RULE_TEMPERATURE = "bbbbbbbb-0000-4000-8000-000000000001";
 
 const organoleptic = INDICATORS[0];
 const temperature = INDICATORS.find(
@@ -77,7 +80,7 @@ const tariffs = [
 
 const methods: Array<Record<string, unknown>> = [
   {
-    id: "bbbbbbbb-0000-4000-8000-000000000001",
+    id: RULE_TEMPERATURE,
     laboratory_id: LAB,
     product_species_id: SPECIES,
     product_state_id: "cccccccc-0000-4000-8000-000000000001",
@@ -230,3 +233,91 @@ export const adminCatalogEditorHandlers: HttpHandler[] = [
       !String(handler.info.path).includes("/me") && !String(handler.info.path).includes("/contexts"),
   ),
 ];
+
+/** The §18 page-story scenarios: the SAME page with an honest fixture
+ * variation, never invented demo values. */
+export interface MethodsScenario {
+  /** Active rules of the context (default: the fixture rules). */
+  rules?: Array<Record<string, unknown>>;
+  /** The /me capabilities (read-only story: ["catalog:read"]). */
+  capabilities?: string[];
+  /** The /me overrides of the story (read-only: role VET without rights). */
+  user?: Record<string, unknown>;
+  /** The user-visible laboratory/area names of the context. */
+  names?: { laboratory?: string; area?: string };
+  /** The context problem instead of data (network error). */
+  contextProblem?: { code: string; detail: string; status: number };
+  /** Hold the context response open (loading skeleton). */
+  contextDelay?: number;
+  /** The PUT result of one rule id (partial save / 409). */
+  putResults?: Record<string, () => ReturnType<typeof HttpResponse.json>>;
+}
+
+export function methodsScenarioHandlers(scenario: MethodsScenario): HttpHandler[] {
+  const rules = scenario.rules ?? [...methods];
+  const active = rules
+    .filter((rule) => rule["active"] === true)
+    .map((rule): Record<string, unknown> => ({ ...rule, product_area_code: "meat" }));
+  const context = {
+    laboratory: { id: LAB, name: scenario.names?.laboratory ?? "Лаборатория №1 г. Казань" },
+    areas: [{ code: "meat", name: scenario.names?.area ?? "Мясо и мясопродукты", configured: true }],
+    product_area_code: "meat",
+    product_area_name: scenario.names?.area ?? "Мясо и мясопродукты",
+    indicators: INDICATORS.map((item) => ({
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      result_schema:
+        item.kind === "DECIMAL"
+          ? "DECIMAL"
+          : item.kind === "INTEGER"
+            ? "INTEGER_NONNEGATIVE"
+            : item.kind === "TEXT"
+              ? "TEXT"
+              : item.kind === "DOSIMETRY"
+                ? "DOSIMETRY_PAIR"
+                : item.kind === "BOOLEAN"
+                  ? "BOOLEAN_MATCH"
+                  : "ENUM",
+      unit_id: item.unit ?? null,
+      mandatory: item.mandatory,
+      conditional: item.code === "VSE-F21",
+      options: item.options ? item.options.map((option) => option.label) : null,
+    })),
+    active_rules: active,
+    missing: INDICATORS.filter((item) => !active.some((rule) => rule["indicator_id"] === item.id)).map(
+      (item) => item.id,
+    ),
+  };
+  return [
+    ...catalogEditorHandlers.filter((handler) => {
+      const path = String(handler.info.path);
+      return !path.includes("/me") && !path.includes("/methods");
+    }),
+    http.get("*/api/v1/me", () =>
+      HttpResponse.json({
+        ...me,
+        ...(scenario.capabilities !== undefined ? { capabilities: scenario.capabilities } : {}),
+        ...(scenario.user ?? {}),
+      }),
+    ),
+    http.get("*/api/v1/catalogs/methods/context", async () => {
+      if (scenario.contextDelay !== undefined) await delay(scenario.contextDelay);
+      if (scenario.contextProblem !== undefined) {
+        return HttpResponse.json(
+          { code: scenario.contextProblem.code, detail: scenario.contextProblem.detail },
+          { status: scenario.contextProblem.status },
+        );
+      }
+      return HttpResponse.json(context);
+    }),
+    http.put("*/api/v1/catalogs/methods/:id", async ({ request }) => {
+      const url = new URL(request.url);
+      const ruleId = url.pathname.split("/").pop() ?? "";
+      const body = (await request.json()) as Record<string, unknown>;
+      const custom = scenario.putResults?.[ruleId];
+      if (custom !== undefined) return custom();
+      return HttpResponse.json({ ...body, revision: 2 });
+    }),
+  ];
+}

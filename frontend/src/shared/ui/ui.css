@@ -41,6 +41,17 @@
   --app-mandatory-tint: #f1f4fa;
   --app-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
+  /* DR30 (electronic-vse-journal.html parity): the mockup values that had no
+     token yet, promoted to tokens instead of page-local hardcoding. */
+  --app-section-radius: 18px;
+  --app-section-shadow: 0 8px 24px #1f5a5b08;
+  --app-panel-translucent: #ffffffed;
+  --app-req: #bd3d48;
+  --app-readonly-bg: #f5f9f9;
+  --app-readonly-ink: #4f6768;
+  --app-readonly-line: #d8e5e5;
+  --app-heading-ink: #29474d;
+
   /* Compatibility aliases used by the established app shell. */
   --ink: var(--app-ink);
   --muted: var(--app-muted);
@@ -249,6 +260,126 @@
 }
 .app-info-field.wide {
   grid-column: 1 / -1;
+}
+
+/* --- FormSection (DR30): the white section card of electronic-vse-journal.html.
+   One shared shell for every large section of the examination card: tinted
+   icon square from the shared registry, h2, grey explanation. Geometry is
+   taken 1:1 from the mockup (radius/padding/shadow via the DR30 tokens). */
+.app-section {
+  min-width: 0;
+  background: var(--app-panel);
+  border: 1px solid var(--app-line);
+  border-radius: var(--app-section-radius);
+  padding: 25px;
+  box-shadow: var(--app-section-shadow);
+}
+.app-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 21px;
+}
+.app-section-title {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+.app-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 37px;
+  height: 37px;
+  min-width: 37px;
+  border-radius: 11px;
+  background: var(--app-tint);
+  color: var(--app-teal);
+  font-size: 18px;
+  line-height: 1;
+}
+.app-section-icon .app-icon {
+  width: 20px;
+  height: 20px;
+}
+.app-section h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+.app-section-head p {
+  margin: 3px 0 0;
+  color: var(--app-muted);
+  font-size: 13px;
+}
+
+/* --- ReadonlyField (DR30): the mockup's readonly input/textarea look, applied
+   to a real non-editable control so the accessible output is preserved. */
+.app-readonly-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.app-readonly-field label {
+  display: block;
+  font-weight: 690;
+  font-size: 13px;
+  margin: 0 0 7px;
+}
+.app-readonly-field input,
+.app-readonly-field textarea {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid var(--app-readonly-line);
+  border-radius: 9px;
+  padding: 0 12px;
+  background: var(--app-readonly-bg);
+  color: var(--app-readonly-ink);
+  font: inherit;
+  cursor: default;
+}
+.app-readonly-field textarea {
+  min-height: 78px;
+  padding: 10px 12px;
+  resize: none;
+}
+
+/* --- Page head (DR30 §6.2): eyebrow + h1 + right legend. ---------------------- */
+.vse-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+.vse-eyebrow {
+  color: var(--app-teal);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+.vse-legend {
+  color: var(--app-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.vse-req {
+  color: var(--app-req);
+  font-weight: 800;
+}
+@media (max-width: 800px) {
+  .vse-page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .app-section {
+    padding: 18px;
+  }
 }
 
 /* --- StatusView (UI-03 shared acceptance states) ------------------------------ */

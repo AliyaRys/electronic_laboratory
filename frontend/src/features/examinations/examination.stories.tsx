@@ -9,10 +9,13 @@ import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ExaminationForm } from "./ExaminationForm";
 import { OutcomeFields, outcomeText } from "./OutcomeFields";
-import { PartyReadonlyFacts } from "./SampleSelection";
+import { PartyReadonlyFacts } from "./ExaminationSections";
+import { ResearchFields } from "./ResearchFields";
+import { Button } from "../../shared/ui/Button";
 import { DeleteDialog } from "./DeleteDialog";
 import { JournalRow } from "../../pages/ExaminationJournalPage";
-import { emptyOutcome, type ExaminationFormValues } from "./formValues";
+import { emptyOutcome, emptyResearch, type ExaminationFormValues, type ResearchEntry } from "./formValues";
+import { INDICATORS } from "./indicators";
 import type { CollectionView } from "../samples/api";
 import type { IncomingView } from "../arrivals/api";
 import type { ExaminationView } from "./api";
@@ -119,6 +122,7 @@ const formRender = () =>
       availableCollections={[collection]}
       onSaved={() => undefined}
       onCancel={() => undefined}
+      specialistName="Кузнецова Алиса Викторовна"
     />,
   );
 
@@ -127,9 +131,82 @@ export const ФормаНовая: StoryObj = {
   parameters: { viewport: { defaultViewport: "desktop" } },
 };
 
+/** REUSE is the default sample entry whenever an available collection exists. */
+export const ПробаПовторноеИспользование: StoryObj = {
+  render: formRender,
+  parameters: {
+    viewport: { defaultViewport: "desktop" },
+    docs: {
+      description: {
+        story:
+          "По умолчанию выбран режим «Использовать имеющуюся пробу» (REUSE) с доступной пробой той же партии.",
+      },
+    },
+  },
+};
+
 export const ФормаУзкийЭкран: StoryObj = {
   render: formRender,
   parameters: { viewport: { defaultViewport: "mobile1" } },
+};
+
+/** The research-only composition for typed research states (same components
+ * as the page: ResearchFields inside its shared FormSection shell). */
+function researchValues(performed: Record<string, Partial<ResearchEntry>>): ExaminationFormValues {
+  const researches: ExaminationFormValues["researches"] = {};
+  for (const def of INDICATORS) {
+    researches[def.id] = emptyResearch({ performed: def.mandatory, ...performed[def.id] });
+  }
+  return {
+    number: "",
+    stamp: "",
+    sentToLab: false,
+    sample: { mode: "NEW", collectedOn: "2026-11-07", massKg: "0.8", collectionId: "", expectedRevision: "" },
+    researches,
+    invasive: [],
+    noncontagious: [],
+    outcome: emptyOutcome(),
+  };
+}
+
+const researchRender = (values: ExaminationFormValues) => (
+  <ResearchFields values={values} view={null} disabled={false} onChange={() => undefined} />
+);
+
+export const ТрихинеллоскопияОбязательна: StoryObj = {
+  render: () =>
+    researchRender(researchValues({ "adf96c8a-a6d6-50c4-9ec9-86f058b329f1": { performed: true } })),
+  parameters: {
+    viewport: { defaultViewport: "desktop" },
+    docs: {
+      description: {
+        story:
+          "Свинина/конина: трихинеллоскопия добавлена в composition (условие обязательности остаётся на сервере по справочнику Меркурия).",
+      },
+    },
+  },
+};
+
+export const ДополнительныеИсследованияДобавлены: StoryObj = {
+  render: () =>
+    researchRender(
+      researchValues({
+        "adf96c8a-a6d6-50c4-9ec9-86f058b329f1": { performed: true },
+        "6e126f72-4871-566b-809b-8765c562d2d6": { performed: true },
+        "e6be5304-d6d2-5f49-86a3-8e1308b344d4": { performed: true, value: "стафилококк" },
+        "fcca2571-990b-53bb-8b7b-9144643cb890": { performed: true, first: "0.12", last: "0.10" },
+      }),
+    ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
+export const ИнвазионныеБолезниДобавлены: StoryObj = {
+  render: () => {
+    const values = researchValues({});
+    values.invasive = [{ disease: "Цистицеркоз", location: "печень", otherText: "" }];
+    values.noncontagious = [{ disease: "Пастереллёз", location: "", otherText: "" }];
+    return withProviders(researchRender(values));
+  },
 };
 
 export const ФормаДлинныеЗначения: StoryObj = {
@@ -156,21 +233,50 @@ export const ФормаДлинныеЗначения: StoryObj = {
     ),
 };
 
-/** The busy/disabled state: every control disabled, honest busy hint. */
-export const ФормаНедоступнаНаВремяСохранения: StoryObj<typeof ExaminationForm> = {
+/** The WAITING card in the same-day edit: the outcome block honestly shows
+ * that the conclusion is entered later, as a separate action. */
+export const ОжиданиеПравкаБезИтога: StoryObj<typeof ExaminationForm> = {
   render: (args) => withProviders(<ExaminationForm {...args} />),
   args: {
     party,
-    view: null,
+    view: savedCard,
     today: "2026-11-07",
-    availableCollections: [],
+    availableCollections: [collection],
     onSaved: () => undefined,
     onCancel: () => undefined,
+    specialistName: "Кузнецова Алиса Викторовна",
   },
-  // A disabled-snapshot: the form's controls accept `disabled` from the
-  // command status; here the readonly story shows the same tree with the
-  // controls visually disabled through the wrapped fields.
-  parameters: { docs: { description: { story: "Демонстрация недоступного состояния блоков формы." } } },
+  parameters: {
+    viewport: { defaultViewport: "desktop" },
+    docs: {
+      description: {
+        story: "Ожидающая карточка: итог не показан как завершённый; отдельное позднее действие.",
+      },
+    },
+  },
+};
+
+/** The busy/disabled state of the sticky action panel: the same Button
+ * component with the real busy captions of the create actions. */
+export const ПанельДействийЗанята: StoryObj = {
+  render: () => (
+    <div className="vse-app">
+      <div className="vse-exam-actions" style={{ position: "static" }}>
+        <Button disabled onClick={() => undefined}>
+          Отменить
+        </Button>
+        <Button variant="primary" busy busyLabel="Сохраняем ожидание…" onClick={() => undefined}>
+          Отправить в ожидание результата
+        </Button>
+        <Button variant="primary" disabled onClick={() => undefined}>
+          Завершить ВСЭ
+        </Button>
+      </div>
+    </div>
+  ),
+  parameters: {
+    docs: { description: { story: "busy/disabled состояния панели действий во время запроса." } },
+  },
 };
 
 export const ИтогНеВыбран: StoryObj<typeof OutcomeFields> = {

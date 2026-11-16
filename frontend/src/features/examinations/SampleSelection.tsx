@@ -6,11 +6,17 @@
  * charging and is the DEFAULT when one exists; EDIT is a same-day correction
  * of the currently linked collection with its expected revision. The readonly
  * accepted volume of the party is shown next to the block (VSE-F13–15).
+ *
+ * DR30: the section keeps its own shell (the working sample model is richer
+ * than the static mockup); the mode entry is a segmented radio-group in the
+ * mockup style — the active mode is carried by the checked radio glyph, the
+ * teal border and an inset ring, never by color alone. The linked collection
+ * UUID stays secondary technical information.
  */
 import type { CollectionView } from "../samples/api";
 import type { ExaminationView } from "./api";
+import { FormSection } from "../../shared/ui/FormSection";
 import { DEFAULT_SAMPLE_MASS_KG, type ExaminationFormValues, type SampleEntry } from "./formValues";
-import { InfoField } from "../../shared/ui/InfoField";
 
 export interface SampleSelectionProps {
   values: ExaminationFormValues;
@@ -35,10 +41,13 @@ export function SampleSelection({
   const reuseAvailable = availableCollections.length > 0;
 
   return (
-    <section className="vse-exam-block" aria-label="Проба">
-      <h3>Проба</h3>
-      <div className="vse-sample-modes">
-        <label className="vse-comparison-mark">
+    <FormSection
+      icon="exam-sample"
+      title="Проба"
+      description="Отбор, повторное использование или правка пробы этой партии."
+    >
+      <div className="vse-sample-modes" role="radiogroup" aria-label="Режим работы с пробой">
+        <label className="vse-sample-mode">
           <input
             type="radio"
             name="sample-mode"
@@ -55,7 +64,7 @@ export function SampleSelection({
           />
           Новый отбор
         </label>
-        <label className="vse-comparison-mark">
+        <label className="vse-sample-mode">
           <input
             type="radio"
             name="sample-mode"
@@ -66,7 +75,7 @@ export function SampleSelection({
           Использовать имеющуюся пробу
         </label>
         {view !== null && view.sample_collection_id !== "" ? (
-          <label className="vse-comparison-mark">
+          <label className="vse-sample-mode">
             <input
               type="radio"
               name="sample-mode"
@@ -136,89 +145,12 @@ export function SampleSelection({
               ))}
             </select>
           </label>
-          <p className="vse-exam-note">Повторное использование не начисляет отбор повторно (FT-SMP-03).</p>
+          <p className="vse-exam-note">Повторное использование не начисляет отбор повторно.</p>
         </div>
       )}
       {view !== null && view.sample_collection_id !== "" ? (
-        <dl className="vse-exam-facts">
-          <div>
-            <dt>Связанная проба</dt>
-            <dd>{view.sample_collection_id}</dd>
-          </div>
-        </dl>
+        <p className="vse-sample-secondary">{`Связанная проба: ${view.sample_collection_id}`}</p>
       ) : null}
-    </section>
-  );
-}
-
-/** The readonly party facts block (VSE-F01–15) shown on the form and view. */
-export function PartyReadonlyFacts({
-  party,
-  headline = "Сведения об экспертизе",
-}: {
-  party: import("../arrivals/api").IncomingView;
-  headline?: string;
-}): React.ReactElement {
-  const sender = party.external.fields;
-  const classification = party.classification;
-  return (
-    <section className="vse-exam-block" aria-label={headline}>
-      <h3>{headline}</h3>
-      <dl className="vse-exam-facts">
-        <div>
-          <dt>UUID ВСД</dt>
-          <dd>{party.external.fields.documentUuid ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Дата оформления ВСД</dt>
-          <dd>{party.external.fields.issuedOn ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Отправитель — предприятие</dt>
-          <dd>{sender.consignor ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Отправитель — владелец</dt>
-          <dd>{sender.consignorOwner ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Получатель — предприятие</dt>
-          <dd>{sender.consignee ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Получатель — владелец</dt>
-          <dd>{sender.consigneeOwner ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Тип продукции</dt>
-          <dd>{classification.productType ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Продукция</dt>
-          <dd>{classification.product?.name ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Вид продукции</dt>
-          <dd>{classification.subProduct?.name ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Название продукции</dt>
-          <dd>{classification.productItem?.name ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Принятый вес, кг</dt>
-          <dd>{party.confirmation?.accepted_mass_kg ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>Принятое количество</dt>
-          <dd>
-            {party.confirmation !== null
-              ? `${party.confirmation.accepted_quantity} ${party.confirmation.accepted_unit_id}`
-              : "—"}
-          </dd>
-        </div>
-      </dl>
-      <InfoField label="Статус приёмки" value="Партия подтверждена внешним результатом" />
-    </section>
+    </FormSection>
   );
 }

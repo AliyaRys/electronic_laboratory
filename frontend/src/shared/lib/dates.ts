@@ -43,3 +43,15 @@ export function formatMoscowDate(instant: string): string {
 export function formatMoscowDateTime(instant: string): string {
   return dateTimeFormatter.format(new Date(instant));
 }
+
+/**
+ * ТЗ DR39 §4.1: the table cell form «ДД.ММ.ГГГГ ЧЧ:ММ» (a space, no comma —
+ * the accepted cell format of the arrivals tables) in Europe/Moscow, never
+ * the browser timezone.
+ */
+export function formatMoscowCellDateTime(instant: string): string {
+  const parts = dateTimeFormatter.formatToParts(new Date(instant));
+  const value = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("day")}.${value("month")}.${value("year")} ${value("hour")}:${value("minute")}`;
+}

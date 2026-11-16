@@ -76,6 +76,16 @@ const expectedRows: IncomingView[] = [
   }),
 ];
 
+const summary = (
+  completedAt: string,
+  total: string,
+  author: string,
+): NonNullable<IncomingView["reconciliation"]> => ({
+  completed_at: completedAt,
+  author_name: author,
+  pricing: { lines: [], fair: false, total, currency: "RUB" },
+});
+
 const workRows: IncomingView[] = [
   party({
     queue: "WORK",
@@ -88,6 +98,8 @@ const workRows: IncomingView[] = [
       returned_quantity: "0.000000",
       confirmed_at: "2026-08-12T11:40:00Z",
     },
+    // ТЗ DR39: the frozen server summary — cost/date/author are REAL fields.
+    reconciliation: summary("2026-11-05T07:10:00Z", "230.00", "Иванова Анна Петровна"),
   }),
   party({
     party_id: "0c1b2d3e-1111-4222-8333-444444444444",
@@ -102,6 +114,7 @@ const workRows: IncomingView[] = [
       confirmed_at: "2026-08-12T15:25:00Z",
     },
     examination_id: "77777777-1111-4222-8333-444444444444",
+    reconciliation: summary("2026-11-06T08:35:00Z", "0.00", "Смирнов Пётр Васильевич"),
   }),
 ];
 
@@ -118,6 +131,7 @@ const acceptedRows: IncomingView[] = [
       confirmed_at: "2026-08-12T13:10:00Z",
     },
     examination_id: "77777777-1111-4222-8333-444444444444",
+    reconciliation: summary("2026-11-05T07:10:00Z", "230.00", "Иванова Анна Петровна"),
   }),
   party({
     party_id: "0c1b2d3e-1111-4222-8333-444444444444",
@@ -132,6 +146,36 @@ const acceptedRows: IncomingView[] = [
       confirmed_at: "2026-08-12T16:40:00Z",
     },
     examination_id: null,
+    reconciliation: summary("2026-11-06T08:35:00Z", "230.00", "Смирнов Пётр Васильевич"),
+  }),
+];
+
+/** ТЗ DR39 §5: the honest legacy state — a WORK row without any summary. */
+const legacyWorkRows: IncomingView[] = [
+  party({
+    queue: "WORK",
+    confirmation: {
+      id: "55555555-1111-4222-8333-444444444444",
+      accepted_mass_kg: "486.500000",
+      accepted_quantity: "3.000000",
+      accepted_unit_id: "u",
+      returned_mass_kg: "0.000000",
+      returned_quantity: "0.000000",
+      confirmed_at: "2026-08-12T11:40:00Z",
+    },
+    reconciliation: null,
+  }),
+];
+
+const longAuthorRows: IncomingView[] = [
+  party({
+    queue: "WORK",
+    confirmation: workRows[0]!.confirmation,
+    reconciliation: summary(
+      "2026-11-05T07:10:00Z",
+      "230.00",
+      "Иванова Анна Петровна Константиновна Очень-Очень-Длинное Полное Имя Сотрудника Лаборатории",
+    ),
   }),
 ];
 
@@ -242,6 +286,27 @@ export const ТаблицаЗавершенных: StoryObj = {
   render: () => (
     <div style={{ padding: 16, background: "#f5f9f8" }}>
       <CompletedArrivalsTable labId={LAB} items={acceptedRows} hiddenColumns={new Set()} />
+    </div>
+  ),
+};
+
+/** ТЗ DR39 §5: the honest legacy state — no summary, only «—». */
+export const ТаблицаВРаботеБезСводки: StoryObj = {
+  name: "Таблица в работе / без сводки сверки (legacy)",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <WorkArrivalsTable labId={LAB} items={legacyWorkRows} />
+    </div>
+  ),
+};
+
+/** ТЗ DR39 §5: a long author name is truncated visually only — the full value
+ * stays available through the native title of the table cell. */
+export const ТаблицаВРаботеДлинныйАвтор: StoryObj = {
+  name: "Таблица в работе / длинный автор сверки",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <WorkArrivalsTable labId={LAB} items={longAuthorRows} />
     </div>
   ),
 };
@@ -419,6 +484,13 @@ export const СтраницаУзкийЭкран: StoryObj = {
   name: "Страница / Ожидаемые 390 px",
   parameters: { viewport: { width: 390, height: 844 } },
   ...FullScreen("EXPECTED", expectedRows),
+};
+
+/** ТЗ DR39 §5: the WORK queue on a narrow screen keeps real metadata. */
+export const СтраницаВРаботеУзкийЭкран: StoryObj = {
+  name: "Страница / В работе 390 px",
+  parameters: { viewport: { width: 390, height: 844 } },
+  ...FullScreen("WORK", workRows),
 };
 
 export const СтраницаЗагрузка: StoryObj = {

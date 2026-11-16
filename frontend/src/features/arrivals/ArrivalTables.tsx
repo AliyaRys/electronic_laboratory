@@ -7,7 +7,8 @@
  */
 import { DataTable, type DataTableColumn, type DataTableRow } from "../../shared/ui/DataTable";
 import { Icon } from "../../shared/ui/Icon";
-import { STAGE_EMPTY_TEXTS, formatRuDate, formatRuDateTime, type IncomingView } from "./api";
+import { STAGE_EMPTY_TEXTS, formatRuDate, moneyLabel, type IncomingView } from "./api";
+import { formatMoscowCellDateTime } from "../../shared/lib/dates";
 
 /** First non-empty string of the real source values, otherwise «—». */
 function first(...keys: (string | null | undefined)[]): string {
@@ -49,9 +50,26 @@ function statusLabelText(view: IncomingView): string {
   return first(view.external.fields.statusLabel);
 }
 
-/** Confirmed reconciliation date — the only real «дата сверки» fact. */
+/** ТЗ DR39 §2: «Дата сверки данных» is ONLY Reconciliation.completed_at —
+ * never the receipt confirmation date, the save date or the ВСД issue date.
+ * The instant renders in Europe/Moscow (ДД.ММ.ГГГГ ЧЧ:ММ). */
 function reconciliationDate(view: IncomingView): string {
-  return formatRuDateTime(view.confirmation?.confirmed_at);
+  const instant = view.reconciliation?.completed_at;
+  return typeof instant === "string" && instant !== "" ? formatMoscowCellDateTime(instant) : "—";
+}
+
+/** ТЗ DR39 §2: the frozen snapshot total through the money formatter — a
+ * zero is DATA («0,00 ₽»); only a really absent pricing renders «—». */
+function reconciliationCostText(view: IncomingView): string {
+  const total = view.reconciliation?.pricing?.total;
+  return typeof total === "string" && total !== "" ? moneyLabel(total) : "—";
+}
+
+/** ТЗ DR39 §2: the author is the server-resolved User.full_name (CHK-F33) —
+ * never a UUID or login; a really absent name stays «—». */
+function reconciliationAuthorText(view: IncomingView): string {
+  const name = view.reconciliation?.author_name;
+  return typeof name === "string" && name.trim() !== "" ? name : "—";
 }
 
 function reconciliationHref(labId: string, view: IncomingView): string {
@@ -173,9 +191,8 @@ export function WorkArrivalsTable({
         { columnId: "product", value: productText(view) },
         { columnId: "mass", value: massText(view) },
         { columnId: "quantity", value: quantityText(view) },
-        // API-gap: the read model carries no reconciliation cost/author.
-        { columnId: "cost", value: "—" },
-        { columnId: "author", value: "—" },
+        { columnId: "cost", value: reconciliationCostText(view) },
+        { columnId: "author", value: reconciliationAuthorText(view) },
       ],
       actions: isDraft ? (
         <a
@@ -265,7 +282,7 @@ export function CompletedArrivalsTable({
       { columnId: "vse", value: "—" },
       { columnId: "cost", value: "—" },
       { columnId: "deadline", value: "—" },
-      { columnId: "checkAuthor", value: "—" },
+      { columnId: "checkAuthor", value: reconciliationAuthorText(view) },
       { columnId: "vseAuthor", value: "—" },
       { columnId: "vseNumber", value: "—" },
     ],

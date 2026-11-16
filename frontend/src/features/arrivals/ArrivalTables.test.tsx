@@ -11,7 +11,6 @@ import type { IncomingView } from "./api";
 
 const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const PARTY = "9c1b2d3e-1111-4222-8333-444444444444";
-
 const base: IncomingView = {
   id: "3f0e6d2a-1111-4222-8333-444444444444",
   party_id: PARTY,
@@ -55,6 +54,23 @@ function withConfirmation(view: IncomingView): IncomingView {
       returned_mass_kg: "0.000000",
       returned_quantity: "0.000000",
       confirmed_at: "2026-08-12T11:40:00Z",
+    },
+  };
+}
+
+/** ТЗ DR39 §2: the frozen server summary of the completed сверка. */
+function withReconciliation(
+  view: IncomingView,
+  total: string | null = "230.00",
+  overrides: { completed_at?: string | null; author_name?: string | null } = {},
+): IncomingView {
+  return {
+    ...view,
+    ...withConfirmation(view),
+    reconciliation: {
+      completed_at: "completed_at" in overrides ? overrides.completed_at! : "2026-11-05T07:10:00Z",
+      author_name: "author_name" in overrides ? overrides.author_name! : "Иванова Анна Петровна",
+      pricing: total === null ? null : { lines: [], fair: false, total, currency: "RUB" },
     },
   };
 }
@@ -144,7 +160,7 @@ describe("ExpectedArrivalsTable", () => {
 });
 
 describe("WorkArrivalsTable", () => {
-  it("shows the mockup columns and honest «—» for cost/author (API-gap)", () => {
+  it("shows the mockup columns; a row WITHOUT reconciliation summary keeps honest «—»", () => {
     render(<WorkArrivalsTable labId={LAB} items={[withConfirmation(base)]} />);
     expect(screen.getByRole("columnheader", { name: "Дата сверки данных" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "UUID ВСД" })).toBeTruthy();
@@ -153,6 +169,47 @@ describe("WorkArrivalsTable", () => {
     expect(screen.getByRole("columnheader", { name: "Автор сверки данных" })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: "Очередь" })).toBeNull();
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+  });
+
+  // ТЗ DR39 §4.1: no false «—» when the summary exists.
+  it("shows the completed date, frozen cost and author full name", () => {
+    render(<WorkArrivalsTable labId={LAB} items={[withReconciliation(base)]} />);
+    expect(screen.getByText("05.11.2026 10:10")).toBeTruthy();
+    expect(screen.getByText("230,00 ₽")).toBeTruthy();
+    expect(screen.getByText("Иванова Анна Петровна")).toBeTruthy();
+  });
+
+  it("the date is Reconciliation.completed_at, never the receipt confirmed_at", () => {
+    render(<WorkArrivalsTable labId={LAB} items={[withReconciliation(base)]} />);
+    // confirmed_at is 11:40 (14:40 мск) — the completed 10:10 мск wins.
+    expect(screen.queryByText("12.08.2026 14:40")).toBeNull();
+  });
+
+  it("a saved zero cost is «0,00 ₽», never «—»", () => {
+    render(<WorkArrivalsTable labId={LAB} items={[withReconciliation(base, "0.00")]} />);
+    expect(screen.getByText("0,00 ₽")).toBeTruthy();
+  });
+
+  it("a null pricing snapshot and null author stay honest «—»", () => {
+    render(
+      <WorkArrivalsTable
+        labId={LAB}
+        items={[withReconciliation(base, null, { author_name: null })]}
+      />,
+    );
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("0,00 ₽")).toBeNull();
+  });
+
+  it("a long author name keeps the full value in the accessible title", () => {
+    render(
+      <WorkArrivalsTable
+        labId={LAB}
+        items={[withReconciliation(base, "230.00", { author_name: "Иванова Анна Петровна Очень-Очень-Длинная" })]}
+      />,
+    );
+    expect(screen.getByTitle("Иванова Анна Петровна Очень-Очень-Длинная")).toBeTruthy();
   });
 
   it("the action is «Создать ВСЭ» on the real examination/new route", () => {
@@ -177,6 +234,39 @@ describe("WorkArrivalsTable", () => {
 });
 
 describe("CompletedArrivalsTable", () => {
+  it("shows the completed date and the real author in the optional column", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[
+          withReconciliation({
+            ...base,
+            queue: "ACCEPTED",
+            examination_id: "77777777-1111-4222-8333-444444444444",
+          }),
+        ]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    expect(screen.getByText("05.11.2026 10:10")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Автор сверки данных" })).toBeTruthy();
+    expect(screen.getByText("Иванова Анна Петровна")).toBeTruthy();
+  });
+
+  it("the date is Reconciliation.completed_at, never the receipt confirmed_at", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[
+          withReconciliation({ ...base, queue: "ACCEPTED" }, "230.00"),
+        ]}
+        hiddenColumns={new Set(["checkAuthor"])}
+      />,
+    );
+    expect(screen.getByText("05.11.2026 10:10")).toBeTruthy();
+    expect(screen.queryByText("12.08.2026 14:40")).toBeNull();
+  });
+
   it("shows the mockup core columns; queue is never a veterinary result", () => {
     render(
       <CompletedArrivalsTable

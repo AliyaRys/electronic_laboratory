@@ -124,3 +124,37 @@ Frontend (Node 26.13.0):
   component tests and the 390 px story; a live browser acceptance on the
   обновлённом стенде (вход local-admin, создание тестового пользователя, его
   вход) belongs to the controller's deploy step.
+
+## Fix-loop (review, commit `54cc0c6`, pushed)
+
+- §8.2 locks: `load_access_snapshot` reads the actor `User` row and his
+  `DelegationGrant` rows `FOR UPDATE` (same transaction as the command — the
+  identity lock idiom); `create_user` re-reads the target `Territory` row and
+  the actor's grants `FOR UPDATE` and recomputes `delegatable_territories`
+  from the fresh locked rows. A revocation committed before the creation's
+  lock acquisition is seen (403, no records); a concurrent one serializes
+  behind the locks — no TOCTOU granted write. Deterministic regressions:
+  `test_revocation_before_locked_read_rejects_creation` (stale snapshot +
+  pre-committed revocation → 403, no user/grant/event) and
+  `test_creation_after_committed_revocation_http_403`.
+- §11 tab-close: `useDirtyGuard` also registers a `beforeunload` listener
+  only while dirty (`event.preventDefault(); event.returnValue = ''`),
+  removed on flag clear and unmount; a successful creation clears the dirty
+  flag before the return navigation. Wiring unit test:
+  add-while-dirty / remove-on-clear-and-unmount / same handler identity /
+  guard pattern proof (`SwitchContext.test.tsx`).
+- may_delegate=false: `test_admin_grant_without_may_delegate_cannot_create_admin`
+  — ADMIN actor with a `may_delegate=false` ADMIN grant creating an ADMIN user
+  → 403 ACCESS_DENIED, no user/grant/event records.
+- Product-scope validation: `_resolve_scopes` now checks every claimed
+  product GUID against the same read model that serves /assignable
+  (productType=1, active, is_last); forged GUID → 422 with
+  `scopes.N.product_scope_id`, nothing written. uuid4() fixtures replaced by
+  the seeded «свинина» guid (`test_users` env, delegated-creation payloads).
+- Storybook: new «Filled» story for F03/UserCreateForm (prefilled non-secret
+  values via the existing `initial` API; passwords never prefill).
+- Gates re-run in this worktree: ruff clean; identity+catalog_pricing+
+  arrivals → **343 passed**; format:check / lint (0 errors) / typecheck /
+  vitest **438 passed** / build / build-storybook — all green.
+- Honest not-run: unchanged — no live E2E run and no live browser
+  acceptance in this environment (see above); `npm run test:ui` N/A.

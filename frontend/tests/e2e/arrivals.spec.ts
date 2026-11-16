@@ -545,4 +545,192 @@ test.describe("arrivals", () => {
     await expect(page).toHaveURL(/page=2/);
     await expect(page.getByText("свинина")).toBeVisible();
   });
+
+  // --- ТЗ DR39 e2e: reconciliation metadata, queue-aware sort, date filter ----
+
+  test("WORK shows the real frozen cost, author and completed date; sorting is server order with URL and F5", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockSessionAndArrivals(page);
+    const workWithSummary = {
+      ...workRowFixture(),
+      reconciliation: {
+        completed_at: "2026-11-05T07:10:00Z", // 10:10 мск
+        author_name: "Иванова Анна Петровна",
+        pricing: { lines: [], fair: false, total: "230.00", currency: "RUB" },
+      },
+    };
+    const older = {
+      ...workWithSummary,
+      party_id: "9c1b2d3e-2222-4222-8333-444444444444",
+      reconciliation: {
+        completed_at: "2026-11-01T07:10:00Z",
+        author_name: "Смирнов Пётр Васильевич",
+        pricing: { lines: [], fair: false, total: "0.00", currency: "RUB" },
+      },
+    };
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("laboratory_id") !== LAB) {
+        return route.fulfill({ status: 403, contentType: "application/json", body: "{}" });
+      }
+      const queue = url.searchParams.get("queue") ?? "EXPECTED";
+      if (queue !== "WORK") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+      }
+      // The SERVER answers in its own order; the page must never re-sort.
+      const items = url.searchParams.get("sort") === "asc" ? [older, workWithSummary] : [workWithSummary, older];
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items, total: 2, page: 1, page_size: 20 }),
+      });
+    });
+
+    await page.goto(`/labs/${LAB}/arrivals?queue=work&sort=asc`);
+    await expect(page.getByText("230,00 ₽")).toBeVisible();
+    await expect(page.getByText("Иванова Анна Петровна")).toBeVisible();
+    await expect(page.getByText("05.11.2026 10:10")).toBeVisible();
+    await expect(page.getByRole("cell", { name: "0,00 ₽", exact: true })).toBeVisible(); // a zero is DATA
+    // asc order: the older сверка first (server order kept).
+    const cells = await page.locator("tbody tr td:first-child").allTextContents();
+    expect(cells).toEqual(["01.11.2026 10:10", "05.11.2026 10:10"]);
+
+    // Switch to desc: URL updates, the order flips.
+    await page.getByLabel("Сортировка").selectOption("desc");
+    await expect(page).toHaveURL(/queue=work/);
+    await expect(page).not.toHaveURL(/sort=asc/);
+    await expect(page.locator("tbody tr td:first-child").first()).toHaveText("05.11.2026 10:10");
+    // F5 keeps the filter state (desc default: the URL stays clean).
+    await page.reload();
+    await expect(page.locator("tbody tr td:first-child").first()).toHaveText("05.11.2026 10:10");
+    await expect(page.getByText("Иванова Анна Петровна")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test("ACCEPTED: apply one день, a range and сбросить; URL and rows survive F5", async ({ page }) => {
+    const listReads: string[] = [];
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockSessionAndArrivals(page);
+    const accepted = {
+      ...acceptedRowFixture(),
+      reconciliation: {
+        completed_at: "2026-11-05T21:00:00Z", // 00:00 мск 06.11
+        author_name: "Иванова Анна Петровна",
+        pricing: { lines: [], fair: false, total: "230.00", currency: "RUB" },
+      },
+    };
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("laboratory_id") !== LAB) {
+        return route.fulfill({ status: 403, contentType: "application/json", body: "{}" });
+      }
+      const queue = url.searchParams.get("queue") ?? "EXPECTED";
+      if (queue === "ACCEPTED" && url.searchParams.has("page") === false) listReads.push(url.search);
+      if (queue !== "ACCEPTED") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+      }
+      // One день exactly: the mock honours the wire filter.
+      const on = url.searchParams.get("reconciled_on");
+      const filtered = on === "2026-11-06" ? [] : [accepted];
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: filtered, total: filtered.length, page: 1, page_size: 20 }),
+      });
+    });
+
+    await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
+    await expect(page.getByText("06.11.2026 00:00")).toBeVisible();
+    await expect(page.getByText("Иванова Анна Петровна")).toBeVisible();
+
+    // Apply one день: the row leaves the result, the URL carries the param.
+    await page.getByRole("button", { name: /Дата сверки данных/ }).click();
+    await page.getByRole("textbox", { name: "Дата", exact: true }).fill("2026-11-06");
+    await page.getByRole("button", { name: "Применить" }).click();
+    await expect(page).toHaveURL(/reconciled_on=2026-11-06/);
+    await expect(page.getByText(/06\.11\.2026/)).toBeVisible(); // Russian summary
+    await expect(page.getByText(/не найдены/)).toBeVisible(); // the honest empty state
+
+    // F5: the filter survives and still filters.
+    await page.reload();
+    await expect(page).toHaveURL(/reconciled_on=2026-11-06/);
+    await expect(page.getByText(/не найдены/)).toBeVisible();
+
+    // Сбросить: all reconciled_* disappear from the URL, the row returns.
+    await page.getByRole("button", { name: /Дата сверки данных/ }).click();
+    await page.getByRole("button", { name: "Сбросить" }).click();
+    await expect(page).not.toHaveURL(/reconciled/);
+    await expect(page.getByText("06.11.2026 00:00")).toBeVisible();
+
+    // A range: both bounds go to the wire in the offset ISO form.
+    await page.getByRole("button", { name: /Дата сверки данных/ }).click();
+    await page.getByRole("radio", { name: "Диапазон" }).click();
+    await page.getByLabel("С", { exact: true }).fill("2026-11-05T10:00");
+    await page.getByLabel("По", { exact: true }).fill("2026-11-06T18:30");
+    await page.getByRole("button", { name: "Применить" }).click();
+    await expect(page).toHaveURL(/reconciled_from=2026-11-05T10/);
+    await expect(page).toHaveURL(/reconciled_to=/);
+    expect(errors).toEqual([]);
+  });
+
+  test("the date never leaves ACCEPTED: other queues and tab counters stay clean", async ({ page }) => {
+    const reads: string[] = [];
+    await mockSessionAndArrivals(page);
+    await mockStageRows(page);
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      const queue = url.searchParams.get("queue") ?? "EXPECTED";
+      reads.push(url.search);
+      const item = queue === "EXPECTED" ? singleView : queue === "WORK" ? workRowFixture() : null;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: item ? [item] : [], total: item ? 1 : 0, page: 1, page_size: 20 }),
+      });
+    });
+    // A stale deep link: the params are stripped from the URL and the reads.
+    await page.goto(`/labs/${LAB}/arrivals?queue=work&reconciled_on=2026-11-06&reconciled_from=2026-11-05T10%3A00%3A00%2B03%3A00`);
+    await expect(page.getByText("говядина")).toBeVisible();
+    await expect(page).not.toHaveURL(/reconciled/);
+    expect(reads.every((entry) => !entry.includes("reconciled"))).toBe(true);
+  });
+
+  test("ACCEPTED date filter works on 390 px with the keyboard", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockSessionAndArrivals(page);
+    await mockStageRows(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
+    await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
+    await expect(page.getByText("говядина")).toBeVisible();
+    const trigger = page.getByRole("button", { name: /Дата сверки данных/ });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("group", { name: "Дата сверки данных" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("group", { name: "Дата сверки данных" })).toBeHidden();
+    await expect(trigger).toBeFocused();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("an empty result and a network error keep the honest states", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("queue") === "ACCEPTED") {
+        return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ code: "NETWORK", detail: "Сеть недоступна." }) });
+      }
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+    });
+    await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
+    await expect(page.getByText(/Не удалось загрузить поступления/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Повторить" })).toBeVisible();
+  });
 });

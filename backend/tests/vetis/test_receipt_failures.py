@@ -212,9 +212,7 @@ async def test_enabled_confirmation_freezes_one_intent_and_outbox(receipt_env: S
     assert (await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))).scalar_one() == 1
 
 
-async def test_documentary_quantity_without_package_source_is_absent(
-    receipt_env: SimpleNamespace, monkeypatch
-) -> None:
+async def test_documentary_quantity_without_package_source_is_absent(receipt_env: SimpleNamespace, monkeypatch) -> None:
     """ТЗ DR8 §13: the intent keeps the documentary quantity ABSENT when the
     source carries no package quantity — the mass is never a fallback."""
     import copy as _copy
@@ -320,9 +318,7 @@ async def test_soap_fault_is_rejected_not_unknown(receipt_env: SimpleNamespace, 
         assert saved.problem_detail == "Incorrect request fixture"
 
 
-async def test_unknown_is_closed_only_after_fresh_confirmed_read(
-    receipt_env: SimpleNamespace, monkeypatch
-) -> None:
+async def test_unknown_is_closed_only_after_fresh_confirmed_read(receipt_env: SimpleNamespace, monkeypatch) -> None:
     monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
     preview = await build_receipt_preview(
         receipt_env.db,
@@ -508,6 +504,175 @@ async def test_processing_timeout_becomes_unknown_without_network(receipt_env: S
         assert saved.problem_code == "VETIS_RESULT_TIMEOUT"
 
 
+# --- ТЗ DR38 Task 4: preview/retry/async result safety -----------------------------
+
+
+async def test_preview_xml_carries_fixed_structure_and_stale_fingerprint_is_refused(
+    receipt_env: SimpleNamespace, monkeypatch
+) -> None:
+    """ТЗ DR38 §7 Task 4: исправленный preview содержит новый XML, а старый
+    (до исправления) подтверждённый fingerprint не переиспользуется."""
+    from xml.etree import ElementTree as ET
+
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
+    # Документарное расхождение по весу: отметка хранится в frozen checks.
+    reconciliation = await receipt_env.db.get(Reconciliation, receipt_env.reconciliation.id)
+    assert reconciliation is not None
+    reconciliation.checks = {
+        "CHK-F21": {
+            "matches": False,
+            "source": "100",
+            "actual": "80",
+            "reason": "Фактический вес больше заявленного",
+        },
+        "CHK-F35": {"matches": True, "actual": "OTHER_REASON", "reason": "fixture reason"},
+    }
+    await receipt_env.db.commit()
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    root = ET.fromstring(preview.application_xml)
+    # Новый XML: docInspection/info (MISMATCH) + discrepancyReport/description.
+    info = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "info")
+    assert info.text and "Вес, кг" in info.text
+    description = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "description")
+    assert description.text == info.text
+    assert not any(
+        node.tag.rsplit("}", 1)[-1] == "info" and node.tag.startswith("{http://api.vetrf.ru/schema/cdm/mercury/vu")
+        for node in root.iter()
+    )
+    # Старый подтверждённый fingerprint отвергается — подтверждение повторяется.
+    with pytest.raises(ProblemError) as error:
+        await queue_receipt(
+            receipt_env.db,
+            preview=preview,
+            confirmation=UserConfirmation(
+                actor_id=receipt_env.actor.id,
+                fingerprint="0" * 64,
+                confirmed_at=datetime.now(UTC),
+            ),
+        )
+    assert error.value.code == "PREVIEW_CHANGED"
+
+
+@pytest.mark.parametrize("state", ["QUEUED", "SUBMITTING", "PROCESSING", "UNKNOWN"])
+async def test_repeat_submit_is_blocked_for_active_states(
+    receipt_env: SimpleNamespace, monkeypatch, state: str
+) -> None:
+    """ТЗ DR38 §7 Task 4: повторный submit для активных состояний заблокирован."""
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    operation = await queue_receipt(
+        receipt_env.db,
+        preview=preview,
+        confirmation=UserConfirmation(
+            actor_id=receipt_env.actor.id,
+            fingerprint=preview.fingerprint,
+            confirmed_at=datetime.now(UTC),
+        ),
+    )
+    operation.state = VetisOperationState[state]
+    await receipt_env.db.commit()
+    refreshed = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+        delivery_date=preview.intent.delivery_date,
+        issue_date=preview.intent.issue_date,
+    )
+    with pytest.raises(ProblemError) as error:
+        await queue_receipt(
+            receipt_env.db,
+            preview=refreshed,
+            confirmation=UserConfirmation(
+                actor_id=receipt_env.actor.id,
+                fingerprint=refreshed.fingerprint,
+                confirmed_at=datetime.now(UTC),
+            ),
+        )
+    assert error.value.code == "STATE_CONFLICT"
+
+
+async def test_rejected_attempt_is_terminal_and_retry_has_new_transaction_id(
+    receipt_env: SimpleNamespace, monkeypatch
+) -> None:
+    """ТЗ DR38 §7 Task 4: REJECTED терминален; повтор создаёт новую операцию
+    с новым localTransactionId и никогда не переотправляет application_id."""
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
+
+    class DefiniteReject:
+        def __init__(self) -> None:
+            self.sends = 0
+
+        async def send_application(self, application_xml: str) -> str:
+            self.sends += 1
+            raise VetisTransportError(
+                code="VETIS_SOAP_FAULT",
+                detail="Wrong application data format fixture",
+                outcome=TransportOutcome.DEFINITE_REJECTION,
+            )
+
+        async def receive_result(self, application_id: str) -> str:
+            raise AssertionError("rejected attempt must not poll")
+
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    operation = await queue_receipt(
+        receipt_env.db,
+        preview=preview,
+        confirmation=UserConfirmation(
+            actor_id=receipt_env.actor.id,
+            fingerprint=preview.fingerprint,
+            confirmed_at=datetime.now(UTC),
+        ),
+    )
+    await receipt_env.db.commit()
+    transport = DefiniteReject()
+    await run_receipt_operation(operation.id, transport=transport, session_factory=receipt_env.factory)
+    assert transport.sends == 1
+    async with receipt_env.factory() as db:
+        saved = await db.get(VetisOperation, operation.id)
+        assert saved is not None
+        assert saved.state == VetisOperationState.REJECTED
+        assert saved.problem_code == "VETIS_SOAP_FAULT"
+        assert saved.problem_detail == "Wrong application data format fixture"
+    # Повтор после исправления: НОВАЯ операция и НОВЫЙ localTransactionId.
+    retry = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+        delivery_date=preview.intent.delivery_date,
+        issue_date=preview.intent.issue_date,
+    )
+    assert retry.intent.operation_id != operation.id
+    assert retry.intent.local_transaction_id != operation.local_transaction_id
+    assert retry.intent.local_transaction_id == str(retry.intent.operation_id)
+
+
 # --- ТЗ DR27 §7: the revision context contract ------------------------------------
 
 
@@ -609,9 +774,7 @@ async def test_source_changed_after_preview_blocks_submit_without_outbox(
             issue_date=preview.intent.issue_date,
         )
     assert error.value.code == "REVISION_CONFLICT"
-    assert (
-        await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))
-    ).scalar_one() == 0
+    assert (await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))).scalar_one() == 0
 
 
 async def test_checksum_mismatch_is_not_masked_as_revision_success(receipt_env: SimpleNamespace) -> None:

@@ -6,6 +6,7 @@ import copy
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -72,8 +73,9 @@ def intent(*, mismatch: bool, decision: str, vet: str = "CORRESPONDS") -> Receip
         unit_id=SOURCE_UNIT,
         discrepancy_items=[
             {
-                "field_id": "CHK-F01",
-                "reason": "QUANTITY",
+                "field_id": "CHK-F20",
+                "label": "Количество",
+                "reason": "Фактическое количество меньше заявленного",
                 "actual": "100",
                 "source": "120",
             }
@@ -266,7 +268,7 @@ def test_return_without_source_purpose_is_refused() -> None:
 
 
 def test_reason_code_then_other_reason_text_in_special_marks() -> None:
-    """ТЗ DR8 §6.2/R-DR8-4: exact code first; OTHER_REASON adds its text."""
+    """ТЗ DR38 §6: ровно один specialMarks в формате «Причина возврата: CODE»."""
     xml = build_process_incoming_application(
         intent(mismatch=False, decision="RETURN_ALL"),
         source_xml=SOURCE_XML,
@@ -275,8 +277,8 @@ def test_reason_code_then_other_reason_text_in_special_marks() -> None:
     )
     root = ET.fromstring(xml)
     marks = [(node.text or "") for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
-    assert marks[0] == "OTHER_REASON"
-    assert marks[1] == "OTHER_REASON: Обезличенная причина возврата"
+    assert len(marks) == 1
+    assert marks[0] == "Причина возврата: OTHER_REASON Обезличенная причина возврата"
 
 
 def test_request_dates_are_not_mixed() -> None:
@@ -325,22 +327,191 @@ def test_return_all_has_no_discrepancy_report() -> None:
     assert count(xml, "discrepancyReport") == 0
 
 
+# --- ТЗ DR38 §1/§4.3/§5: structure helpers -----------------------------------
+
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "vetis" / "process_incoming_consignment"
+
+DISCREPANCY_TEXT_LIMIT = 2000
+
+
+def signature(element: ET.Element) -> object:
+    """Точная структура: локальное имя и порядок дочерних элементов."""
+    return element.tag.rsplit("}", 1)[-1], [signature(child) for child in element]
+
+
+def child_locals(element: ET.Element) -> list[str]:
+    return [node.tag.rsplit("}", 1)[-1] for node in element]
+
+
+def text_of_parent(xml: str, parent_local: str, child_local: str) -> str | None:
+    """Текст ровно у прямого ребёнка с проверкой родителя (не поиск по всему дереву)."""
+    root = ET.fromstring(xml)
+    parent = next(
+        (node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == parent_local),
+        None,
+    )
+    if parent is None:
+        return None
+    for node in parent:
+        if node.tag.rsplit("}", 1)[-1] == child_local:
+            return node.text
+    return None
+
+
+def inspection_of(xml: str, inspection_local: str) -> ET.Element:
+    root = ET.fromstring(xml)
+    facts = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "deliveryFacts")
+    inspection = next(child for child in facts if child.tag.rsplit("}", 1)[-1] == inspection_local)
+    assert inspection.tag.startswith("{http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2}")
+    return inspection
+
+
+def test_reproduce_invalid_receipt_discrepancy_xml() -> None:
+    """ТЗ DR38 §1: воспроизведение отклонённого ВетИС XML.
+
+    ВетИС отклонил приложение 31ad1307-… с текстом «Элемент 'info' не
+    предусмотрен»: ``vd:info`` не принадлежит типу DiscrepancyReport —
+    детальное описание передаётся ``vd:description``, а ``vd:info``
+    находится внутри ``vd:docInspection`` после ``vd:result``.
+    """
+    value = intent(mismatch=True, decision="PARTIALLY")
+    xml = build_process_incoming_application(value, source_xml=SOURCE_XML, service_id="s", issuer_id="i")
+    root = ET.fromstring(xml)
+    report = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "discrepancyReport")
+    # vd:info внутри discrepancyReport запрещён схемой DiscrepancyReport.
+    assert not any(node.tag.rsplit("}", 1)[-1] == "info" for node in report)
+    # Вместо него — description, после reason.
+    assert child_locals(report) == ["issueNumber", "reason", "description"]
+    reason = next(node for node in report if node.tag.rsplit("}", 1)[-1] == "reason")
+    assert child_locals(reason) == ["name"]
+    description = next(node for node in report if node.tag.rsplit("}", 1)[-1] == "description")
+    assert description is not None and description.text
+    # Документарное расхождение описывается внутри docInspection.
+    inspection = inspection_of(xml, "docInspection")
+    assert child_locals(inspection) == ["responsible", "result", "info"]
+    assert inspection.find(f"{VD}result").text == "MISMATCH"  # type: ignore[union-attr]
+
+
 def test_discrepancy_report_carries_every_item() -> None:
-    """ТЗ DR8 §9: mismatch + ACCEPT_ALL/PARTIALLY → full report, all items."""
+    """ТЗ DR38 §5: одно описание из всех items, русские названия полей."""
     value = intent(mismatch=True, decision="PARTIALLY").model_copy(
         update={
             "discrepancy_items": [
-                {"field_id": "CHK-F01", "reason": "QUANTITY", "actual": "100", "source": "120"},
-                {"field_id": "CHK-F10", "reason": "TRANSPORT", "actual": "А000ВВ", "source": "А123ВС"},
+                {
+                    "field_id": "CHK-F20",
+                    "label": "Количество",
+                    "source": "5",
+                    "actual": "6",
+                    "reason": "Фактическое количество больше заявленного",
+                },
+                {
+                    "field_id": "CHK-F21",
+                    "label": "Вес, кг",
+                    "source": "60",
+                    "actual": "80",
+                    "reason": "Фактический вес больше заявленного",
+                },
             ]
         }
     )
     xml = build_process_incoming_application(value, source_xml=SOURCE_XML, service_id="s", issuer_id="i")
+    expected = (
+        "Количество: в ВСД 5, фактически 6 (Фактическое количество больше заявленного); "
+        "Вес, кг: в ВСД 60, фактически 80 (Фактический вес больше заявленного)"
+    )
+    report = next(node for node in ET.fromstring(xml).iter() if node.tag.rsplit("}", 1)[-1] == "discrepancyReport")
+    description = next(node for node in report if node.tag.rsplit("}", 1)[-1] == "description")
+    assert description.text == expected
+    assert description.text == text_of_parent(xml, "docInspection", "info")
+    # Технические CHK-ID не показываются пользователю в XML.
+    assert "CHK-F" not in (description.text or "")
+    # Причина акта — понятная формулировка, не технический код первой строки.
+    reason_name = text_of_parent(xml, "reason", "name")
+    assert reason_name == "Причина несоответствия (акт)"
+
+
+def test_corresponds_never_carries_info_or_report() -> None:
+    """ТЗ DR38 §4.3: CORRESPONDS не содержит ни docInspection/info, ни акта."""
+    for decision in ("ACCEPT_ALL", "PARTIALLY", "RETURN_ALL"):
+        xml = build_process_incoming_application(
+            intent(mismatch=False, decision=decision),
+            source_xml=SOURCE_XML,
+            service_id="s",
+            issuer_id="i",
+        )
+        root = ET.fromstring(xml)
+        assert [n for n in root.iter() if n.tag.rsplit("}", 1)[-1] == "info"] == []
+        assert [n for n in root.iter() if n.tag.rsplit("}", 1)[-1] == "discrepancyReport"] == []
+
+
+def test_mismatch_return_all_keeps_doc_inspection_info_without_act() -> None:
+    """ТЗ DR38 §5: RETURN_ALL сохраняет docInspection/info, но без акта."""
+    xml = build_process_incoming_application(
+        intent(mismatch=True, decision="RETURN_ALL"),
+        source_xml=SOURCE_XML,
+        service_id="s",
+        issuer_id="i",
+    )
+    info = text_of_parent(xml, "docInspection", "info")
+    assert info and "Количество" in info
+    assert count(xml, "discrepancyReport") == 0
+
+
+def test_discrepancy_description_too_long_is_refused_before_submit() -> None:
+    """ТЗ DR38 §5: превышение лимита описания — отказ, а не тихая обрезка."""
+    value = intent(mismatch=True, decision="PARTIALLY").model_copy(
+        update={
+            "discrepancy_items": [
+                {
+                    "field_id": "CHK-F20",
+                    "label": "Количество",
+                    "source": "5",
+                    "actual": "6",
+                    "reason": "П" * (DISCREPANCY_TEXT_LIMIT + 10),
+                }
+            ]
+        }
+    )
+    with pytest.raises(ProblemError):
+        build_process_incoming_application(value, source_xml=SOURCE_XML, service_id="s", issuer_id="i")
+
+
+SPECIAL_MARK_REASON = "Причина возврата"
+
+
+@pytest.mark.parametrize(
+    ("code", "text", "expected"),
+    [
+        ("QUANTITY_DISCREPANCY", None, f"{SPECIAL_MARK_REASON}: QUANTITY_DISCREPANCY"),
+        ("OTHER_REASON", "  Пояснение пользователя  ", f"{SPECIAL_MARK_REASON}: OTHER_REASON Пояснение пользователя"),
+    ],
+)
+def test_return_reason_is_one_special_mark(code: str, text: str | None, expected: str) -> None:
+    """ТЗ DR38 §6: стандартный код без русской подписи; OTHER_REASON с текстом."""
+    value = intent(mismatch=False, decision="PARTIALLY").model_copy(
+        update={"return_reason_code": code, "return_reason_text": text}
+    )
+    xml = build_process_incoming_application(value, source_xml=SOURCE_XML, service_id="s", issuer_id="i")
     root = ET.fromstring(xml)
-    report = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "discrepancyReport")
-    info = next(node.text for node in report if node.tag.rsplit("}", 1)[-1] == "info")
-    assert "CHK-F01" in info and "CHK-F10" in info
-    assert "120" in info and "А123ВС" in info
+    marks = [(node.text or "") for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
+    assert marks == [expected]
+
+
+def test_existing_special_marks_are_merged_not_lost() -> None:
+    """ТЗ DR38 §6: существующие особые отметки не теряются и не дублируют причину."""
+    source = SOURCE_XML.replace(
+        "</vd:authentication>",
+        "<vd:specialMarks>Груз осмотрен, клеймо сохранено</vd:specialMarks>"
+        "<vd:specialMarks>Причина возврата: старая причина</vd:specialMarks></vd:authentication>",
+    )
+    value = intent(mismatch=False, decision="PARTIALLY")
+    xml = build_process_incoming_application(value, source_xml=source, service_id="s", issuer_id="i")
+    root = ET.fromstring(xml)
+    marks = [(node.text or "") for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
+    assert len(marks) == 1
+    assert "Груз осмотрен, клеймо сохранено" in marks[0]
+    assert "старая причина" not in marks[0]
+    assert marks[0].startswith("Причина возврата: OTHER_REASON")
 
 
 SOURCE_XML_MULTI_PACKAGE = SOURCE_XML.replace(
@@ -389,18 +560,86 @@ def test_two_top_level_packages_collapse_to_aggregate_places() -> None:
 @pytest.mark.parametrize("mismatch", [False, True])
 @pytest.mark.parametrize("decision", ["ACCEPT_ALL", "PARTIALLY", "RETURN_ALL"])
 def test_six_contract_scenarios(mismatch: bool, decision: str) -> None:
-    value = intent(mismatch=mismatch, decision=decision)
+    """ТЗ DR38 §4.3: точная матрица шести сценариев (родители, порядок, состав)."""
+    value = intent(mismatch=mismatch, decision=decision).model_copy(
+        update={"return_reason_code": "QUANTITY_DISCREPANCY", "return_reason_text": None}
+    )
     xml = build_process_incoming_application(
         value, source_xml=SOURCE_XML, service_id="mercury-vu.service:2.0", issuer_id="fixture"
     )
-    assert count(xml, "processIncomingConsignmentRequest") == 1
-    assert count(xml, "vetCertificatePresence") == 1
-    assert "ELECTRONIC" in xml
-    assert count(xml, "delivery") == 1
-    assert count(xml, "consignment") == (1 if decision in {"ACCEPT_ALL", "RETURN_ALL"} else 2)
-    assert count(xml, "returnedDelivery") == (0 if decision == "ACCEPT_ALL" else 1)
+    root = ET.fromstring(xml)
+    request = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "processIncomingConsignmentRequest")
+    # Namespace каждого блока закреплён (mercvu = vu/applications/v2, vd = vet-document/v2).
+    assert request.tag == f"{VU}processIncomingConsignmentRequest"
+    expected_request = ["localTransactionId", "initiator", "delivery", "deliveryFacts"]
+    if mismatch and decision != "RETURN_ALL":
+        expected_request.append("discrepancyReport")
+    if decision != "ACCEPT_ALL":
+        expected_request.append("returnedDelivery")
+    assert child_locals(request) == expected_request
+    facts = next(child for child in request if child.tag.rsplit("}", 1)[-1] == "deliveryFacts")
+    assert child_locals(facts) == [
+        "vetCertificatePresence",
+        "docInspection",
+        "vetInspection",
+        "decision",
+    ]
+    doc_inspection = next(
+        child for child in facts if child.tag.rsplit("}", 1)[-1] == "docInspection"
+    )
+    assert doc_inspection.tag == f"{VD}docInspection"
+    expected = ["responsible", "result"] + (["info"] if mismatch else [])
+    assert child_locals(doc_inspection) == expected
     assert count(xml, "discrepancyReport") == (1 if mismatch and decision != "RETURN_ALL" else 0)
-    assert "Обезличенная причина возврата" in xml if decision != "ACCEPT_ALL" else True
+    if mismatch and decision != "RETURN_ALL":
+        report = next(node for node in request if node.tag.rsplit("}", 1)[-1] == "discrepancyReport")
+        assert report.tag == f"{VU}discrepancyReport"
+        assert child_locals(report) == ["reason", "description"]
+    # Состав партий: принятая/возвращаемая части по матрице.
+    deliveries = {child.tag.rsplit("}", 1)[-1]: child for child in request}
+    assert set(deliveries) == ({"delivery"} if decision == "ACCEPT_ALL" else {"delivery", "returnedDelivery"})
+    accepted = _consignment(xml, returned=False)
+    returned = _consignment(xml, returned=True)
+    if decision == "ACCEPT_ALL":
+        assert accepted is not None
+        assert accepted.find(f"{VD}volume").text == "100"  # type: ignore[union-attr]
+        assert returned is None
+        assert count(xml, "returnedDelivery") == 0
+    elif decision == "PARTIALLY":
+        assert accepted is not None and returned is not None
+        assert accepted.find(f"{VD}volume").text == "100"  # type: ignore[union-attr]
+        assert accepted.find(f".//{DT}quantity").text == "3"  # type: ignore[union-attr]
+        assert returned.find(f"{VD}volume").text == "20"  # type: ignore[union-attr]
+        assert returned.find(f".//{DT}quantity").text == "1"  # type: ignore[union-attr]
+        marks = [(n.text or "") for n in root.iter() if n.tag.rsplit("}", 1)[-1] == "specialMarks"]
+        assert marks == ["Причина возврата: QUANTITY_DISCREPANCY"]
+    else:
+        assert accepted is None
+        assert returned is not None
+        assert returned.find(f"{VD}volume").text == "120"  # type: ignore[union-attr]
+        assert returned.find(f".//{DT}quantity").text == "4"  # type: ignore[union-attr]
+        marks = [(n.text or "") for n in root.iter() if n.tag.rsplit("}", 1)[-1] == "specialMarks"]
+        assert marks == ["Причина возврата: QUANTITY_DISCREPANCY"]
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["1.1.1", "1.1.2", "1.1.3", "1.2.1", "1.2.2", "1.2.3"],
+)
+def test_six_scenarios_match_deidentified_owner_fragments(scenario: str) -> None:
+    """ТЗ DR38 §1: структура совпадает с обезличенными примерами владельца."""
+    mismatch = scenario.startswith("1.2")
+    decision = {"1": "ACCEPT_ALL", "2": "PARTIALLY", "3": "RETURN_ALL"}[scenario[-1]]
+    value = intent(mismatch=mismatch, decision=decision).model_copy(
+        update={"return_reason_code": "QUANTITY_DISCREPANCY", "return_reason_text": None}
+    )
+    xml = build_process_incoming_application(
+        value, source_xml=SOURCE_XML, service_id="mercury-vu.service:2.0", issuer_id="fixture"
+    )
+    root = ET.fromstring(xml)
+    built = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "processIncomingConsignmentRequest")
+    fragment = ET.parse(FIXTURES / f"scenario-{scenario}.xml").getroot()
+    assert signature(built) == signature(fragment)
 
 
 @pytest.mark.parametrize("vet", ["CORRESPONDS", "MISMATCH", "UNSUPERVISED"])

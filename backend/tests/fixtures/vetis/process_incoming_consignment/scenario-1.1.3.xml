@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ТЗ DR38 §1: обезличенный contract fragment сценария 1.1.3 (совпадает, вернуть всё).
+     Принятой партии нет; returnedDelivery содержит всю доставленную часть. -->
+<mercvu:processIncomingConsignmentRequest
+ xmlns:mercvu="http://api.vetrf.ru/schema/cdm/mercury/vu/applications/v2"
+ xmlns:vd="http://api.vetrf.ru/schema/cdm/mercury/vet-document/v2"
+ xmlns:bs="http://api.vetrf.ru/schema/cdm/base"
+ xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2">
+  <mercvu:localTransactionId>SCENARIO-1-1-3</mercvu:localTransactionId>
+  <mercvu:initiator>
+    <vd:login>fixture-vet</vd:login>
+  </mercvu:initiator>
+  <mercvu:delivery>
+    <vd:deliveryDate>2026-11-09T10:00:00+00:00</vd:deliveryDate>
+    <vd:consignor>
+      <dt:enterprise><bs:guid>sender</bs:guid></dt:enterprise>
+    </vd:consignor>
+    <vd:consignee>
+      <dt:enterprise><bs:guid>receiver</bs:guid></dt:enterprise>
+    </vd:consignee>
+    <vd:transportInfo><vd:transportType>1</vd:transportType></vd:transportInfo>
+    <vd:transportStorageType>FROZEN</vd:transportStorageType>
+    <vd:accompanyingForms>
+      <vd:vetCertificate><bs:uuid>source-evsd</bs:uuid></vd:vetCertificate>
+    </vd:accompanyingForms>
+  </mercvu:delivery>
+  <mercvu:deliveryFacts>
+    <vd:vetCertificatePresence>ELECTRONIC</vd:vetCertificatePresence>
+    <vd:docInspection>
+      <vd:responsible><vd:login>fixture-vet</vd:login></vd:responsible>
+      <vd:result>CORRESPONDS</vd:result>
+    </vd:docInspection>
+    <vd:vetInspection>
+      <vd:responsible><vd:login>fixture-vet</vd:login></vd:responsible>
+      <vd:result>CORRESPONDS</vd:result>
+    </vd:vetInspection>
+    <vd:decision>RETURN_ALL</vd:decision>
+  </mercvu:deliveryFacts>
+  <mercvu:returnedDelivery>
+    <vd:deliveryDate>2026-11-10T12:00:00+00:00</vd:deliveryDate>
+    <vd:consignor>
+      <dt:enterprise><bs:guid>receiver</bs:guid></dt:enterprise>
+    </vd:consignor>
+    <vd:consignee>
+      <dt:enterprise><bs:guid>sender</bs:guid></dt:enterprise>
+    </vd:consignee>
+    <vd:consignment>
+      <vd:volume>120</vd:volume>
+      <vd:unit><bs:guid>unit</bs:guid></vd:unit>
+      <dt:packageList>
+        <dt:package><dt:quantity>4</dt:quantity></dt:package>
+      </dt:packageList>
+    </vd:consignment>
+    <vd:transportInfo><vd:transportType>1</vd:transportType></vd:transportInfo>
+    <vd:transportStorageType>FROZEN</vd:transportStorageType>
+    <vd:accompanyingForms>
+      <vd:vetCertificate><bs:uuid>source-evsd</bs:uuid></vd:vetCertificate>
+      <vd:authentication>
+        <vd:purpose><bs:guid>purpose-guid</bs:guid></vd:purpose>
+        <vd:specialMarks>Причина возврата: QUANTITY_DISCREPANCY</vd:specialMarks>
+      </vd:authentication>
+    </vd:accompanyingForms>
+  </mercvu:returnedDelivery>
+</mercvu:processIncomingConsignmentRequest>

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -36,7 +36,10 @@ from backend.tests.arrivals.test_api import _client_for
 from backend.tests.examinations.test_create import BEEF, configure, context, party_with_confirmation, payload
 from backend.tests.identity.test_sessions import MemoryRedis, TestClock
 
-NOW = datetime(2026, 11, 8, 10, 0, tzinfo=UTC)
+# Time-agnostic: the deletion day-close check compares the real clock with
+# the card creation date, so both must derive from «today» (2026-11-16 regression).
+TODAY = datetime.now(UTC).astimezone()
+NOW = datetime(TODAY.year, TODAY.month, TODAY.day, 10, 0, tzinfo=UTC)
 
 
 class FixedClock(Clock):
@@ -211,7 +214,7 @@ async def test_disposal_survives_examination_delete(deletion_env: SimpleNamespac
     disposal = SampleDisposal(
         laboratory_id=env.lab.id,
         product_species_id=collection.product_species_id,
-        disposed_on=date(2026, 11, 8),
+        disposed_on=collection.collected_on,
         mass_kg=Decimal("0.8"),
         external_vsd_number="OUT-001",
         actor_id=env.actor.id,
@@ -440,7 +443,7 @@ async def test_concurrent_delete_and_disposal_preserve_the_disposal_fact(
                     {
                         "laboratoryId": str(env.lab.id),
                         "productSpeciesId": str(collection.product_species_id),
-                        "disposedOn": "2026-11-08",
+                        "disposedOn": NOW.date().isoformat(),
                         "externalVsdNumber": "OUT-RACE-001",
                         "expectedMassKg": "0.8",
                     }

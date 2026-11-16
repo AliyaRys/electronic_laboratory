@@ -22,7 +22,6 @@ mkdirSync(outDir, { recursive: true });
 
 const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const PARTY = "9c1b2d3e-1111-4222-8333-444444444444";
-const EXAM = "e0000000-0000-4000-8000-000000000001";
 const COLLECTION = "44444444-4444-4444-8444-444444444444";
 
 const partyView = {

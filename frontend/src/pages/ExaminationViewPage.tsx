@@ -22,6 +22,7 @@ import {
   completeWaiting,
   examinationKey,
   fetchExamination,
+  fetchExaminationForm,
   type ExaminationView,
   type OutcomeWrite,
 } from "../features/examinations/api";
@@ -91,6 +92,16 @@ function ExaminationViewContent(): React.ReactElement {
     collections.data !== undefined && !("code" in collections.data)
       ? (collections.data as { items: CollectionView[] }).items
       : [];
+
+  // DR35 §4: the frozen form read model for the same-day edit (required
+  // researches and the scoped specialist list).
+  const formViewQuery = useQuery({
+    queryKey: [labId ?? null, view?.party_id ?? null, "examination-form"],
+    queryFn: ({ signal }) => fetchExaminationForm(view?.party_id ?? "", signal),
+    enabled: view !== null && labId !== undefined,
+  });
+  const formView =
+    formViewQuery.data !== undefined && !("code" in formViewQuery.data) ? formViewQuery.data : null;
 
   if (labId === undefined || examinationId === undefined) {
     return (
@@ -207,10 +218,11 @@ function ExaminationViewContent(): React.ReactElement {
           party={partyView as IncomingView}
           view={view}
           today={todayMoscow}
+          formView={formView}
+          currentUserId={me.user?.id ?? null}
           availableCollections={allCollections.filter(
             (collection) => collection.party_id === view.party_id && collection.disposal_id === null,
           )}
-          specialistName={me.user?.full_name}
           onSaved={(next) => {
             queryClient.setQueryData(examinationKey(view.id), next);
             setEditing(false);
@@ -235,11 +247,11 @@ function ExaminationViewContent(): React.ReactElement {
             </div>
             <div>
               <dt>Специалист Госветслужбы</dt>
-              <dd>{view.created_by}</dd>
+              <dd>{view.specialist_name ?? "—"}</dd>
             </div>
             <div>
               <dt>Связанная проба</dt>
-              <dd>{view.sample_collection_id}</dd>
+              <dd>Отбор пробы этой партии</dd>
             </div>
             <div>
               <dt>Пробы отправлены в спец. лабораторию</dt>

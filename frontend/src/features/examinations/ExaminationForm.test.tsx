@@ -1,23 +1,27 @@
 /**
- * ExaminationForm tests (E04): the memory-only form, the strictly separate
- * wait/complete actions, the readable keyboard/accessible flows (research
- * add/remove, «Иное», disease rows), the honest conflict behaviour and the
- * absence assertions (no draft button, no parts/head/organs fields, no
- * conditional-fit option).
+ * ExaminationForm tests (E04, DR35): the memory-only form, the strictly
+ * separate wait/complete actions, the readable keyboard/accessible flows, the
+ * honest conflict behaviour and the DR35 data rules: NEW-only sample, scoped
+ * specialist choice, no confirm-note, participant labels and honest product
+ * type / number presentation.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter } from "react-router";
-import { afterEach, beforeAll, afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ExaminationForm, initialSample } from "./ExaminationForm";
 import type { CollectionView } from "../samples/api";
 import type { IncomingView } from "../arrivals/api";
+import type { ExaminationFormView } from "./api";
+import { INDICATORS } from "./indicators";
 
+const TRICHINELLA_INDICATOR_ID = INDICATORS.find((def) => def.code === "VSE-F21")?.id ?? "";
 const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const PARTY = "9c1b2d3e-1111-4222-8333-444444444444";
+const ME = "77777777-7777-4777-8777-777777777777";
 
 const server = setupServer();
 beforeAll(() => server.listen());
@@ -39,6 +43,7 @@ const party: IncomingView = {
     subProduct: null,
     productItem: null,
     unit: null,
+    productType: 1,
   },
   documentary: { mass_kg: "120.0", quantity: "4", unit_id: "u1" },
   confirmation: {
@@ -56,6 +61,29 @@ const party: IncomingView = {
   source_presence: "CURRENT_CONFIRMED",
 };
 
+const formView: ExaminationFormView = {
+  party_id: PARTY,
+  laboratory_id: LAB,
+  participants: {
+    senderOwner: { name: "ХС-1", state: "SOURCE_XML" },
+    senderEnterprise: { name: "Предприятие-1", state: "SOURCE_XML" },
+    receiverOwner: { name: "ХС-2", state: "SOURCE_XML" },
+    receiverEnterprise: { name: "Предприятие-2", state: "SOURCE_XML" },
+  },
+  product: { id: "362aa885-9b9f-ae95-05d0-f9570f4fbdc6", name: "говядина" },
+  sub_product: null,
+  product_item: null,
+  unit: null,
+  product_type: 1,
+  product_type_label: "Мясо и мясопродукты",
+  accepted: { massKg: "100.0", quantity: "4", unitId: "шт", unitName: null },
+  required_research_ids: [],
+  eligible_specialists: [{ id: ME, fullName: "Врач Ветеринарный" }],
+  source_revision: "1f0e6d2a-1111-4222-8333-444444444444",
+  reconciliation_revision: 1,
+  revision: 1,
+};
+
 const collection: CollectionView = {
   id: "44444444-4444-4444-8444-444444444444",
   party_id: PARTY,
@@ -70,7 +98,10 @@ const collection: CollectionView = {
   revision: 1,
 };
 
-function renderForm(collections: CollectionView[] = []): void {
+function renderForm(
+  collections: CollectionView[] = [],
+  overrides: { formView?: ExaminationFormView } = {},
+): void {
   const client = new QueryClient();
   render(
     <MemoryRouter>
@@ -80,6 +111,8 @@ function renderForm(collections: CollectionView[] = []): void {
           view={null}
           today="2026-11-07"
           availableCollections={collections}
+          formView={overrides.formView ?? formView}
+          currentUserId={ME}
           onSaved={() => undefined}
           onCancel={() => undefined}
         />
@@ -89,10 +122,11 @@ function renderForm(collections: CollectionView[] = []): void {
 }
 
 describe("ExaminationForm", () => {
-  it("the sample defaults to 0.8 kg and REUSE when a collection exists", () => {
+  it("DR35 §11: the sample is ALWAYS a new selection — no REUSE default", () => {
     expect(initialSample(null, [collection], "2026-11-07")).toMatchObject({
-      mode: "REUSE",
-      collectionId: collection.id,
+      mode: "NEW",
+      massKg: "0.8",
+      collectedOn: "2026-11-07",
     });
     expect(initialSample(null, [], "2026-11-07")).toMatchObject({ mode: "NEW", massKg: "0.8" });
   });
@@ -102,10 +136,54 @@ describe("ExaminationForm", () => {
     expect(screen.getByRole("button", { name: "Отправить в ожидание результата" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Завершить ВСЭ" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /черновик/i })).toBeNull();
-    // No legacy parts/head/organs inputs exist anywhere (SC-035).
     expect(screen.queryByLabelText(/части туш|голов|органов/i)).toBeNull();
-    // No conditional-fit option exists (rejected by the schema).
     expect(screen.queryByText(/Условно-пригодно/)).toBeNull();
+  });
+
+  it("DR35 §11: the «Использовать имеющуюся пробу» mode is gone", () => {
+    renderForm([collection]);
+    expect(screen.queryByText(/Использовать имеющуюся пробу/)).toBeNull();
+    expect(screen.queryByRole("radio", { name: /имеющуюся пробу/ })).toBeNull();
+    expect(screen.getByText("Новый отбор пробы этой партии.")).toBeTruthy();
+  });
+
+  it("DR35 §8: the confirm-note phrase is gone", () => {
+    renderForm();
+    expect(screen.queryByText("Партия подтверждена внешним результатом")).toBeNull();
+  });
+
+  it("DR35 §5: both participant cards use Предприятие/Хозяйствующий субъект", () => {
+    renderForm();
+    const sender = screen.getByLabelText("Сведения об отправителе");
+    const receiver = screen.getByLabelText("Сведения о получателе");
+    // The mockup readonly facts are readonly inputs; the value lives on the control.
+    expect((within(sender).getByLabelText("Предприятие") as HTMLInputElement).value).toBe("Предприятие-1");
+    expect((within(sender).getByLabelText("Хозяйствующий субъект") as HTMLInputElement).value).toBe("ХС-1");
+    expect((within(receiver).getByLabelText("Предприятие") as HTMLInputElement).value).toBe("Предприятие-2");
+    expect((within(receiver).getByLabelText("Хозяйствующий субъект") as HTMLInputElement).value).toBe("ХС-2");
+  });
+
+  it("DR35 §6/§7: the product type is Russian and the accepted numbers are human-readable", () => {
+    renderForm();
+    expect((screen.getByLabelText("Тип продукции") as HTMLInputElement).value).toBe("Мясо и мясопродукты");
+    expect((screen.getByLabelText("Принятый вес, кг") as HTMLInputElement).value).toBe("100");
+    expect((screen.getByLabelText("Принятое количество мест, шт.") as HTMLInputElement).value).toBe("4");
+    // No technical GUID anywhere near the accepted quantity.
+    expect(screen.queryByText(/bbbbbbbb-bbbb/)).toBeNull();
+  });
+
+  it("DR35 §9: a required trichinelloscopy card cannot be removed and is not in the add zone", () => {
+    renderForm([], {
+      formView: {
+        ...formView,
+        required_research_ids: [TRICHINELLA_INDICATOR_ID],
+      },
+    });
+    const select = screen.getByRole("combobox", { name: "Трихинеллоскопия" });
+    expect(select).toBeTruthy();
+    expect(select.textContent).toContain("Соответствует");
+    expect(screen.queryByRole("button", { name: "Удалить трихинеллоскопию" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Добавить трихинеллоскопию" })).toBeNull();
   });
 
   it("adds and removes an optional research through accessible names", async () => {
@@ -145,6 +223,14 @@ describe("ExaminationForm", () => {
     expect(screen.getByRole("combobox", { name: "Незаразные болезни: наименование болезни" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Удалить незаразное заболевание 1" }));
     expect(screen.queryByRole("combobox", { name: "Незаразные болезни: наименование болезни" })).toBeNull();
+  });
+
+  it("DR35 §12.3: the scoped specialist is prefilled and visible without UUIDs", () => {
+    renderForm();
+    const select = screen.getByRole("combobox", { name: "Специалист Госветслужбы" });
+    expect((select as HTMLSelectElement).value).toBe(ME);
+    expect(select.textContent).toContain("Врач Ветеринарный");
+    expect(screen.queryByText(new RegExp(ME))).toBeNull();
   });
 
   it("WAITING without the sent-to-lab mark is refused with a readable message", async () => {

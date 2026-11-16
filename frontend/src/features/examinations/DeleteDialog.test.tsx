@@ -29,6 +29,8 @@ const EXAM: ExaminationView = {
   direction: null,
   reason: null,
   created_by: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+  specialist_id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+  specialist_name: "Врач Ветеринарный",
   created_at: "2026-11-07T10:00:00Z",
   first_completed_at: null,
   revision: 1,

@@ -92,6 +92,8 @@ function card(overrides: Partial<ExaminationView>): ExaminationView {
     direction: null,
     reason: null,
     created_by: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+    specialist_id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+    specialist_name: "Врач Ветеринарный",
     // The same-day actions (edit/delete) depend on the card's creation day:
     // build the stamp from the real clock so the tests stay date-independent.
     created_at: new Date().toISOString(),
@@ -128,7 +130,7 @@ describe("ExaminationViewPage", () => {
     expect(
       await screen.findByText("1f0e6d2a-1111-4222-8333-444444444444", {}, { timeout: 6000 }),
     ).toBeTruthy();
-    expect(screen.getByText("100.0")).toBeTruthy();
+    expect(screen.getByText("100")).toBeTruthy();
     // The late completion is its own single action.
     expect(screen.getByRole("button", { name: "Завершить ожидание" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Исправить карточку" })).toBeTruthy();

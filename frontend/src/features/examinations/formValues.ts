@@ -32,7 +32,9 @@ export interface FindingEntry {
 }
 
 export interface SampleEntry {
-  mode: "NEW" | "REUSE" | "EDIT";
+  /** DR35 §11: only NEW (a new card takes a new sampling) or EDIT (a same-day
+   * correction of the linked fact). REUSE is not part of the form any more. */
+  mode: "NEW" | "EDIT";
   collectedOn: string;
   massKg: string;
   collectionId: string;
@@ -54,6 +56,8 @@ export interface ExaminationFormValues {
   invasive: FindingEntry[];
   noncontagious: FindingEntry[];
   outcome: OutcomeEntry;
+  /** DR35 §12.3: the chosen Госветслужбы specialist (server-validated). */
+  specialistId: string;
 }
 
 export const DEFAULT_SAMPLE_MASS_KG = "0.8";
@@ -89,9 +93,19 @@ export function savedResearches(view: ExaminationView | null): Map<string, Resea
   return saved;
 }
 
-/** Initial form values from a confirmed party's facts and a saved card. */
+/** Initial form values from a confirmed party's facts and a saved card.
+ *
+ * DR35 §11.2: a create always performs a NEW selection — the available
+ * collections are irrelevant to the first save (no REUSE default any more).
+ */
 export function initialValues(
-  defaults: { number: string; today: string; sample: SampleEntry; sentToLab: boolean },
+  defaults: {
+    number: string;
+    today: string;
+    sample: SampleEntry;
+    sentToLab: boolean;
+    specialistId: string;
+  },
   view: ExaminationView | null,
 ): ExaminationFormValues {
   const researches: Record<string, ResearchEntry> = {};
@@ -137,6 +151,7 @@ export function initialValues(
     invasive,
     noncontagious,
     outcome: emptyOutcome(),
+    specialistId: defaults.specialistId,
   };
 }
 
@@ -161,13 +176,6 @@ export function formSchemaFor(mode: "WAITING" | "COMPLETED"): z.ZodType {
       expectedRevision: z.string(),
     }),
     z.object({
-      mode: z.literal("REUSE"),
-      collectedOn: z.string(),
-      massKg: z.string(),
-      collectionId: z.string().min(1, "Выберите доступную пробу."),
-      expectedRevision: z.string(),
-    }),
-    z.object({
       mode: z.literal("EDIT"),
       collectedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Укажите дату отбора."),
       massKg: z.string().regex(DECIMAL, "Вес пробы — положительное десятичное число."),
@@ -180,6 +188,9 @@ export function formSchemaFor(mode: "WAITING" | "COMPLETED"): z.ZodType {
     stamp: z.string().trim().min(1, "Введите ветеринарное клеймо."),
     sentToLab: z.boolean(),
     sample: sampleSchema,
+    // DR35 §12.3: the specialist is a server-validated UUID; the readable
+    // mirror only checks the non-empty selection (the options are scoped).
+    specialistId: z.string().min(1, "Выберите специалиста Госветслужбы."),
     researches: researchSchema,
     invasive: z.array(
       z.object({
@@ -258,8 +269,6 @@ function toSample(values: ParsedForm["sample"]): SampleSelection {
   switch (values.mode) {
     case "NEW":
       return { mode: "NEW", collectedOn: values.collectedOn, massKg: values.massKg };
-    case "REUSE":
-      return { mode: "REUSE", collectionId: values.collectionId };
     case "EDIT":
       return {
         mode: "EDIT",
@@ -275,12 +284,18 @@ function toSample(values: ParsedForm["sample"]): SampleSelection {
  * Client-side mirror of the server's typed research validation (FT-VSE-03–05):
  * same rules, readable Russian messages; the server repeats every check.
  */
-export function researchErrors(values: ExaminationFormValues): string[] {
+export function researchErrors(
+  values: ExaminationFormValues,
+  requiredResearchIds: ReadonlySet<string> = new Set(),
+): string[] {
   const errors: string[] = [];
   for (const def of INDICATORS) {
     const entry = values.researches[def.id];
+    // DR35 §9.3: the party's required set comes from the server read model;
+    // the form never guesses trichinelloscopy by name.
+    const mandatory = def.mandatory || requiredResearchIds.has(def.id);
     if (entry === undefined || !entry.performed) {
-      if (def.mandatory) {
+      if (mandatory) {
         errors.push(`Обязательное исследование не выполнено: ${def.name}.`);
       }
       continue;
@@ -329,7 +344,11 @@ export function researchErrors(values: ExaminationFormValues): string[] {
   return errors;
 }
 
-export function toWritePayload(values: ParsedForm, mode: "WAITING" | "COMPLETED"): ExaminationWrite | null {
+export function toWritePayload(
+  values: ParsedForm,
+  mode: "WAITING" | "COMPLETED",
+  options: { expectedTotal?: string | null } = {},
+): ExaminationWrite | null {
   const researches: ResearchWrite[] = [];
   for (const def of INDICATORS) {
     const entry = values.researches[def.id];
@@ -359,6 +378,12 @@ export function toWritePayload(values: ParsedForm, mode: "WAITING" | "COMPLETED"
     })),
     sentToLab: isWaiting ? true : values.sentToLab,
     sample: toSample(values.sample),
+    // DR35 §12.3: the chosen specialist travels with the save; the server
+    // re-checks the scoped list.
+    specialistId: values.specialistId !== "" ? values.specialistId : null,
+    // DR35 §13.5: the CONFIRMED preview total only guards a managed price
+    // conflict — the server recomputes the money itself.
+    ...(mode === "COMPLETED" && options.expectedTotal ? { expectedTotal: options.expectedTotal } : {}),
     outcome: isWaiting
       ? null
       : values.outcome.outcome === ""

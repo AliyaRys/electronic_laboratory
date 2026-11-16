@@ -103,7 +103,12 @@ function withProviders(node: React.ReactElement): React.ReactElement {
   const client = new QueryClient();
   return (
     <MemoryRouter>
-      <QueryClientProvider client={client}>{node}</QueryClientProvider>
+      <QueryClientProvider client={client}>
+        {/* The canonical app theme context: every --app-* token used by the
+            form styles is declared on .vse-app, so stories must render
+            inside the same shell as the working page. */}
+        <div className="vse-app">{node}</div>
+      </QueryClientProvider>
     </MemoryRouter>
   );
 }

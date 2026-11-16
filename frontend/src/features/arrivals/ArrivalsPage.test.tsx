@@ -660,10 +660,49 @@ describe("ArrivalsPage", () => {
     expect(dates).toEqual(["12.08.2026 08:40", "10.08.2026 08:40"]);
   });
 
-  it("the sort select exists only on the EXPECTED stage", async () => {
+  it("the EXPECTED queue keeps the exact DR15 sort labels", async () => {
+    renderPage(`/labs/${LAB}/arrivals?queue=expected`);
+    await screen.findByText("говядина");
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.textContent).toContain("Сначала оформленные раньше");
+    expect(select.textContent).toContain("Сначала оформленные позже");
+  });
+
+  // ТЗ DR39 §4.1: WORK sorts by the completed reconciliation date.
+  it("the WORK queue sorts by сверка date with its own labels", async () => {
     renderPage(`/labs/${LAB}/arrivals?queue=work`);
     await screen.findByText("говядина");
-    expect(screen.queryByLabelText("Сортировка")).toBeNull();
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.textContent).toContain("Сначала сверенные раньше");
+    expect(select.textContent).toContain("Сначала сверенные позже");
+  });
+
+  // ТЗ DR39 §4.2: ACCEPTED uses the exact «Завершенные» wording.
+  it("the ACCEPTED queue sorts by сверка date with its own labels", async () => {
+    renderPage(`/labs/${LAB}/arrivals?queue=accepted`);
+    await screen.findByText("говядина");
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.textContent).toContain("Сначала старые");
+    expect(select.textContent).toContain("Сначала новые");
+    expect(select.textContent).not.toContain("оформленные");
+  });
+
+  it("switching the queue normalizes the sort: the old param never carries its hidden meaning", async () => {
+    const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=work&sort=asc`);
+    await screen.findByText("говядина");
+    // The WORK select keeps the URL value.
+    await waitFor(() => {
+      const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+      expect(select.value).toBe("asc");
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Завершенные/ }));
+    await waitFor(() => {
+      // The page normalizes the sort to the ACCEPTED default (desc): the URL
+      // carries no stale «sort=asc» of a DIFFERENT queue meaning.
+      expect(captured.at(-1)?.url).not.toContain("sort=asc");
+    });
+    const select = screen.getByLabelText("Сортировка") as HTMLSelectElement;
+    expect(select.value).toBe("desc");
   });
 
   it("the sort select is keyboard-focusable and survives a URL with sort=asc", async () => {

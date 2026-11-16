@@ -112,6 +112,20 @@ export const STAGE_DESCRIPTIONS: Readonly<Record<ArrivalQueue, string>> = Object
   ACCEPTED: "Завершенные партии: сверка завершена, ВСЭ проведена или подтверждена, можно оформить заключение",
 });
 
+/**
+ * ТЗ DR39 §4: the QUEUE-AWARE Russian sort labels of ONE «asc|desc» contract.
+ * The sort DIRECTION is the same value for every queue, while its MEANING —
+ * and its exact user wording — belongs to the queue: EXPECTED sorts by the
+ * ВСД issue date (DR15), WORK/ACCEPTED by the completed reconciliation date.
+ */
+export const SORT_LABELS_BY_QUEUE: Readonly<
+  Record<ArrivalQueue, Readonly<Record<ArrivalSort, string>>>
+> = Object.freeze({
+  EXPECTED: Object.freeze({ asc: "Сначала оформленные раньше", desc: "Сначала оформленные позже" }),
+  WORK: Object.freeze({ asc: "Сначала сверенные раньше", desc: "Сначала сверенные позже" }),
+  ACCEPTED: Object.freeze({ asc: "Сначала старые", desc: "Сначала новые" }),
+});
+
 /** Honest empty-state texts per stage (spec 14). */
 export const STAGE_EMPTY_TEXTS: Readonly<Record<ArrivalQueue, string>> = Object.freeze({
   EXPECTED: "По заданным условиям эВСД не найдены",

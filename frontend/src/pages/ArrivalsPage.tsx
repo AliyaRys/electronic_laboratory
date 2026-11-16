@@ -43,7 +43,9 @@ interface Filters {
   result: string;
   q: string;
   page: number;
-  /** DR15 §5.1: the issue-date sort; the URL default is the server default. */
+  // DR15 §5.1: the issue-date sort of the EXPECTED queue; the URL default is
+  // the server default. ТЗ DR39 §4: the SAME desc default now serves every
+  // queue — a queue switch normalizes the sort and drops the stale param.
   sort: ArrivalSort;
 }
 
@@ -335,7 +337,7 @@ function ArrivalsContent(): React.ReactElement {
       <ArrivalsScreen
         queue={filters.queue}
         counts={counts}
-        onQueueChange={(queue) => applyFilters({ queue, result: "", page: 1 })}
+        onQueueChange={(queue) => applyFilters({ queue, result: "", page: 1, sort: DEFAULT_SORT })}
         q={filters.q}
         onSearch={(q) => applyFilters({ q, page: 1 })}
         result={filters.result}

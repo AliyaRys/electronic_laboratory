@@ -13,6 +13,7 @@ import { ArrivalsPagination } from "./ArrivalsPagination";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import type { ArrivalQueue, IncomingView } from "./api";
+import { SORT_LABELS_BY_QUEUE } from "./api";
 
 const meta: Meta = {
   title: "A01/Очереди поступлений",
@@ -229,6 +230,16 @@ export const ФильтрыОжидаемые: StoryObj = {
   render: () => (
     <div style={{ padding: 16, background: "#f5f9f8" }}>
       <ArrivalsFilters q="" onSearch={() => {}} />
+    </div>
+  ),
+};
+
+/** ТЗ DR39 §4.1: the queue-aware WORK sort labels of the ONE select. */
+export const ФильтрыВРаботе: StoryObj = {
+  name: "Панель фильтров / в работе (сортировка сверки)",
+  render: () => (
+    <div style={{ padding: 16, background: "#f5f9f8" }}>
+      <ArrivalsFilters q="" onSearch={() => {}} sort="desc" onSortChange={() => {}} sortLabels={SORT_LABELS_BY_QUEUE.WORK} />
     </div>
   ),
 };

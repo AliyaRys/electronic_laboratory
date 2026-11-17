@@ -268,4 +268,15 @@ describe("ReportsPage hub (DR37)", () => {
     // The «previous» control is disabled on the first page.
     expect(screen.getByRole("button", { name: "Предыдущая страница" })).toBeDisabled();
   });
+
+  it("the hub has no «← Поступления» breadcrumb (ТЗ DR41 §4)", async () => {
+    server.use(
+      http.get("*/api/v1/me", () => HttpResponse.json(me("ANALYST"))),
+      http.get("*/api/v1/reports/5vet", () => HttpResponse.json({ ...savedList, items: [], total: 0 })),
+    );
+    renderPage();
+    await screen.findByText("Форма 5-вет (раздел III)");
+    expect(screen.queryByRole("link", { name: "← Поступления" })).toBeNull();
+    expect(screen.queryByText("← Поступления")).toBeNull();
+  });
 });

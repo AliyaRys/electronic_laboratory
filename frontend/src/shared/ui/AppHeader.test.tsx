@@ -7,7 +7,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { AppHeader } from "./AppHeader";
+import { AppHeader, headerUserFromView } from "./AppHeader";
 const user = {
   fullName: "Анна Кузнецова",
   initials: "АК",
@@ -20,7 +20,7 @@ describe("AppHeader", () => {
     expect(screen.getByRole("banner")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Поступления" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: /Тип продукции: Мясо/ })).toBeInTheDocument();
-    expect(screen.getByText("Анна Кузнецова")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Анна Кузнецова" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Выйти" })).toBeInTheDocument();
   });
 
@@ -39,7 +39,6 @@ describe("AppHeader", () => {
     expect(link).toHaveClass("active");
     expect(link).toHaveAttribute("aria-current", "page");
   });
-
   it("opens the product list with the keyboard and switches with focus return", async () => {
     const act = userEvent.setup();
     const onProductChange = vi.fn();
@@ -120,6 +119,58 @@ describe("AppHeader", () => {
     // Header shows only the session user; a party/examination specialist name
     // (Review Focus F02) must never appear here.
     expect(screen.queryByText("Ринат Усманов")).toBeNull();
-    expect(screen.getByText("Анна Кузнецова")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Анна Кузнецова" })).toBeInTheDocument();
+  });
+});
+
+describe("AppHeader user identity (ТЗ DR41 §3.1)", () => {
+  it("derives the initials РА from «Рысаева Алия Илдаровна»", () => {
+    const view = headerUserFromView({ full_name: "Рысаева Алия Илдаровна" });
+    expect(view.initials).toBe("РА");
+    expect(view.fullName).toBe("Рысаева Алия Илдаровна");
+  });
+
+  it("survives extra spaces, lowercase input and an unparseable name", () => {
+    expect(headerUserFromView({ full_name: "  Рысаева    Алия   " }).initials).toBe("РА");
+    expect(headerUserFromView({ full_name: "рысаева алия" }).initials).toBe("РА");
+    expect(headerUserFromView({ full_name: "   " }).initials).toBe("?");
+  });
+
+  it("shows the initials in the avatar, never the full name as visible text", () => {
+    render(
+      <AppHeader
+        mode="work"
+        user={headerUserFromView({ full_name: "Рысаева Алия Илдаровна" })}
+        onLogout={() => undefined}
+      />,
+    );
+    expect(screen.getByText("РА")).toBeInTheDocument();
+    expect(screen.queryByText("Рысаева Алия Илдаровна")).toBeNull();
+  });
+
+  it("keeps the full name in the accessible name and title of the profile link", () => {
+    render(
+      <AppHeader
+        mode="work"
+        user={headerUserFromView({ full_name: "Рысаева Алия Илдаровна" })}
+        profileActive
+        onLogout={() => undefined}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Рысаева Алия Илдаровна" });
+    expect(link).toHaveAttribute("aria-current", "page");
+    expect(link).toHaveAttribute("title", "Рысаева Алия Илдаровна");
+  });
+
+  it("renders the institution line under the brand", () => {
+    render(
+      <AppHeader
+        mode="work"
+        user={user}
+        institution="ГБУ «Лаборатория №1 г. Казань»"
+        onLogout={() => undefined}
+      />,
+    );
+    expect(screen.getByText("ГБУ «Лаборатория №1 г. Казань»")).toBeInTheDocument();
   });
 });

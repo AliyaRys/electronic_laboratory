@@ -127,6 +127,94 @@
   font-size: 13px;
 }
 
+/* --- ТЗ DR40 §7: one card per accompanying document ---------------------------- */
+.vse-rec-document-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.vse-rec-document-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: var(--app-card-bg);
+}
+
+.vse-rec-document-card.match {
+  border-color: var(--app-match-line);
+  background: var(--app-match-bg);
+  box-shadow: inset 0 0 0 1px #c8e6d8;
+}
+
+.vse-rec-document-card.mismatch {
+  border-color: var(--app-mismatch-line);
+  background: var(--app-mismatch-bg);
+  box-shadow: inset 0 0 0 1px #f3cdd2;
+}
+
+.vse-rec-document-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: end;
+}
+
+.vse-rec-document-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #29474d;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vse-rec-document-facts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.vse-rec-document-fact {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.vse-rec-document-fact dt {
+  min-width: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.vse-rec-document-fact dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #29474d;
+  font-size: 13px;
+}
+
+.vse-rec-document-actual {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--app-mismatch-line);
+  border-radius: 10px;
+  background: var(--app-card-bg);
+}
+
+.vse-rec-document-actual-title {
+  margin: 0;
+  color: #29474d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* --- comparison grid ---------------------------------------------------------- */
 .vse-rec-compare-grid {
   display: grid;

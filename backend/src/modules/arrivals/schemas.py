@@ -27,6 +27,9 @@ __all__ = [
     "SourceSnapshot",
     "QuantitySet",
     "ExternalFields",
+    "AccompanyingDocumentView",
+    "DocumentActual",
+    "DocumentCheck",
     "ClassificationView",
     "ClassificationEntry",
     "ConfirmationSummary",
@@ -217,12 +220,16 @@ class ReferencedDocument(StrictModel):
     Laboratory research documents use the same XML element, but are nested
     inside ``laboratoryResearch`` and must never be mistaken for the
     consignment waybill.
+
+    ТЗ DR40 §5.1: the XML elements are all optional — an absent series,
+    number, date or type keeps the document in the list (the read model
+    publishes an honest ``null``/«—») instead of rejecting the whole eVSD.
     """
 
     issue_series: str | None = Field(default=None, alias="issueSeries", max_length=64)
-    issue_number: str = Field(alias="issueNumber", max_length=255)
-    issue_date: str = Field(alias="issueDate", max_length=64)
-    document_type: str = Field(alias="type", max_length=64)
+    issue_number: str | None = Field(default=None, alias="issueNumber", max_length=255)
+    issue_date: str | None = Field(default=None, alias="issueDate", max_length=64)
+    document_type: str | None = Field(default=None, alias="type", max_length=64)
     relationship_type: str | None = Field(default=None, alias="relationshipType", max_length=64)
 
 
@@ -249,6 +256,13 @@ class VdDocument(StrictModel):
     trailer_number: str | None = Field(default=None, max_length=64)
     purpose: PurposeRef | None = None
     transport_document: ReferencedDocument | None = Field(default=None, alias="transportDocument")
+    # ТЗ DR40 §5.1: the source-faithful list of ALL direct vd:referencedDocument
+    # children of the current vd:vetDocument, in the source order, all types
+    # 1–24 and unknown codes kept, optional fields as honest nulls. Never
+    # descendant-wide: nested laboratoryResearch references stay out.
+    referenced_documents: list[ReferencedDocument] = Field(
+        default_factory=list, alias="referencedDocuments"
+    )
 
 
 # ТЗ DR17 §1/§5.2: the agreed informational text published for an absent or
@@ -291,13 +305,65 @@ class QuantitySet(BaseModel):
     unit_id: str
 
 
+class AccompanyingDocumentView(BaseModel):
+    """ТЗ DR40 §6: one typed accompanying document of the read model.
+
+    ``key`` is the deterministic server key (typeCode + relationshipType +
+    series + number + date, hashed with an occurrence suffix for identical
+    documents); the client NEVER builds keys or labels — the Russian label
+    comes from the single backend registry ``vetis.document_types``.
+    """
+
+    model_config = ConfigDict(extra="forbid", alias_generator=to_camel, populate_by_name=True)
+
+    key: str = Field(min_length=8, max_length=64)
+    source_order: int = Field(alias="sourceOrder", ge=0)
+    type_code: str | None = Field(default=None, alias="typeCode", max_length=64)
+    type_label: str = Field(alias="typeLabel", max_length=255)
+    series: str | None = Field(default=None, max_length=64)
+    number: str | None = Field(default=None, max_length=255)
+    series_and_number: str | None = Field(default=None, alias="seriesAndNumber", max_length=320)
+    created_on: str | None = Field(default=None, alias="createdOn", max_length=64)
+    relationship_type: str | None = Field(default=None, alias="relationshipType", max_length=64)
+
+
+class DocumentActual(BaseModel):
+    """ТЗ DR40 §8: the structured actual value of one document mismatch."""
+
+    model_config = ConfigDict(extra="forbid", alias_generator=to_camel, populate_by_name=True)
+
+    type_code: str | None = Field(default=None, alias="typeCode", max_length=64)
+    type_label: str | None = Field(default=None, alias="typeLabel", max_length=255)
+    series: str | None = Field(default=None, max_length=64)
+    number: str | None = Field(default=None, max_length=255)
+    created_on: str | None = Field(default=None, alias="createdOn", max_length=64)
+
+
+class DocumentCheck(BaseModel):
+    """ТЗ DR40 §8: ONE mark per accompanying document (not per field)."""
+
+    model_config = ConfigDict(extra="forbid", alias_generator=to_camel, populate_by_name=True)
+
+    matches: bool
+    actual: DocumentActual | None = None
+    reason: str | None = Field(default=None, max_length=255)
+
+
 class ExternalFields(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # ``populate_by_name`` lets the read-model code construct the typed list by
+    # its python name while the wire keeps the camelCase alias.
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     contour: str
     evsd_uuid: str
     status: str
     fields: dict[str, str | None]
+    # ТЗ DR40 §6: the typed accompanying documents of the read model (keys and
+    # Russian labels are owned by the backend registry; the client never
+    # duplicates the DocumentType dictionary).
+    accompanying_documents: list[AccompanyingDocumentView] = Field(
+        default_factory=list, alias="accompanyingDocuments"
+    )
 
 
 class ClassificationEntry(BaseModel):
@@ -426,6 +492,12 @@ class ReconciliationWrite(StrictModel):
     accepted from the client."""
 
     checks: Annotated[dict[Annotated[str, AfterValidator(_chk_key)], Comparison], Field(default_factory=dict)]
+    # ТЗ DR40 §8: ONE mark per accompanying document; the server validates
+    # every key against the current source snapshot (an unknown/removed key is
+    # never accepted silently) and requires a structured actual + reason for a
+    # mismatch. Legacy CHK-F25/26/27 keep being read (§8.1); new saves treat
+    # ``documentChecks`` as the authoritative mark source.
+    document_checks: dict[str, DocumentCheck] = Field(default_factory=dict, alias="documentChecks")
     inspection: Inspection = Field(default_factory=Inspection)
     delivered: QuantitySet
     accepted: QuantitySet
@@ -461,13 +533,16 @@ class ActPreview(BaseModel):
 class ReconciliationView(BaseModel):
     """API-04 ``ReconciliationView`` with the server-calculated projection."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str
     party_id: str
     revision: int
     state: Literal["OPEN", "CONFIRMED", "RETURNED"]
     checks: dict[str, Comparison]
+    # ТЗ DR40 §8: the saved document-level marks of the view (read-only for
+    # the client; the write path validates the keys server-side).
+    document_checks: dict[str, DocumentCheck] = Field(default_factory=dict, alias="documentChecks")
     inspection: Inspection
     delivered: QuantitySet
     accepted: QuantitySet

@@ -380,28 +380,35 @@ describe("ReconciliationForm", () => {
     expect(screen.getByText("реализация в пищу людям")).toBeInTheDocument();
   });
 
-  it("shows transport document requisites in the accompanying-documents section", () => {
+  it("shows the accompanying documents as one card per document (ТЗ DR40)", () => {
     renderForm({
       party: {
         ...party,
         external: {
           ...party.external,
-          fields: {
-            ...party.external.fields,
-            transportDocumentType: "Товарно-транспортная накладная",
-            transportDocumentNumber: "111111",
-            transportDocumentIssuedOn: "2026-11-13",
-          },
+          accompanyingDocuments: [
+            {
+              key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+              sourceOrder: 0,
+              typeCode: "1",
+              typeLabel: "Товарно-транспортная накладная",
+              series: "0006",
+              number: "5555",
+              seriesAndNumber: "0006 5555",
+              createdOn: "2026-11-13",
+              relationshipType: "1",
+            },
+          ],
         },
       },
     });
     const section = screen.getByRole("heading", { name: "Сопроводительные документы" }).closest("section");
     expect(section).not.toBeNull();
-    expect(section).toHaveTextContent("Тип транспортного документа");
+    expect(section).toHaveTextContent("Тип сопроводительного документа");
     expect(section).toHaveTextContent("Товарно-транспортная накладная");
-    expect(section).toHaveTextContent("Номер транспортного документа");
-    expect(section).toHaveTextContent("111111");
-    expect(section).toHaveTextContent("Дата транспортного документа");
+    expect(section).toHaveTextContent("Серия и номер");
+    expect(section).toHaveTextContent("0006 5555");
+    expect(section).toHaveTextContent("Дата создания");
     expect(section).toHaveTextContent("13.11.2026");
   });
 

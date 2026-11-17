@@ -1091,6 +1091,35 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AccompanyingDocumentView
+         * @description ТЗ DR40 §6: one typed accompanying document of the read model.
+         *
+         *     ``key`` is the deterministic server key (typeCode + relationshipType +
+         *     series + number + date, hashed with an occurrence suffix for identical
+         *     documents); the client NEVER builds keys or labels — the Russian label
+         *     comes from the single backend registry ``vetis.document_types``.
+         */
+        AccompanyingDocumentView: {
+            /** Key */
+            key: string;
+            /** Sourceorder */
+            sourceOrder: number;
+            /** Typecode */
+            typeCode?: string | null;
+            /** Typelabel */
+            typeLabel: string;
+            /** Series */
+            series?: string | null;
+            /** Number */
+            number?: string | null;
+            /** Seriesandnumber */
+            seriesAndNumber?: string | null;
+            /** Createdon */
+            createdOn?: string | null;
+            /** Relationshiptype */
+            relationshipType?: string | null;
+        };
+        /**
          * ActItem
          * @description One row of the derived discrepancy act (CHK-F44).
          */
@@ -1601,6 +1630,33 @@ export interface components {
             expectedMassKg: string;
         };
         /**
+         * DocumentActual
+         * @description ТЗ DR40 §8: the structured actual value of one document mismatch.
+         */
+        DocumentActual: {
+            /** Typecode */
+            typeCode?: string | null;
+            /** Typelabel */
+            typeLabel?: string | null;
+            /** Series */
+            series?: string | null;
+            /** Number */
+            number?: string | null;
+            /** Createdon */
+            createdOn?: string | null;
+        };
+        /**
+         * DocumentCheck
+         * @description ТЗ DR40 §8: ONE mark per accompanying document (not per field).
+         */
+        DocumentCheck: {
+            /** Matches */
+            matches: boolean;
+            actual?: components["schemas"]["DocumentActual"] | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * DosimetryPair
          * @description The two decimal readings of one performed dosimetry procedure.
          */
@@ -1812,6 +1868,8 @@ export interface components {
             fields: {
                 [key: string]: string | null;
             };
+            /** Accompanyingdocuments */
+            accompanyingDocuments?: components["schemas"]["AccompanyingDocumentView"][];
         };
         /**
          * FormAccepted
@@ -2641,6 +2699,10 @@ export interface components {
             checks: {
                 [key: string]: components["schemas"]["Comparison"];
             };
+            /** Documentchecks */
+            documentChecks?: {
+                [key: string]: components["schemas"]["DocumentCheck"];
+            };
             inspection: components["schemas"]["Inspection"];
             delivered: components["schemas"]["QuantitySet"];
             accepted: components["schemas"]["QuantitySet"];
@@ -2684,6 +2746,10 @@ export interface components {
             /** Checks */
             checks?: {
                 [key: string]: components["schemas"]["Comparison"];
+            };
+            /** Documentchecks */
+            documentChecks?: {
+                [key: string]: components["schemas"]["DocumentCheck"];
             };
             inspection?: components["schemas"]["Inspection"];
             delivered: components["schemas"]["QuantitySet"];

@@ -28,11 +28,17 @@ from backend.src.core.contracts import CommandContext
 from backend.src.core.problems import ProblemError, not_found, validation_error
 from backend.src.modules.arrivals.models import IncomingDocument as IncomingDocumentRow
 from backend.src.modules.arrivals.models import Party, Reconciliation
-from backend.src.modules.arrivals.queries import previous_vse_fields
+from backend.src.modules.arrivals.queries import (
+    accompanying_document_key,
+    accompanying_documents_of,
+    previous_vse_fields,
+)
 from backend.src.modules.arrivals.schemas import (
+    AccompanyingDocumentView,
     ActPreview,
     ClassificationView,
     Comparison,
+    DocumentCheck,
     Inspection,
     QuantitySet,
     ReconciliationView,
@@ -55,7 +61,7 @@ from backend.src.modules.arrivals.validation import (
 from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
 from backend.src.modules.integrations.vetis.document_types import document_type_label
-from backend.src.modules.integrations.vetis.models import VetisContour
+from backend.src.modules.integrations.vetis.models import VetisContour  # noqa: F401
 from backend.src.modules.integrations.vetis.reference_names import (
     participant_name_overrides,
     resolve_participants,
@@ -82,6 +88,48 @@ def _ref_name(entry: object) -> str | None:
         return None
     name = entry.get("name")
     return str(name) if name else None
+
+
+def primary_document_key(
+    payload: dict[str, object],
+    transport_document: dict[str, object],
+    accompanying: list[AccompanyingDocumentView],
+) -> str | None:
+    """ТЗ DR40 §8.1: the stable key of the compatibility primary transport document.
+
+    A document-level mark on THIS document satisfies the legacy CHK-F25/26/27
+    requirement; without a compatibility document (or without a matching list
+    entry) the key stays ``None`` and the legacy marks work exactly as before.
+    """
+    fields = (
+        _as_text(transport_document.get("type")),
+        _as_text(transport_document.get("relationshipType")),
+        _as_text(transport_document.get("issueSeries")),
+        _as_text(transport_document.get("issueNumber")),
+        _as_text(transport_document.get("issueDate")),
+    )
+    if not any(fields):
+        return None
+    expected = accompanying_document_key(
+        type_code=fields[0],
+        relationship_type=fields[1],
+        series=fields[2],
+        number=fields[3],
+        created_on=fields[4],
+    )
+    # The occurrence suffix of identical documents is resolved by position:
+    # pick the FIRST listed document whose base key matches the projection.
+    for document in accompanying:
+        if document.key.split("#", 1)[0] == expected:
+            return document.key
+    return None
+
+
+def _as_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _entry_actual(entry: object) -> str | None:
@@ -113,6 +161,7 @@ def source_projection(
     consignee = _as_dict(payload.get("consignee"))
     batch = _as_dict(payload.get("batch"))
     transport_document = _as_dict(payload.get("transportDocument"))
+    accompanying = accompanying_documents_of(payload)
     unit = _as_dict(batch.get("unit"))
     classification = ClassificationView.model_validate(dict(party.classification_snapshot), by_alias=True)
 
@@ -175,6 +224,11 @@ def source_projection(
         snapshot=SourceSnapshot.model_validate(row.source_snapshot),
         classification=classification,
         fields=fields,
+        # ТЗ DR40 §8: the typed documents of the snapshot; the primary
+        # transport-document key lets ONE document mark satisfy legacy
+        # CHK-F25/26/27 (§8.1).
+        accompanying_documents=tuple(accompanying),
+        primary_document_key=primary_document_key(payload, transport_document, accompanying),
     )
 
 
@@ -212,12 +266,25 @@ def row_to_payload(row: Reconciliation) -> ReconciliationWrite:
         for key, value in stored.items()
         if key in FIELD_REGISTRY and FIELD_REGISTRY[key].ground in ("act", "inadmissible")
     }
+    # ТЗ DR40 §8: the saved document-level marks ride into the payload so the
+    # re-run validation keeps verifying the keys against the current snapshot.
+    stored_documents = stored.get("documentChecks")
+    document_checks = (
+        {
+            key: DocumentCheck.model_validate(value)
+            for key, value in stored_documents.items()
+            if isinstance(value, dict)
+        }
+        if isinstance(stored_documents, dict)
+        else {}
+    )
     compartment = _entry_actual(stored.get("CHK-F13"))
     joint = _entry_actual(stored.get("CHK-F14"))
     reason_entry = stored.get(_REASON_KEY)
     delivered, accepted, returned = _quantities(row)
     return ReconciliationWrite(
         checks=marks,
+        document_checks=document_checks,
         inspection=Inspection(
             compartment=cast('Literal["COMPLIANT", "DIRTY_OR_DAMAGED"] | None', compartment),
             joint_carriage=cast('Literal["NONE", "SEPARATED", "NOT_SEPARATED"] | None', joint),
@@ -278,6 +345,7 @@ def build_reconciliation_view(
             revision=party.rev,
             state="OPEN",
             checks={},
+            document_checks={},
             inspection=Inspection(),
             delivered=QuantitySet(mass_kg="0", quantity="0", unit_id=unit_id),
             accepted=QuantitySet(mass_kg="0", quantity="0", unit_id=unit_id),
@@ -298,6 +366,12 @@ def build_reconciliation_view(
             complete=False,
         )
     payload = row_to_payload(row)
+    stored_documents = dict(row.checks or {}).get("documentChecks")
+    document_checks = (
+        {key: DocumentCheck.model_validate(value) for key, value in stored_documents.items() if isinstance(value, dict)}
+        if isinstance(stored_documents, dict)
+        else {}
+    )
     validation = validate_receipt(payload, source_projection(document_row, party, names=names), CAPABILITIES)
     delivered, accepted, returned = _quantities(row, _source_unit_id(document_row))
     return ReconciliationView(
@@ -306,6 +380,7 @@ def build_reconciliation_view(
         revision=row.rev,
         state=row.state,  # type: ignore[arg-type]
         checks=dict(payload.checks),
+        document_checks=document_checks,
         inspection=payload.inspection,
         delivered=delivered,
         accepted=accepted,
@@ -365,10 +440,20 @@ async def _price_check_services(
 
 
 def _checks_storage(payload: ReconciliationWrite) -> dict[str, dict[str, object]]:
-    """The ``checks`` JSONB: doctor's marks + the input CHK entries (F13/14/35)."""
+    """The ``checks`` JSONB: doctor's marks + the input CHK entries (F13/14/35).
+
+    ТЗ DR40 §8: the document-level marks are stored in the same JSONB under
+    the reserved ``documentChecks`` key (no DB migration) — ``row_to_payload``
+    excludes it from the CHK marks and re-publishes it as typed data.
+    """
     storage: dict[str, dict[str, object]] = {
         key: comparison.model_dump(mode="json") for key, comparison in payload.checks.items()
     }
+    if payload.document_checks:
+        storage["documentChecks"] = {
+            key: check.model_dump(mode="json", by_alias=True, exclude_none=True)
+            for key, check in payload.document_checks.items()
+        }
     if payload.inspection.compartment is not None:
         storage["CHK-F13"] = {"matches": True, "actual": payload.inspection.compartment}
     if payload.inspection.joint_carriage is not None:

@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import { HelpTooltip } from "./HelpTooltip";
+import { describe, expect, it, vi } from "vitest";
+import { HelpTooltip, Tooltip } from "./HelpTooltip";
 
 const TEXT = "Стоимость сверки данных + стоимость ВСЭ";
 
@@ -60,5 +60,42 @@ describe("HelpTooltip", () => {
   it("the accessible name never depends on the tooltip text", () => {
     render(<HelpTooltip text={TEXT} accessibleName="Что входит в стоимость" />);
     expect(screen.getByRole("button", { name: "Что входит в стоимость" })).toBeTruthy();
+  });
+});
+
+describe("Tooltip wrapper (ТЗ DR46 §3.2 fix-loop)", () => {
+  it("keeps the child's own focus handler and still opens the tooltip", async () => {
+    const user = userEvent.setup();
+    const customFocus = vi.fn();
+    render(
+      <Tooltip text="Редактировать ВСЭ">
+        <button type="button" onFocus={customFocus}>
+          Редактировать ВСЭ
+        </button>
+      </Tooltip>,
+    );
+    const trigger = screen.getByRole("button", { name: "Редактировать ВСЭ" });
+    await user.click(trigger);
+    // Both handlers ran: the child's own focus handler and the tooltip's.
+    expect(customFocus).toHaveBeenCalledOnce();
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Редактировать ВСЭ");
+  });
+
+  it("keeps the child's own mouse-leave handler while closing the popup", async () => {
+    const user = userEvent.setup();
+    const customLeave = vi.fn();
+    render(
+      <Tooltip text="Удалить ВСЭ">
+        <button type="button" onMouseLeave={customLeave}>
+          Удалить ВСЭ
+        </button>
+      </Tooltip>,
+    );
+    const trigger = screen.getByRole("button", { name: "Удалить ВСЭ" });
+    await user.hover(trigger);
+    expect(await screen.findByRole("tooltip")).toBeTruthy();
+    await user.unhover(trigger);
+    expect(customLeave).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 });

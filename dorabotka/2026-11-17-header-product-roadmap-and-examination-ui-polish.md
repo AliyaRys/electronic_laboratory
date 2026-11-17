@@ -578,3 +578,14 @@ wrap вывести итог по композиции экрана сверки
 - Merge commit in `main`: нет (запрещено исполнителю)
 - Remote push: нет (запрещено исполнителю)
 - Honest not-run / ограничения: Task 1–6 RED→GREEN проведены, но отдельные RED-прогоны Tasks 3–6 зафиксированы только для Task 1 (тесты шапки) и для Task 2; RED-прогоны для view/pricing/research-тестов выполнялись на уже изменённом коде (тесты написаны вместе с реализацией). Браузерные проверки §Task 7 (Storybook в Chrome, viewport-матрица, tooltips по hover/Tab, 200% zoom, скриншоты) не выполнены: browser-инструмент сессии недоступен. Playwright smoke с реальной страницей/бэкендом не запускался. Бэкенд-код не менялся; backend pytest и ruff не запускались (нет затронутых файлов). Два pre-existing сбоя format в main (`ReconciliationWire.test.ts`, `ReportsPage.test.tsx`) исправлены только форматированием (без изменения логики). Pre-existing падение `TariffsEditorPage.test.tsx` (дубль текста «Мясо и мясопродукты» после появления шапки) устранено правкой запроса теста.
+
+## Fix-loop DR46 (ревью-находки, `fix: DR46 review minors and browser evidence`)
+
+- MINOR 1: мёртвый код `{enabledOptions.length === 0 ? null : null}` в `AppHeader.tsx` удалён вместе с неиспользуемым `enabledOptions`.
+- MINOR 2: `Tooltip` (HelpTooltip.tsx) больше не затирает хендлеры дочернего элемента — собственные onMouseEnter/Leave/Focus/Blur дочернего вызываются вместе с обработчиками tooltip (функция `chain`); добавлены тесты «keeps the child's own focus handler…» и «keeps the child's own mouse-leave…» в `HelpTooltip.test.tsx` (26/26 тестов AppHeader+HelpTooltip passed).
+- Процесс, п.3 (RED-фазы Tasks 3–6, демонстрационные прогоны при откате импл-файла при неизменённых тестах; после прогона файлы восстановлены):
+  - Task 3–4: `git checkout 78a18a2 -- frontend/src/pages/ExaminationViewPage.tsx` → `npx vitest run src/pages/ExaminationViewPage.test.tsx` — 7/7 failed (тесты «…icon-only actions», «renders the six mockup sections…», breadcrumb/badge-проверки) → RED подтверждён.
+  - Task 5: `git checkout a2a5e3c -- PricingSnapshotTable.tsx SavedPricingTable.tsx` → `npx vitest run SavedPricingTable.test.tsx` — 4/4 failed (четыре столбца, отсутствие «Единица/Оценка», итог вне table) → RED подтверждён.
+  - Task 6: `git checkout ac5dc49 -- ResearchFields.tsx` → `npx vitest run ResearchFields.test.tsx` — 7/7 failed (addzone с двумя кнопками болезней, DOM-order редактора над addzone, фокус в первый select) → RED подтверждён.
+- Процесс, п.4 (браузерная проверка §Task 7): НЕ ВЫПОЛНЕНА — in-app browser остаётся недоступным (`[browser.disconnected]`, повторные вызовы в fix-loop); Storybook dev-сервер запускался на порту 6006, но проверка в Chrome и скриншоты невозможны без подключённого браузерного стека. Скриншоты не сняты; это честный not-run, имитация не производилась.
+- Gates fix-loop: `npm run lint` 0; `npm run typecheck` 0; `npx vitest run AppHeader.test HelpTooltip.test` — 26/26 passed; `npm run build` exit 0.

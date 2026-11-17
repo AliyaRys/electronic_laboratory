@@ -167,9 +167,8 @@ function ProductSwitcher({
     if (returnFocus) triggerRef.current?.focus();
   };
 
-  // ТЗ DR46 §3.1: the only available option keeps the roving focus; the
-  // unavailable roadmap entries are excluded from keyboard navigation.
-  const enabledOptions = ROADMAP_PRODUCTS.filter((item) => item.available);
+  // ТЗ DR46 §3.1: the unavailable roadmap entries are excluded from roving
+  // keyboard navigation (only non-disabled options receive focus).
 
   const focusOption = (direction: 1 | -1): void => {
     const options = Array.from(
@@ -263,12 +262,10 @@ function ProductSwitcher({
             </button>
           );
         })}
-        {enabledOptions.length === 0 ? null : null}
       </div>
     </div>
   );
 }
-
 export function AppHeader({
   mode = "work",
   user,

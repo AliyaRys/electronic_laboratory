@@ -23,7 +23,13 @@ const me: UserView = {
   role: "VET",
   active: true,
   scopes: [{ laboratory_id: "11111111-2222-4333-8444-555555555555", product_scope_id: null }],
-  capabilities: ["arrivals:read", "sample:read", "report:operational", "report:5vet-list", "report:5vet-read"],
+  capabilities: [
+    "arrivals:read",
+    "sample:read",
+    "report:operational",
+    "report:5vet-list",
+    "report:5vet-read",
+  ],
   revision: 3,
 };
 
@@ -57,9 +63,7 @@ function renderShellWith(overrides: Partial<UserView>, path = "/"): void {
 }
 
 async function waitForUser(): Promise<void> {
-  await waitFor(() =>
-    expect(screen.getByRole("link", { name: "Анна Кузнецова" })).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.getByRole("link", { name: "Анна Кузнецова" })).toBeInTheDocument());
 }
 
 function renderShell(path = "/"): void {
@@ -218,7 +222,10 @@ describe("AppShell contextual reports navigation (DR37)", () => {
   });
 
   it("a VET with sample:read sees «Отчёты» pointing to the own laboratory", async () => {
-    renderShellWith({ role: "VET", capabilities: ["arrivals:read", "sample:read"] }, `/labs/${LAB}/arrivals?queue=expected`);
+    renderShellWith(
+      { role: "VET", capabilities: ["arrivals:read", "sample:read"] },
+      `/labs/${LAB}/arrivals?queue=expected`,
+    );
     await waitForUser();
     expect(screen.getByRole("link", { name: "Отчёты" })).toHaveAttribute("href", `/labs/${LAB}/reports`);
   });

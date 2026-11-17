@@ -98,9 +98,7 @@ describe("OperationalReportPage", () => {
     server.use(http.get("*/api/v1/me", () => HttpResponse.json(me("VET"))));
     renderPage();
     expect(
-      await screen.findByText(
-        "Операционные показатели недоступны: у вас нет соответствующего полномочия.",
-      ),
+      await screen.findByText("Операционные показатели недоступны: у вас нет соответствующего полномочия."),
     ).toBeVisible();
     // The forbidden screen never triggers the metrics request.
     await new Promise((resolve) => setTimeout(resolve, 50));

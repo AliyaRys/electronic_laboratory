@@ -193,6 +193,13 @@
       ['path', { d: 'M8 2h8' }],
       ['path', { d: 'M7 16h10' }],
     ],
+    // ТЗ DR44 §3: доступная подсказка «Что входит в стоимость» (заголовок
+    // «Стоимость» очереди «Завершенные»).
+    'question-circle': [
+      ['circle', { cx: '12', cy: '12', r: '9' }],
+      ['path', { d: 'M9.5 9.2a2.5 2.5 0 1 1 3.55 2.27c-.76.35-1.55 1-1.55 1.83v.3' }],
+      ['line', { x1: '12', y1: '16.6', x2: '12', y2: '16.61' }],
+    ],
   });
 
   const checkSections = Object.freeze({
@@ -240,6 +247,11 @@
     'exam-sample': 'Проба',
   });
 
+  // ТЗ DR44 §3: иконка доступной подсказки (справочный знак).
+  const helpIcons = Object.freeze({
+    'question-circle': 'Что входит в стоимость',
+  });
+
   const createNode = ([tag, attributes]) => {
     const node = document.createElementNS(svgNamespace, tag);
     Object.entries(attributes).forEach(([attribute, value]) => node.setAttribute(attribute, value));
@@ -276,6 +288,7 @@
   api.listDirectoryIcons = () => Object.entries(directoryIcons).map(([icon, label]) => ({ icon, label }));
   api.listArrivalIcons = () => Object.entries(arrivalIcons).map(([icon, label]) => ({ icon, label }));
   api.listExamSectionIcons = () => Object.entries(examSectionIcons).map(([icon, label]) => ({ icon, label }));
+  api.listHelpIcons = () => Object.entries(helpIcons).map(([icon, label]) => ({ icon, label }));
 
   api.enhanceCheckInterface = (root = document) => {
     root.querySelectorAll('[data-check-section]').forEach(section => {

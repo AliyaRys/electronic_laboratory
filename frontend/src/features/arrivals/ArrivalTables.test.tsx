@@ -191,12 +191,7 @@ describe("WorkArrivalsTable", () => {
   });
 
   it("a null pricing snapshot and null author stay honest «—»", () => {
-    render(
-      <WorkArrivalsTable
-        labId={LAB}
-        items={[withReconciliation(base, null, { author_name: null })]}
-      />,
-    );
+    render(<WorkArrivalsTable labId={LAB} items={[withReconciliation(base, null, { author_name: null })]} />);
     const dashes = screen.getAllByText("—");
     expect(dashes.length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText("0,00 ₽")).toBeNull();
@@ -206,7 +201,9 @@ describe("WorkArrivalsTable", () => {
     render(
       <WorkArrivalsTable
         labId={LAB}
-        items={[withReconciliation(base, "230.00", { author_name: "Иванова Анна Петровна Очень-Очень-Длинная" })]}
+        items={[
+          withReconciliation(base, "230.00", { author_name: "Иванова Анна Петровна Очень-Очень-Длинная" }),
+        ]}
       />,
     );
     expect(screen.getByTitle("Иванова Анна Петровна Очень-Очень-Длинная")).toBeTruthy();
@@ -262,7 +259,8 @@ function withExamination(
       number: overrides.number ?? "Г-1024",
       status: "COMPLETED",
       outcome: overrides.outcome !== undefined ? overrides.outcome : "FIT",
-      specialist_name: overrides.specialist_name !== undefined ? overrides.specialist_name : "Смирнова Ольга Ивановна",
+      specialist_name:
+        overrides.specialist_name !== undefined ? overrides.specialist_name : "Смирнова Ольга Ивановна",
       pricing: { lines: [], total: "20.00", currency: "RUB", fair: false },
       combined_total: overrides.combined_total !== undefined ? overrides.combined_total : "250.00",
       currency: "RUB",
@@ -352,7 +350,12 @@ describe("CompletedArrivalsTable", () => {
     };
     renderWith({ expiresOn: null, expiresOnFrom: "2026-11-01", expiresOnTo: "2026-11-20" });
     expect(screen.getByText("с 01.11.2026 по 20.11.2026")).toBeTruthy();
-    renderWith({ expiresOn: null, expiresOnFrom: null, expiresOnTo: null, expiresOnInformal: "до конца месяца" });
+    renderWith({
+      expiresOn: null,
+      expiresOnFrom: null,
+      expiresOnTo: null,
+      expiresOnInformal: "до конца месяца",
+    });
     expect(screen.getByText("до конца месяца")).toBeTruthy();
     renderWith({ expiresOn: null, expiresOnFrom: null, expiresOnTo: null, expiresOnInformal: null });
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
@@ -368,6 +371,7 @@ describe("CompletedArrivalsTable", () => {
       />,
     );
     const help = screen.getByRole("button", { name: "Что входит в стоимость" });
+    await user.tab();
     await user.hover(help);
     expect(await screen.findByText("Стоимость сверки данных + стоимость ВСЭ")).toBeTruthy();
     expect(help.getAttribute("aria-describedby")).toBeTruthy();
@@ -379,9 +383,7 @@ describe("CompletedArrivalsTable", () => {
     render(
       <CompletedArrivalsTable
         labId={LAB}
-        items={[
-          withReconciliation({ ...base, queue: "ACCEPTED" }, "230.00"),
-        ]}
+        items={[withReconciliation({ ...base, queue: "ACCEPTED" }, "230.00")]}
         hiddenColumns={new Set(["checkAuthor"])}
       />,
     );

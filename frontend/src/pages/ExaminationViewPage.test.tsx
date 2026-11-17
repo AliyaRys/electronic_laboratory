@@ -88,6 +88,12 @@ function card(overrides: Partial<ExaminationView>): ExaminationView {
     noncontagious_findings: [],
     pricing: { lines: [], total: "0.00", currency: "RUB", fair: false },
     sample_collection_id: "44444444-4444-4444-8444-444444444444",
+    sample: {
+      id: "44444444-4444-4444-8444-444444444444",
+      collected_on: "2026-11-05",
+      mass_kg: "0.800000",
+      revision: 1,
+    },
     outcome: null,
     direction: null,
     reason: null,

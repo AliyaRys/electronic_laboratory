@@ -124,7 +124,14 @@ export const NoProducts: Story = {
 };
 /** ТЗ DR41 §3.2: an assigned scope without a laboratory_name. */
 export const WorkMissingLabName: Story = {
-  args: { mode: "work", user, product: "meat", active: "arrivals", institution: "Лаборатория не указана", onLogout: () => undefined },
+  args: {
+    mode: "work",
+    user,
+    product: "meat",
+    active: "arrivals",
+    institution: "Лаборатория не указана",
+    onLogout: () => undefined,
+  },
 };
 export const LongData: Story = {
   args: {

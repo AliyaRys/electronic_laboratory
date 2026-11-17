@@ -100,6 +100,12 @@ const savedCard: ExaminationView = {
   noncontagious_findings: [],
   pricing: { lines: [], total: "0.00", currency: "RUB", fair: false },
   sample_collection_id: collection.id,
+  sample: {
+    id: collection.id,
+    collected_on: "2026-11-05",
+    mass_kg: "0.800000",
+    revision: 1,
+  },
   outcome: null,
   direction: null,
   reason: null,

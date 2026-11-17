@@ -65,7 +65,11 @@ describe("ReconciliationDateFilter", () => {
   it("«Сбросить» applies the empty filter", async () => {
     const onApply = vi.fn();
     render(
-      <ReconciliationDateFilter applied={{ on: "2026-11-06", from: "", to: "" }} onApply={onApply} initialOpen />,
+      <ReconciliationDateFilter
+        applied={{ on: "2026-11-06", from: "", to: "" }}
+        onApply={onApply}
+        initialOpen
+      />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Сбросить" }));
     expect(onApply).toHaveBeenCalledWith(EMPTY);

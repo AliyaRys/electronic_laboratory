@@ -19,7 +19,15 @@ import { StatusView } from "./StatusView";
 
 export interface DataTableColumn {
   id: string;
+  /** Available name and test contract of the column header. */
   header: string;
+  /**
+   * Optional compound header node (named variant of the primitive, ТЗ DR44
+   * §3). It renders INSIDE the ``<th>`` next to the required string ``header``
+   * contract — the accessible name stays the string; the node is decoration
+   * (e.g. a help icon) and never a text source replacement.
+   */
+  headerNode?: ReactNode;
 }
 
 export interface DataTableCell {
@@ -176,7 +184,14 @@ export function DataTable({
           <tr>
             {columns.map((column) => (
               <th key={column.id} scope="col">
-                {column.header}
+                {column.headerNode !== undefined ? (
+                  <span className="app-table-header-compound">
+                    {column.header}
+                    {column.headerNode}
+                  </span>
+                ) : (
+                  column.header
+                )}
               </th>
             ))}
             <th scope="col" className="app-table-column-actions">

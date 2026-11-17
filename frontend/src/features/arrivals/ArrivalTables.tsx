@@ -6,8 +6,11 @@
  * the client.
  */
 import { DataTable, type DataTableColumn, type DataTableRow } from "../../shared/ui/DataTable";
+import { HelpTooltip } from "../../shared/ui/HelpTooltip";
 import { Icon } from "../../shared/ui/Icon";
 import { STAGE_EMPTY_TEXTS, formatRuDate, moneyLabel, type IncomingView } from "./api";
+import { examinationOutcomeLabel } from "../examinations/api";
+import { formatGoodsDate } from "./api";
 import { formatMoscowCellDateTime } from "../../shared/lib/dates";
 
 /** First non-empty string of the real source values, otherwise «—». */
@@ -70,6 +73,32 @@ function reconciliationCostText(view: IncomingView): string {
 function reconciliationAuthorText(view: IncomingView): string {
   const name = view.reconciliation?.author_name;
   return typeof name === "string" && name.trim() !== "" ? name : "—";
+}
+
+/** ТЗ DR44 §3: the author of the ВСЭ is the frozen selected specialist —
+ * never created_by, the current user or a UUID; an absent name stays «—». */
+function vseAuthorText(view: IncomingView): string {
+  const name = view.examination?.specialist_name;
+  return typeof name === "string" && name.trim() !== "" ? name : "—";
+}
+
+/** ТЗ DR44 §3: the combined frozen total — the server already summed the
+ * two snapshots through Decimal; the client formats display only. A zero is
+ * data («0,00 ₽»); a really absent total renders «—». */
+function vseCostText(view: IncomingView): string {
+  const total = view.examination?.combined_total;
+  return typeof total === "string" && total !== "" ? moneyLabel(total) : "—";
+}
+
+/** ТЗ DR44 §3: the expiry keeps the source TYPE (single/interval/informal). */
+function vseDeadlineText(view: IncomingView): string {
+  return formatGoodsDate(view.external.fields, "expiresOn") ?? "—";
+}
+
+/** ТЗ DR44 §3: the saved ВСЭ number of the optional column. */
+function vseNumberText(view: IncomingView): string {
+  const number = view.examination?.number;
+  return typeof number === "string" && number.trim() !== "" ? number : "—";
 }
 
 function reconciliationHref(labId: string, view: IncomingView): string {
@@ -237,7 +266,15 @@ const ACCEPTED_CORE_COLUMNS: readonly DataTableColumn[] = [
   { id: "mass", header: "Объём / масса" },
   { id: "status", header: "Статус ВСД" },
   { id: "vse", header: "ВСЭ" },
-  { id: "cost", header: "Стоимость" },
+  {
+    id: "cost",
+    header: "Стоимость",
+    // ТЗ DR44 §3: the accessible help trigger next to the string header;
+    // the string stays the available name and the test contract.
+    headerNode: (
+      <HelpTooltip text="Стоимость сверки данных + стоимость ВСЭ" accessibleName="Что входит в стоимость" />
+    ),
+  },
   { id: "deadline", header: "Срок реализации" },
 ];
 
@@ -279,12 +316,12 @@ export function CompletedArrivalsTable({
       // The external VetIS status is shown in Russian (backend-owned label);
       // the local ВСЭ result is a different entity and stays separate.
       { columnId: "status", value: statusLabelText(view) },
-      { columnId: "vse", value: "—" },
-      { columnId: "cost", value: "—" },
-      { columnId: "deadline", value: "—" },
+      { columnId: "vse", value: examinationOutcomeLabel(view.examination?.outcome) },
+      { columnId: "cost", value: vseCostText(view) },
+      { columnId: "deadline", value: vseDeadlineText(view) },
       { columnId: "checkAuthor", value: reconciliationAuthorText(view) },
-      { columnId: "vseAuthor", value: "—" },
-      { columnId: "vseNumber", value: "—" },
+      { columnId: "vseAuthor", value: vseAuthorText(view) },
+      { columnId: "vseNumber", value: vseNumberText(view) },
     ],
     actions:
       view.examination_id !== null ? (

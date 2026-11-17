@@ -87,7 +87,11 @@ const REPORT_CAPS = [
 
 async function mockMe(page: Page, role = "HEAD", capabilities: string[] = REPORT_CAPS): Promise<void> {
   await page.route("**/api/v1/me", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(me(role, capabilities)) }),
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(me(role, capabilities)),
+    }),
   );
 }
 
@@ -483,7 +487,11 @@ test.describe("DR37: analyst reporting journey", () => {
       }),
     );
     await page.route("**/api/v1/samples/*", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) }),
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+      }),
     );
 
     await page.goto(`/labs/${LAB}/reports`);
@@ -503,17 +511,11 @@ test.describe("DR37: analyst reporting journey", () => {
     // Opening every direction keeps the same laboratory context.
     await page.getByRole("link", { name: "Открыть: Операционные показатели" }).click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/reports/operational`));
-    await expect(page.locator("#analyst-reports-link")).toHaveAttribute(
-      "href",
-      `/labs/${LAB}/reports`,
-    );
+    await expect(page.locator("#analyst-reports-link")).toHaveAttribute("href", `/labs/${LAB}/reports`);
     await page.goBack();
     await page.getByRole("link", { name: "Открыть: Учёт проб" }).click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/reports/samples`));
-    await expect(page.locator("#analyst-reports-link")).toHaveAttribute(
-      "href",
-      `/labs/${LAB}/reports`,
-    );
+    await expect(page.locator("#analyst-reports-link")).toHaveAttribute("href", `/labs/${LAB}/reports`);
     // Back to the hub keeps the laboratory (never /labs, never arrivals).
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/reports$`));
@@ -545,7 +547,11 @@ test.describe("DR37: analyst reporting journey", () => {
     await mockMe(page, "VET", ["sample:read"]);
     await mockHub(page);
     await page.route("**/api/v1/samples/*", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) }),
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+      }),
     );
     await page.goto(`/labs/${LAB}/reports`);
     await expect(page.getByText("Учёт проб")).toBeVisible();

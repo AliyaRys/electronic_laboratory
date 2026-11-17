@@ -79,12 +79,11 @@ async def configure(
     trich: bool,
     norms: bool = True,
 ) -> None:
-    """Seed the laboratory's meat norms (once) and the species' VSE tariffs.
+    """Seed the laboratory's meat norms and the AREA-scoped VSE tariffs.
 
-    DR31: the norms are NOT species-scoped any more — the second configure
-    call of a test (another species of the same laboratory) re-uses the SAME
-    active meat norms and only adds that species' tariffs (DR14 keeps the
-    species binding of VSE tariffs).
+    DR31: the norms are NOT species-scoped any more; owner decision DR43:
+    neither are the tariffs — the second configure call of a test (another
+    species of the same laboratory) re-uses the SAME meat-area configuration.
     """
     definitions = [
         (ORGANOLEPTIC_INDICATOR_ID, "BOOLEAN_MATCH", {"type": "qualitative", "accepted_values": ["true"]}),
@@ -100,6 +99,8 @@ async def configure(
             (TRICHINELLA_INDICATOR_ID, "BOOLEAN_MATCH", {"type": "qualitative", "accepted_values": ["true"]})
         )
     for indicator, schema, rule in definitions:
+        # One meat-area configuration per laboratory: the second configure
+        # call (another species of the same test) adds nothing new.
         if norms:
             db.add(
                 MethodRule(
@@ -115,17 +116,28 @@ async def configure(
                     active=True,
                 )
             )
-        db.add(
-            Tariff(
-                laboratory_id=lab_id,
-                product_species_id=species,
-                service_code=str(indicator),
-                unit_id="service",
-                price=Decimal("1.25"),
-                version=1,
-                source={"name": "Тариф"},
+        existing = (
+            await db.execute(
+                select(Tariff).where(
+                    Tariff.laboratory_id == lab_id,
+                    Tariff.service_code == str(indicator),
+                    Tariff.unit_id == "service",
+                )
             )
-        )
+        ).scalar_one_or_none()
+        if existing is None:
+            db.add(
+                Tariff(
+                    laboratory_id=lab_id,
+                    product_species_id=None,
+                    product_area_code="meat",
+                    service_code=str(indicator),
+                    unit_id="service",
+                    price=Decimal("1.25"),
+                    version=1,
+                    source={"name": "Тариф"},
+                )
+            )
     await db.commit()
 
 
@@ -421,9 +433,9 @@ async def test_create_and_read_api_contract(db_session: AsyncSession, test_db_en
     async with _client_for(api_env) as (http, identity):
         created = await http.post(
             f"/api/v1/examinations/parties/{party.id}",
-            json=payload(
-                number="API-001", trich=False, specialist_id=env.actor.id, expected_total="15.00"
-            ).model_dump(mode="json", by_alias=True),
+            json=payload(number="API-001", trich=False, specialist_id=env.actor.id, expected_total="15.00").model_dump(
+                mode="json", by_alias=True
+            ),
             headers={
                 "x-csrf-token": identity.csrf_token,
                 "origin": "http://test",

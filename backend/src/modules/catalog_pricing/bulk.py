@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.commands import UnitOfWork
 from backend.src.core.contracts import CommandStateView
+from backend.src.modules.catalog_pricing.mandatory import MEAT_AREA_CODE
 from backend.src.modules.catalog_pricing.models import BulkPriceJob, BulkPriceTarget, Tariff
 from backend.src.modules.catalog_pricing.schemas import MoneyStringType, parse_decimal
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget
@@ -52,12 +53,17 @@ __all__ = [
 
 
 class BulkPriceWrite(BaseModel):
-    """The whole-set intent of a bulk price command; no ETag applies to it."""
+    """The whole-set intent of a bulk price command; no ETag applies to it.
+
+    ``product_species_id`` is optional since DR43: the applied tariff is the
+    area-scoped row (species NULL, area 'meat') — the species is never part of
+    the pricing key and is kept on the job only as a historical echo.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     laboratory_ids: list[uuid.UUID] = Field(min_length=1)
-    product_species_id: uuid.UUID
+    product_species_id: uuid.UUID | None = None
     service_code: str = Field(min_length=1, max_length=128)
     unit_id: str = Field(min_length=1, max_length=64)
     price: MoneyStringType
@@ -118,16 +124,17 @@ def job_state(targets: list[BulkPriceTarget]) -> str:
 async def upsert_tariff(db: AsyncSession, intent: BulkPriceWrite, laboratory_id: uuid.UUID) -> None:
     """Set the tariff of one laboratory to the intended price (own row only).
 
-    The unique pricing key (laboratory, species, code, unit) decides between an
-    update (revision bump) and a create; no other laboratory is ever touched —
-    bulk pricing never inherits (AT-21/SC-096).
+    Owner decision DR43: the unique pricing key is the AREA scope
+    (laboratory, area 'meat', code, unit) — it decides between an update
+    (revision bump) and a create; no other laboratory is ever touched — bulk
+    pricing never inherits (AT-21/SC-096).
     """
     existing = (
         await db.execute(
             select(Tariff)
             .where(
                 Tariff.laboratory_id == laboratory_id,
-                Tariff.product_species_id == intent.product_species_id,
+                Tariff.product_area_code == MEAT_AREA_CODE,
                 Tariff.service_code == intent.service_code,
                 Tariff.unit_id == intent.unit_id,
             )
@@ -144,7 +151,8 @@ async def upsert_tariff(db: AsyncSession, intent: BulkPriceWrite, laboratory_id:
         db.add(
             Tariff(
                 laboratory_id=laboratory_id,
-                product_species_id=intent.product_species_id,
+                product_species_id=None,
+                product_area_code=MEAT_AREA_CODE,
                 service_code=intent.service_code,
                 unit_id=intent.unit_id,
                 price=Decimal(price),

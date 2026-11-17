@@ -21,7 +21,7 @@ export type Readiness = components["schemas"]["Readiness"];
 export type MethodsContext = components["schemas"]["MethodsContext"];
 export type CatalogIndicator = components["schemas"]["CatalogIndicator"];
 export type TariffsContext = components["schemas"]["TariffsContext"];
-export type SpeciesOption = components["schemas"]["SpeciesOption"];
+export type LegacyTariffView = components["schemas"]["LegacyTariffView"];
 export type TariffsContextTyped = TariffsContext;
 export type MethodsContextTyped = Omit<MethodsContext, "active_rules"> & {
   active_rules: MethodRuleTyped[];
@@ -146,17 +146,18 @@ export async function fetchMethodsContext(
 
 export async function fetchTariffs(
   laboratoryId: string,
-  productSpeciesId: string | null,
+  productAreaCode: string | null,
   page = 1,
   signal?: AbortSignal | null,
 ): Promise<CatalogPageData<TariffView> | Problem> {
-  // Owner decision DR14: without a species the call lists the
-  // laboratory-scoped CHECK tariffs (species IS NULL server-side).
-  const query: { laboratory_id: string; product_species_id?: string | null; page: number } = {
+  // Owner decision DR43: with an area code the call lists the area-scoped VSE
+  // tariffs (one price per category, no species term); without one it lists
+  // the laboratory-scoped CHECK tariffs (species IS NULL server-side).
+  const query: { laboratory_id: string; product_area_code?: string; page: number } = {
     laboratory_id: laboratoryId,
     page,
   };
-  if (productSpeciesId !== null) query.product_species_id = productSpeciesId;
+  if (productAreaCode !== null) query.product_area_code = productAreaCode;
   const settled = await settle(
     apiClient.GET("/api/v1/catalogs/tariffs", {
       params: { query },
@@ -166,13 +167,13 @@ export async function fetchTariffs(
   return "problem" in settled ? settled.problem : settled.data;
 }
 
-/** ТЗ DR42 §3 (Вариант A): the tariff editor context — the DR31 laboratory +
- * meat-area scope, the species options by human name and the legacy
- * mis-scoped rows for the migration diagnostics. */
+/** Owner decision DR43: the tariff editor context — the DR31 laboratory +
+ * meat-area scope with NO species selector and the audit-only legacy rows
+ * (REAL values, human species name where known) for the diagnostics. */
 export async function fetchTariffsContext(
   laboratoryId: string,
   signal?: AbortSignal | null,
-): Promise<TariffsContextTyped | Problem> {
+): Promise<TariffsContext | Problem> {
   const settled = await settle(
     apiClient.GET("/api/v1/catalogs/tariffs/context", {
       params: { query: { laboratory_id: laboratoryId } },

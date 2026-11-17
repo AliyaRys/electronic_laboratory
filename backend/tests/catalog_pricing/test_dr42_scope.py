@@ -1,13 +1,15 @@
-"""ТЗ DR42 §2/§3/§4 (Вариант A): tariff scope, diagnostics and evaluation mode.
+"""ТЗ DR43 (owner ruling 2026-11-17): tariff AREA scope, diagnostics.
 
-Named plan tests (§8 pricing 1–7):
+Named tests (adapted from the DR42 plan; honest checks are never weakened):
 
 - ``test_tariff_in_catalog_scope_is_found_by_preview`` — a tariff saved in the
-  chosen catalog species scope is found by the pricing preview;
-- ``test_legacy_laboratory_scope_tariff_is_not_a_valid_scope`` — a legacy row
-  carrying the laboratory UUID as ``product_species_id`` is never treated as a
-  valid VSE scope: the preview fails with the concrete actionable diagnostic
+  meat-area scope is found by the pricing preview;
+- ``test_legacy_species_scope_tariff_is_not_found`` — a legacy row carrying a
+  species (or a laboratory UUID) as the scope is never treated as a valid
+  tariff: the preview fails with the concrete actionable diagnostic
   (CONFIGURATION_MISSING stays the technical code);
+- ``test_tariff_of_another_area_is_not_found`` — an area row of a DIFFERENT
+  product area never serves the meat calculations;
 - ``test_missing_tariff_message_names_indicator_and_action`` — the message
   contains the indicator name, code and the «Стоимость исследований» action;
 - ``test_zero_price_differs_from_missing_price`` — an explicit 0.00 tariff
@@ -16,9 +18,9 @@ Named plan tests (§8 pricing 1–7):
   keeps its pinned price after the catalog changes;
 - ``test_evaluation_mode_is_part_of_the_snapshot`` — FIXED / CONFIGURABLE /
   NONE are derived server-side by the result schema;
-- ``test_tariffs_context_lists_species_names_and_legacy_rows`` — the editor
-  context carries human species names (UUID internal) and the legacy
-  mis-scoped rows for migration diagnostics only.
+- ``test_tariffs_context_lists_legacy_rows_without_species_options`` — the
+  editor context carries NO species selector any more and the rows outside
+  the area scope for migration diagnostics only.
 """
 
 from __future__ import annotations
@@ -51,11 +53,12 @@ BACTERIOSCOPY = _mandatory.BACTERIOSCOPY_INDICATOR_ID
 
 @pytest.mark.integration
 async def test_tariff_in_catalog_scope_is_found_by_preview(db_session: AsyncSession) -> None:
-    """§8.1: a tariff saved in the chosen catalog species scope is found."""
+    """§8.1: a tariff saved in the meat-area scope is found regardless of the
+    party's species — one price for the whole «Мясо и мясопродукты»."""
     env = await _seed(db_session)
     species = uuid.uuid4()
     db_session.add(_rule(env.lab.id, species, uuid.uuid4(), MICROSCOPY, result_schema="DECIMAL", unit_id="RUB"))
-    db_session.add(_tariff(env.lab.id, species, str(MICROSCOPY), "120.00", unit="RUB"))
+    db_session.add(_tariff(env.lab.id, None, str(MICROSCOPY), "120.00", unit="RUB"))
     await db_session.commit()
 
     snapshot = await evaluate_and_price(
@@ -74,14 +77,27 @@ async def test_tariff_in_catalog_scope_is_found_by_preview(db_session: AsyncSess
 
 
 @pytest.mark.integration
-async def test_legacy_laboratory_scope_tariff_is_not_a_valid_scope(db_session: AsyncSession) -> None:
-    """§8.2: the legacy mis-scoped row is invisible to pricing and the error is
-    the concrete actionable diagnostic, never a generic «тариф отсутствует»."""
+async def test_legacy_species_scope_tariff_is_not_found(db_session: AsyncSession) -> None:
+    """§8.2: a legacy species-scoped row (including the historical mis-scoped
+    row with the laboratory UUID as the species) is invisible to pricing and
+    the error is the concrete actionable diagnostic, never a generic
+    «тариф отсутствует»."""
     env = await _seed(db_session)
     species = uuid.uuid4()
     db_session.add(_rule(env.lab.id, species, uuid.uuid4(), MICROSCOPY, result_schema="DECIMAL", unit_id="RUB"))
-    # The historical bad row: product_species_id = laboratory UUID.
-    db_session.add(_tariff(env.lab.id, env.lab.id, str(MICROSCOPY), "120.00", unit="RUB"))
+    # The historical bad row: product_species_id = laboratory UUID, area NULL.
+    db_session.add(
+        Tariff(
+            laboratory_id=env.lab.id,
+            product_species_id=env.lab.id,
+            product_area_code=None,
+            service_code=str(MICROSCOPY),
+            unit_id="RUB",
+            price=Decimal("120.00"),
+            version=1,
+            source={"name": "прейскурант"},
+        )
+    )
     await db_session.commit()
 
     with pytest.raises(ProblemError) as missing:
@@ -100,14 +116,49 @@ async def test_legacy_laboratory_scope_tariff_is_not_a_valid_scope(db_session: A
     assert "Микроскопия" in detail
     assert "VSE-F24" in detail
     assert "Стоимость исследований" in detail
-    assert str(species) in detail  # the scope of the request, not the legacy row
+
+
+@pytest.mark.integration
+async def test_tariff_of_another_area_is_not_found(db_session: AsyncSession) -> None:
+    """§8.2b: an area row of a DIFFERENT product area never serves the meat
+    calculations; only the 'meat' area scope is read."""
+    env = await _seed(db_session)
+    species = uuid.uuid4()
+    db_session.add(_rule(env.lab.id, species, uuid.uuid4(), MICROSCOPY, result_schema="DECIMAL", unit_id="RUB"))
+    db_session.add(
+        Tariff(
+            laboratory_id=env.lab.id,
+            product_species_id=None,
+            product_area_code="milk",
+            service_code=str(MICROSCOPY),
+            unit_id="RUB",
+            price=Decimal("120.00"),
+            version=1,
+            source={"name": "прейскурант"},
+        )
+    )
+    await db_session.commit()
+
+    with pytest.raises(ProblemError) as missing:
+        await evaluate_and_price(
+            UnitOfWork(db_session),
+            _vse_request(
+                env.lab.id,
+                species,
+                uuid.uuid4(),
+                [ResearchValue.model_validate({"indicator_id": str(MICROSCOPY), "performed": True, "value": "2.5"})],
+            ),
+            None,
+        )
+    assert missing.value.code == "CONFIGURATION_MISSING"
 
 
 @pytest.mark.integration
 async def test_missing_tariff_message_names_indicator_and_action() -> None:
-    message = missing_tariff_message(MICROSCOPY, uuid.uuid4())
+    message = missing_tariff_message(MICROSCOPY)
     assert "Не настроена стоимость исследования «Микроскопия»" in message
     assert "(код VSE-F24)" in message
+    assert "Мясо и мясопродукты" in message
     assert "Откройте справочник «Стоимость исследований»" in message
 
 
@@ -277,56 +328,57 @@ async def test_fixed_enum_evaluation_mode(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.integration
-async def test_tariffs_context_lists_species_names_and_legacy_rows(db_session: AsyncSession) -> None:
+async def test_tariffs_context_lists_legacy_rows_without_species_options(db_session: AsyncSession) -> None:
     env = await _seed(db_session)
-    species_a = uuid.uuid4()
     species_b = uuid.uuid4()
-    db_session.add_all(
-        [
-            MercuryProductGuidLvl2(
-                contour="PILOT",
-                guid=species_a,
-                current_uuid=species_a,
-                name="Говядина",
-                tnved_codes="0201",
-                product_type=1,
-                active=True,
-                is_last=True,
-                external_status=200,
-                source="VETIS_LOOKUP",
-                requires_trichinelloscopy=False,
-            ),
-            MercuryProductGuidLvl2(
-                contour="PILOT",
-                guid=species_b,
-                current_uuid=species_b,
-                name="Свинина",
-                tnved_codes="0203",
-                product_type=1,
-                active=True,
-                is_last=True,
-                external_status=200,
-                source="VETIS_LOOKUP",
-                requires_trichinelloscopy=True,
-            ),
-        ]
+    # One correctly scoped area tariff and one legacy species-scoped row.
+    db_session.add(_tariff(env.lab.id, None, str(MICROSCOPY), "10.00", unit="RUB"))
+    db_session.add(
+        Tariff(
+            laboratory_id=env.lab.id,
+            product_species_id=species_b,
+            product_area_code=None,
+            service_code=str(PH),
+            unit_id="RUB",
+            price=Decimal("5.00"),
+            version=1,
+            source={"name": "прейскурант"},
+        )
     )
-    # One correctly scoped tariff and one legacy mis-scoped row.
-    db_session.add(_tariff(env.lab.id, species_a, str(MICROSCOPY), "10.00", unit="RUB"))
-    db_session.add(_tariff(env.lab.id, env.lab.id, str(PH), "5.00", unit="RUB"))
     await db_session.commit()
 
     context = await context_module.tariffs_context(db_session, env.lab.id)
     assert context.product_area_code == "meat"
-    names = {option.name: str(option.id) for option in context.species_options}
-    # The seed registry may carry more meat species; the two mirrored ones are
-    # selectable by their human names.
-    assert names.get("Говядина") == str(species_a)
-    assert names.get("Свинина") == str(species_b)
-    assert all(option.id != env.lab.id for option in context.species_options)
+    # DR43: no species selector exists any more.
+    assert not hasattr(context, "species_options")
+    # The legacy rows carry the REAL losing values: service, price, version
+    # and the audit species by its HUMAN name (never a bare UUID).
     assert len(context.legacy_tariffs) == 1
-    assert context.legacy_tariffs[0].product_species_id == env.lab.id
-    assert context.legacy_tariffs[0].service_code == str(PH)
+    legacy = context.legacy_tariffs[0]
+    assert legacy.product_species_id == species_b
+    assert legacy.product_area_code is None
+    assert legacy.service_code == str(PH)
+    assert legacy.species_name is None  # a GUID outside the local mirror stays nameless, never a UUID
+
+    # A species that the local Mercury mirror knows gets its human name.
+    db_session.add(
+        MercuryProductGuidLvl2(
+            contour="PILOT",
+            guid=species_b,
+            current_uuid=species_b,
+            name="Свинина",
+            tnved_codes="0203",
+            product_type=1,
+            active=True,
+            is_last=True,
+            external_status=200,
+            source="VETIS_LOOKUP",
+            requires_trichinelloscopy=False,
+        )
+    )
+    await db_session.commit()
+    context = await context_module.tariffs_context(db_session, env.lab.id)
+    assert context.legacy_tariffs[0].species_name == "Свинина"
 
 
 @pytest.mark.integration

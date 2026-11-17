@@ -524,9 +524,9 @@ export interface paths {
         };
         /**
          * Get Tariffs Context
-         * @description ТЗ DR42 §3 (Вариант A): the tariff editor context — the same DR31
-         *     laboratory + meat-area scope as the norm catalog, the species options by
-         *     human name and the legacy mis-scoped rows for the honest migration
+         * @description Owner decision DR43: the tariff editor context — the same DR31
+         *     laboratory + meat-area scope as the norm catalog, with no species options
+         *     and the audit-only legacy rows outside the area scope for the honest
          *     diagnostics. No prices are created, copied or migrated here.
          */
         get: operations["get_tariffs_context_api_v1_catalogs_tariffs_context_get"];
@@ -547,7 +547,9 @@ export interface paths {
         };
         /**
          * List Tariffs
-         * @description Owner decision DR14: no species lists the laboratory-scoped CHECK tariffs.
+         * @description Owner decision DR43: ``product_area_code`` lists the area-scoped VSE
+         *     tariffs (no species term exists); without it the laboratory-scoped CHECK
+         *     tariffs are listed.
          */
         get: operations["list_tariffs_api_v1_catalogs_tariffs_get"];
         put?: never;
@@ -1268,15 +1270,16 @@ export interface components {
         /**
          * BulkPriceWrite
          * @description The whole-set intent of a bulk price command; no ETag applies to it.
+         *
+         *     ``product_species_id`` is optional since DR43: the applied tariff is the
+         *     area-scoped row (species NULL, area 'meat') — the species is never part of
+         *     the pricing key and is kept on the job only as a historical echo.
          */
         BulkPriceWrite: {
             /** Laboratory Ids */
             laboratory_ids: string[];
-            /**
-             * Product Species Id
-             * Format: uuid
-             */
-            product_species_id: string;
+            /** Product Species Id */
+            product_species_id?: string | null;
             /** Service Code */
             service_code: string;
             /** Unit Id */
@@ -2036,6 +2039,47 @@ export interface components {
             name: string;
             /** Territory Id */
             territory_id?: string | null;
+        };
+        /**
+         * LegacyTariffView
+         * @description An audit-only tariff row OUTSIDE the area scope (DR43 migration).
+         *
+         *     ``species_name`` is the human-readable Mercury name of the audit species
+         *     value (when the local mirror knows the GUID); a nameless row (for example
+         *     the historical mis-scoped rows whose species holds a laboratory UUID)
+         *     stays honest with ``None`` — the UI never prints a UUID.
+         */
+        LegacyTariffView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /** Product Species Id */
+            product_species_id: string | null;
+            /** Product Area Code */
+            product_area_code?: string | null;
+            /** Species Name */
+            species_name?: string | null;
+            /** Service Code */
+            service_code: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Price */
+            price: string;
+            /** Version */
+            version: number;
+            /** Source */
+            source: {
+                [key: string]: unknown;
+            };
+            /** Revision */
+            revision: number;
         };
         /**
          * LiveResponse
@@ -3080,23 +3124,6 @@ export interface components {
             reference?: string | null;
         };
         /**
-         * SpeciesOption
-         * @description One selectable product species of the tariff scope (ТЗ DR42 §2, Вариант A).
-         *
-         *     The user picks the species by its human-readable Mercury name; the GUID is
-         *     an internal API field only — it is never typed by a user and never shown
-         *     as a technical value.
-         */
-        SpeciesOption: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-        };
-        /**
          * SyncAccepted
          * @description API-04: the 202 answer of POST /arrivals/sync — never a sync confirmation.
          */
@@ -3133,6 +3160,8 @@ export interface components {
             laboratory_id: string;
             /** Product Species Id */
             product_species_id: string | null;
+            /** Product Area Code */
+            product_area_code?: string | null;
             /** Service Code */
             service_code: string;
             /** Unit Id */
@@ -3152,9 +3181,9 @@ export interface components {
          * TariffWrite
          * @description Create/update payload for a tariff (INPUT-03): price is server-side data.
          *
-         *     Owner decision DR14: the two CHECK services are laboratory-scoped only —
-         *     ``product_species_id`` is NOT sent (and is never persisted for them). VSE
-         *     service codes require the species.
+         *     Owner decision DR43: a VSE tariff is saved in EXACTLY the area scope —
+         *     ``product_species_id`` is never persisted for it (any input is normalized
+         *     away); the two CHECK services stay laboratory-scoped.
          */
         TariffWrite: {
             /**
@@ -3176,17 +3205,20 @@ export interface components {
         };
         /**
          * TariffsContext
-         * @description The editor context of «Стоимость исследований ВСЭ» (ТЗ DR42 §3).
+         * @description The editor context of «Стоимость исследований ВСЭ» (owner decision DR43).
          *
          *     The context is the same DR31 laboratory + meat-area scope as the norm
-         *     catalog; tariffs stay scoped by the concrete Mercury species (owner
-         *     decision DR14, Вариант A), so the context additionally carries the species
-         *     options by name and the legacy mis-scoped rows.
+         *     catalog; tariffs are scoped by the area ONLY — no species selector and no
+         *     species options exist any more (one price per «Мясо и мясопродукты»).
          *
-         *     ``legacy_tariffs`` are the historical rows whose ``product_species_id``
-         *     holds a laboratory UUID — never a species. They are returned for the
-         *     explicit «требует миграции» diagnostics only: the editor never edits,
-         *     copies or deletes them silently, and pricing never treats them as valid.
+         *     ``legacy_tariffs`` are the rows OUTSIDE the area scope
+         *     (``product_area_code IS NULL`` with a species) left behind by the 0021
+         *     migration: superseded species-scope price entries kept for audit only —
+         *     pricing never reads them. They carry the REAL values (service, price,
+         *     version and the audit species by its human name where the local Mercury
+         *     mirror knows the GUID) so the price-list owner can see exactly WHICH
+         *     prices did not become the active ones; the editor never edits, copies or
+         *     deletes them silently.
          */
         TariffsContext: {
             laboratory: components["schemas"]["_LaboratoryRef"];
@@ -3194,10 +3226,8 @@ export interface components {
             product_area_code: string;
             /** Product Area Name */
             product_area_name: string;
-            /** Species Options */
-            species_options: components["schemas"]["SpeciesOption"][];
             /** Legacy Tariffs */
-            legacy_tariffs: components["schemas"]["TariffView"][];
+            legacy_tariffs: components["schemas"]["LegacyTariffView"][];
         };
         /**
          * TerritoryOptionView
@@ -4401,7 +4431,7 @@ export interface operations {
         parameters: {
             query: {
                 laboratory_id: string;
-                product_species_id?: string | null;
+                product_area_code?: string | null;
                 page?: number;
             };
             header?: never;

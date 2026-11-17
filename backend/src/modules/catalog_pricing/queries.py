@@ -77,6 +77,7 @@ def tariff_view(row: Tariff) -> TariffView:
             "id": row.id,
             "laboratory_id": row.laboratory_id,
             "product_species_id": row.product_species_id,
+            "product_area_code": row.product_area_code,
             "service_code": row.service_code,
             "unit_id": row.unit_id,
             "price": str(row.price),
@@ -148,26 +149,27 @@ async def method_rule_page(db: AsyncSession, laboratory_id: UUID, page: int) -> 
 
 
 async def tariff_page(
-    db: AsyncSession, laboratory_id: UUID, product_species_id: UUID | None, page: int
+    db: AsyncSession, laboratory_id: UUID, product_area_code: str | None, page: int
 ) -> tuple[list[TariffView], int]:
-    """Tariff page of one scope (API-03, owner decision DR14).
+    """Tariff page of one scope (API-03, owner decision DR43).
 
-    A species narrows the list to the VSE tariffs of that species; ``None``
-    lists the laboratory-scoped CHECK tariffs (species IS NULL) — the scope
-    of the «Платные услуги» directory.
+    ``product_area_code`` selects the VSE tariffs of that product area (one
+    price per category — no species term exists any more); ``None`` keeps
+    listing the laboratory-scoped CHECK tariffs (species NULL, area NULL) of
+    the «Платные услуги» directory.
     """
-    species_term = (
-        Tariff.product_species_id.is_(None)
-        if product_species_id is None
-        else (Tariff.product_species_id == product_species_id)
+    area_term = (
+        Tariff.product_area_code.is_(None)
+        if product_area_code is None
+        else (Tariff.product_area_code == product_area_code)
     )
-    scope = select(func.count()).select_from(Tariff).where(Tariff.laboratory_id == laboratory_id, species_term)
+    scope = select(func.count()).select_from(Tariff).where(Tariff.laboratory_id == laboratory_id, area_term)
     total = int((await db.execute(scope)).scalar_one())
     rows = (
         (
             await db.execute(
                 select(Tariff)
-                .where(Tariff.laboratory_id == laboratory_id, species_term)
+                .where(Tariff.laboratory_id == laboratory_id, area_term)
                 .order_by(Tariff.service_code, Tariff.unit_id, Tariff.id)
                 .offset((page - 1) * PAGE_SIZE)
                 .limit(PAGE_SIZE)
@@ -249,28 +251,27 @@ async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: U
                     )
                 )
         # Price is independent from the clinical norm and its measurement
-        # unit. A tariff can be configured before the methodologist supplies
-        # INPUT-02, and pricing later resolves it by the stable service code.
-        if product_species_id is not None:
-            tariff = (
-                await db.execute(
-                    select(Tariff.id)
-                    .where(
-                        Tariff.laboratory_id == laboratory_id,
-                        Tariff.product_species_id == product_species_id,
-                        Tariff.service_code == str(indicator),
-                    )
-                    .limit(1)
+        # unit, and independent from the party species (DR43): the area tariff
+        # of the laboratory covers every «Мясо и мясопродукты» position.
+        tariff = (
+            await db.execute(
+                select(Tariff.id)
+                .where(
+                    Tariff.laboratory_id == laboratory_id,
+                    Tariff.product_area_code == MEAT_AREA_CODE,
+                    Tariff.service_code == str(indicator),
                 )
-            ).scalar_one_or_none()
-            if tariff is None:
-                missing.append(
-                    ReadinessMissing(
-                        input_id=f"tariff:{indicator}",
-                        field="tariffs",
-                        message="Отсутствует тариф обязательного показателя.",
-                    )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if tariff is None:
+            missing.append(
+                ReadinessMissing(
+                    input_id=f"tariff:{indicator}",
+                    field="tariffs",
+                    message="Отсутствует тариф обязательного показателя.",
                 )
+            )
 
     # CHECK applicability rules are global single-row configuration; their
     # coverage is asserted by the C02 editor tests, not per-laboratory readiness.

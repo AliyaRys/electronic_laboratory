@@ -27,6 +27,9 @@ import {
   type OutcomeWrite,
 } from "../features/examinations/api";
 import { ExaminationForm } from "../features/examinations/ExaminationForm";
+import { SavedInvoice } from "../features/examinations/PricingPreview";
+import type { PricingSnapshotView } from "../features/examinations/api";
+import { CheckSectionCard } from "../features/arrivals/CheckSectionCard";
 import { PartyReadonlyFacts } from "../features/examinations/ExaminationSections";
 import { OutcomeFields, outcomeText } from "../features/examinations/OutcomeFields";
 import { DeleteDialog } from "../features/examinations/DeleteDialog";
@@ -316,14 +319,19 @@ function ExaminationViewContent(): React.ReactElement {
               })}
             </dl>
           ) : null}
-          <InfoField
-            label="Расчёт стоимости"
-            value={
-              typeof (view.pricing as { total?: unknown }).total === "string"
-                ? `${(view.pricing as { total: string }).total} ₽`
-                : "—"
-            }
-          />
+          {/* DR43: the saved pricing uses the SAME reconciliation invoice
+              section — the server snapshot, never a recomputed total. */}
+          <CheckSectionCard
+            sectionKey="invoice"
+            title="Расчёт стоимости услуг"
+            description="Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма."
+          >
+            {view.pricing !== null && view.pricing !== undefined ? (
+              <SavedInvoice snapshot={view.pricing as PricingSnapshotView} />
+            ) : (
+              <p className="vse-rec-invoice-empty">Стоимость не рассчитана: карточка не содержит расчёта.</p>
+            )}
+          </CheckSectionCard>
         </section>
       ) : null}
 

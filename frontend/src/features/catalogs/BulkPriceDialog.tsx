@@ -16,10 +16,9 @@ import { MONEY, isUuid, problemFieldErrors, shortId } from "./common";
 import { INDICATORS } from "../examinations/indicators";
 
 export const bulkPriceSchema = z.object({
-  product_species_id: z
-    .string()
-    .trim()
-    .refine((value) => isUuid(value), "Укажите корректный UUID вида продукции."),
+  // Owner decision DR43: the species is optional and never part of the applied
+  // tariff (the area row is written); the field stays for the intent echo.
+  product_species_id: z.string().trim(),
   service_code: z.string().trim().min(1, "Укажите код услуги."),
   unit_id: z.string().trim().min(1, "Укажите единицу измерения."),
   price: z

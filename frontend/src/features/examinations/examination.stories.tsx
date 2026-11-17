@@ -12,6 +12,7 @@ import { OutcomeFields, outcomeText } from "./OutcomeFields";
 import { PartyReadonlyFacts } from "./ExaminationSections";
 import { ResearchFields } from "./ResearchFields";
 import { PricingSection } from "./PricingPreview";
+import { CheckSectionCard } from "../arrivals/CheckSectionCard";
 import { Button } from "../../shared/ui/Button";
 import { DeleteDialog } from "./DeleteDialog";
 import { JournalRow } from "../../pages/ExaminationJournalPage";
@@ -536,6 +537,72 @@ export const ПредварительныйРасчёт: StoryObj = {
       },
     },
   },
+};
+
+/** DR43: the fair (ярмарка) preview — the SERVER zeros, never fabricated. */
+export const ПредварительныйРасчётЯрмарка: StoryObj = {
+  render: () => (
+    <div className="vse-app" style={{ maxWidth: 640 }}>
+      <CheckSectionCard
+        sectionKey="invoice"
+        title="Расчёт стоимости услуг"
+        description="Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма."
+      >
+        <PricingSection
+          state={{
+            status: "success",
+            snapshot: {
+              ...pricingSnapshot,
+              fair: true,
+              total: "0.00",
+              lines: pricingSnapshot.lines.map((line) => ({ ...line, unit_price: "0.00", amount: "0.00" })),
+            },
+          }}
+          disabled={false}
+          onRetry={() => undefined}
+        />
+      </CheckSectionCard>
+    </div>
+  ),
+  parameters: {
+    viewport: { defaultViewport: "desktop" },
+    docs: {
+      description: {
+        story:
+          "Режим ярмарки: строки и итог — 0 ₽; отметка отражает fair-флаг серверного preview и не переключается вручную в карточке.",
+      },
+    },
+  },
+};
+
+/** DR43: the network error of the live preview with an explicit retry. */
+export const ПредварительныйРасчётОшибкаСети: StoryObj = {
+  render: () => (
+    <div className="vse-app" style={{ maxWidth: 640 }}>
+      <CheckSectionCard
+        sectionKey="invoice"
+        title="Расчёт стоимости услуг"
+        description="Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма."
+      >
+        <PricingSection
+          state={{
+            status: "error",
+            problem: {
+              type: "about:blank",
+              title: "Network error",
+              status: 0,
+              detail: "Сеть недоступна.",
+              code: "NETWORK_ERROR",
+              trace_id: "",
+            },
+          }}
+          disabled={false}
+          onRetry={() => undefined}
+        />
+      </CheckSectionCard>
+    </div>
+  ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
 };
 
 export const ПредварительныйРасчётУзкийЭкран: StoryObj = {

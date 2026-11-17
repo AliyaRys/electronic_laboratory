@@ -291,9 +291,9 @@ async def get_tariffs_context(
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
     laboratory_id: uuid.UUID,
 ) -> context_module.TariffsContext:
-    """ТЗ DR42 §3 (Вариант A): the tariff editor context — the same DR31
-    laboratory + meat-area scope as the norm catalog, the species options by
-    human name and the legacy mis-scoped rows for the honest migration
+    """Owner decision DR43: the tariff editor context — the same DR31
+    laboratory + meat-area scope as the norm catalog, with no species options
+    and the audit-only legacy rows outside the area scope for the honest
     diagnostics. No prices are created, copied or migrated here."""
     identity, _ = principal
     await authorizer.authorize(
@@ -313,18 +313,20 @@ async def list_tariffs(
     principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
     laboratory_id: uuid.UUID,
-    product_species_id: uuid.UUID | None = None,
+    product_area_code: str | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
 ) -> Page[TariffView]:
-    """Owner decision DR14: no species lists the laboratory-scoped CHECK tariffs."""
+    """Owner decision DR43: ``product_area_code`` lists the area-scoped VSE
+    tariffs (no species term exists); without it the laboratory-scoped CHECK
+    tariffs are listed."""
     identity, _actor = principal
     await authorizer.authorize(
         db,
         identity.actor_id,
         "catalog:read",
-        ScopeTarget(laboratory_id=laboratory_id, product_scope_id=product_species_id),
+        ScopeTarget(laboratory_id=laboratory_id, product_scope_id=None),
     )
-    items, total = await queries.tariff_page(db, laboratory_id, product_species_id, page)
+    items, total = await queries.tariff_page(db, laboratory_id, product_area_code, page)
     _set_collection_headers(response, items)
     return Page[TariffView](items=items, total=total, page=page, page_size=queries.PAGE_SIZE)
 

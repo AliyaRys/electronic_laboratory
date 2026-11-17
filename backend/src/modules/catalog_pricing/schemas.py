@@ -200,9 +200,9 @@ class MethodRuleWrite(BaseModel):
 class TariffWrite(BaseModel):
     """Create/update payload for a tariff (INPUT-03): price is server-side data.
 
-    Owner decision DR14: the two CHECK services are laboratory-scoped only —
-    ``product_species_id`` is NOT sent (and is never persisted for them). VSE
-    service codes require the species.
+    Owner decision DR43: a VSE tariff is saved in EXACTLY the area scope —
+    ``product_species_id`` is never persisted for it (any input is normalized
+    away); the two CHECK services stay laboratory-scoped.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -373,6 +373,31 @@ class TariffView(BaseModel):
     id: UUID
     laboratory_id: UUID
     product_species_id: UUID | None
+    product_area_code: str | None = None
+    service_code: str
+    unit_id: str
+    price: MoneyStringType
+    version: int
+    source: dict[str, Any]
+    revision: int
+
+
+class LegacyTariffView(BaseModel):
+    """An audit-only tariff row OUTSIDE the area scope (DR43 migration).
+
+    ``species_name`` is the human-readable Mercury name of the audit species
+    value (when the local mirror knows the GUID); a nameless row (for example
+    the historical mis-scoped rows whose species holds a laboratory UUID)
+    stays honest with ``None`` — the UI never prints a UUID.
+    """
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: UUID
+    laboratory_id: UUID
+    product_species_id: UUID | None
+    product_area_code: str | None = None
+    species_name: str | None = None
     service_code: str
     unit_id: str
     price: MoneyStringType

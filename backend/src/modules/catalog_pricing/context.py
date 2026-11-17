@@ -23,8 +23,9 @@ from backend.src.core.problems import ProblemError
 from backend.src.modules.catalog_pricing import mandatory as _mandatory
 from backend.src.modules.catalog_pricing.models import MethodRule, Tariff
 from backend.src.modules.catalog_pricing.queries import method_rule_view, tariff_view
-from backend.src.modules.catalog_pricing.schemas import MethodRuleView, TariffView
+from backend.src.modules.catalog_pricing.schemas import LegacyTariffView, MethodRuleView
 from backend.src.modules.identity.models import Laboratory
+from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
 
 __all__ = [
     "MEAT_AREA_CODE",
@@ -177,8 +178,11 @@ class TariffsContext(BaseModel):
     ``legacy_tariffs`` are the rows OUTSIDE the area scope
     (``product_area_code IS NULL`` with a species) left behind by the 0021
     migration: superseded species-scope price entries kept for audit only —
-    pricing never reads them. They are returned for the honest diagnostics:
-    the editor never edits, copies or deletes them silently.
+    pricing never reads them. They carry the REAL values (service, price,
+    version and the audit species by its human name where the local Mercury
+    mirror knows the GUID) so the price-list owner can see exactly WHICH
+    prices did not become the active ones; the editor never edits, copies or
+    deletes them silently.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -186,7 +190,15 @@ class TariffsContext(BaseModel):
     laboratory: _LaboratoryRef
     product_area_code: str
     product_area_name: str
-    legacy_tariffs: list[TariffView]
+    legacy_tariffs: list[LegacyTariffView]
+
+
+def _legacy_tariff_view(row: Tariff, species_names: dict[UUID, str]) -> LegacyTariffView:
+    base = tariff_view(row).model_dump()
+    species = row.product_species_id
+    return LegacyTariffView.model_validate(
+        {**base, "species_name": species_names.get(species) if species is not None else None}
+    )
 
 
 async def tariffs_context(db: AsyncSession, laboratory_id: UUID) -> TariffsContext:
@@ -207,9 +219,20 @@ async def tariffs_context(db: AsyncSession, laboratory_id: UUID) -> TariffsConte
         .scalars()
         .all()
     )
+    # The human-readable audit species names from the local Mercury mirror
+    # (productType 1 only): contours may repeat a GUID, the first name wins.
+    mirror_rows = (
+        (await db.execute(select(MercuryProductGuidLvl2).where(MercuryProductGuidLvl2.product_type == 1)))
+        .scalars()
+        .all()
+    )
+    species_names: dict[UUID, str] = {}
+    for row in mirror_rows:
+        if row.name and row.name.strip() and row.guid not in species_names:
+            species_names[row.guid] = row.name.strip()
     return TariffsContext(
         laboratory=_LaboratoryRef(id=laboratory.id, name=laboratory.name),
         product_area_code=MEAT_AREA_CODE,
         product_area_name=MEAT_AREA_NAME,
-        legacy_tariffs=[tariff_view(row) for row in legacy_rows],
+        legacy_tariffs=[_legacy_tariff_view(row, species_names) for row in legacy_rows],
     )

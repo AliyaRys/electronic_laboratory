@@ -2041,6 +2041,47 @@ export interface components {
             territory_id?: string | null;
         };
         /**
+         * LegacyTariffView
+         * @description An audit-only tariff row OUTSIDE the area scope (DR43 migration).
+         *
+         *     ``species_name`` is the human-readable Mercury name of the audit species
+         *     value (when the local mirror knows the GUID); a nameless row (for example
+         *     the historical mis-scoped rows whose species holds a laboratory UUID)
+         *     stays honest with ``None`` — the UI never prints a UUID.
+         */
+        LegacyTariffView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Laboratory Id
+             * Format: uuid
+             */
+            laboratory_id: string;
+            /** Product Species Id */
+            product_species_id: string | null;
+            /** Product Area Code */
+            product_area_code?: string | null;
+            /** Species Name */
+            species_name?: string | null;
+            /** Service Code */
+            service_code: string;
+            /** Unit Id */
+            unit_id: string;
+            /** Price */
+            price: string;
+            /** Version */
+            version: number;
+            /** Source */
+            source: {
+                [key: string]: unknown;
+            };
+            /** Revision */
+            revision: number;
+        };
+        /**
          * LiveResponse
          * @description Liveness probe — carries no secrets (API-09).
          */
@@ -3173,8 +3214,11 @@ export interface components {
          *     ``legacy_tariffs`` are the rows OUTSIDE the area scope
          *     (``product_area_code IS NULL`` with a species) left behind by the 0021
          *     migration: superseded species-scope price entries kept for audit only —
-         *     pricing never reads them. They are returned for the honest diagnostics:
-         *     the editor never edits, copies or deletes them silently.
+         *     pricing never reads them. They carry the REAL values (service, price,
+         *     version and the audit species by its human name where the local Mercury
+         *     mirror knows the GUID) so the price-list owner can see exactly WHICH
+         *     prices did not become the active ones; the editor never edits, copies or
+         *     deletes them silently.
          */
         TariffsContext: {
             laboratory: components["schemas"]["_LaboratoryRef"];
@@ -3183,7 +3227,7 @@ export interface components {
             /** Product Area Name */
             product_area_name: string;
             /** Legacy Tariffs */
-            legacy_tariffs: components["schemas"]["TariffView"][];
+            legacy_tariffs: components["schemas"]["LegacyTariffView"][];
         };
         /**
          * TerritoryOptionView

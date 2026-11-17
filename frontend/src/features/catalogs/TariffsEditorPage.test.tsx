@@ -165,14 +165,53 @@ describe("TariffsEditorPage", () => {
           laboratory: { id: LAB, name: "Лаборатория №1 г. Казань" },
           product_area_code: "meat",
           product_area_name: "Мясо и мясопродукты",
-          legacy_tariffs: [tariff({})],
+          legacy_tariffs: [
+            {
+              id: "aaaaaaaa-0000-4000-8000-000000000001",
+              laboratory_id: LAB,
+              product_species_id: SPECIES,
+              product_area_code: null,
+              species_name: "Говядина",
+              service_code: organoleptic.id,
+              unit_id: "RUB",
+              price: "55.00",
+              version: 2,
+              source: { name: "прейскурант" },
+              revision: 1,
+            },
+            {
+              id: "aaaaaaaa-0000-4000-8000-000000000009",
+              laboratory_id: LAB,
+              product_species_id: LAB,
+              product_area_code: null,
+              species_name: null,
+              service_code: trich.id,
+              unit_id: "RUB",
+              price: "12.00",
+              version: 1,
+              source: { name: "прейскурант" },
+              revision: 1,
+            },
+          ],
         }),
       ),
     );
     renderEditor();
     const diag = await screen.findByTestId("tariffs-legacy-diag");
-    expect(diag).toHaveTextContent(/вне области «Мясо и мясопродукты»: 1/);
-    expect(diag).toHaveTextContent(/Обратитесь к ответственному за прейскурант/);
+    // The audit table shows the REAL values (not only the count): the losing
+    // service names, the human species names and the prices.
+    expect(diag).toHaveTextContent(/вне области «Мясо и мясопродукты»: 2/);
+    expect(diag).toHaveTextContent(/сами цены, проигравшие выбору при миграции/);
+    expect(diag).toHaveTextContent(`${organoleptic.name}`);
+    expect(diag).toHaveTextContent("Говядина");
+    expect(diag).toHaveTextContent("55.00 ₽ / RUB");
+    // The nameless mis-scoped species stays honest — never a bare UUID.
+    expect(diag).toHaveTextContent(`${trich.name}`);
+    expect(diag).toHaveTextContent("вид не определён (аудит)");
+    expect(diag).toHaveTextContent("12.00 ₽ / RUB");
+    // No UUID of any row or species is ever printed.
+    expect(diag.textContent).not.toContain(SPECIES.slice(0, 8));
+    expect(diag.textContent).not.toContain(LAB.slice(0, 8));
   });
 
   it("a foreign laboratory query does not override the HEAD scope", async () => {

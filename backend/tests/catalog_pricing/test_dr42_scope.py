@@ -39,6 +39,7 @@ from backend.src.modules.catalog_pricing import mandatory as _mandatory
 from backend.src.modules.catalog_pricing.models import Tariff
 from backend.src.modules.catalog_pricing.schemas import ResearchValue
 from backend.src.modules.catalog_pricing.service import evaluate_and_price, missing_tariff_message
+from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
 from backend.tests.catalog_pricing.test_pricing import _rule, _seed, _tariff, _vse_request
 
 MICROSCOPY = _mandatory.MICROSCOPY_INDICATOR_ID
@@ -350,10 +351,34 @@ async def test_tariffs_context_lists_legacy_rows_without_species_options(db_sess
     assert context.product_area_code == "meat"
     # DR43: no species selector exists any more.
     assert not hasattr(context, "species_options")
+    # The legacy rows carry the REAL losing values: service, price, version
+    # and the audit species by its HUMAN name (never a bare UUID).
     assert len(context.legacy_tariffs) == 1
-    assert context.legacy_tariffs[0].product_species_id == species_b
-    assert context.legacy_tariffs[0].product_area_code is None
-    assert context.legacy_tariffs[0].service_code == str(PH)
+    legacy = context.legacy_tariffs[0]
+    assert legacy.product_species_id == species_b
+    assert legacy.product_area_code is None
+    assert legacy.service_code == str(PH)
+    assert legacy.species_name is None  # a GUID outside the local mirror stays nameless, never a UUID
+
+    # A species that the local Mercury mirror knows gets its human name.
+    db_session.add(
+        MercuryProductGuidLvl2(
+            contour="PILOT",
+            guid=species_b,
+            current_uuid=species_b,
+            name="Свинина",
+            tnved_codes="0203",
+            product_type=1,
+            active=True,
+            is_last=True,
+            external_status=200,
+            source="VETIS_LOOKUP",
+            requires_trichinelloscopy=False,
+        )
+    )
+    await db_session.commit()
+    context = await context_module.tariffs_context(db_session, env.lab.id)
+    assert context.legacy_tariffs[0].species_name == "Свинина"
 
 
 @pytest.mark.integration

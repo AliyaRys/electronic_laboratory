@@ -627,6 +627,29 @@
   overflow-wrap: anywhere;
 }
 
+/* DR43 fix-loop: the legacy tariff audit table inside the diagnostic block —
+   the owner sees the REAL losing values; no UUIDs, wrap-safe on narrow. */
+.vse-catalog-legacy-table {
+  width: 100%;
+  margin: 10px 0;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.vse-catalog-legacy-table th,
+.vse-catalog-legacy-table td {
+  border: 1px solid var(--app-line, #d8e0e0);
+  padding: 6px 9px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.vse-catalog-legacy-table th {
+  background: var(--app-page, #f3f7f7);
+  color: var(--app-muted, #5a6b6d);
+  font-weight: 700;
+}
+
 /* TEXT research (DR36 §9): a calm row in the common geometry — no yellow
    diagnostic, no fields, no configure button. */
 .vse-catalog-text-row {

@@ -26,12 +26,15 @@ Upgrade (NON-DESTRUCTIVE, runs under the deploy/migrate_lock.py wrapper):
 Saved pricing snapshots are never recalculated (ADR-020); CHECK tariffs,
 norms, parties and examinations are never touched.
 
-Downgrade: drops the column; it FAILS honestly while an area-scoped row has a
-NULL species (a row created by the new code cannot be represented under the
-species contract), otherwise it restores the previous schema.
+Downgrade: drops the column; it FAILS honestly while an area-scoped tariff
+row has a NULL species (a row created by the new code cannot be represented
+under the species contract). The bulk_price_jobs NULL echoes are NOT a
+failure: the species on the job was only a historical echo of the superseded
+scope, so the downgrade keeps the column nullable instead of inventing or
+deleting values.
 
 Revision ID: 0021_tariff_area_scope
-Revises: 0020_exam_specialist_form_snapshot
+Revises: 0020_dr35_specialist
 Create Date: 2026-11-17
 """
 
@@ -42,12 +45,18 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from backend.src.modules.catalog_pricing.service import CHECK_SERVICE_CODES
+
 revision: str = "0021_tariff_area_scope"
 down_revision: str | Sequence[str] | None = "0020_dr35_specialist"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 MEAT_AREA = "meat"
+
+# The SQL literals are GENERATED from the canonical CHECK_SERVICE_CODES set —
+# no hand-maintained duplication that can drift from the pricing engine.
+CHECK_CODES_SQL = "(" + ", ".join(f"'{code}'" for code in sorted(CHECK_SERVICE_CODES)) + ")"
 
 
 def upgrade() -> None:
@@ -67,7 +76,7 @@ def upgrade() -> None:
             "  ) AS position"
             "  FROM tariffs"
             "  WHERE product_species_id IS NOT NULL"
-            "    AND service_code NOT IN ('PRODUCT_IDENTIFICATION','TRANSPORT_INSPECTION')"
+            "    AND service_code NOT IN " + CHECK_CODES_SQL +
             ")"
             "UPDATE tariffs SET product_area_code = :area"
             " WHERE id IN (SELECT id FROM ranked WHERE position = 1)"
@@ -103,4 +112,13 @@ def downgrade() -> None:
     op.drop_index("ix_tariffs_area", table_name="tariffs")
     op.drop_index("uq_tariff_lab_area_code_unit", table_name="tariffs")
     op.drop_column("tariffs", "product_area_code")
-    op.alter_column("bulk_price_jobs", "product_species_id", existing_type=sa.UUID(), nullable=False)
+    # The bulk_price_jobs species was only an ECHO of the superseded scope:
+    # NULL echoes (jobs created after 0021) must not block the downgrade and
+    # are never invented or deleted — the column simply stays nullable.
+    null_echoes = bind.execute(
+        sa.text("SELECT count(*) FROM bulk_price_jobs WHERE product_species_id IS NULL")
+    ).scalar_one()
+    if null_echoes:
+        print(f"0021 downgrade: bulk_price_jobs keeps {null_echoes} NULL species echo(es); the column stays nullable")
+    else:
+        op.alter_column("bulk_price_jobs", "product_species_id", existing_type=sa.UUID(), nullable=False)

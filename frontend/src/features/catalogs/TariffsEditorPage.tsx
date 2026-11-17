@@ -323,15 +323,43 @@ export function TariffsEditorPage(): React.ReactElement {
               Категория продукции: {tariffContextData?.product_area_name ?? "Мясо и мясопродукты"} · стоимость
               одна на всю категорию, без деления по видам продукции.
             </p>
-            {/* The rows OUTSIDE the area scope are shown as the migration
-                diagnostics only: no silent deletion, no copying between
-                laboratories, no price substitution. */}
+            {/* The rows OUTSIDE the area scope are shown as the audit table
+                with their REAL values: the owner sees exactly which prices did
+                not become the active ones. No UUID is ever printed. */}
             {legacyTariffs.length > 0 ? (
               <article className="vse-catalog-diag" data-testid="tariffs-legacy-diag">
-                Обнаружено устаревших строк тарифов вне области «Мясо и мясопродукты»: {legacyTariffs.length}.
-                Они остались после миграции справочника на единую стоимость по категории; расчёт их не
-                использует. Обратитесь к ответственному за прейскурант, чтобы перенести или удалить их
-                вручную.
+                Устаревшие строки тарифов вне области «Мясо и мясопродукты»: {legacyTariffs.length}. Они
+                остались после миграции справочника на единую стоимость по категории; расчёт их не использует.
+                Ниже — сами цены, проигравшие выбору при миграции.
+                <table className="vse-catalog-legacy-table">
+                  <caption className="vse-visually-hidden">
+                    Устаревшие тарифы вне области «Мясо и мясопродукты»
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Услуга</th>
+                      <th scope="col">Вид продукции (аудит)</th>
+                      <th scope="col">Тариф</th>
+                      <th scope="col">Версия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {legacyTariffs.map((row) => (
+                      <tr key={row.id} data-testid={`tariff-legacy-${row.id}`}>
+                        <td>
+                          {INDICATORS.find((item) => item.id === row.service_code)?.name ??
+                            "Услуга вне общего каталога показателей"}
+                        </td>
+                        <td>{row.species_name ?? "вид не определён (аудит)"}</td>
+                        <td>
+                          {row.price} ₽ / {row.unit_id}
+                        </td>
+                        <td>{row.version}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                Обратитесь к ответственному за прейскурант, чтобы перенести или удалить их вручную.
               </article>
             ) : null}
           </section>

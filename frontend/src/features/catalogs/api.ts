@@ -21,6 +21,7 @@ export type Readiness = components["schemas"]["Readiness"];
 export type MethodsContext = components["schemas"]["MethodsContext"];
 export type CatalogIndicator = components["schemas"]["CatalogIndicator"];
 export type TariffsContext = components["schemas"]["TariffsContext"];
+export type LegacyTariffView = components["schemas"]["LegacyTariffView"];
 export type TariffsContextTyped = TariffsContext;
 export type MethodsContextTyped = Omit<MethodsContext, "active_rules"> & {
   active_rules: MethodRuleTyped[];
@@ -168,11 +169,11 @@ export async function fetchTariffs(
 
 /** Owner decision DR43: the tariff editor context — the DR31 laboratory +
  * meat-area scope with NO species selector and the audit-only legacy rows
- * outside the area scope for the diagnostics. */
+ * (REAL values, human species name where known) for the diagnostics. */
 export async function fetchTariffsContext(
   laboratoryId: string,
   signal?: AbortSignal | null,
-): Promise<Omit<TariffsContextTyped, "species_options"> | Problem> {
+): Promise<TariffsContext | Problem> {
   const settled = await settle(
     apiClient.GET("/api/v1/catalogs/tariffs/context", {
       params: { query: { laboratory_id: laboratoryId } },

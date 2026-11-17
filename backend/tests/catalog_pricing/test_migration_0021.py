@@ -63,6 +63,25 @@ def _insert_vse_tariff(
     )
 
 
+def test_check_codes_sql_is_generated_from_the_canonical_set() -> None:
+    """The 0021 SQL literals are generated from CHECK_SERVICE_CODES: the exact
+    two CHECK codes and nothing else may enter the SQL IN-list."""
+    import importlib.util  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    spec = importlib.util.spec_from_file_location(
+        "m0021_tariff_area_scope",
+        REPO_ROOT / "backend" / "migrations" / "versions" / "0021_tariff_area_scope.py",
+    )
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    literals = re.findall(r"'([A-Z_]+)'", migration.CHECK_CODES_SQL)
+    assert set(literals) == set(migration.CHECK_SERVICE_CODES)
+    assert sorted(migration.CHECK_SERVICE_CODES) == ["PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"]
+
+
 @pytest.mark.integration
 def test_0021_converts_the_newest_vse_row_per_group(test_db_url: str) -> None:
     laboratory = uuid.uuid4()
@@ -168,3 +187,30 @@ def test_0021_converts_the_newest_vse_row_per_group(test_db_url: str) -> None:
     finally:
         # Keep the shared test database at head even when an assertion fails.
         _alembic(test_db_url, "upgrade", "head")
+
+
+@pytest.mark.integration
+def test_0021_downgrade_survives_null_bulk_echo(test_db_url: str) -> None:
+    """The bulk_price_jobs NULL species echo (created after 0021) must NOT
+    block the downgrade: the echo is redundant metadata — the column simply
+    stays nullable instead of inventing or deleting values."""
+
+    up = _alembic(test_db_url, "upgrade", "head")
+    assert up.returncode == 0, up.stdout + up.stderr
+    try:
+        with psycopg.connect(_sync_url(test_db_url)) as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO bulk_price_jobs (actor_id, product_species_id, service_code, unit_id, price)"
+                " VALUES (%s, NULL, 'trichinelloscopy', 'kg', 100.00)",
+                (str(uuid.uuid4()),),
+            )
+            connection.commit()
+
+        down = _alembic(test_db_url, "downgrade", "0020_dr35_specialist")
+        assert down.returncode == 0, down.stdout + down.stderr
+        with psycopg.connect(_sync_url(test_db_url)) as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM bulk_price_jobs WHERE product_species_id IS NULL")
+            assert cursor.fetchone()[0] == 1  # the echo was never invented or deleted
+    finally:
+        restored = _alembic(test_db_url, "upgrade", "head")
+        assert restored.returncode == 0, restored.stdout + restored.stderr

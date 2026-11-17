@@ -183,6 +183,12 @@ def _set_package_quantity(consignment: ET.Element, quantity: Decimal) -> None:
     if package_list is None:
         package_list = ET.SubElement(consignment, f"{{{VD_NS}}}packageList")
         package = ET.SubElement(package_list, f"{{{DICT_NS}}}package")
+        # dt:Package order: level → packingType → quantity (XSD sequence).
+        level = ET.SubElement(package, f"{{{DICT_NS}}}level")
+        level.text = "2"
+        packing_type = ET.SubElement(package, f"{{{DICT_NS}}}packingType")
+        global_id = ET.SubElement(packing_type, f"{{{DICT_NS}}}globalID")
+        global_id.text = "BX"
         node = ET.SubElement(package, f"{{{DICT_NS}}}quantity")
         node.text = quantity_text
         return
@@ -205,6 +211,12 @@ def _set_package_quantity(consignment: ET.Element, quantity: Decimal) -> None:
         targets = []
     if not targets:
         package = ET.SubElement(package_list, f"{{{DICT_NS}}}package")
+        # dt:Package order: level → packingType → quantity (XSD sequence).
+        level = ET.SubElement(package, f"{{{DICT_NS}}}level")
+        level.text = "2"
+        packing_type = ET.SubElement(package, f"{{{DICT_NS}}}packingType")
+        global_id = ET.SubElement(packing_type, f"{{{DICT_NS}}}globalID")
+        global_id.text = "BX"
         targets = [package]
     for package in targets:
         node = _find_local(package, "quantity")

@@ -226,11 +226,12 @@ async def test_evaluation_mode_is_part_of_the_snapshot(db_session: AsyncSession)
     microscopy = by_code[str(MICROSCOPY)]
     bacterioscopy = by_code[str(BACTERIOSCOPY)]
     # The configurable interval carries the verdict and the mode; TEXT has no
-    # norm at all and stays UNKNOWN without a fabricated verdict.
+    # norm at all and stays neutral (NOT_APPLICABLE) without a fabricated
+    # verdict (ТЗ DR41-B §6.2/§7.1).
     assert microscopy.evaluation["evaluation_mode"] == "CONFIGURABLE"
     assert microscopy.evaluation["status"] == "IN_NORM"
     assert bacterioscopy.evaluation["evaluation_mode"] == "NONE"
-    assert bacterioscopy.evaluation["status"] == "UNKNOWN"
+    assert bacterioscopy.evaluation["status"] == "NOT_APPLICABLE"
     assert microscopy.method_snapshot is not None
     assert microscopy.method_snapshot["rule"] == {"type": "interval", "lower": "0", "upper": "5"}
 

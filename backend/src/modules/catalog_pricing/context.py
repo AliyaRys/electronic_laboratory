@@ -74,6 +74,8 @@ class CatalogIndicator(BaseModel):
     mandatory: bool
     conditional: bool = False
     options: list[str] | None = None
+    # ТЗ DR41-B §6.4: FIXED / CONFIGURABLE / NONE of the canonical registry.
+    evaluation_mode: str = "CONFIGURABLE"
 
 
 class MethodsContext(BaseModel):
@@ -108,6 +110,7 @@ def _indicator_catalog() -> list[CatalogIndicator]:
             mandatory=item.mandatory,
             conditional=item.conditional,
             options=list(item.options) if item.options is not None else None,
+            evaluation_mode=item.evaluation_mode,
         )
         for item in _mandatory.CATALOG_INDICATORS
     ]
@@ -147,7 +150,13 @@ async def methods_context(
     )
     rules = [method_rule_view(row) for row in rows]
     configured_indicators = {row.indicator_id for row in rules}
-    missing = [item.id for item in _mandatory.CATALOG_INDICATORS if item.id not in configured_indicators]
+    # ТЗ DR41-B §6.4: only the configurable indicators are ever «missing» —
+    # a FIXED rule needs no MethodRule and a NONE research has no norm.
+    missing = [
+        item.id
+        for item in _mandatory.CATALOG_INDICATORS
+        if item.evaluation_mode == "CONFIGURABLE" and item.id not in configured_indicators
+    ]
 
     return MethodsContext(
         laboratory=_LaboratoryRef(id=laboratory.id, name=laboratory.name),

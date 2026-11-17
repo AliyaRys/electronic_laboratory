@@ -1317,6 +1317,11 @@ export interface components {
             conditional: boolean;
             /** Options */
             options?: string[] | null;
+            /**
+             * Evaluation Mode
+             * @default CONFIGURABLE
+             */
+            evaluation_mode: string;
         };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {

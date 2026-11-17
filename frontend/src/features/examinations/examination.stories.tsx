@@ -212,15 +212,106 @@ function researchValues(performed: Record<string, Partial<ResearchEntry>>): Exam
 const researchRender = (
   values: ExaminationFormValues,
   requiredResearchIds: ReadonlySet<string> = new Set(),
+  evaluations?: ReadonlyMap<string, import("./ResearchFields").ResearchEvaluation>,
 ) => (
   <ResearchFields
     values={values}
     view={null}
     disabled={false}
     requiredResearchIds={requiredResearchIds}
+    evaluations={evaluations}
     onChange={() => undefined}
   />
 );
+
+const F18_ID = "c8d1e50e-bf49-5475-bb82-860f6fc47e74";
+const F19_ID = "5410ca53-ffae-5a27-ab8d-51cb20fe4011";
+const F22_ID = "6e126f72-4871-566b-809b-8765c562d2d6";
+const F23_ID = "e6be5304-d6d2-5f49-86a3-8e1308b344d4";
+const F24_ID = "72c55a55-4708-58d5-8d69-ec1c7ee2d1f9";
+
+/** ТЗ DR41-B §9.4 п.10: the typed server evaluation highlight of the research
+ * cards — fixed norm, deviation, unknown (with the honest legacy hint) and
+ * the norm-free бактериоскопия. */
+export const ОценкаНормВКарточках: StoryObj = {
+  render: () =>
+    researchRender(
+      researchValues({
+        [F22_ID]: { performed: true, value: "MATCH" },
+        [F23_ID]: { performed: true, value: "рост не обнаружен" },
+        [F24_ID]: { performed: true, value: "2.5" },
+        [F19_ID]: { performed: true, value: "MISMATCH" },
+      }),
+      new Set(),
+      new Map([
+        [F18_ID, { status: "IN_NORM" }],
+        [F22_ID, { status: "IN_NORM" }],
+        [F19_ID, { status: "DEVIATION" }],
+        [
+          F24_ID,
+          {
+            status: "UNKNOWN",
+            hint: "Норма сохранена в устаревшем целочисленном формате: пересохраните норму показателя в справочнике.",
+          },
+        ],
+        [F23_ID, { status: "NOT_APPLICABLE" }],
+      ]),
+    ),
+  parameters: {
+    viewport: { defaultViewport: "desktop" },
+    docs: {
+      description: {
+        story:
+          "ТЗ DR41-B §7: подсветка карточек из typed evaluation серверного preview. Цвет всегда сопровождается текстом; итог врача FIT/UNFIT не подменяется.",
+      },
+    },
+  },
+};
+
+export const ОценкаНормУзкийЭкран: StoryObj = {
+  render: () =>
+    researchRender(
+      researchValues({
+        [F22_ID]: { performed: true, value: "MATCH" },
+        [F19_ID]: { performed: true, value: "MISMATCH" },
+      }),
+      new Set(),
+      new Map([
+        [F18_ID, { status: "IN_NORM" }],
+        [F22_ID, { status: "IN_NORM" }],
+        [F19_ID, { status: "DEVIATION" }],
+      ]),
+    ),
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+};
+
+/** ТЗ DR41-B §9.4 п.10: while the preview loads the cards stay calm — no
+ * fabricated verdict and no colour; the missing-configuration problem keeps
+ * its honest StatusView wording. */
+export const ОценкаНормЗагрузкаИОшибка: StoryObj = {
+  render: () => (
+    <div className="vse-app" style={{ display: "grid", gap: 16, maxWidth: 720 }}>
+      <PricingSection state={{ status: "loading" }} disabled={false} onRetry={() => undefined} />
+      <PricingSection
+        state={{
+          status: "missing",
+          problem: {
+            type: "about:blank",
+            title: "Configuration missing",
+            status: 422,
+            detail:
+              "Не настроена стоимость исследования «Микроскопия» (код VSE-F24) для выбранного вида продукции. Откройте справочник «Стоимость исследований» и настройте этот показатель.",
+            code: "CONFIGURATION_MISSING",
+            trace_id: "",
+          },
+        }}
+        disabled={false}
+        onRetry={() => undefined}
+      />
+    </div>
+  ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
 
 /** DR35: требуемые исследования приходят с сервера (required_research_ids)
  * и закрепляются за партией, а не выбираются на форме. */

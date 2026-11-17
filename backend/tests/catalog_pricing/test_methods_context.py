@@ -164,7 +164,9 @@ async def test_readiness_is_meat_scoped(api_env: SimpleNamespace) -> None:
 
     report = await readiness(api_env.db, api_env.lab.id)
     inputs = {item.input_id for item in report.missing}
-    assert f"method:{_mandatory.ORGANOLEPTIC_INDICATOR_ID}" in inputs
-    assert f"method:{_mandatory.IDENTIFICATION_INDICATOR_ID}" in inputs
+    # ТЗ DR41-B §6.4: FIXED (F18/F19) indicators need no MethodRule in
+    # readiness; the configurable mandatory temperature norm still does.
+    assert f"method:{_mandatory.ORGANOLEPTIC_INDICATOR_ID}" not in inputs
+    assert f"method:{_mandatory.IDENTIFICATION_INDICATOR_ID}" not in inputs
     assert f"method:{_mandatory.TEMPERATURE_INDICATOR_ID}" in inputs
     assert f"method:{_mandatory.TRICHINELLA_INDICATOR_ID}" not in inputs

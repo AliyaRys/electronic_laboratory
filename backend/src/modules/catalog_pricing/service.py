@@ -40,6 +40,7 @@ __all__ = [
     "configuration_missing",
     "missing_tariff_message",
     "evaluation_mode_of",
+    "fixed_evaluation",
     "evaluate_typed",
     "evaluate_and_price",
     "CENT",
@@ -108,6 +109,23 @@ def _to_decimal(value: Any) -> Decimal | None:
         return None
 
 
+def fixed_evaluation(indicator: UUID, value: Any) -> dict[str, Any]:
+    """The typed evaluation of a FIXED indicator (ТЗ DR41-B §6.4/§7.1).
+
+    The rule is the canonical registry, never a catalog row and never the
+    browser: F18/F19/F22 accept «Соответствует», F27 «Отрицательная»,
+    F28 «Положительная». An unrecognised value is an honest UNKNOWN.
+    """
+    definition = _mandatory.INDICATOR_BY_ID.get(indicator)
+    if definition is None or definition.evaluation_mode != "FIXED" or definition.fixed_values is None:
+        return {"status": "UNKNOWN", "rule_type": None}
+    key = value if isinstance(value, (str, bool)) else None
+    status = definition.fixed_values.get(key) if key is not None else None
+    if status is None:
+        return {"status": "UNKNOWN", "rule_type": "fixed"}
+    return {"status": status, "rule_type": "fixed", "criterion": definition.fixed_criterion}
+
+
 def evaluate_typed(result_schema: ResultSchema, rule: IntervalRule | QualitativeRule, value: Any) -> dict[str, Any]:
     """Evaluate one typed value against one typed rule (INPUT-02).
 
@@ -125,11 +143,31 @@ def evaluate_typed(result_schema: ResultSchema, rule: IntervalRule | Qualitative
         return {"status": _combine(statuses), "rule_type": rule.type}
 
     if result_schema == ResultSchema.INTEGER_NONNEGATIVE:
-        if isinstance(value, bool) or not isinstance(value, int):
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
             return {"status": "UNKNOWN", "rule_type": rule.type}
-        if value < 0:
+        if isinstance(value, int):
+            number = Decimal(value)
+        else:
+            # The wire value is a decimal string (ТЗ DR42 §5): an integral
+            # value evaluates honestly against the legacy INTEGER norm; a
+            # fractional one is UNKNOWN with a re-save hint — never a
+            # fabricated verdict and never a broken old snapshot.
+            try:
+                number = parse_decimal(value)
+            except ValueError:
+                return {"status": "UNKNOWN", "rule_type": rule.type}
+            if number != number.to_integral_value():
+                return {
+                    "status": "UNKNOWN",
+                    "rule_type": rule.type,
+                    "hint": (
+                        "Норма сохранена в устаревшем целочисленном формате: "
+                        "пересохраните норму показателя в справочнике, чтобы оценка считалась."
+                    ),
+                }
+        if number < 0:
             return {"status": "DEVIATION", "rule_type": rule.type}
-        return {"status": _interval_status(rule, Decimal(value)), "rule_type": rule.type}
+        return {"status": _interval_status(rule, number), "rule_type": rule.type}
 
     if result_schema in DECIMAL_SCHEMAS:
         number = _to_decimal(value)
@@ -328,22 +366,38 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
                 )
             continue
         pinned = previous_by_indicator.get(indicator)
-        if pinned is not None:
-            snapshot_rule = _rule_from_snapshot(pinned)
+        registry_definition = _mandatory.INDICATOR_BY_ID.get(indicator)
+        registry_mode = registry_definition.evaluation_mode if registry_definition is not None else None
+        if registry_mode in ("FIXED", "NONE"):
+            # ТЗ DR41-B §6.4: a FIXED/NONE indicator never needs an active
+            # MethodRule — the verdict comes from the canonical registry
+            # (FIXED) or does not exist at all (NONE). The old saved snapshots
+            # keep their pinned price and are never re-evaluated.
+            snapshot_rule = None
+            if pinned is not None:
+                evaluation = dict(pinned.evaluation or {})
+            elif registry_mode == "FIXED":
+                evaluation = fixed_evaluation(indicator, result.value)
+            else:
+                evaluation = {"status": "NOT_APPLICABLE", "rule_type": None}
+            evaluation["evaluation_mode"] = registry_mode
         else:
-            # DR31 §8.5: the norm lookup carries NO species/state terms.
-            snapshot_rule = await _active_rule(uow, laboratory_id, indicator)
-        if snapshot_rule is None:
-            # A missing norm blocks, including the fair calculation (INPUT-02).
-            raise configuration_missing(
-                "Отсутствует действующая методика и норма для показателя.",
-                path=f"results.{indicator}",
-                field_id="VSE",
-            )
-        evaluation = _evaluate_with_schema(snapshot_rule, result.value)
-        # ТЗ DR42 §4.3: the evaluation mode is part of the read-only evaluation
-        # snapshot; the browser never chooses it.
-        evaluation["evaluation_mode"] = evaluation_mode_of(snapshot_rule.result_schema)
+            if pinned is not None:
+                snapshot_rule = _rule_from_snapshot(pinned)
+            else:
+                # DR31 §8.5: the norm lookup carries NO species/state terms.
+                snapshot_rule = await _active_rule(uow, laboratory_id, indicator)
+            if snapshot_rule is None:
+                # A missing norm blocks, including the fair calculation (INPUT-02).
+                raise configuration_missing(
+                    "Отсутствует действующая методика и норма для показателя.",
+                    path=f"results.{indicator}",
+                    field_id="VSE",
+                )
+            evaluation = _evaluate_with_schema(snapshot_rule, result.value)
+            # ТЗ DR42 §4.3: the evaluation mode is part of the read-only evaluation
+            # snapshot; the browser never chooses it.
+            evaluation["evaluation_mode"] = evaluation_mode_of(snapshot_rule.result_schema)
         if evaluation["status"] == "UNKNOWN" and mandatory:
             raise configuration_missing(
                 "Значение обязательного показателя не соответствует типу методики.",
@@ -358,16 +412,33 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
         unit_price = _price_from_prev_or_tariff(pinned, tariff, fair=request.fair, indicator=indicator, species=species)
         price_decimal = parse_decimal(unit_price) if unit_price != "0.00" else Decimal("0.00")
         amount = _quantize_money(price_decimal * parse_decimal(quantity)) if not request.fair else "0.00"
+        definition = registry_definition
+        if snapshot_rule is not None:
+            unit_id, method_snapshot = snapshot_rule.unit_id, _method_snapshot(snapshot_rule, indicator)
+        else:
+            # ТЗ DR41-B §6.4: a FIXED/NONE result has no norm row; the
+            # snapshot keeps the registry provenance instead of a fake rule.
+            unit_id = (definition.unit if definition is not None else "") or ""
+            method_snapshot = {
+                "indicator_id": str(indicator),
+                "result_schema": definition.result_schema if definition is not None else "TEXT",
+                "rule": {"type": "fixed" if registry_mode == "FIXED" else "none"},
+                "source": {
+                    "name": "Правило ФТ: оценка фиксирована методикой"
+                    if registry_mode == "FIXED"
+                    else "Оценка по норме не применяется",
+                },
+            }
         lines.append(
             PricingLine.model_validate(
                 {
                     "service_code": str(indicator),
-                    "name": _indicator_name(indicator, snapshot_rule.source),
-                    "unit_id": snapshot_rule.unit_id,
+                    "name": _indicator_name(indicator, method_snapshot.get("source", {})),
+                    "unit_id": unit_id,
                     "quantity": quantity,
                     "unit_price": unit_price,
                     "amount": amount,
-                    "method_snapshot": _method_snapshot(snapshot_rule, indicator),
+                    "method_snapshot": method_snapshot,
                     "evaluation": evaluation,
                 }
             )

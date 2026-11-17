@@ -15,11 +15,16 @@ import { moneyLabel, pricingUnitLabel } from "../arrivals/api";
 import { formatDecimalDisplay } from "../../shared/lib/domain";
 import { StatusView } from "../../shared/ui/StatusView";
 
-/** The Russian wording of one evaluation snapshot (ТЗ DR42 §4.3). */
+/**
+ * The Russian wording of one evaluation snapshot (ТЗ DR41-B §7.2): a green
+ * verdict is always accompanied by its text, and the neutral statuses keep
+ * their own honest wording — UNKNOWN is never repainted as a norm.
+ */
 export function evaluationLabel(status: string | undefined): string {
   if (status === "IN_NORM") return "Норма";
   if (status === "DEVIATION") return "Отклонение";
-  return "Нет оценки нормы";
+  if (status === "NOT_APPLICABLE") return "Оценка по норме не применяется";
+  return "Оценка не определена";
 }
 
 /** The readable criterion of the applied norm from the method snapshot. */
@@ -46,14 +51,16 @@ function EvaluationBadge({
 }: {
   line: {
     method_snapshot?: { rule?: unknown } | null;
-    evaluation?: { status?: string } | null;
+    evaluation?: { status?: string; hint?: string } | null;
   };
 }): React.ReactElement {
   const criterion = normCriterion(line);
   const status = line.evaluation?.status;
+  const hint = line.evaluation?.hint;
   return (
     <span className="vse-invoice-evaluation" data-evaluation={status ?? "UNKNOWN"}>
       {evaluationLabel(status)}
+      {hint ? <span className="vse-invoice-criterion"> · {hint}</span> : null}
       {criterion !== null ? <span className="vse-invoice-criterion"> · {criterion}</span> : null}
     </span>
   );

@@ -136,8 +136,8 @@
   accent-color: var(--app-teal);
 }
 
-.vse-research input[type="number"],
 .vse-research input[type="text"],
+.vse-research input[type="date"],
 .vse-research select,
 .vse-research textarea,
 .vse-finding-row input,

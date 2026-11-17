@@ -255,7 +255,7 @@ describe("DR30 examination composition", () => {
       "MATCH",
     );
     await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
-    await user.type(screen.getByRole("spinbutton", { name: "Температура в толще мышц, °C" }), "3.0");
+    await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "3.0");
     await user.click(screen.getByRole("radio", { name: "Пригодно" }));
     await user.click(screen.getByRole("button", { name: "Завершить ВСЭ" }));
     expect(bodies).toHaveLength(1);

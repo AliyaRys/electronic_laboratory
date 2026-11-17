@@ -211,7 +211,7 @@ describe("ExaminationForm", () => {
       "MATCH",
     );
     await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
-    await user.type(screen.getByRole("spinbutton", { name: "Температура в толще мышц, °C" }), "3.5");
+    await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "3.5");
     await user.click(screen.getByRole("button", { name: "Завершить ВСЭ" }));
     expect(await screen.findByText(/для «Иное» требуется пояснение/i)).toBeTruthy();
   });
@@ -241,7 +241,7 @@ describe("ExaminationForm", () => {
       "MATCH",
     );
     await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
-    await user.type(screen.getByRole("spinbutton", { name: "Температура в толще мышц, °C" }), "2.0");
+    await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "2.0");
     await user.type(screen.getByRole("textbox", { name: "Номер ВСЭ *" }), "№ 5");
     await user.type(
       screen.getByRole("textbox", { name: "Маркировка — ветеринарное клеймо лаборатории *" }),
@@ -279,7 +279,7 @@ describe("ExaminationForm", () => {
       "MATCH",
     );
     await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
-    await user.type(screen.getByRole("spinbutton", { name: "Температура в толще мышц, °C" }), "2.0");
+    await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "2.0");
     await user.click(screen.getByRole("button", { name: "Отправить в ожидание результата" }));
     expect(
       (await screen.findAllByText(/Карточка изменена другим пользователем|Не удалось сохранить/)).length,
@@ -303,7 +303,7 @@ describe("ExaminationForm", () => {
       "MATCH",
     );
     await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
-    await user.type(screen.getByRole("spinbutton", { name: "Температура в толще мышц, °C" }), "2.0");
+    await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "2.0");
     await user.click(screen.getByRole("button", { name: "Отправить в ожидание результата" }));
     expect(await screen.findByText(/Не удалось сохранить ВСЭ|Ошибка соединения/)).toBeTruthy();
     expect((screen.getByRole("textbox", { name: "Номер ВСЭ *" }) as HTMLInputElement).value).toBe("№ 900");

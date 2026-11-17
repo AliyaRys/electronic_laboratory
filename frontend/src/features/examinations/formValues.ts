@@ -65,6 +65,42 @@ export const DEFAULT_SAMPLE_MASS_KG = "0.8";
 /** The DECIMAL string grammar of API-01 (finite decimal, dot, no exponent). */
 const DECIMAL = /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 
+/** The tolerant typing grammar of a numeric research field (ТЗ DR42 §5.2):
+ * digits with an optional comma/dot separator and an optional fraction tail —
+ * the intermediate input «2,» stays on screen until blur/submit. */
+const DECIMAL_TYPING = /^(?:0|[1-9][0-9]*)(?:[.,][0-9]*)?$/;
+
+/**
+ * Normalise the user's numeric input to the API wire form (ТЗ DR42 §5):
+ * the comma becomes a dot and a trailing separator is dropped («2,» → «2»).
+ * No parseFloat/toFixed/binary float ever touches the value; anything that is
+ * not a finite plain nonnegative decimal (negative sign, exponent form,
+ * NaN/Infinity, empty) returns null.
+ */
+export function normalizeDecimalInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed === "" || !DECIMAL_TYPING.test(trimmed)) return null;
+  const wire = trimmed.replace(",", ".");
+  return wire.endsWith(".") ? wire.slice(0, -1) : wire;
+}
+
+/** A complete wire decimal (digits after the separator are required). */
+export function isCompleteDecimal(value: string): boolean {
+  return DECIMAL.test(value);
+}
+
+/** Exact string comparison of two nonnegative decimals (no binary float):
+ * returns a negative number when ``a < b``, 0 when equal, positive otherwise. */
+export function compareDecimals(a: string, b: string): number {
+  const [aInt, aFrac = ""] = a.split(".");
+  const [bInt, bFrac = ""] = b.split(".");
+  const digits = Math.max(aFrac.length, bFrac.length);
+  const aParts = aInt.padStart(Math.max(aInt.length, bInt.length), "0") + aFrac.padEnd(digits, "0");
+  const bParts = bInt.padStart(Math.max(aInt.length, bInt.length), "0") + bFrac.padEnd(digits, "0");
+  if (aParts === bParts) return 0;
+  return aParts < bParts ? -1 : 1;
+}
+
 export function emptyResearch(entry: Partial<ResearchEntry> = {}): ResearchEntry {
   return {
     performed: false,
@@ -234,13 +270,13 @@ function toResearchWrite(def: (typeof INDICATORS)[number], entry: ResearchEntry)
   switch (def.kind) {
     case "BOOLEAN":
       return { indicatorId: def.id, kind: "BOOLEAN", value: entry.value === "true" };
-    case "INTEGER": {
-      if (!/^\d+$/.test(entry.value)) return null;
-      return { indicatorId: def.id, kind: "INTEGER", value: Number(entry.value) };
+    case "DECIMAL": {
+      // ТЗ DR42 §5: comma input normalises to the dot wire form; negatives,
+      // exponent forms and empty performed values never reach the API.
+      const normalized = normalizeDecimalInput(entry.value);
+      if (normalized === null || !DECIMAL.test(normalized)) return null;
+      return { indicatorId: def.id, kind: "DECIMAL", value: normalized };
     }
-    case "DECIMAL":
-      if (!DECIMAL.test(entry.value)) return null;
-      return { indicatorId: def.id, kind: "DECIMAL", value: entry.value };
     case "TEXT":
       if (entry.value.trim() === "") return null;
       return { indicatorId: def.id, kind: "TEXT", value: entry.value };
@@ -255,13 +291,16 @@ function toResearchWrite(def: (typeof INDICATORS)[number], entry: ResearchEntry)
           : {}),
       };
     }
-    case "DOSIMETRY":
-      if (!DECIMAL.test(entry.first) || !DECIMAL.test(entry.last)) return null;
+    case "DOSIMETRY": {
+      const first = normalizeDecimalInput(entry.first);
+      const last = normalizeDecimalInput(entry.last);
+      if (first === null || last === null || !DECIMAL.test(first) || !DECIMAL.test(last)) return null;
       return {
         indicatorId: def.id,
         kind: "DOSIMETRY",
-        value: { first: entry.first, last: entry.last },
+        value: { first, last },
       };
+    }
   }
 }
 
@@ -300,26 +339,30 @@ export function researchErrors(
       }
       continue;
     }
-    if (def.kind === "INTEGER" && !/^\d+$/.test(entry.value)) {
-      errors.push(`${def.name}: введите целое число, ноль допускается.`);
-    }
-    if (def.kind === "DECIMAL" && !DECIMAL.test(entry.value)) {
-      errors.push(`${def.name}: введите неотрицательное десятичное число.`);
-    }
-    if (def.kind === "DECIMAL" && DECIMAL.test(entry.value)) {
-      const value = Number(entry.value);
-      if (def.min !== undefined && value < def.min) {
+    if (def.kind === "DECIMAL") {
+      // ТЗ DR42 §5.2: the readable client mirror normalises the comma and
+      // checks the bounds by exact decimal comparison, never by binary float.
+      const normalized = normalizeDecimalInput(entry.value);
+      if (normalized === null || !DECIMAL.test(normalized)) {
+        errors.push(`${def.name}: введите неотрицательное десятичное число.`);
+        continue;
+      }
+      if (def.min !== undefined && compareDecimals(normalized, String(def.min)) < 0) {
         errors.push(`${def.name}: значение не меньше ${def.min}.`);
       }
-      if (def.max !== undefined && value > def.max) {
+      if (def.max !== undefined && compareDecimals(normalized, String(def.max)) > 0) {
         errors.push(`${def.name}: значение не больше ${def.max}.`);
       }
     }
     if (def.kind === "TEXT" && entry.value.trim() === "") {
       errors.push(`${def.name}: введите непустой результат.`);
     }
-    if (def.kind === "DOSIMETRY" && (!DECIMAL.test(entry.first) || !DECIMAL.test(entry.last))) {
-      errors.push(`${def.name}: оба значения обязательны и десятичные.`);
+    if (def.kind === "DOSIMETRY") {
+      const first = normalizeDecimalInput(entry.first);
+      const last = normalizeDecimalInput(entry.last);
+      if (first === null || last === null) {
+        errors.push(`${def.name}: оба значения обязательны и десятичные.`);
+      }
     }
     if (def.kind === "ENUM" && entry.value === "") {
       errors.push(`${def.name}: выберите результат.`);

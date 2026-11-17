@@ -38,6 +38,7 @@ import {
   DEFAULT_SAMPLE_MASS_KG,
   formSchemaFor,
   initialValues,
+  normalizeDecimalInput,
   researchErrors,
   toWritePayload,
   type ExaminationFormValues,
@@ -542,7 +543,8 @@ function SpecialistChoice({
 }
 
 /** One typed preview research from the form entry (client conversion only —
- * the server validates and prices). */
+ * the server validates and prices). ТЗ DR42 §5: the comma normalises to the
+ * dot wire form without any binary float. */
 function toResearchValue(
   indicatorId: string,
   kind: string,
@@ -552,10 +554,10 @@ function toResearchValue(
   switch (kind) {
     case "BOOLEAN":
       return { indicatorId, kind: "BOOLEAN", value: value === "true" };
-    case "INTEGER":
-      return /^\d+$/.test(value) ? { indicatorId, kind: "INTEGER", value: Number(value) } : null;
-    case "DECIMAL":
-      return /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(value) ? { indicatorId, kind: "DECIMAL", value } : null;
+    case "DECIMAL": {
+      const normalized = normalizeDecimalInput(value);
+      return normalized !== null ? { indicatorId, kind: "DECIMAL", value: normalized } : null;
+    }
     case "TEXT":
       return value.trim() === "" ? null : { indicatorId, kind: "TEXT", value };
     case "ENUM":

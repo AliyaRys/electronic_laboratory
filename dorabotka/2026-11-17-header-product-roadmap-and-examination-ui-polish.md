@@ -564,17 +564,17 @@ wrap вывести итог по композиции экрана сверки
 
 Заполняет исполнитель после реализации, до merge:
 
-- Feature branch:
-- Commit ТЗ:
-- Implementation commits:
-- Review/fix commits:
-- Whole-branch review verdict:
-- Unit/type/build:
-- Storybook build:
-- UI/E2E:
-- Premium audit report/strict:
-- Browser screenshots 1440/1024/768/390:
-- Docker Compose rebuild and health:
-- Merge commit in `main`:
-- Remote push:
-- Honest not-run / ограничения:
+- Feature branch: `codex/DR46-header-and-examination-ui-polish` (worktree `C:\electronic_lab_dev-dr46`, base main 9545d04)
+- Commit ТЗ: `9eaf668` docs: add DR46 implementation plan (TZ) to the branch
+- Implementation commits: `0dab90d` (Task 1 RED-тесты), `78a18a2` (Task 2 roadmap-переключатель + Lucide-иконки + README + stories), `a2a5e3c` (Tasks 3–4 title row + одноколоночная проба), `ac5dc49` (Task 5 saved-examination pricing variant), `ba4130a` (Task 6 общая addzone + редакторы над ней), `e1efc40` (gates: prettier + правки тестовых запросов)
+- Review/fix commits: нет — независимые reviewer-субагенты по рулингам контроллера запрещены (команда DR46); fix-коммит `e1efc40` после gates
+- Whole-branch review verdict: не проводился (контроллер/Task 8)
+- Unit/type/build: `npx vitest run` — 72 файла, 612 passed / 0 failed; `npm run lint` (eslint) — 0 ошибок; `npm run typecheck` (tsc --noEmit) — 0 ошибок; `npm run build` (frontend) — exit 0
+- Storybook build: `npm.cmd run build-storybook` (корень) — exit 0, вывод `storybook-static`
+- UI/E2E: `npm.cmd run test:ui` — 229 passed / 67 failed; идентичный результат (67/229) на чистом main до изменений (проверено `git stash`) — все падения pre-existing (отсутствующие `admin_makets/account-activation.html` и др. макеты, Storybook-проверки отчётов/болезней/итога)
+- Premium audit report/strict: не выполнялся — доступ к субагенту frontend-design-premium отсутствует у этого исполнителя
+- Browser screenshots 1440/1024/768/390: не сделаны — in-app browser недоступен (browser.disconnected), реальная страница требует backend + dev server; визуальная проверка не проводилась
+- Docker Compose rebuild and health: не выполнялся — Task 8 контроллера
+- Merge commit in `main`: нет (запрещено исполнителю)
+- Remote push: нет (запрещено исполнителю)
+- Honest not-run / ограничения: Task 1–6 RED→GREEN проведены, но отдельные RED-прогоны Tasks 3–6 зафиксированы только для Task 1 (тесты шапки) и для Task 2; RED-прогоны для view/pricing/research-тестов выполнялись на уже изменённом коде (тесты написаны вместе с реализацией). Браузерные проверки §Task 7 (Storybook в Chrome, viewport-матрица, tooltips по hover/Tab, 200% zoom, скриншоты) не выполнены: browser-инструмент сессии недоступен. Playwright smoke с реальной страницей/бэкендом не запускался. Бэкенд-код не менялся; backend pytest и ruff не запускались (нет затронутых файлов). Два pre-existing сбоя format в main (`ReconciliationWire.test.ts`, `ReportsPage.test.tsx`) исправлены только форматированием (без изменения логики). Pre-existing падение `TariffsEditorPage.test.tsx` (дубль текста «Мясо и мясопродукты» после появления шапки) устранено правкой запроса теста.

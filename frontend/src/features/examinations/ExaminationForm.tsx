@@ -22,6 +22,7 @@ import { useDirtyStore } from "../../entities/session/context";
 import { Button } from "../../shared/ui/Button";
 import { Field } from "../../shared/ui/Field";
 import { FormSection } from "../../shared/ui/FormSection";
+import { CheckSectionCard } from "../arrivals/CheckSectionCard";
 import { ReadonlyField } from "../../shared/ui/ReadonlyField";
 import { SelectDropdown } from "../../shared/ui/SelectDropdown";
 import { StatusView } from "../../shared/ui/StatusView";
@@ -418,17 +419,20 @@ export function ExaminationForm({
         </div>
       </FormSection>
 
-      <FormSection
-        icon="check-invoice"
+      {/* DR43: the pricing section uses the SAME reconciliation check-section
+          card (pinned check-invoice icon, shared stylesheet) — not a local
+          copy of the header markup. */}
+      <CheckSectionCard
+        sectionKey="invoice"
         title="Расчёт стоимости услуг"
-        description="Заполненные исследования, их количество, тарифы и итоговая сумма."
+        description="Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма."
       >
         <PricingSection
           state={preview}
           disabled={busy}
           onRetry={() => setPreviewNonce((nonce) => nonce + 1)}
         />
-      </FormSection>
+      </CheckSectionCard>
 
       {formError !== "" ? (
         <StatusView state="forbidden" title="Проверьте введённые значения." detail={formError} />

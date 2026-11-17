@@ -160,7 +160,12 @@ describe("BulkPriceDialog", () => {
     const client = new QueryClient();
     render(
       <QueryClientProvider client={client}>
-        <BulkPriceDialog laboratories={[]} productSpeciesId="" serviceCode={INDICATORS[0]?.id} onClose={vi.fn()} />
+        <BulkPriceDialog
+          laboratories={[]}
+          productSpeciesId=""
+          serviceCode={INDICATORS[0]?.id}
+          onClose={vi.fn()}
+        />
       </QueryClientProvider>,
     );
     const user = userEvent.setup();

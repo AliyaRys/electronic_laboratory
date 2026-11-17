@@ -320,91 +320,92 @@ export function TariffsEditorPage(): React.ReactElement {
               area; no species selector exists any more. */}
           <section className="vse-catalog-section" aria-label="Область справочника">
             <p className="vse-catalog-context-note">
-              Категория продукции: {tariffContextData?.product_area_name ?? "Мясо и мясопродукты"} · стоимость одна
-              на всю категорию, без деления по видам продукции.
+              Категория продукции: {tariffContextData?.product_area_name ?? "Мясо и мясопродукты"} · стоимость
+              одна на всю категорию, без деления по видам продукции.
             </p>
             {/* The rows OUTSIDE the area scope are shown as the migration
                 diagnostics only: no silent deletion, no copying between
                 laboratories, no price substitution. */}
             {legacyTariffs.length > 0 ? (
               <article className="vse-catalog-diag" data-testid="tariffs-legacy-diag">
-                Обнаружено устаревших строк тарифов вне области «Мясо и мясопродукты»: {legacyTariffs.length}. Они
-                остались после миграции справочника на единую стоимость по категории; расчёт их не использует.
-                Обратитесь к ответственному за прейскурант, чтобы перенести или удалить их вручную.
+                Обнаружено устаревших строк тарифов вне области «Мясо и мясопродукты»: {legacyTariffs.length}.
+                Они остались после миграции справочника на единую стоимость по категории; расчёт их не
+                использует. Обратитесь к ответственному за прейскурант, чтобы перенести или удалить их
+                вручную.
               </article>
             ) : null}
           </section>
           <section className="vse-catalog-section" aria-labelledby="tariffs-section-title">
-              <CatalogSectionHeader
-                icon="directory-price"
-                title="Исследования ВСЭ"
-                description="Укажите стоимость каждого исследования."
+            <CatalogSectionHeader
+              icon="directory-price"
+              title="Исследования ВСЭ"
+              description="Укажите стоимость каждого исследования."
+            />
+            {tariffs.isLoading ? (
+              <StatusView state="loading" title="Загрузка тарифов…" />
+            ) : tariffsProblem !== null ? (
+              <StatusView
+                state={tariffsProblem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
+                title={tariffsProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить тарифы."}
+                detail={tariffsProblem.detail}
+                onRetry={() => void tariffs.refetch()}
               />
-              {tariffs.isLoading ? (
-                <StatusView state="loading" title="Загрузка тарифов…" />
-              ) : tariffsProblem !== null ? (
-                <StatusView
-                  state={tariffsProblem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
-                  title={tariffsProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить тарифы."}
-                  detail={tariffsProblem.detail}
-                  onRetry={() => void tariffs.refetch()}
-                />
-              ) : (
-                <div className="vse-catalog-cards">
-                  {cards.map((card, index) => {
-                    const key = card.tariff?.id ?? `new-${index}`;
-                    if (card.unknown) {
-                      return (
-                        <article className="vse-catalog-diag" key={key} data-testid={`tariff-diag-${key}`}>
-                          Тариф вне общего каталога показателей. Код услуги: <code>{card.serviceCode}</code>.
-                          Наименование недоступно в read model — значение не редактируется на этой странице.
-                        </article>
-                      );
-                    }
-                    const draft = drafts[key];
-                    const conflict =
-                      conflicts[key] === true && draft !== undefined
-                        ? { serverValue: card.tariff?.price ?? "", draftValue: draft }
-                        : undefined;
+            ) : (
+              <div className="vse-catalog-cards">
+                {cards.map((card, index) => {
+                  const key = card.tariff?.id ?? `new-${index}`;
+                  if (card.unknown) {
                     return (
-                      <PriceCard
-                        key={key}
-                        name={card.name}
-                        mandatory={card.mandatory}
-                        value={draft ?? card.tariff?.price ?? ""}
-                        unset={card.tariff === null && draft === undefined}
-                        error={errors[key]}
-                        busy={savePending}
-                        readOnly={!canEdit}
-                        conflict={conflict}
-                        onKeepMine={conflict !== undefined ? () => void keepMine(card, key) : undefined}
-                        onTakeServer={conflict !== undefined ? () => takeServer(key) : undefined}
-                        onChange={(next) => {
-                          setDrafts((current) => ({ ...current, [key]: next }));
-                          setSummary(null);
-                        }}
-                        secondary={
-                          card.tariff !== null && canEdit ? (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              disabled={savePending}
-                              aria-label={`Удалить тариф: ${card.name}`}
-                              onClick={() => {
-                                setDeleteError("");
-                                setDeleteTarget({ card, key, tariff: card.tariff as TariffView });
-                              }}
-                            >
-                              Удалить
-                            </Button>
-                          ) : undefined
-                        }
-                      />
+                      <article className="vse-catalog-diag" key={key} data-testid={`tariff-diag-${key}`}>
+                        Тариф вне общего каталога показателей. Код услуги: <code>{card.serviceCode}</code>.
+                        Наименование недоступно в read model — значение не редактируется на этой странице.
+                      </article>
                     );
-                  })}
-                </div>
-              )}
-            </section>
+                  }
+                  const draft = drafts[key];
+                  const conflict =
+                    conflicts[key] === true && draft !== undefined
+                      ? { serverValue: card.tariff?.price ?? "", draftValue: draft }
+                      : undefined;
+                  return (
+                    <PriceCard
+                      key={key}
+                      name={card.name}
+                      mandatory={card.mandatory}
+                      value={draft ?? card.tariff?.price ?? ""}
+                      unset={card.tariff === null && draft === undefined}
+                      error={errors[key]}
+                      busy={savePending}
+                      readOnly={!canEdit}
+                      conflict={conflict}
+                      onKeepMine={conflict !== undefined ? () => void keepMine(card, key) : undefined}
+                      onTakeServer={conflict !== undefined ? () => takeServer(key) : undefined}
+                      onChange={(next) => {
+                        setDrafts((current) => ({ ...current, [key]: next }));
+                        setSummary(null);
+                      }}
+                      secondary={
+                        card.tariff !== null && canEdit ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={savePending}
+                            aria-label={`Удалить тариф: ${card.name}`}
+                            onClick={() => {
+                              setDeleteError("");
+                              setDeleteTarget({ card, key, tariff: card.tariff as TariffView });
+                            }}
+                          >
+                            Удалить
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </>
       )}
       <div className="vse-catalog-actions">

@@ -1,0 +1,190 @@
+/**
+ * The shared check-section card and the invoice table (DR43): ONE stylesheet
+ * for the reconciliation screen and the examination pricing sections — no
+ * screen keeps a local copy of this look. The class names are the historical
+ * `vse-check-*` / `vse-rec-invoice-*` ones (tests, stories and print rely on
+ * them); the rules live here.
+ */
+
+/* --- the visually-hidden util (captions, headings) ------------------------- */
+.vse-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* --- section card ------------------------------------------------------------ */
+.vse-check-section {
+  border: 1px solid var(--app-line);
+  border-radius: 18px;
+  padding: 20px;
+  background: var(--app-panel);
+  box-shadow: 0 8px 24px #1f5a5b03;
+}
+
+.vse-check-section + .vse-check-section,
+.vse-check-section + .vse-rec-actions {
+  margin-top: 16px;
+}
+
+.vse-check-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.vse-check-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vse-check-section-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--app-tint);
+  color: var(--app-teal-dark);
+}
+
+.vse-check-section-icon .app-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.vse-check-section h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.vse-check-section-head p {
+  margin: 2px 0 0;
+  color: var(--app-muted);
+  font-size: 13px;
+}
+
+/* --- invoice ------------------------------------------------------------------------------ */
+.vse-rec-invoice-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+}
+
+.vse-rec-invoice-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.vse-rec-invoice-table th {
+  padding: 11px 14px;
+  background: var(--app-page);
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.vse-rec-invoice-table td {
+  padding: 15px 14px;
+  border-top: 1px solid var(--app-line);
+  vertical-align: top;
+}
+
+.vse-rec-invoice-table td:first-child {
+  font-weight: 700;
+  color: #29474d;
+}
+
+.vse-rec-invoice-table th:not(:first-child),
+.vse-rec-invoice-table td:not(:first-child) {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.vse-rec-invoice-total {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 20px;
+  margin-top: 17px;
+  padding-top: 15px;
+  border-top: 1px solid var(--app-line);
+  font-weight: 760;
+}
+
+/* ТЗ DR11 §7: on a narrow screen the two-line invoice stays readable inside
+   the card — the columns wrap instead of pushing the page width. */
+@media (max-width: 768px) {
+  .vse-check-section-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .vse-rec-invoice-table {
+    min-width: 0;
+  }
+
+  .vse-rec-invoice-table th,
+  .vse-rec-invoice-table td {
+    white-space: normal;
+  }
+
+  .vse-rec-invoice-total {
+    font-size: 14px;
+  }
+}
+
+.vse-rec-invoice-total strong {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--app-teal-dark);
+}
+
+.vse-rec-invoice-empty {
+  margin: 0;
+  border: 1px solid var(--app-card-line);
+  border-radius: 14px;
+  background: #f8fbfb;
+  color: var(--app-muted-readable);
+  padding: 14px;
+}
+
+.vse-rec-invoice-waiver {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  max-width: 640px;
+}
+
+.vse-rec-invoice-waiver input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+}
+
+.vse-rec-invoice-waiver-title {
+  display: block;
+  font-weight: 760;
+  color: #29474d;
+}
+
+.vse-rec-invoice-waiver-note {
+  display: block;
+  color: var(--app-muted-readable);
+  font-size: 13px;
+}

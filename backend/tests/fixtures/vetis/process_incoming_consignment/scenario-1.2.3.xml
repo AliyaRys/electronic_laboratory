@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!-- ТЗ DR38 §1: обезличенный contract fragment сценария 1.2.3 (расхождение, вернуть всё).
      Акта нет; описание расхождений остаётся только в docInspection/info. -->
 <mercvu:processIncomingConsignmentRequest
@@ -13,15 +13,15 @@
   <mercvu:delivery>
     <vd:deliveryDate>2026-11-09T10:00:00+00:00</vd:deliveryDate>
     <vd:consignor>
-      <dt:enterprise><bs:guid>sender</bs:guid></dt:enterprise>
+      <dt:enterprise><bs:guid>00000000-0000-0000-0000-00000000010a</bs:guid></dt:enterprise>
     </vd:consignor>
     <vd:consignee>
-      <dt:enterprise><bs:guid>receiver</bs:guid></dt:enterprise>
+      <dt:enterprise><bs:guid>00000000-0000-0000-0000-00000000010b</bs:guid></dt:enterprise>
     </vd:consignee>
     <vd:transportInfo><vd:transportType>1</vd:transportType></vd:transportInfo>
     <vd:transportStorageType>FROZEN</vd:transportStorageType>
     <vd:accompanyingForms>
-      <vd:vetCertificate><bs:uuid>source-evsd</bs:uuid></vd:vetCertificate>
+      <vd:vetCertificate><bs:uuid>00000000-0000-0000-0000-000000000101</bs:uuid></vd:vetCertificate>
     </vd:accompanyingForms>
   </mercvu:delivery>
   <mercvu:deliveryFacts>
@@ -40,24 +40,24 @@
   <mercvu:returnedDelivery>
     <vd:deliveryDate>2026-11-10T12:00:00+00:00</vd:deliveryDate>
     <vd:consignor>
-      <dt:enterprise><bs:guid>receiver</bs:guid></dt:enterprise>
+      <dt:enterprise><bs:guid>00000000-0000-0000-0000-00000000010b</bs:guid></dt:enterprise>
     </vd:consignor>
     <vd:consignee>
-      <dt:enterprise><bs:guid>sender</bs:guid></dt:enterprise>
+      <dt:enterprise><bs:guid>00000000-0000-0000-0000-00000000010a</bs:guid></dt:enterprise>
     </vd:consignee>
     <vd:consignment>
       <vd:volume>120</vd:volume>
-      <vd:unit><bs:guid>unit</bs:guid></vd:unit>
-      <dt:packageList>
-        <dt:package><dt:quantity>4</dt:quantity></dt:package>
-      </dt:packageList>
+      <vd:unit><bs:guid>00000000-0000-0000-0000-00000000010c</bs:guid></vd:unit>
+      <vd:packageList>
+        <dt:package><dt:level>2</dt:level><dt:packingType><dt:globalID>BX</dt:globalID></dt:packingType><dt:quantity>4</dt:quantity></dt:package>
+      </vd:packageList>
     </vd:consignment>
     <vd:transportInfo><vd:transportType>1</vd:transportType></vd:transportInfo>
     <vd:transportStorageType>FROZEN</vd:transportStorageType>
     <vd:accompanyingForms>
       <vd:vetCertificate>
         <vd:authentication>
-          <vd:purpose><bs:guid>purpose-guid</bs:guid></vd:purpose>
+          <vd:purpose><bs:guid>00000000-0000-0000-0000-00000000010d</bs:guid></vd:purpose>
           <vd:specialMarks>Причина возврата: QUANTITY_DISCREPANCY</vd:specialMarks>
         </vd:authentication>
       </vd:vetCertificate>

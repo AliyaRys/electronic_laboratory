@@ -44,6 +44,7 @@ from backend.src.modules.arrivals.schemas import (
     ActPreview,
     ClassificationView,
     Comparison,
+    DocumentActual,
     ReconciliationWrite,
     SourceSnapshot,
     Transaction,
@@ -331,8 +332,6 @@ def _document_source_text(document: AccompanyingDocumentView) -> str:
 
 def _document_actual_text(actual: object) -> str:
     """The human-readable structured actual value of one document mismatch."""
-    from backend.src.modules.arrivals.schemas import DocumentActual
-
     if not isinstance(actual, DocumentActual):
         return str(actual)
     series_number = " ".join(part for part in (actual.series, actual.number) if part) or "—"
@@ -349,7 +348,8 @@ def format_ru_date(value: str) -> str:
     return f"{plain[3]}.{plain[2]}.{plain[1]}" if plain else value
 
 
-def _comparison_source_text(fields: dict[str, str | int | None], spec: FieldSpec) -> str | None:
+def comparison_source_text(fields: dict[str, str | int | None], spec: FieldSpec) -> str | None:
+    """Public CHK source-projection formatter (DR38 review: shared with vetis receipt)."""
     values = _comparison_source_values(fields, spec)
     if spec.field_id not in ("CHK-F22", "CHK-F23"):
         return str(values[0]) if _present(values[0]) else None
@@ -359,6 +359,10 @@ def _comparison_source_text(fields: dict[str, str | int | None], spec: FieldSpec
     if _present(start) or _present(end):
         return " — ".join(str(value) for value in (start, end) if _present(value))
     return str(informal) if _present(informal) else None
+
+
+# Backwards-compatible alias (DR38 review): the private name may still be imported.
+_comparison_source_text = comparison_source_text
 
 
 def _decision_allowed(decision: str, allowed: list[str]) -> bool:

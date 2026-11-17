@@ -34,7 +34,12 @@ from backend.src.modules.catalog_pricing import commands as _commands
 from backend.src.modules.catalog_pricing import context as context_module
 from backend.src.modules.catalog_pricing import mandatory as _mandatory
 from backend.src.modules.catalog_pricing import queries as _queries
-from backend.src.modules.catalog_pricing.schemas import MethodRuleWrite, QualitativeRule, ResearchValue
+from backend.src.modules.catalog_pricing.schemas import (
+    MethodRuleWrite,
+    PricingSnapshot,
+    QualitativeRule,
+    ResearchValue,
+)
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
 from backend.tests.catalog_pricing.test_pricing import _rule, _seed, _tariff, _vse_request
 
@@ -222,6 +227,63 @@ async def test_legacy_integer_norm_fractional_value_is_honest_unknown(db_session
     # stays UNKNOWN and carries the honest re-save hint.
     assert evaluation["status"] == "UNKNOWN"
     assert "пересохран" in str(evaluation.get("hint", "")).lower()
+
+
+# --- DR41-B Important: pinned snapshots keep their provenance ---------------------------
+
+
+@pytest.mark.integration
+async def test_pinned_fixed_snapshot_keeps_provenance(db_session: AsyncSession) -> None:
+    env = await _seed(db_session)
+    species = uuid.uuid4()
+    indicator = ORGANOLEPTIC
+    previous = PricingSnapshot.model_validate(
+        {
+            "lines": [
+                {
+                    "service_code": str(indicator),
+                    "name": "Прошлая формулировка",
+                    "unit_id": "акция",
+                    "quantity": "1",
+                    "unit_price": "12.00",
+                    "amount": "12.00",
+                    "method_snapshot": {
+                        "indicator_id": str(indicator),
+                        "method_version": 7,
+                        "result_schema": "TEXT",
+                        "unit_id": "акция",
+                        "rule": {"type": "fixed"},
+                        "source": {"name": "Исходная методика, ред. 2019"},
+                    },
+                    "evaluation": {"status": "IN_NORM"},
+                }
+            ],
+            "total": "12.00",
+            "currency": "RUB",
+            "fair": False,
+        }
+    )
+    snapshot = await evaluate_and_price(
+        UnitOfWork(db_session),
+        _vse_request(
+            env.lab.id,
+            species,
+            uuid.uuid4(),
+            [ResearchValue.model_validate({"indicator_id": str(indicator), "performed": True, "value": "MATCH"})],
+            quantity="1",
+        ),
+        previous,
+    )
+    line = snapshot.lines[0]
+    assert line.method_snapshot is not None
+    # The original snapshot provenance survives the re-evaluation: the generic
+    # FIXED rebuild must not overwrite the saved source/version fields.
+    assert line.method_snapshot["source"]["name"] == "Исходная методика, ред. 2019"
+    assert line.method_snapshot["method_version"] == 7
+    assert line.unit_id == "акция"
+    # The pinned price is still kept (ADR-020) and the value is re-evaluated.
+    assert line.unit_price == "12.00"
+    assert line.evaluation["status"] == "IN_NORM"
 
 
 # --- §6.4: context and readiness --------------------------------------------------------

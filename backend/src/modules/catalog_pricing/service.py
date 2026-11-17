@@ -413,7 +413,13 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
         price_decimal = parse_decimal(unit_price) if unit_price != "0.00" else Decimal("0.00")
         amount = _quantize_money(price_decimal * parse_decimal(quantity)) if not request.fair else "0.00"
         definition = registry_definition
-        if snapshot_rule is not None:
+        if pinned is not None and pinned.method_snapshot:
+            # DR41-B Important: a pinned line keeps its original snapshot —
+            # the re-evaluation must not rebuild the provenance generically
+            # and lose the saved source/rule fields (incl. FIXED/NONE).
+            unit_id = pinned.unit_id
+            method_snapshot = dict(pinned.method_snapshot)
+        elif snapshot_rule is not None:
             unit_id, method_snapshot = snapshot_rule.unit_id, _method_snapshot(snapshot_rule, indicator)
         else:
             # ТЗ DR41-B §6.4: a FIXED/NONE result has no norm row; the

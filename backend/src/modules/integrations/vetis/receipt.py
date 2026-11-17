@@ -16,7 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.models import IncomingDocument, Party, Reconciliation
 from backend.src.modules.arrivals.reconciliation import source_projection
-from backend.src.modules.arrivals.validation import FIELD_SPECS, _comparison_source_text
+from backend.src.modules.arrivals.validation import (
+    FIELD_SPECS,
+)
+from backend.src.modules.arrivals.validation import (
+    comparison_source_text as _comparison_source_text,
+)
 from backend.src.modules.identity.models import OutboxEntry
 from backend.src.modules.integrations.vetis.contracts import (
     ReceiptIntent,

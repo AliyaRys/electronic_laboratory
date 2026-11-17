@@ -51,6 +51,7 @@
 - `VseAppHeader.mountPage(document)` заменяет существующую `.topbar` канонической шапкой, сохраняя активный раздел, тип продукции, учреждение и пользователя.
 - Для административной страницы placeholder `.topbar` получает `data-app-header-mode="admin"`; маршруты можно передать через `data-brand-href`, `data-admin-users-href`, `data-admin-reports-href`, `data-profile-href`, а путь к логотипу вложенной страницы — через `data-logo-src`. Для аналитической страницы используется `data-app-header-mode="analyst"` и `data-arrivals-href`, `data-journal-href`, `data-directories-href`, `data-reports-href` вместо административных маршрутов.
 - `VseAppHeader.spec` содержит утверждённые размеры для документации и автоматических проверок.
+- ТЗ DR45 §5: `options.productStatic: true` — производственный рабочий вариант с единым статичным контекстом «Мясо и мясопродукты» (не кнопка: нет `aria-haspopup`, `role=listbox`, стрелки, опции «молоко» и смены типа; тот же слот `product-switcher` и иконка `meat`). Устаревшее сохранённое значение `milk` из `localStorage` нормализуется в `meat` при чтении; интерактивный переключатель (`productStatic: false`, по умолчанию) остаётся для Storybook-историй и старых молочных макетов.
 
 ## React-порт (frontend/src/shared/ui/AppHeader.tsx)
 

@@ -10,7 +10,7 @@ import { DataTable, type DataTableColumn, type DataTableRow } from "../../shared
 import type { BalanceView, Problem } from "./api";
 
 const COLUMNS: readonly DataTableColumn[] = [
-  { id: "species", header: "Вид продукции (идентификатор)" },
+  { id: "species", header: "Вид продукции" },
   { id: "mass", header: "Остаток, кг" },
   { id: "revision", header: "Ревизия" },
 ];
@@ -43,7 +43,9 @@ export function Balances({
           const row: DataTableRow = {
             id: balance.product_species_id,
             cells: [
-              { columnId: "species", value: balance.product_species_id },
+              // ТЗ DR45 §4: the normalized display name; the raw species id
+              // is never shown to the user (fallback: «Название не получено»).
+              { columnId: "species", value: balance.product_name ?? "Название не получено" },
               { columnId: "mass", value: balance.mass_kg },
               { columnId: "revision", value: String(balance.revision) },
             ],

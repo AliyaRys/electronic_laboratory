@@ -54,6 +54,62 @@ async function settle<TData>(
 /** Query key of one examination card (exact keys, commands bind them). */
 export const examinationKey = (examinationId: string): readonly unknown[] => ["examinations", examinationId];
 
+/** DR45 §2: the scoped journal read model item (snake_case wire). */
+export type ExaminationJournalItem = components["schemas"]["ExaminationJournalItem"];
+
+export interface JournalQuery {
+  laboratory_id: string;
+  /** Absent status = COMPLETED (the server default; the plain URL). */
+  status?: "WAITING" | "COMPLETED" | null;
+  q?: string | null;
+  outcome?: "FIT" | "UNFIT" | null;
+  occurred_from?: string | null;
+  /** Exclusive upper boundary of the Moscow calendar window. */
+  occurred_to?: string | null;
+  sort?: "asc" | "desc" | null;
+  page?: number;
+}
+
+/** DR45 §2: the journal query key (URL-state joins the key). */
+export const journalKey = (query: JournalQuery): readonly unknown[] => [
+  "examinations",
+  "journal",
+  query.laboratory_id,
+  query.status ?? "COMPLETED",
+  query.q ?? "",
+  query.outcome ?? "",
+  query.occurred_from ?? "",
+  query.occurred_to ?? "",
+  query.sort ?? "desc",
+  query.page ?? 1,
+];
+
+export async function fetchJournal(
+  query: JournalQuery,
+  signal?: AbortSignal | null,
+): Promise<{ items: ExaminationJournalItem[]; total: number; page: number; page_size: number } | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/examinations", {
+      params: {
+        query: {
+          laboratory_id: query.laboratory_id,
+          status: query.status ?? null,
+          q: query.q ?? null,
+          outcome: query.outcome ?? null,
+          occurred_from: query.occurred_from ?? null,
+          occurred_to: query.occurred_to ?? null,
+          sort: query.sort ?? null,
+          page: query.page ?? 1,
+        },
+      } as never,
+      signal: signal ?? null,
+    }) as Promise<
+      RawResult<{ items: ExaminationJournalItem[]; total: number; page: number; page_size: number }>
+    >,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
 export async function fetchExamination(
   examinationId: string,
   signal?: AbortSignal | null,

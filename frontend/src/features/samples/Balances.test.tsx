@@ -10,7 +10,7 @@ import { Balances } from "./Balances";
 
 const SPECIES = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
-const balances = [{ product_species_id: SPECIES, mass_kg: "12.6", revision: 3 }];
+const balances = [{ product_species_id: SPECIES, mass_kg: "12.6", revision: 3, product_name: "Говядина" }];
 
 describe("Balances", () => {
   it("a VET sees the disposal row action and the readonly weight note", async () => {

@@ -200,7 +200,6 @@ function SampleAccountingContent(): React.ReactElement {
           ) : (
             <DisposalHistory
               items={disposalsPageData?.items ?? null}
-              collections={collectionPageData?.items ?? []}
               total={disposalsPageData?.total ?? 0}
               page={historyPage}
               loading={disposals.isLoading}

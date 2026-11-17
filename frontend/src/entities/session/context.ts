@@ -29,7 +29,9 @@ export const useContextStore = create<ContextState>((set) => ({
   productId: null,
   productType: "meat",
   setScope: (next) => set(next),
-  setProductType: (product) => set({ productType: product }),
+  // ТЗ DR45 §5: production is meat-only; a legacy stored 'milk' context is
+  // normalized to 'meat' on every write, so it is never restored as milk.
+  setProductType: (product) => set({ productType: product === "milk" ? "meat" : product }),
   reset: () => set({ userId: null, labId: null, productId: null, productType: "meat" }),
 }));
 

@@ -15,6 +15,7 @@ import { PricingSection } from "./PricingPreview";
 import { Button } from "../../shared/ui/Button";
 import { DeleteDialog } from "./DeleteDialog";
 import { JournalRow } from "../../pages/ExaminationJournalPage";
+import type { ExaminationJournalItem } from "../examinations/api";
 import { emptyOutcome, emptyResearch, type ExaminationFormValues, type ResearchEntry } from "./formValues";
 import { INDICATORS } from "./indicators";
 import type { CollectionView } from "../samples/api";
@@ -82,6 +83,9 @@ const collection: CollectionView = {
   collected_on: "2026-11-06",
   mass_kg: "12.6",
   collected_by: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+  product_name: "Говядина",
+  evsd_uuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac",
+  collected_by_name: "Ветеринарный врач",
   created_at: "2026-11-06T10:00:00Z",
   disposal_id: null,
   revision: 1,
@@ -462,8 +466,35 @@ export const ПартияУзкийЭкран: StoryObj = {
   parameters: { viewport: { defaultViewport: "mobile1" } },
 };
 
-const waitingRow = { ...party, examination_id: "e0000000-0000-4000-8000-000000000001" };
-const completedRow = { ...party, examination_id: "e0000000-0000-4000-8000-000000000002" };
+// ТЗ DR45 §1: the journal rows carry the scoped read model fields.
+const journalItem = (
+  examinationId: string,
+  overrides: Partial<ExaminationJournalItem> = {},
+): ExaminationJournalItem => ({
+  examination_id: examinationId,
+  party_id: PARTY,
+  laboratory_id: LAB,
+  number: "ВСЭ-001",
+  stamp: "Клеймо-1",
+  status: "COMPLETED",
+  created_at: "2026-11-07T07:00:00Z",
+  first_completed_at: "2026-11-07T10:00:00Z",
+  outcome: "FIT",
+  specialist_id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+  specialist_name: "Ветеринарный врач",
+  evsd_uuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac",
+  consignor_name: "ООО «Мясопром»",
+  ...overrides,
+});
+
+const waitingRow = journalItem("e0000000-0000-4000-8000-000000000001", {
+  status: "WAITING",
+  outcome: null,
+  first_completed_at: null,
+  consignor_name: null,
+  specialist_name: null,
+});
+const completedRow = journalItem("e0000000-0000-4000-8000-000000000002");
 
 const waitingRender = () => <JournalRow labId={LAB} view={waitingRow} status="WAITING" />;
 

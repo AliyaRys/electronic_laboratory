@@ -950,6 +950,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/examinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Examination Journal
+         * @description The scoped journal read model (ТЗ DR45 §2): a plain URL answers the
+         *     COMPLETED cards only; the status filter selects ``Examination.status``.
+         */
+        get: operations["list_examination_journal_api_v1_examinations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/arrivals/{party_id}/conclusion/preview": {
         parameters: {
             query?: never;
@@ -1199,6 +1220,10 @@ export interface components {
          * BalanceView
          * @description API-06 balance line: the live mass of one laboratory/species basket with
          *     its revision (the value the disposal dialog confirms against).
+         *
+         *     DR45 §4: ``product_name`` is the normalized display name of the active
+         *     species group; ``product_species_id`` stays a technical field for the
+         *     disposal command only.
          */
         BalanceView: {
             /** Product Species Id */
@@ -1207,6 +1232,8 @@ export interface components {
             mass_kg: string;
             /** Revision */
             revision: number;
+            /** Product Name */
+            product_name: string | null;
         };
         /** BooleanResearch */
         BooleanResearch: {
@@ -1456,6 +1483,11 @@ export interface components {
         /**
          * CollectionView
          * @description API-06 ``CollectionView``: one available physical collection fact.
+         *
+         *     DR45 §4: the display values ``product_name``/``evsd_uuid``/
+         *     ``collected_by_name`` are already resolved by the server — the UI never
+         *     shows raw party/user identifiers. ``product_species_id``, ``party_id``
+         *     and ``collected_by`` stay for the write paths and technical API use.
          */
         CollectionView: {
             /** Id */
@@ -1479,6 +1511,12 @@ export interface components {
             mass_kg: string;
             /** Collected By */
             collected_by: string;
+            /** Product Name */
+            product_name: string | null;
+            /** Evsd Uuid */
+            evsd_uuid: string;
+            /** Collected By Name */
+            collected_by_name: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1602,6 +1640,9 @@ export interface components {
         /**
          * DisposalView
          * @description API-06 ``DisposalView``: the immutable full-disposal fact.
+         *
+         *     DR45 §4: the display values ``product_name``/``actor_name`` are already
+         *     resolved by the server — the history never shows a species/user UUID.
          */
         DisposalView: {
             /** Id */
@@ -1626,6 +1667,10 @@ export interface components {
              * Format: date-time
              */
             recorded_at: string;
+            /** Product Name */
+            product_name?: string | null;
+            /** Actor Name */
+            actor_name?: string | null;
         };
         /**
          * DisposalWrite
@@ -1798,6 +1843,41 @@ export interface components {
             reconciliation_revision: number | null;
             /** Revision */
             revision: number;
+        };
+        /**
+         * ExaminationJournalItem
+         * @description One journal row: only the display values of the approved mockup.
+         */
+        ExaminationJournalItem: {
+            /** Examination Id */
+            examination_id: string;
+            /** Party Id */
+            party_id: string;
+            /** Laboratory Id */
+            laboratory_id: string;
+            /** Number */
+            number: string;
+            /** Stamp */
+            stamp: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** First Completed At */
+            first_completed_at: string | null;
+            /** Outcome */
+            outcome: string | null;
+            /** Specialist Id */
+            specialist_id: string;
+            /** Specialist Name */
+            specialist_name: string | null;
+            /** Evsd Uuid */
+            evsd_uuid: string;
+            /** Consignor Name */
+            consignor_name: string | null;
         };
         /** ExaminationView */
         ExaminationView: {
@@ -2241,6 +2321,17 @@ export interface components {
         Page_DisposalView_: {
             /** Items */
             items: components["schemas"]["DisposalView"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Page[ExaminationJournalItem] */
+        Page_ExaminationJournalItem_: {
+            /** Items */
+            items: components["schemas"]["ExaminationJournalItem"][];
             /** Total */
             total: number;
             /** Page */
@@ -5359,6 +5450,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExaminationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_examination_journal_api_v1_examinations_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                /** @description Статус карточки; по умолчанию COMPLETED. */
+                status?: "WAITING" | "COMPLETED";
+                q?: string | null;
+                outcome?: ("FIT" | "UNFIT") | null;
+                specialist_id?: string | null;
+                occurred_from?: string | null;
+                /** @description Исключающая верхняя граница периода. */
+                occurred_to?: string | null;
+                sort?: "asc" | "desc";
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ExaminationJournalItem_"];
                 };
             };
             /** @description Validation Error */

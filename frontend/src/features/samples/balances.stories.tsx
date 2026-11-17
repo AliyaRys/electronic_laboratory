@@ -15,11 +15,12 @@ export default meta;
 const SPECIES = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const balances = [
-  { product_species_id: SPECIES, mass_kg: "12.6", revision: 3 },
+  { product_species_id: SPECIES, mass_kg: "12.6", revision: 3, product_name: "Говядина" },
   {
     product_species_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
     mass_kg: "2",
     revision: 1,
+    product_name: "Свинина",
   },
 ];
 
@@ -32,6 +33,9 @@ const collection: CollectionView = {
   collected_on: "2026-11-05",
   mass_kg: "12.6",
   collected_by: "00000000-0000-4000-8000-000000000001",
+  product_name: "Говядина",
+  evsd_uuid: "e13bda81-7cf6-4b2b-b1aa-3c99e25adaac",
+  collected_by_name: "Ветеринарный врач",
   created_at: "2026-11-05T10:00:00Z",
   disposal_id: null,
   revision: 1,

@@ -86,9 +86,29 @@
   НЕ применялась; открытый OpenAPI без данных).
 - Миграция к живой БД не применялась (контроллер применит после merge, через deploy/migrate_lock.py).
 
-## Честные not-run / concerns
+## Fix-loop (ревью, коммит 6efc88f)
 
-- Поведение в браузере (Playwright test:ui) не запускалось в этой сессии — стек e2e не поднимался;
+- IMPORTANT: legacy-аудит теперь показывает СРАМЫ значения, а не только количество: в блоке
+  «Устаревшие строки тарифов вне области» — таблица «Услуга | Вид продукции (аудит) | Тариф | Версия»
+  ( TariffsEditorPage.test.tsx::the rows outside the area scope…). Бэкенд: `LegacyTariffView` с
+  `species_name` — человекочитаемое название вида из локального зеркала Mercury (productType 1);
+  вид вне зеркала (например, старые строки species=lab) остаётся «вид не определён (аудит)» — UUID не
+  печатается никогда. Отличие от формулировки ревью: колонка «Дата» заменена на «Версия» — в строке
+  тарифа нет поля даты (DDL tariffs не хранит дату), а выдумывать её недопустимо; версия строки —
+  реальный, однозначно идентифицирующий цену реквизит.
+- MINOR 1: SQL-литералы CHECK-кодов в 0021 генерируются из канонического `CHECK_SERVICE_CODES`
+  (`CHECK_CODES_SQL = "(" + ", ".join(...) + ")"`), захардкоженного дубля больше нет; тест
+  `test_migration_0021.py::test_check_codes_sql_is_generated_from_the_canonical_set` фиксирует
+  генерацию и ровно два кода.
+- MINOR 2: докстринг 0021 исправлен: «Revises: 0020_dr35_specialist».
+- MINOR 3: downgrade 0021 больше не падает на NULL-эхо `bulk_price_jobs.product_species_id`: явный guard
+  печатает «bulk_price_jobs keeps N NULL species echo(es); the column stays nullable» и оставляет колонку
+  nullable, эхо не выдумывается и не удаляется; тест
+  `test_0021_downgrade_survives_null_bulk_echo` (реальный downgrade/upgrade с NULL-эхом).
+- Gates повторно: backend pytest catalog_pricing → 109 passed + ruff clean; frontend TariffsEditorPage
+  тесты 12 passed (всего 563), lint/typecheck/format(мои файлы)/build ok.
+
+## Честные not-run / concerns- Поведение в браузере (Playwright test:ui) не запускалось в этой сессии — стек e2e не поднимался;
   покрытие — unit/jsdom-тесты (563) и сборка Storybook. Рекомендуется прогнать `npm.cmd run test:ui`
   на экранах каталога и карточки ВСЭ после merge.
 - Миграция не прогонялась на копии живых данных с реальными legacy-строками (покрыто миграционным тестом

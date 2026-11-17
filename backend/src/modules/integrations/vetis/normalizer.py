@@ -84,6 +84,8 @@ class NormalizedEntry(BaseModel):
     purpose_guid: str | None = None
     purpose_uuid: str | None = None
     transport_document: dict[str, str | None] | None = None
+    # ТЗ DR40 §5.1: the full source-order list of direct referenced documents.
+    referenced_documents: list[dict[str, str | None]] = Field(default_factory=list)
     packages: list[dict[str, Any]] = Field(default_factory=list)
     package_quantity: str | None = None
     # DR20 §5.2: controlled normalization diagnostics of the typed GoodsDate
@@ -289,21 +291,51 @@ def _packages(batch: ET.Element | None) -> list[dict[str, Any]]:
     return packages
 
 
+def _referenced_documents(element: ET.Element) -> list[dict[str, str | None]]:
+    """ТЗ DR40 §5.1: ALL direct ``vd:referencedDocument`` children, in source order.
+
+    Only direct children of the current ``vd:vetDocument`` are read (never a
+    descendant-wide search, so nested ``laboratoryResearch`` documents of type
+    9 stay out); every type 1–24 and unknown code is kept; an absent series/
+    number/date stays ``None`` and never rejects the document. A referenced
+    document without a single useful field is excluded with a controlled
+    normalizer diagnostic instead of breaking the import.
+    """
+    documents: list[dict[str, str | None]] = []
+    for referenced in element.findall("vd:referencedDocument", _NS):
+        document = {
+            "issueSeries": _text(_find(referenced, "vd:issueSeries")),
+            "issueNumber": _text(_find(referenced, "vd:issueNumber")),
+            "issueDate": _text(_find(referenced, "vd:issueDate")),
+            "type": _text(_find(referenced, "vd:type")),
+            "relationshipType": _text(_find(referenced, "vd:relationshipType")),
+        }
+        if all(value is None for value in document.values()):
+            _DATE_LOG.warning(
+                "referenced_document_empty_dropped",
+                extra={"evsd_root": element.tag.rsplit("}", 1)[-1]},
+            )
+            continue
+        documents.append(document)
+    return documents
+
+
 def _transport_document(element: ET.Element) -> dict[str, str | None] | None:
     """Return the consignment transport document, never a research document.
 
-    Mercury places the consignment references directly under ``vetDocument``.
-    A laboratory research may contain its own ``referencedDocument`` (usually
-    type 9, sample act); a descendant-wide search would therefore select the
-    wrong document.  Transport document types are 1..5 and relationships 1/6
-    according to the VetIS contract.
+    ТЗ DR40 §5.2: the compatibility projection stays UNCHANGED — the primary
+    transport document is chosen among types 1–5 with relationship 1/6,
+    preferring ``relationshipType=1``, else the first suitable document; a
+    candidate still needs its number and date. Types 6–24 never win this
+    projection (``receipt_mapping`` keeps mapping only this one into the
+    ``waybill``); the full list lives in ``referenced_documents``.
     """
     candidates: list[dict[str, str | None]] = []
-    for referenced in element.findall("vd:referencedDocument", _NS):
-        document_type = _text(_find(referenced, "vd:type"))
-        relationship_type = _text(_find(referenced, "vd:relationshipType"))
-        issue_number = _text(_find(referenced, "vd:issueNumber"))
-        issue_date = _text(_find(referenced, "vd:issueDate"))
+    for referenced in _referenced_documents(element):
+        document_type = referenced["type"]
+        relationship_type = referenced["relationshipType"]
+        issue_number = referenced["issueNumber"]
+        issue_date = referenced["issueDate"]
         if (
             document_type not in {"1", "2", "3", "4", "5"}
             or relationship_type not in {"1", "6"}
@@ -311,15 +343,7 @@ def _transport_document(element: ET.Element) -> dict[str, str | None] | None:
             or issue_date is None
         ):
             continue
-        candidates.append(
-            {
-                "issueSeries": _text(_find(referenced, "vd:issueSeries")),
-                "issueNumber": issue_number,
-                "issueDate": issue_date,
-                "type": document_type,
-                "relationshipType": relationship_type,
-            }
-        )
+        candidates.append(referenced)
     if not candidates:
         return None
     return next((item for item in candidates if item["relationshipType"] == "1"), candidates[0])
@@ -387,6 +411,7 @@ def _parse_document(element: ET.Element, max_depth: int) -> NormalizedEntry | No
         purpose_guid=_text(_find(purpose, "bs:guid")),
         purpose_uuid=_text(_find(purpose, "bs:uuid")),
         transport_document=_transport_document(element),
+        referenced_documents=_referenced_documents(element),
         packages=packages,
         package_quantity=package_quantity(packages),
         date_problems=[*production_problems, *expiry_problems],
@@ -596,6 +621,9 @@ def normalize_snapshot(entry: NormalizedEntry) -> SourceSnapshot:
                 if entry.transport_document is not None
                 else None
             ),
+            referenced_documents=[
+                ReferencedDocument.model_validate(document) for document in entry.referenced_documents
+            ],
         ),
         vet_documents=[],
     )

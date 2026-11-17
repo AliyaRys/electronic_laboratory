@@ -31,6 +31,7 @@ conservative contract; the real external enums bind in ТЗ-11.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
@@ -38,6 +39,7 @@ from typing import Literal
 from backend.src.core.problems import ProblemItem
 from backend.src.modules.arrivals.schemas import (
     ABSENT_TRAILER_TEXT,
+    AccompanyingDocumentView,
     ActItem,
     ActPreview,
     ClassificationView,
@@ -47,6 +49,7 @@ from backend.src.modules.arrivals.schemas import (
     Transaction,
     strict_calendar_date,
 )
+from backend.src.modules.integrations.vetis.document_types import document_type_label
 
 __all__ = [
     "BLOCK_ORDER",
@@ -210,6 +213,14 @@ class IncomingDocument:
     snapshot: SourceSnapshot
     classification: ClassificationView
     fields: dict[str, str | int | None]
+    # ТЗ DR40 §8: the typed accompanying documents of the current snapshot —
+    # the server validates every ``documentChecks`` key against this list
+    # (an unknown/removed key is never accepted silently) and the mismatch
+    # act carries the concrete document. The compatibility primary transport
+    # document key lets a document-level mark satisfy the legacy CHK-F25/26/27
+    # requirement (§8.1); ``None`` keeps the legacy behavior unchanged.
+    accompanying_documents: tuple[AccompanyingDocumentView, ...] = ()
+    primary_document_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,6 +318,37 @@ def _comparison_source_present(fields: dict[str, str | int | None], spec: FieldS
     return any(_present(value) for value in _comparison_source_values(fields, spec))
 
 
+def _document_source_text(document: AccompanyingDocumentView) -> str:
+    """ТЗ DR40 §8: the human-readable source value of one document (act)."""
+    parts = [
+        f"Тип сопроводительного документа: {document.type_label}",
+        f"Серия и номер: {document.series_and_number or '—'}",
+    ]
+    if document.created_on:
+        parts.append(f"Дата создания: {format_ru_date(document.created_on)}")
+    return "; ".join(parts)
+
+
+def _document_actual_text(actual: object) -> str:
+    """The human-readable structured actual value of one document mismatch."""
+    from backend.src.modules.arrivals.schemas import DocumentActual
+
+    if not isinstance(actual, DocumentActual):
+        return str(actual)
+    series_number = " ".join(part for part in (actual.series, actual.number) if part) or "—"
+    label = actual.type_label or (document_type_label(actual.type_code) or "Тип не указан")
+    parts = [f"Тип сопроводительного документа: {label}", f"Серия и номер: {series_number}"]
+    if actual.created_on:
+        parts.append(f"Дата создания: {format_ru_date(actual.created_on)}")
+    return "; ".join(parts)
+
+
+def format_ru_date(value: str) -> str:
+    """The accepted Russian date of the act (no timezone shift)."""
+    plain = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", value.strip())
+    return f"{plain[3]}.{plain[2]}.{plain[1]}" if plain else value
+
+
 def _comparison_source_text(fields: dict[str, str | int | None], spec: FieldSpec) -> str | None:
     values = _comparison_source_values(fields, spec)
     if spec.field_id not in ("CHK-F22", "CHK-F23"):
@@ -338,6 +380,56 @@ def validate_receipt(
     errors: list[ProblemItem] = []
     blocking: list[ProblemItem] = []
 
+    # --- ТЗ DR40 §8: one mark per accompanying document --------------------------
+    # The server validates every key against the CURRENT source snapshot: an
+    # unknown or removed key is refused, never silently accepted. A mismatch
+    # requires the structured actual value AND the reason (the same rule the
+    # CHK fields follow); matches=true needs no facts.
+    documents_by_key = {document.key: document for document in source.accompanying_documents}
+    document_act_items: list[ActItem] = []
+    for document_key, check in payload.document_checks.items():
+        document = documents_by_key.get(document_key)
+        if document is None:
+            blocking.append(
+                _item(
+                    f"documentChecks.{document_key}",
+                    "CHK-F25",
+                    "Отметка относится к документу, которого нет в текущем эВСД: обновите сверку по актуальным данным.",
+                )
+            )
+            continue
+        if check.matches:
+            continue
+        if check.actual is None:
+            errors.append(
+                _item(
+                    f"documentChecks.{document_key}",
+                    "CHK-F42",
+                    "Для расхождения по сопроводительному документу обязательно фактическое значение.",
+                )
+            )
+        if check.reason is None or check.reason.strip() == "":
+            errors.append(
+                _item(f"documentChecks.{document_key}", "CHK-F43", "Для расхождения по документу обязательна причина.")
+            )
+        if check.actual is not None and check.reason is not None and check.reason.strip() != "":
+            document_act_items.append(
+                ActItem(
+                    field_id=f"documents.{document_key}",
+                    source=_document_source_text(document),
+                    actual=_document_actual_text(check.actual),
+                    reason=check.reason,
+                )
+            )
+    # ТЗ DR40 §8.1: a document-level mark of the PRIMARY transport document
+    # satisfies the legacy CHK-F25/26/27 requirement; the mark is not copied
+    # onto other documents and legacy marks keep being read as before.
+    primary_marked = (
+        source.primary_document_key is not None
+        and source.primary_document_key in payload.document_checks
+        and payload.document_checks[source.primary_document_key].matches
+    )
+
     # --- explicit marks for the compared fields (FT-ARR-03) --------------------
     grounds: dict[str, Comparison] = {}
     for spec in COMPARABLE_SPECS:
@@ -350,6 +442,8 @@ def validate_receipt(
         # never an error and never an automatic mismatch: «Совпадает» is an
         # explicit mark that needs no actual input, and a mark is optional.
         absent_trailer = spec.key == "trailerNumber" and source_value == ABSENT_TRAILER_TEXT
+        if spec.field_id in ("CHK-F25", "CHK-F26", "CHK-F27") and primary_marked:
+            continue  # the primary document is marked once, not per field
         if mark is None:
             if not absent_trailer:
                 errors.append(
@@ -607,6 +701,10 @@ def validate_receipt(
                 reason=payload.checks["CHK-F21"].reason or "",
             )
         )
+    # ТЗ DR40 §8: the mismatch of a CONCRETE accompanying document enters the
+    # act with its stable document key, source, structured actual and reason —
+    # not only the generic CHK-F25 legacy field.
+    items.extend(document_act_items)
     act_required = bool(items) and payload.decision != "RETURN_ALL"
 
     # --- return reason (CHK-F35, FT-ARR-10) -------------------------------------

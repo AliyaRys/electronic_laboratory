@@ -22,9 +22,11 @@ import { StatusView } from "../../shared/ui/StatusView";
 import {
   CHECK_SECTION_DESCRIPTIONS,
   CHECK_SECTION_TITLES,
+  accompanyingDocuments,
   comparedFields,
   computeAllowedDecisions,
   decisionLabel,
+  documentChecksOf,
   documentFacts,
   hasSourceUnit,
   moneyLabel,
@@ -42,6 +44,7 @@ import {
   type ReconciliationWrite,
 } from "./api";
 import { ComparisonField, ReferenceField, type ComparisonValue } from "./ComparisonField";
+import { DocumentComparisonField, type DocumentComparisonValue } from "./DocumentComparisonField";
 import { CheckSectionCard } from "./CheckSectionCard";
 import { ReconciliationActions } from "./ReconciliationActions";
 import { ReconciliationFeedback } from "./ReconciliationFeedback";
@@ -95,6 +98,8 @@ const formSchema = z.object({
     z.string(),
     z.object({ matches: z.boolean().nullable(), actual: z.string(), reason: z.string() }),
   ),
+  // ТЗ DR40 §8: ONE mark per accompanying document (not per field).
+  documents: z.record(z.string(), z.object({ matches: z.boolean().nullable(), reason: z.string() })),
 });
 
 export type FormValues = z.infer<typeof formSchema>;
@@ -111,6 +116,17 @@ const formSchemaWithComparisonFacts = formSchema.superRefine((values, ctx) => {
         code: "custom",
         path: ["comparisons", fieldId],
         message: "Укажите причину несоответствия для отметки «Не совпадает».",
+      });
+    }
+  }
+  // ТЗ DR40 §8: a mismatched DOCUMENT needs its own reason (the structured
+  // actual value comes from the card itself).
+  for (const [key, document] of Object.entries(values.documents)) {
+    if (document.matches === false && document.reason.trim() === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["documents", key],
+        message: "Укажите причину несоответствия для отметки «Не соответствует».",
       });
     }
   }
@@ -143,12 +159,26 @@ function fromComparison(value: ReconciliationView["checks"][string]): Comparison
   };
 }
 
+function fromDocumentCheck(
+  value: DocumentComparisonValue | { matches: boolean; reason?: string | null } | undefined,
+) {
+  if (value === undefined) return { matches: null as boolean | null, reason: "" };
+  return { matches: value.matches ?? null, reason: value.reason ?? "" };
+}
+
 export function initialValues(party: IncomingView, initial: ReconciliationView): FormValues {
   const comparisons: Record<string, ComparisonValue> = {};
   for (const field of comparedFields(party)) {
     const saved = initial.checks[field.fieldId];
     comparisons[field.fieldId] =
       saved !== undefined ? fromComparison(saved) : { matches: null, actual: "", reason: "" };
+  }
+  // ТЗ DR40 §8: the document-level marks come from the saved documentChecks;
+  // an old row without them starts unmarked (no mark is ever copied).
+  const savedDocuments = documentChecksOf(initial);
+  const documents: Record<string, DocumentComparisonValue> = {};
+  for (const document of accompanyingDocuments(party)) {
+    documents[document.key] = fromDocumentCheck(savedDocuments[document.key]);
   }
   // ТЗ DR8 R-DR8-1: the canonical source unit GUID is filled into all three
   // QuantitySets automatically (allowed sources per ТЗ DR10 §4); the user
@@ -172,6 +202,7 @@ export function initialValues(party: IncomingView, initial: ReconciliationView):
     transaction_type: initial.transaction.type ?? null,
     fair: initial.fair,
     comparisons,
+    documents,
   };
 }
 
@@ -187,6 +218,29 @@ function toPayload(values: FormValues, party: IncomingView): ReconciliationWrite
       ...(saved.matches === false && saved.actual !== "" ? { actual: saved.actual } : {}),
       ...(saved.reason !== "" ? { reason: saved.reason } : {}),
     };
+  }
+  // ТЗ DR40 §8: ONE documentChecks entry per marked document; the mismatch
+  // actual is the structured document object (typeCode/series/number/date),
+  // never a single string.
+  const documentChecks: ReconciliationWrite["documentChecks"] = {};
+  for (const document of accompanyingDocuments(party)) {
+    const saved = values.documents[document.key];
+    if (saved === undefined || saved.matches === null) {
+      continue;
+    }
+    documentChecks[document.key] =
+      saved.matches === true
+        ? { matches: true }
+        : {
+            matches: false,
+            actual: {
+              typeCode: document.typeCode ?? null,
+              series: document.series ?? null,
+              number: document.number ?? null,
+              createdOn: document.createdOn ?? null,
+            },
+            reason: saved.reason === "" ? null : saved.reason,
+          };
   }
   // CHK-F36–38: the repeat selection exists only when the source carries a
   // previous ВСЭ; without one the answer is a new local ВСЭ (no fictitious
@@ -206,6 +260,7 @@ function toPayload(values: FormValues, party: IncomingView): ReconciliationWrite
       : null;
   return {
     checks,
+    documentChecks,
     inspection: { compartment: values.compartment, jointCarriage: values.joint_carriage },
     delivered: values.delivered,
     accepted: values.accepted,
@@ -425,6 +480,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   const comparisonChange = (fieldId: string) => (next: ComparisonValue) =>
     form.setValue(`comparisons.${fieldId}`, next, { shouldDirty: true });
 
+  const documents = useMemo(() => accompanyingDocuments(party), [party]);
   const markAllCompared = (): void => {
     for (const field of compared) {
       // ТЗ DR24 §3.4/§7: an unresolved participant name keeps its controls
@@ -435,6 +491,19 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       const current = comparisonValue(field.fieldId);
       if (current.matches !== true) {
         form.setValue(`comparisons.${field.fieldId}`, { ...current, matches: true }, { shouldDirty: true });
+      }
+    }
+    // ТЗ DR40 §7.2: «Все соответствует» covers the whole document cards too.
+    for (const document of documents) {
+      const current = values.documents[document.key];
+      if (current === undefined || current.matches !== true) {
+        form.setValue(
+          `documents.${document.key}`,
+          { ...(current ?? { matches: null, reason: "" }), matches: true },
+          {
+            shouldDirty: true,
+          },
+        );
       }
     }
   };
@@ -633,20 +702,29 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         </div>
       </CheckSectionCard>
 
-      {/* 5. Сопроводительные документы — the compared requisites of the source
-          projection; without one the honest empty state stays (no FT-ARR-05 id). */}
+      {/* 5. Сопроводительные документы — ТЗ DR40 §7: ONE typed card per
+          document (a single «Соответствует»/«Не соответствует» pair per
+          document), the honest empty state when the эВСД carries none. */}
       <CheckSectionCard
         sectionKey="documents"
         title={CHECK_SECTION_TITLES.documents}
         description={CHECK_SECTION_DESCRIPTIONS.documents}
       >
-        {compared.some((field) => field.block === "documents") ? (
-          <div className="vse-rec-compare-grid">{compareGrid("documents")}</div>
+        {documents.length > 0 ? (
+          <div className="vse-rec-document-list">
+            {documents.map((document) => (
+              <DocumentComparisonField
+                key={document.key}
+                documentKey={document.key}
+                document={document}
+                value={values.documents[document.key] ?? { matches: null, reason: "" }}
+                onChange={(next) => form.setValue(`documents.${document.key}`, next, { shouldDirty: true })}
+                error={fieldErrors[`documents.${document.key}`] ?? ""}
+              />
+            ))}
+          </div>
         ) : (
-          <p className="vse-rec-prior-note">
-            Отдельные реквизиты транспортного документа в эВСД этой партии не заполнены. Документ сверки — сам
-            транспортный эВСД, дополнительные серии не вводятся.
-          </p>
+          <p className="vse-rec-prior-note">В эВСД нет сопроводительных документов.</p>
         )}
       </CheckSectionCard>
 

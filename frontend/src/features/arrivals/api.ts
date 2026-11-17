@@ -118,13 +118,12 @@ export const STAGE_DESCRIPTIONS: Readonly<Record<ArrivalQueue, string>> = Object
  * and its exact user wording — belongs to the queue: EXPECTED sorts by the
  * ВСД issue date (DR15), WORK/ACCEPTED by the completed reconciliation date.
  */
-export const SORT_LABELS_BY_QUEUE: Readonly<
-  Record<ArrivalQueue, Readonly<Record<ArrivalSort, string>>>
-> = Object.freeze({
-  EXPECTED: Object.freeze({ asc: "Сначала оформленные раньше", desc: "Сначала оформленные позже" }),
-  WORK: Object.freeze({ asc: "Сначала сверенные раньше", desc: "Сначала сверенные позже" }),
-  ACCEPTED: Object.freeze({ asc: "Сначала старые", desc: "Сначала новые" }),
-});
+export const SORT_LABELS_BY_QUEUE: Readonly<Record<ArrivalQueue, Readonly<Record<ArrivalSort, string>>>> =
+  Object.freeze({
+    EXPECTED: Object.freeze({ asc: "Сначала оформленные раньше", desc: "Сначала оформленные позже" }),
+    WORK: Object.freeze({ asc: "Сначала сверенные раньше", desc: "Сначала сверенные позже" }),
+    ACCEPTED: Object.freeze({ asc: "Сначала старые", desc: "Сначала новые" }),
+  });
 
 /** Honest empty-state texts per stage (spec 14). */
 export const STAGE_EMPTY_TEXTS: Readonly<Record<ArrivalQueue, string>> = Object.freeze({
@@ -324,11 +323,7 @@ export function reconciliationRangeError(fromLocal: string, toLocal: string): st
 }
 
 /** ТЗ DR39 §4.2: the Russian summary of an applied date filter (no ISO text). */
-export function reconciliationSummaryLabel(applied: {
-  on: string;
-  from: string;
-  to: string;
-}): string {
+export function reconciliationSummaryLabel(applied: { on: string; from: string; to: string }): string {
   if (applied.on !== "") return formatMoscowDate(`${applied.on}T00:00:00Z`);
   if (applied.from !== "" && applied.to !== "") {
     return `с ${formatMoscowDateTime(`${applied.from}:00${MOSCOW_OFFSET}`)} по ${formatMoscowDateTime(`${applied.to}:00${MOSCOW_OFFSET}`)}`;
@@ -383,6 +378,34 @@ export type VetInspection = components["schemas"]["ReceiptPreviewRequest"]["vet_
 
 export const DECISIONS: readonly Decision[] = ["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"];
 
+// --- ТЗ DR40 §6/§7: the typed accompanying documents --------------------------------
+
+export type AccompanyingDocument = NonNullable<IncomingView["external"]["accompanyingDocuments"]>[number];
+export type DocumentCheck = NonNullable<ReconciliationView["documentChecks"]>[string];
+
+/** The typed accompanying documents of one arrival (honest empty list). */
+export function accompanyingDocuments(view: IncomingView): AccompanyingDocument[] {
+  return view.external.accompanyingDocuments ?? [];
+}
+
+/** The saved document-level marks of one reconciliation (empty for old rows). */
+export function documentChecksOf(view: ReconciliationView): Record<string, DocumentCheck> {
+  return view.documentChecks ?? {};
+}
+
+/** The user text of «Серия и номер»: one space between the parts, «—» when
+ * neither the series nor the number is present (ТЗ DR40 §7.1). */
+export function seriesAndNumberLabel(
+  series: string | null | undefined,
+  number: string | null | undefined,
+): string {
+  const text = [series, number]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter((part) => part !== "")
+    .join(" ");
+  return text === "" ? "—" : text;
+}
+
 export const DECISION_LABELS: Readonly<Record<Decision, string>> = Object.freeze({
   ACCEPT_ALL: "Полное гашение",
   PARTIAL: "Частичное гашение",
@@ -431,7 +454,7 @@ export const CHECK_SECTION_DESCRIPTIONS: Readonly<Record<string, string>> = Obje
   participants: "Отправитель, получатель и площадки, указанные в эВСД.",
   transport: "Сведения о перевозке и транспортном средстве.",
   product: "Классификация, наименование, объём и ветеринарные характеристики партии.",
-  documents: "Реквизиты транспортного документа партии.",
+  documents: "Сопроводительные документы, указанные в эВСД (одна отметка на документ).",
   priorVse:
     "Сведения из мероприятий с партией продукции: номер экспертизы, дата, организация и результат осмотра.",
   results: "Отметки сравнения, решение о приёмке и формируемые документы.",
@@ -619,18 +642,11 @@ export function comparedFields(view: IncomingView): ComparedField[] {
   // (the current CHK fact contract — §7.2).
   push("CHK-F22", "product", "Дата выработка", formatGoodsDate(external, "producedOn"), undefined, "date");
   push("CHK-F23", "product", "Срок годности", formatGoodsDate(external, "expiresOn"), undefined, "date");
-  // CHK-F25–27: the accompanying-document «act» grounds of the backend
-  // FieldSpec; the projection fills them only when the snapshot carries the
-  // requisites.
-  push("CHK-F25", "documents", "Тип транспортного документа", source(external.transportDocumentType));
-  push("CHK-F26", "documents", "Номер транспортного документа", source(external.transportDocumentNumber));
-  const transportDocumentDate = source(external.transportDocumentIssuedOn);
-  push(
-    "CHK-F27",
-    "documents",
-    "Дата транспортного документа",
-    transportDocumentDate === null ? null : formatRuDate(transportDocumentDate),
-  );
+  // ТЗ DR40 §7: the accompanying documents of the source are rendered as
+  // typed per-document cards from ``external.accompanyingDocuments`` (one
+  // mark per document, keys/labels owned by the backend); the legacy
+  // CHK-F25/26/27 per-field cards are gone. The flat fields stay available
+  // for old consumers only.
   return fields;
 }
 

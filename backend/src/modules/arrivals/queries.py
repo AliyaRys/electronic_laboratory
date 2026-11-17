@@ -8,6 +8,7 @@ receipt confirmation, completed examination), never stored.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import uuid
@@ -27,6 +28,7 @@ from backend.src.modules.arrivals.models import (
     Reconciliation,
 )
 from backend.src.modules.arrivals.schemas import (
+    AccompanyingDocumentView,
     ClassificationView,
     ConfirmationSummary,
     ExternalFields,
@@ -51,6 +53,7 @@ from backend.src.modules.integrations.vetis.transport_types import transport_typ
 
 __all__ = [
     "PAGE_SIZE",
+    "accompanying_documents_of",
     "arrival_page",
     "build_incoming_view",
     "party_view",
@@ -91,6 +94,88 @@ def previous_vse_fields(snapshot: object) -> dict[str, str | None]:
 
 
 PAGE_SIZE = 20
+
+# ТЗ DR40 §6.1: the deterministic document key is a short digest of the
+# normalized source combination typeCode + relationshipType + series +
+# number + date; identical documents get a visible occurrence suffix so two
+# equal rows never share one key (a mark can never silently cover both).
+_KEY_DIGEST_LENGTH = 16
+
+
+def _text_or_none(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def accompanying_document_key(
+    *,
+    type_code: str | None,
+    relationship_type: str | None,
+    series: str | None,
+    number: str | None,
+    created_on: str | None,
+    occurrence: int = 0,
+) -> str:
+    """ТЗ DR40 §6.1: the deterministic key of one accompanying document."""
+    combination = "|".join(
+        (type_code or "", relationship_type or "", series or "", number or "", created_on or "")
+    )
+    digest = hashlib.sha1(combination.encode("utf-8")).hexdigest()[:_KEY_DIGEST_LENGTH]
+    return digest if occurrence == 0 else f"{digest}#{occurrence + 1}"
+
+
+def accompanying_documents_of(payload: object) -> list[AccompanyingDocumentView]:
+    """ТЗ DR40 §6: the typed accompanying documents of one vdDocument payload.
+
+    The source order is preserved (``sourceOrder``); the key is derived from
+    the source fields with an occurrence suffix for fully identical
+    documents; the Russian label comes ONLY from the single backend registry
+    (``vetis.document_types``) — the client never duplicates the dictionary.
+    """
+    raw = payload if isinstance(payload, dict) else {}
+    documents = raw.get("referencedDocuments")
+    documents = documents if isinstance(documents, list) else []
+    views: list[AccompanyingDocumentView] = []
+    occurrences: dict[str, int] = {}
+
+    def _digest(
+        type_code: str | None,
+        relationship_type: str | None,
+        series: str | None,
+        number: str | None,
+        created_on: str | None,
+    ) -> str:
+        combination = "|".join((type_code or "", relationship_type or "", series or "", number or "", created_on or ""))
+        return hashlib.sha1(combination.encode("utf-8")).hexdigest()[:_KEY_DIGEST_LENGTH]
+
+    for order, document in enumerate(documents):
+        entry = document if isinstance(document, dict) else {}
+        type_code = _text_or_none(entry.get("type"))
+        relationship_type = _text_or_none(entry.get("relationshipType"))
+        series = _text_or_none(entry.get("issueSeries"))
+        number = _text_or_none(entry.get("issueNumber"))
+        created_on = _text_or_none(entry.get("issueDate"))
+        base = _digest(type_code, relationship_type, series, number, created_on)
+        occurrence = occurrences.get(base, 0)
+        occurrences[base] = occurrence + 1
+        key = base if occurrence == 0 else f"{base}#{occurrence + 1}"
+        series_and_number = " ".join(part for part in (series, number) if part) or None
+        views.append(
+            AccompanyingDocumentView(
+                key=key,
+                sourceOrder=order,
+                typeCode=type_code,
+                typeLabel=document_type_label(type_code) or "Тип не указан",
+                series=series,
+                number=number,
+                seriesAndNumber=series_and_number,
+                createdOn=created_on,
+                relationshipType=relationship_type,
+            )
+        )
+    return views
 
 # Core projection of the ТЗ-06 examination table; the queue read model already
 # accounts for the examination separately from the confirmation (DATA-02) and
@@ -480,6 +565,9 @@ def _external_fields(
         evsd_uuid=str(document.evsd_uuid),
         status=document.external_status,
         fields=fields,
+        # ТЗ DR40 §6: the typed accompanying documents (keys + Russian labels
+        # owned by the backend registry; the flat legacy fields above stay).
+        accompanying_documents=accompanying_documents_of(document_payload),
     )
 
 

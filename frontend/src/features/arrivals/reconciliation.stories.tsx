@@ -132,6 +132,60 @@ const savedView: ReconciliationView = {
 /** 1. Начальная незаполненная сверка. */
 export const Незаполненная = formStory(emptyView);
 
+/** ТЗ DR40 §7: несколько сопроводительных документов — одна карточка на
+ * документ, одна пара отметок на весь документ, ТТН + ТОРГ-12 из ТЗ. */
+const partyWithDocuments: IncomingView = {
+  ...party,
+  external: {
+    ...party.external,
+    accompanyingDocuments: [
+      {
+        key: "doc-ttn-0006-5555-20261116-1-1",
+        sourceOrder: 0,
+        typeCode: "1",
+        typeLabel: "Товарно-транспортная накладная",
+        series: "0006",
+        number: "5555",
+        seriesAndNumber: "0006 5555",
+        createdOn: "2026-11-16",
+        relationshipType: "1",
+      },
+      {
+        key: "doc-torg-33333-66666-20261116-6-6",
+        sourceOrder: 1,
+        typeCode: "6",
+        typeLabel: "ТОРГ-12",
+        series: "33333",
+        number: "66666",
+        seriesAndNumber: "33333 66666",
+        createdOn: "2026-11-16",
+        relationshipType: "6",
+      },
+      {
+        key: "doc-unknown-77-99-6",
+        sourceOrder: 2,
+        typeCode: "99",
+        typeLabel: "Тип документа 99",
+        series: null,
+        number: "77",
+        seriesAndNumber: "77",
+        createdOn: null,
+        relationshipType: "6",
+      },
+    ],
+  },
+};
+
+export const СопроводительныеДокументы = formStory(emptyView, partyWithDocuments);
+
+/** ТЗ DR40 §7.3: честное пустое состояние без фиктивной отметки. */
+const partyWithoutDocuments: IncomingView = {
+  ...party,
+  external: { ...party.external, accompanyingDocuments: [] },
+};
+
+export const СопроводительныхДокументовНет = formStory(emptyView, partyWithoutDocuments);
+
 /** 2. Все сравнения совпадают. */
 export const ВсеСовпадает = formStory({
   ...emptyView,

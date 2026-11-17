@@ -39,7 +39,14 @@ from backend.src.modules.integrations.vetis.normalizer import (
     parse_vet_document_list,
 )
 
-__all__ = ["run_backfill", "run_goods_date_backfill", "BackfillCounters"]
+__all__ = [
+    "run_backfill",
+    "run_goods_date_backfill",
+    "run_referenced_documents_backfill",
+    "BackfillCounters",
+]
+
+from xml.etree import ElementTree as ET  # noqa: E402 - kept next to the users
 
 _LOG = logging.getLogger("vetis.backfill")
 
@@ -308,3 +315,126 @@ if __name__ == "__main__":  # pragma: no cover - the operator entry point
     import asyncio
 
     asyncio.run(run_goods_date_backfill())
+
+
+# --- DR40 §5.3: the referenced-documents backfill ---------------------------------
+
+
+def _parse_referenced_documents(raw: str) -> dict[str, Any]:
+    """Re-parse ONLY the direct ``vd:referencedDocument`` list from raw XML.
+
+    The returned dict carries the wire forms stored in the snapshot:
+    ``referencedDocuments`` (source order, all types, honest nulls) and the
+    compatibility ``transportDocument`` projection (the old type 1–5 /
+    relationship 1/6 rule — the receipt mapping keeps working unchanged).
+    """
+    root = ET.fromstring(raw)
+    document = root if root.tag.endswith("}vetDocument") else root.find(".//vd:vetDocument", _NS)
+    if document is None:
+        return {"referencedDocuments": [], "transportDocument": None}
+    parent = ET.Element("vetDocumentList")
+    parent.append(document)
+    entry = parse_vet_document_list(ET.tostring(parent, encoding="unicode"))[0]
+    snapshot = normalize_snapshot(entry).vd_document
+    return {
+        "referencedDocuments": [
+            item.model_dump(mode="json", by_alias=True, exclude_none=True) for item in snapshot.referenced_documents
+        ],
+        "transportDocument": (
+            snapshot.transport_document.model_dump(mode="json", by_alias=True, exclude_none=True)
+            if snapshot.transport_document is not None
+            else None
+        ),
+    }
+
+
+async def run_referenced_documents_backfill(
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> dict[str, int]:
+    """DR40 §5.3: re-parse ONLY the direct referenced documents of raw XML.
+
+    Nothing else is touched: the raw XML, its checksum, the document UUID,
+    source revision, parties, сверка, ВСЭ and probes stay as they are. The
+    derived ``source_snapshot`` patch updates the content hash; the hide
+    decision is kept by re-keying the hidden row (same as the GoodsDate
+    backfill). A repeated run makes zero changes.
+    """
+    factory = session_factory or get_session_factory()
+    counters: dict[str, int] = dict.fromkeys(_GOODS_DATE_COUNTERS, 0)
+    async with factory() as db:
+        pairs = (
+            await db.execute(
+                select(IncomingDocument.contour, IncomingDocument.evsd_uuid).order_by(IncomingDocument.created_at)
+            )
+        ).all()
+        for contour, evsd_uuid in pairs:
+            counters["viewed"] += 1
+            document = (
+                await db.execute(
+                    select(IncomingDocument)
+                    .where(IncomingDocument.contour == contour, IncomingDocument.evsd_uuid == evsd_uuid)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if document is None:
+                counters["error"] += 1
+                continue
+            raw = (
+                await db.execute(
+                    select(VetisSourceDocument.raw_xml)
+                    .where(VetisSourceDocument.contour == contour, VetisSourceDocument.evsd_uuid == evsd_uuid)
+                    .order_by(VetisSourceDocument.revision.desc(), VetisSourceDocument.updated_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if raw is None:
+                counters["error"] += 1
+                _LOG.warning(
+                    "backfill_missing_raw_xml",
+                    extra={"contour": contour, "evsd_uuid": str(evsd_uuid)},
+                )
+                continue
+            try:
+                parsed = _parse_referenced_documents(raw)
+            except Exception as exc:  # noqa: BLE001 - a controlled per-document diagnostic
+                counters["error"] += 1
+                _LOG.warning(
+                    "backfill_parse_error",
+                    extra={"contour": contour, "evsd_uuid": str(evsd_uuid), "detail": type(exc).__name__},
+                )
+                continue
+            snapshot = dict(document.source_snapshot)
+            payload = dict(snapshot.get("vdDocument") or {})
+            if payload.get("referencedDocuments") == parsed["referencedDocuments"] and payload.get(
+                "transportDocument"
+            ) == parsed["transportDocument"]:
+                counters["unchanged"] += 1
+                continue
+            payload["referencedDocuments"] = parsed["referencedDocuments"]
+            payload["transportDocument"] = parsed["transportDocument"]
+            snapshot["vdDocument"] = payload
+            new_hash = content_hash(snapshot)
+            await db.execute(
+                update(IncomingDocument).where(IncomingDocument.id == document.id).values(
+                    source_snapshot=snapshot, content_hash=new_hash
+                )
+            )
+            await db.execute(
+                update(HiddenIncoming)
+                .where(
+                    HiddenIncoming.contour == contour,
+                    HiddenIncoming.evsd_uuid == evsd_uuid,
+                    HiddenIncoming.content_hash == document.content_hash,
+                )
+                .values(content_hash=new_hash)
+            )
+            counters["fixed"] += 1
+            await db.commit()
+    _LOG.info("backfill_referenced_documents_completed", extra=counters)
+    return counters
+
+
+if __name__ == "__main__":  # pragma: no cover - the operator entry point
+    import asyncio
+
+    asyncio.run(run_referenced_documents_backfill())

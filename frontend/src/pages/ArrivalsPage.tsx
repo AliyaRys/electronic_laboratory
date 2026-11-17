@@ -39,6 +39,23 @@ const QUEUES: readonly ArrivalQueue[] = ["EXPECTED", "WORK", "ACCEPTED"];
 const SYNC_ROLES = new Set(["VET", "HEAD"]);
 const POLL_INTERVAL_MS = 1500;
 
+/**
+ * ТЗ DR41 §5: the user text of a committed SUCCESS. ``N`` comes only from the
+ * safe ``new_documents`` counter; without it the message stays honest
+ * «Обновление завершено» — ``imported`` is never presented as «новые».
+ */
+export function syncSuccessText(state: SyncOperationState | null): string {
+  const diagnostics = state?.diagnostics ?? null;
+  const raw = diagnostics !== null ? (diagnostics as Record<string, unknown>).new_documents : null;
+  const newDocuments = typeof raw === "number" ? raw : Number(raw);
+  if (raw === null || raw === undefined || !Number.isFinite(newDocuments)) {
+    return "Обновление завершено.";
+  }
+  return newDocuments > 0
+    ? `Обновление завершено. Новых поступлений: ${newDocuments}.`
+    : "Обновление завершено. Новых поступлений нет.";
+}
+
 interface Filters {
   queue: ArrivalQueue;
   result: string;
@@ -314,51 +331,20 @@ function ArrivalsContent(): React.ReactElement {
         return null;
     }
   };
-  // ТЗ DR9 §7 + DR22 §7: the honest итог of a finished pass — how many were
-  // RECEIVED, suitable, imported and excluded from the active queue, plus the
-  // current attempt number. An error stays an error and is never worded as
-  // «ВСД не найдены».
-  const syncDiagnosticsText =
-    syncState !== null && (syncDone || syncFailed || syncRetryWait)
-      ? (() => {
-          const diagnostics = syncState.diagnostics ?? null;
-          const attempt =
-            diagnostics !== null && diagnostics.attempt !== undefined && diagnostics.attempt !== null
-              ? Number(diagnostics.attempt)
-              : null;
-          if (diagnostics !== null && (syncDone || syncRetryWait)) {
-            const externalTotal = Number(diagnostics.external_total ?? 0);
-            const observed = Number(diagnostics.observed_uuids ?? 0);
-            const imported = Number(diagnostics.kept ?? syncState.imported ?? 0);
-            const marked = Number(diagnostics.marked_not_current ?? 0);
-            const pages = Number(diagnostics.pages ?? syncState.pages_done ?? 0);
-            const parts = [
-              `Получено документов: ${externalTotal}.`,
-              `Наблюдено во внешнем списке: ${observed}.`,
-              `Импортировано: ${imported}.`,
-            ];
-            if (marked > 0) parts.push(`Исключено из активной очереди: ${marked}.`);
-            parts.push(`Обработано страниц: ${pages}.`);
-            if (attempt !== null) parts.push(`Попытка: ${attempt}.`);
-            return parts.join(" ");
-          }
-          const pages = syncState.pages_done ?? null;
-          const imported = syncState.imported ?? null;
-          if (pages === null && imported === null) return null;
-          const parts = [`Обработано страниц: ${pages ?? 0}; импортировано документов: ${imported ?? 0}.`];
-          if (attempt !== null) parts.push(`Попытка: ${attempt}.`);
-          return parts.join(" ");
-        })()
-      : null;
+  // ТЗ DR41 §5: the visible status is one short user-facing message per
+  // state (the table from the ТЗ). The technical counters (pages, imported,
+  // attempt) stay in the operation state/diagnostics — they are never
+  // appended to the role=status text, and «imported» is never presented as
+  // «новые поступления».
   const syncStatus =
     syncError !== ""
       ? syncError
       : syncRunning
         ? syncRetryWait
           ? "Повторяем обновление…"
-          : "Обновление выполняется…"
+          : "Обновляем поступления…"
         : syncDone
-          ? "Поступления обновлены из ВетИС."
+          ? syncSuccessText(syncState)
           : syncFailed
             ? (syncProblemText(syncState) ??
               "Обновление не выполнено: повторите позже или обратитесь к администратору.")
@@ -447,7 +433,6 @@ function ArrivalsContent(): React.ReactElement {
           ) : undefined
         }
         syncStatus={syncStatus}
-        syncDiagnostics={syncDiagnosticsText}
       />
 
       <Dialog

@@ -314,7 +314,7 @@ describe("ArrivalsPage", () => {
     expect(posts.length).toBe(1);
     await waitFor(
       () => {
-        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+        expect(screen.getByText(/Обновление завершено/)).toBeTruthy();
       },
       { timeout: 5000 },
     );
@@ -373,7 +373,7 @@ describe("ArrivalsPage", () => {
       { timeout: 5000 },
     );
     // The honest problem stays visible; the refresh button never shows success.
-    expect(screen.queryByText(/Поступления обновлены/)).toBeNull();
+    expect(screen.queryByText(/Обновление завершено/)).toBeNull();
   });
 
   it("shows the honest network error with a retry", async () => {
@@ -478,7 +478,7 @@ describe("ArrivalsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
     await waitFor(
       () => {
-        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+        expect(screen.getByText(/Обновление завершено/)).toBeTruthy();
       },
       { timeout: 5000 },
     );
@@ -518,7 +518,7 @@ describe("ArrivalsPage", () => {
       },
       { timeout: 5000 },
     );
-    expect(screen.queryByText(/Поступления обновлены/)).toBeNull();
+    expect(screen.queryByText(/Обновление завершено/)).toBeNull();
     expect(screen.queryByText(/эВСД не найдены/)).toBeNull();
     expect(screen.getByText("говядина")).toBeTruthy();
   });
@@ -926,7 +926,7 @@ describe("ArrivalsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
     await waitFor(
       () => {
-        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+        expect(screen.getByText(/Обновление завершено/)).toBeTruthy();
       },
       { timeout: 8000 },
     );
@@ -975,7 +975,7 @@ describe("ArrivalsPage", () => {
     expect(screen.getByRole("status").textContent).not.toContain("Обновление не выполнено"); // NO final error between attempts
     await waitFor(
       () => {
-        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+        expect(screen.getByText(/Обновление завершено/)).toBeTruthy();
       },
       { timeout: 10000 },
     );
@@ -1028,7 +1028,7 @@ describe("ArrivalsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Обновить" }));
     await waitFor(
       () => {
-        expect(screen.getByText(/Поступления обновлены из ВетИС/)).toBeTruthy();
+        expect(screen.getByText(/Обновление завершено/)).toBeTruthy();
       },
       { timeout: 8000 },
     );

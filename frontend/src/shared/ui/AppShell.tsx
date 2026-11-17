@@ -203,11 +203,30 @@ export function AppShell({
     useContextStore.getState().setProductType(product);
   };
 
+  /**
+   * ТЗ DR41 §3.2: the institution line under the logo. VET/HEAD see the
+   * trusted ``ScopeView.laboratory_name`` of their assigned scope (never a
+   * UUID; «Лаборатория не указана» without a name). ANALYST/ADMIN always see
+   * «Республика Татарстан» — never the name of an arbitrarily selected
+   * laboratory. The read model is the already-available GET /me — no extra
+   * request per page.
+   */
+  const institution = useMemo(() => {
+    if (mode === "analyst" || mode === "admin") return "Республика Татарстан";
+    if (mode === "work" && me.user !== null) {
+      const scope = me.user.scopes.find((entry) => entry.laboratory_id === workingLabId);
+      const name = scope?.laboratory_name?.trim() ?? "";
+      return name !== "" ? name : "Лаборатория не указана";
+    }
+    return undefined;
+  }, [mode, me.user, workingLabId]);
+
   return (
     <div className="vse-app">
       <AppHeader
         mode={mode}
         user={user}
+        institution={institution}
         product={productType}
         active={headerActive}
         profileActive={profileActive}

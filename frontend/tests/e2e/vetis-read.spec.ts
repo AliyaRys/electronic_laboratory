@@ -123,8 +123,8 @@ test.describe("vetis read sync", () => {
     await update.click();
     expect(syncPosts).toBe(1);
     afterSync.value = true;
-    await expect(page.getByText("Обновление выполняется…")).toBeVisible();
-    await expect(page.getByText("Поступления обновлены из ВетИС.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Обновляем поступления…")).toBeVisible();
+    await expect(page.getByText(/Обновление завершено/)).toBeVisible({ timeout: 10_000 });
     // The list is refreshed after the successful full pass.
     await expect(page.getByText("свинина")).toBeVisible();
     expect(polls).toBeGreaterThanOrEqual(2);

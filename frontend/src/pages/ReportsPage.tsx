@@ -90,10 +90,7 @@ function ReportsContent(): React.ReactElement {
     return (
       <div className="vse-app vse-page">
         <h1>Отчёты</h1>
-        <StatusView
-          state="forbidden"
-          title="Раздел отчётов недоступен: у вас нет отчётных полномочий."
-        />
+        <StatusView state="forbidden" title="Раздел отчётов недоступен: у вас нет отчётных полномочий." />
       </div>
     );
   }
@@ -120,21 +117,21 @@ function ReportsContent(): React.ReactElement {
   // when the list is really loaded and empty (list access). Without
   // ``report:5vet-list`` the list was never requested — the meta must not
   // promise anything, a neutral "unavailable" note instead.
-  const fiveVetMeta = problem !== null
-    ? null
-    : !access.list5vet
+  const fiveVetMeta =
+    problem !== null
       ? null
-      : list.isLoading
-        ? "Загрузка списка сохранённых отчётов…"
-        : (data?.total ?? 0) === 0
-          ? "Сохранённых отчётов пока нет."
-          : `Сохранённых отчётов: ${data?.total ?? 0}. Список — ниже на этой странице.`;
+      : !access.list5vet
+        ? null
+        : list.isLoading
+          ? "Загрузка списка сохранённых отчётов…"
+          : (data?.total ?? 0) === 0
+            ? "Сохранённых отчётов пока нет."
+            : `Сохранённых отчётов: ${data?.total ?? 0}. Список — ниже на этой странице.`;
 
   return (
     <div className="vse-app vse-page vse-reports-hub">
-      <nav className="vse-breadcrumb" aria-label="Навигация">
-        <Link to={`/labs/${labId}/arrivals`}>← Поступления</Link>
-      </nav>
+      {/* ТЗ DR41 §4: the hub carries no «← Поступления» breadcrumb; the header
+          navigation and nested report routes stay unchanged. */}
       <div className="vse-reports-title-row">
         <div>
           <h1>Отчёты</h1>
@@ -154,7 +151,8 @@ function ReportsContent(): React.ReactElement {
           {access.list5vet || access.read5vet ? (
             <ReportHubItem
               name="Форма 5-вет (раздел III)"
-              meta={fiveVetMeta ?? "Список сохранённых отчётов недоступен."}            />
+              meta={fiveVetMeta ?? "Список сохранённых отчётов недоступен."}
+            />
           ) : null}
           {access.operational ? (
             <ReportHubItem
@@ -239,8 +237,8 @@ function ReportsContent(): React.ReactElement {
       ) : null}
       {access.list5vet ? (
         <p className="app-field-message">
-          Экспорт PDF/XLSX и печать доступны в карточке сохранённого отчёта; файлы строятся строго из
-          снимка и не пересчитываются (AT-18).
+          Экспорт PDF/XLSX и печать доступны в карточке сохранённого отчёта; файлы строятся строго из снимка и
+          не пересчитываются (AT-18).
         </p>
       ) : null}
     </div>

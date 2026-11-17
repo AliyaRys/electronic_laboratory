@@ -433,9 +433,9 @@ async def test_create_and_read_api_contract(db_session: AsyncSession, test_db_en
     async with _client_for(api_env) as (http, identity):
         created = await http.post(
             f"/api/v1/examinations/parties/{party.id}",
-            json=payload(
-                number="API-001", trich=False, specialist_id=env.actor.id, expected_total="15.00"
-            ).model_dump(mode="json", by_alias=True),
+            json=payload(number="API-001", trich=False, specialist_id=env.actor.id, expected_total="15.00").model_dump(
+                mode="json", by_alias=True
+            ),
             headers={
                 "x-csrf-token": identity.csrf_token,
                 "origin": "http://test",

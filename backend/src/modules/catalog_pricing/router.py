@@ -31,6 +31,7 @@ from backend.src.core.durability import DurabilityGuard, get_durability_guard
 from backend.src.core.problems import ProblemError, idempotency_key_required, not_found
 from backend.src.modules.catalog_pricing import bulk as bulk_module
 from backend.src.modules.catalog_pricing import commands, queries
+from backend.src.modules.catalog_pricing import context as context_module
 from backend.src.modules.catalog_pricing import schemas as backend_schemas
 from backend.src.modules.catalog_pricing.context import MEAT_AREA_CODE, MethodsContext, methods_context
 from backend.src.modules.catalog_pricing.models import BulkPriceTarget
@@ -280,6 +281,29 @@ async def delete_method(
 
 
 # --- tariffs ----------------------------------------------------------------------
+
+
+@_catalogs.get("/tariffs/context", response_model=context_module.TariffsContext)
+async def get_tariffs_context(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(_principal)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    laboratory_id: uuid.UUID,
+) -> context_module.TariffsContext:
+    """ТЗ DR42 §3 (Вариант A): the tariff editor context — the same DR31
+    laboratory + meat-area scope as the norm catalog, the species options by
+    human name and the legacy mis-scoped rows for the honest migration
+    diagnostics. No prices are created, copied or migrated here."""
+    identity, _ = principal
+    await authorizer.authorize(
+        db,
+        identity.actor_id,
+        "catalog:read",
+        ScopeTarget(laboratory_id=laboratory_id, product_scope_id=None),
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return await context_module.tariffs_context(db, laboratory_id)
 
 
 @_catalogs.get("/tariffs", response_model=Page[TariffView])

@@ -163,7 +163,9 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         id=MICROSCOPY_INDICATOR_ID,
         code="VSE-F24",
         name="Микроскопия",
-        result_schema="INTEGER_NONNEGATIVE",
+        # ТЗ DR42 §5.1: the FT field accepts fractional counts, so the canonical
+        # schema is a nonnegative decimal; old INTEGER snapshots keep reading.
+        result_schema="DECIMAL",
         unit=None,
         mandatory=False,
     ),

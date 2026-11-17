@@ -38,6 +38,8 @@ from backend.src.modules.catalog_pricing.schemas import (
 __all__ = [
     "MANDATORY_INDICATOR_IDS",
     "configuration_missing",
+    "missing_tariff_message",
+    "evaluation_mode_of",
     "evaluate_typed",
     "evaluate_and_price",
     "CENT",
@@ -72,6 +74,23 @@ def configuration_missing(message: str, *, path: str, field_id: str | None = Non
         detail=message,
         errors=[ProblemItem(path=path, field_id=field_id, message=message)],
     )
+
+
+def evaluation_mode_of(result_schema: str) -> str:
+    """The evaluation mode of one norm (ТЗ DR42 §4.3): how the verdict comes
+    about, never chosen by the browser.
+
+    - ``FIXED`` — the accepted variants are fixed by the FT methodology
+      (ENUM «Соответствует/Не соответствует», BOOLEAN_MATCH);
+    - ``CONFIGURABLE`` — the interval bounds are configured in the norm
+      catalog (DECIMAL / legacy INTEGER / DOSIMETRY_PAIR);
+    - ``NONE`` — the result type has no norm at all (free TEXT).
+    """
+    if result_schema in ("DECIMAL", "INTEGER_NONNEGATIVE", "DOSIMETRY_PAIR"):
+        return "CONFIGURABLE"
+    if result_schema in ("ENUM", "BOOLEAN_MATCH"):
+        return "FIXED"
+    return "NONE"
 
 
 def _quantize_money(value: Decimal) -> str:
@@ -234,12 +253,37 @@ def _evaluate_with_schema(snapshot_rule: MethodRule | None, value: Any) -> dict[
     return evaluate_typed(ResultSchema(snapshot_rule.result_schema), typed_rule, value)
 
 
+def missing_tariff_message(indicator: UUID, species: UUID | None = None) -> str:
+    """The honest, actionable missing-tariff diagnostic (ТЗ DR42 §4.2).
+
+    The sentence names the concrete research and its stable code; the scope
+    tail keeps the technical trace for the прейскурант owner. A wrong scope
+    (for example a legacy row carrying a laboratory UUID as the species) can
+    never surface as a generic «тариф отсутствует»: the user always sees WHICH
+    indicator, WHICH scope and WHAT action resolves it.
+    """
+    definition = next((item for item in _mandatory.CATALOG_INDICATORS if item.id == indicator), None)
+    if definition is not None:
+        base = (
+            f"Не настроена стоимость исследования «{definition.name}» (код {definition.code}) "
+            "для выбранного вида продукции. Откройте справочник «Стоимость исследований» "
+            "и настройте этот показатель."
+        )
+    else:
+        base = (
+            f"Не настроена стоимость исследования с кодом {indicator} для выбранного вида продукции. "
+            "Откройте справочник «Стоимость исследований» и настройте этот показатель."
+        )
+    return base if species is None else f"{base} (scope: вид продукции {species})"
+
+
 def _price_from_prev_or_tariff(
     previous: PricingLine | None,
     tariff: Tariff | None,
     *,
     fair: bool,
     indicator: UUID,
+    species: UUID | None = None,
 ) -> str:
     if fair:
         return "0.00"  # every saved charge is 0; the ordinary tariff is not present
@@ -247,7 +291,7 @@ def _price_from_prev_or_tariff(
         return previous.unit_price  # ADR-020: an existing result keeps its price
     if tariff is None:
         raise configuration_missing(
-            "Для выполненного показателя нет тарифа; обратитесь к ответственному за прейскурант.",
+            missing_tariff_message(indicator, species),
             path=f"results.{indicator}",
             field_id="VSE",
         )
@@ -297,6 +341,9 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
                 field_id="VSE",
             )
         evaluation = _evaluate_with_schema(snapshot_rule, result.value)
+        # ТЗ DR42 §4.3: the evaluation mode is part of the read-only evaluation
+        # snapshot; the browser never chooses it.
+        evaluation["evaluation_mode"] = evaluation_mode_of(snapshot_rule.result_schema)
         if evaluation["status"] == "UNKNOWN" and mandatory:
             raise configuration_missing(
                 "Значение обязательного показателя не соответствует типу методики.",
@@ -308,7 +355,7 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
             if pinned is not None or request.fair
             else await _tariff_for(uow, laboratory_id, species, str(indicator))
         )
-        unit_price = _price_from_prev_or_tariff(pinned, tariff, fair=request.fair, indicator=indicator)
+        unit_price = _price_from_prev_or_tariff(pinned, tariff, fair=request.fair, indicator=indicator, species=species)
         price_decimal = parse_decimal(unit_price) if unit_price != "0.00" else Decimal("0.00")
         amount = _quantize_money(price_decimal * parse_decimal(quantity)) if not request.fair else "0.00"
         lines.append(

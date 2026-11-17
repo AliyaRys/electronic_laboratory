@@ -16,8 +16,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { createQueryClient } from "../../app/providers";
 import type { UserView } from "../../shared/api/me";
 import { INDICATORS } from "../examinations/indicators";
-import type { MethodsContextTyped, MethodRuleTyped } from "./api";
-import { MethodsEditorPage } from "./MethodsEditorPage";
+import { typedMethodRule, type MethodsContextTyped, type MethodRuleTyped } from "./api";
+import { buildMethodRows, evaluationMode, MethodsEditorPage } from "./MethodsEditorPage";
 
 const LAB = "11111111-2222-4333-8444-555555555555";
 
@@ -491,6 +491,49 @@ describe("MethodsEditorPage", () => {
     await screen.findByTestId(`method-legacy-bbbbbbbb-0000-4000-8000-000000000004`);
     expect(screen.getByText(/фиксирована методикой ФТ и не настраивается/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+  });
+
+  it("DR41-B fix-loop: a missing evaluation_mode is UNKNOWN — honest diagnostic, never CONFIGURABLE", () => {
+    const organoleptic = INDICATORS.find((item) => item.code === "VSE-F18") as (typeof INDICATORS)[number];
+    const unknownIndicator = {
+      id: organoleptic.id,
+      code: organoleptic.code,
+      name: organoleptic.name,
+      result_schema: "ENUM",
+      unit_id: null,
+      mandatory: organoleptic.mandatory,
+      conditional: false,
+      options: (organoleptic.options ?? []).map((option) => option.label),
+      // The contract field arrives absent on a legacy registry row.
+      evaluation_mode: undefined as unknown as string,
+    };
+    expect(evaluationMode(unknownIndicator as never)).toBe("UNKNOWN");
+    const rows = buildMethodRows([unknownIndicator as never], []);
+    // Not a configurable «Не настроено» row — an honest non-editable diagnostic.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.legacy).toBe(true);
+    expect(rows[0]?.rule).toBeNull();
+  });
+
+  it("DR41-B fix-loop: boolean keys of a legacy qualitative rule serialize as strings", () => {
+    const typed = typedMethodRule({
+      id: "bbbbbbbb-0000-4000-8000-000000000005",
+      laboratory_id: LAB,
+      product_area_code: "meat",
+      indicator_id: microscopy.id,
+      version: 1,
+      result_schema: "BOOLEAN_MATCH",
+      unit_id: "",
+      // A legacy JSONB rule may carry raw booleans in the dict[str,str].
+      rule: { type: "qualitative", accepted_values: ["true", false, "Соответствует"] },
+      source: { name: "методика" },
+      active: true,
+      revision: 1,
+    } as never);
+    expect(typed.rule).toEqual({
+      type: "qualitative",
+      accepted_values: ["true", "false", "Соответствует"],
+    });
   });
 
   it("a qualitative block uses the square ＋/− buttons and removable custom variants (§19.9/§19.10)", async () => {

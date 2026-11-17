@@ -163,6 +163,23 @@ describe("ReportsPage hub (DR37)", () => {
     expect(screen.queryByRole("button", { name: /Создать отчёт/ })).toBeNull();
   });
 
+  it("a HEAD with preview+save but without list/read sees the honest 5-вет card (DR37 fix-loop)", async () => {
+    const caps = [
+      "arrivals:read",
+      "report:5vet-preview",
+      "report:5vet-save",
+    ];
+    server.use(http.get("*/api/v1/me", () => HttpResponse.json(me("HEAD", caps))));
+    renderPage();
+    expect(await screen.findByText("Форма 5-вет (раздел III)")).toBeVisible();
+    expect(
+      screen.getByText(
+        "Создание отчёта доступно; список сохранённых отчётов и просмотр не входят в ваши полномочия.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: /Создать отчёт/ })).toBeVisible();
+  });
+
   it("the create affordance navigates to the creation page", async () => {
     const user = userEvent.setup();
     server.use(

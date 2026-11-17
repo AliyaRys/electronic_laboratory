@@ -811,9 +811,7 @@ describe("ArrivalsPage", () => {
     const { captured } = renderPage(`/labs/${LAB}/arrivals?queue=accepted&page=3`);
     await screen.findByText("говядина");
     await userEvent.click(screen.getByRole("button", { name: /Дата сверки данных/ }));
-    const day = screen
-      .getAllByLabelText("Дата")
-      .find((entry) => entry instanceof HTMLInputElement && entry.type === "date") as HTMLInputElement;
+    const day = screen.getByLabelText("Дата сверки") as HTMLInputElement;
     await userEvent.type(day, "2026-11-06");
     await userEvent.click(screen.getByRole("button", { name: "Применить" }));
     await waitFor(() => {

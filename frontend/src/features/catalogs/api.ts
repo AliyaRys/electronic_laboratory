@@ -52,7 +52,14 @@ export function typedMethodRule(view: MethodRuleView): MethodRuleTyped {
       ...view,
       rule: {
         type: "qualitative",
-        accepted_values: Array.isArray(raw.accepted_values) ? (raw.accepted_values as string[]) : [],
+        // DR41-B fix-loop: the fixed values of a dict[str,str] must travel as
+        // strings only — a boolean key from a legacy JSONB rule is
+        // serialized consistently («true»/«false»), never a raw boolean.
+        accepted_values: Array.isArray(raw.accepted_values)
+          ? (raw.accepted_values as unknown[]).map((value) =>
+              typeof value === "string" ? value : String(value),
+            )
+          : [],
       },
     };
   }

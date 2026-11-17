@@ -21,7 +21,9 @@ const samplesOnlyLinks = {
   brand: `/labs/${LAB}/arrivals?queue=expected`,
   arrivals: `/labs/${LAB}/arrivals?queue=expected`,
   journal: `/labs/${LAB}/examinations`,
-  reports: `/labs/${LAB}/reports`,
+  // DR37: a VET has NO 5-вет hub access — «Отчёты» leads straight into
+  // «Учёт проб», the only permitted direction.
+  reports: `/labs/${LAB}/reports/samples`,
 };
 
 const meta: Meta<typeof AppHeader> = {
@@ -69,7 +71,7 @@ export const WorkStaticMeat: Story = {
     onLogout: () => undefined,
   },
 };
-/** VET: «Отчёты» leads into the section, but the hub shows only «Учёт проб». */
+/** VET: no 5-вет hub — «Отчёты» opens «Учёт проб» directly (DR37). */
 export const VetSamplesOnly: Story = {
   args: {
     mode: "work",

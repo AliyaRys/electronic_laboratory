@@ -148,10 +148,18 @@ function ReportsContent(): React.ReactElement {
       </div>
       <section className="vse-reports-card" aria-label="Направления отчётов">
         <div className="vse-reports-hub-list">
-          {access.list5vet || access.read5vet ? (
+          {access.list5vet || access.read5vet || access.create5vet ? (
             <ReportHubItem
               name="Форма 5-вет (раздел III)"
-              meta={fiveVetMeta ?? "Список сохранённых отчётов недоступен."}
+              // DR37 fix-loop: a preview+save operator without list/read sees
+              // the direction honestly: create is available, the saved list
+              // and the saved cards are not.
+              meta={
+                fiveVetMeta ??
+                (access.create5vet && !access.list5vet && !access.read5vet
+                  ? "Создание отчёта доступно; список сохранённых отчётов и просмотр не входят в ваши полномочия."
+                  : "Список сохранённых отчётов недоступен.")
+              }
             />
           ) : null}
           {access.operational ? (

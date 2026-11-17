@@ -36,11 +36,11 @@ const dateTimeFormatter = new Intl.DateTimeFormat("ru-RU", {
   minute: "2-digit",
 });
 
-export function formatMoscowDate(instant: string): string {
+export function formatMoscowDate(instant: string | Date): string {
   return dateFormatter.format(new Date(instant));
 }
 
-export function formatMoscowDateTime(instant: string): string {
+export function formatMoscowDateTime(instant: string | Date): string {
   return dateTimeFormatter.format(new Date(instant));
 }
 

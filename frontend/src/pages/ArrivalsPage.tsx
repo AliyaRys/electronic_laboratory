@@ -17,6 +17,7 @@ import {
   fetchOperationState,
   hideArrival,
   reconciliationRangeQuery,
+  normalizeReconciledLocal,
   revisionEtag,
   syncArrivals,
   syncIsTerminal,
@@ -89,9 +90,13 @@ function filtersFromParams(params: URLSearchParams): Filters {
     sort: sortParam !== null && SORTS.includes(sortParam) ? sortParam : DEFAULT_SORT,
     // ТЗ DR39 §7: the date filters exist ONLY in ACCEPTED — outside it they
     // are simply not read (and stripped from the URL by the effect below).
+    // DR39 fix-loop: a foreign/stale deep link may carry the wire form
+    // («2026-11-05T10:00:00+03:00») — it is recovered into the datetime-local
+    // shape; an unparsable value honestly resets to "" (no TypeError in
+    // the render and no doubled offset in the wire query).
     reconciledOn: accepted ? (params.get("reconciled_on") ?? "") : "",
-    reconciledFrom: accepted ? (params.get("reconciled_from") ?? "") : "",
-    reconciledTo: accepted ? (params.get("reconciled_to") ?? "") : "",
+    reconciledFrom: accepted ? normalizeReconciledLocal(params.get("reconciled_from") ?? "") : "",
+    reconciledTo: accepted ? normalizeReconciledLocal(params.get("reconciled_to") ?? "") : "",
   };
 }
 

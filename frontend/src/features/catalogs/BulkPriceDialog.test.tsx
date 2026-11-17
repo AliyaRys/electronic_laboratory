@@ -149,18 +149,18 @@ describe("BulkPriceDialog", () => {
     expect(keys[0]).not.toBe("");
   });
 
-  it("shows a visible error when the product scope is missing (ADMIN path)", async () => {
+  it("DR43: an absent species is accepted — the area tariff is applied", async () => {
     const posts = vi.fn();
-    server.use(http.post("*/api/v1/catalogs/bulk-prices", () => posts()));
+    server.use(
+      http.post("*/api/v1/catalogs/bulk-prices", () => {
+        posts();
+        return HttpResponse.json({ operation_id: "op", state: "COMPLETED", status_url: "/x" });
+      }),
+    );
     const client = new QueryClient();
     render(
       <QueryClientProvider client={client}>
-        <BulkPriceDialog
-          laboratories={[]}
-          productSpeciesId=""
-          serviceCode={INDICATORS[0]?.id}
-          onClose={vi.fn()}
-        />
+        <BulkPriceDialog laboratories={[]} productSpeciesId="" serviceCode={INDICATORS[0]?.id} onClose={vi.fn()} />
       </QueryClientProvider>,
     );
     const user = userEvent.setup();
@@ -169,10 +169,10 @@ describe("BulkPriceDialog", () => {
     await user.type(labsInput as HTMLInputElement, LAB_A);
     await user.type(screen.getByLabelText("Новая цена, ₽"), "100.00");
     await user.click(screen.getByRole("button", { name: "Применить цену" }));
-    // The missing product UUID has a VISIBLE validation message near the
-    // action — never a silent failed submit.
-    expect(await screen.findByText("Укажите корректный UUID вида продукции.")).toBeTruthy();
-    expect(posts).not.toHaveBeenCalled();
+    // The missing species is not an error any more: the applied tariff is the
+    // meat-area row (the species echo is optional on the job).
+    expect(await screen.findByTestId("bulk-state")).toBeTruthy();
+    expect(posts).toHaveBeenCalledTimes(1);
   });
 
   it("requires an explicit service selection — no silent INDICATORS[0] default", async () => {
@@ -193,12 +193,13 @@ describe("BulkPriceDialog", () => {
   });
 
   it("validates the payload before sending", () => {
+    // DR43: the species echo is optional; the price validation stays.
     expect(
       bulkPriceSchema.safeParse({
-        product_species_id: "не-uuid",
+        product_species_id: "",
         service_code: "x",
         unit_id: "kg",
-        price: "100.00",
+        price: "не число",
         laboratory_ids: [LAB_A],
         laboratory_ids_text: "",
       }).success,

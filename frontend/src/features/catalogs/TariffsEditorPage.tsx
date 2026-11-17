@@ -1,23 +1,23 @@
 /**
- * «Стоимость исследований ВСЭ» editor page (ТЗ-DR6 §9, ТЗ DR42 §2/§3 Вариант A,
+ * «Стоимость исследований ВСЭ» editor page (ТЗ-DR6 §9, owner decision DR43,
  * mockup directory-price-edit.html).
  *
  * The context is the same DR31 laboratory + meat-area scope as the norm
- * catalog: the tariffs stay scoped by the concrete Mercury species, the user
- * selects it by its human name (the GUID is an internal API field) and the
- * POST/PUT scope is exactly the scope PricingRequest uses for the card. The
- * legacy rows whose product_species_id holds a laboratory UUID are shown as
- * the «требует миграции» diagnostics — never edited, copied or deleted
- * silently, and never treated as a valid scope by pricing.
+ * catalog: ONE tariff per laboratory + area + service code — the species is
+ * no longer part of the pricing key and no species selector exists (one price
+ * for the whole «Мясо и мясопродукты» category). POST/PUT saves EXACTLY the
+ * area scope. The rows OUTSIDE the area scope left by the 0021 migration are
+ * shown as the honest diagnostics — never edited, copied or deleted silently,
+ * and never read by pricing.
  *
  * Cards are built from the SHARED INDICATORS registry (VSE-F18–29) joined
- * with the real tariffs of the chosen species scope; the CHECK service codes
- * are filtered out by exact service_code and shown on the «Платные услуги»
- * page instead. A missing price stays an empty field with «Не настроено»; an
- * explicit 0,00 stays a valid price; DecimalString never passes through a
- * float. One «Сохранить справочник» saves ONLY the dirty cards sequentially.
- * A partial failure keeps the failed cards dirty with a per-card message and
- * retry re-sends only those.
+ * with the real area tariffs; the CHECK service codes are filtered out by
+ * exact service_code and shown on the «Платные услуги» page instead. A
+ * missing price stays an empty field with «Не настроено»; an explicit 0,00
+ * stays a valid price; DecimalString never passes through a float. One
+ * «Сохранить справочник» saves ONLY the dirty cards sequentially. A partial
+ * failure keeps the failed cards dirty with a per-card message and retry
+ * re-sends only those.
  */
 import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
@@ -27,7 +27,6 @@ import { INDICATORS } from "../examinations/indicators";
 import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
-import { SelectDropdown } from "../../shared/ui/SelectDropdown";
 import {
   createTariff,
   deleteTariff,
@@ -105,13 +104,12 @@ export function TariffsEditorPage(): React.ReactElement {
   const context = useCatalogContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const params = new URLSearchParams(location.search);
   const { laboratoryId, canEdit, canBulk, allowedToSwitch } = context;
   const scoped = laboratoryId !== null;
 
-  // ТЗ DR42 §3: the tariff editor context carries the species options by
-  // human name and the legacy mis-scoped rows; the page context has no
-  // species selector of its own any more (the DR31 laboratory scope).
+  // Owner decision DR43: the tariff editor context carries the meat-area
+  // scope and the audit-only legacy rows; NO species selector exists any
+  // more. The VSE tariffs are always the meat-area list.
   const tariffsContext = useQuery({
     queryKey: [laboratoryId, null, null, "/catalogs/tariffs/context", "tariffs-context"],
     queryFn: ({ signal }) => fetchTariffsContext(laboratoryId ?? "", signal),
@@ -120,19 +118,10 @@ export function TariffsEditorPage(): React.ReactElement {
   const tariffContextData =
     tariffsContext.data !== undefined && !("code" in tariffsContext.data) ? tariffsContext.data : null;
 
-  // The species scope: the URL value first, then the laboratory's assigned
-  // product scope (only when it is a real species, never the legacy
-  // laboratory-id fallback). Nothing is invented.
-  const assignedSpecies =
-    context.productSpeciesValid && context.productSpeciesId !== null ? context.productSpeciesId : null;
-  const speciesId = params.get("product_species_id") ?? assignedSpecies;
-  const speciesOptions = tariffContextData?.species_options ?? [];
-  const speciesKnown = speciesId !== null && speciesOptions.some((option) => option.id === speciesId);
-
   const tariffs = useQuery({
-    queryKey: [laboratoryId, speciesId, null, "/catalogs/tariffs", "tariffs"],
-    queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", speciesId, 1, signal),
-    enabled: scoped && speciesId !== null && speciesKnown,
+    queryKey: [laboratoryId, "meat", null, "/catalogs/tariffs", "tariffs"],
+    queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", "meat", 1, signal),
+    enabled: scoped,
   });
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -166,7 +155,7 @@ export function TariffsEditorPage(): React.ReactElement {
   useDirtyGuard(dirty, "Справочник стоимости");
 
   const save = async (): Promise<void> => {
-    if (savePending || laboratoryId === null || speciesId === null) return;
+    if (savePending || laboratoryId === null) return;
     const failures: { key: string; message: string }[] = [];
     let saved = 0;
     let conflicted = false;
@@ -199,7 +188,8 @@ export function TariffsEditorPage(): React.ReactElement {
         const result = await createTariff(
           {
             laboratory_id: laboratoryId,
-            product_species_id: speciesId,
+            // Owner decision DR43: the area scope only — no species is sent
+            // and none is persisted (the server normalizes it to NULL).
             service_code: card.serviceCode,
             unit_id: TARIFF_CURRENCY,
             price,
@@ -326,47 +316,25 @@ export function TariffsEditorPage(): React.ReactElement {
         />
       ) : (
         <>
-          {/* ТЗ DR42 §3 (Вариант A): the species scope picked by its human
-              name; the GUID travels only in the URL as an internal field. */}
+          {/* Owner decision DR43: the catalog is bound to the meat product
+              area; no species selector exists any more. */}
           <section className="vse-catalog-section" aria-label="Область справочника">
-            <div className="vse-catalog-field">
-              <SelectDropdown
-                id="tariffs-species"
-                label="Вид продукции"
-                value={speciesId ?? ""}
-                options={[
-                  { value: "", label: "Выберите вид продукции" },
-                  ...speciesOptions.map((option) => ({ value: option.id, label: option.name })),
-                ]}
-                placeholder="Выберите вид продукции"
-                disabled={savePending}
-                onChange={(next) => {
-                  const search = new URLSearchParams(location.search);
-                  if (next === "") search.delete("product_species_id");
-                  else search.set("product_species_id", next);
-                  navigate(`/catalogs?${search.toString()}`);
-                }}
-              />
-              <p className="vse-catalog-context-note">
-                Категория продукции: {tariffContextData?.product_area_name ?? "Мясо и мясопродукты"} · тарифы
-                настраиваются отдельно для каждого вида продукции.
-              </p>
-            </div>
-            {/* The legacy mis-scoped rows are shown as the migration
+            <p className="vse-catalog-context-note">
+              Категория продукции: {tariffContextData?.product_area_name ?? "Мясо и мясопродукты"} · стоимость одна
+              на всю категорию, без деления по видам продукции.
+            </p>
+            {/* The rows OUTSIDE the area scope are shown as the migration
                 diagnostics only: no silent deletion, no copying between
                 laboratories, no price substitution. */}
             {legacyTariffs.length > 0 ? (
               <article className="vse-catalog-diag" data-testid="tariffs-legacy-diag">
-                Обнаружено устаревших строк тарифов, требующих миграции: {legacyTariffs.length}. В них видом
-                продукции ошибочно записан идентификатор лаборатории; расчёт их не использует. Обратитесь к
-                ответственному за прейскурант для переноса цен на реальные виды продукции.
+                Обнаружено устаревших строк тарифов вне области «Мясо и мясопродукты»: {legacyTariffs.length}. Они
+                остались после миграции справочника на единую стоимость по категории; расчёт их не использует.
+                Обратитесь к ответственному за прейскурант, чтобы перенести или удалить их вручную.
               </article>
             ) : null}
           </section>
-          {speciesId === null || !speciesKnown ? (
-            <StatusView state="empty" title="Выберите вид продукции, чтобы открыть тарифы." />
-          ) : speciesId !== null && speciesId !== undefined ? (
-            <section className="vse-catalog-section" aria-labelledby="tariffs-section-title">
+          <section className="vse-catalog-section" aria-labelledby="tariffs-section-title">
               <CatalogSectionHeader
                 icon="directory-price"
                 title="Исследования ВСЭ"
@@ -437,14 +405,13 @@ export function TariffsEditorPage(): React.ReactElement {
                 </div>
               )}
             </section>
-          ) : null}
         </>
       )}
       <div className="vse-catalog-actions">
         <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
           Отменить
         </Button>
-        {canBulk && scoped && speciesId !== null ? (
+        {canBulk && scoped ? (
           <Button type="button" variant="secondary" onClick={() => setBulkOpen(true)}>
             Применить стоимость к лабораториям
           </Button>
@@ -488,7 +455,8 @@ export function TariffsEditorPage(): React.ReactElement {
         >
           <BulkPriceDialog
             laboratories={context.laboratories}
-            productSpeciesId={speciesId ?? ""}
+            // DR43: the species echo is optional; the applied tariff is the
+            // area row.
             onClose={() => {
               setBulkOpen(false);
               void tariffs.refetch();
@@ -584,9 +552,6 @@ export function TariffsEditorPage(): React.ReactElement {
   function pickLaboratory(id: string): void {
     const search = new URLSearchParams(location.search);
     search.set("laboratory_id", id);
-    // The species scope belongs to the chosen laboratory: switching the lab
-    // never carries the previous species selection.
-    search.delete("product_species_id");
     navigate(`/catalogs?${search.toString()}`);
   }
 }

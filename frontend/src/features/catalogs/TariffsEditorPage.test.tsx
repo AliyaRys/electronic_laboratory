@@ -57,7 +57,6 @@ const server = setupServer(
       laboratory: { id: LAB, name: "Лаборатория №1 г. Казань" },
       product_area_code: "meat",
       product_area_name: "Мясо и мясопродукты",
-      species_options: [{ id: SPECIES, name: "Говядина" }],
       legacy_tariffs: [],
     }),
   ),
@@ -149,34 +148,30 @@ describe("TariffsEditorPage", () => {
     expect(screen.queryByText(new RegExp(LAB.slice(0, 8)))).toBeNull();
   });
 
-  it("DR42 §3: the species is picked by its human name and the GUID stays internal", async () => {
-    const act = userEvent.setup();
+  it("DR43: no species selector exists — the area context is shown instead", async () => {
     renderEditor();
-    await screen.findByRole("button", { name: /Вид продукции/ });
+    await screen.findByRole("heading", { name: "Стоимость исследований ВСЭ" });
+    expect(screen.queryByRole("button", { name: /Вид продукции/ })).toBeNull();
+    expect(await screen.findByText(/Мясо и мясопродукты/)).toBeInTheDocument();
+    expect(screen.getByText(/стоимость одна на всю категорию/)).toBeInTheDocument();
+    // The internal GUID never appears.
     expect(screen.queryByText(new RegExp(SPECIES.slice(0, 8)))).toBeNull();
-    expect(screen.getByText(/Мясо и мясопродукты/)).toBeInTheDocument();
-    // The assigned species is preselected; switching names navigates with the
-    // internal GUID in the URL only.
-    await act.click(screen.getByRole("button", { name: /Вид продукции/ }));
-    await act.click(screen.getByRole("option", { name: "Говядина" }));
-    await waitFor(() => expect(tariffsSpy).toHaveBeenCalledWith(LAB));
   });
 
-  it("DR42 §3: the legacy mis-scoped rows are shown as migration diagnostics", async () => {
+  it("DR43: the rows outside the area scope are shown as audit diagnostics", async () => {
     server.use(
       http.get("*/api/v1/catalogs/tariffs/context", () =>
         HttpResponse.json({
           laboratory: { id: LAB, name: "Лаборатория №1 г. Казань" },
           product_area_code: "meat",
           product_area_name: "Мясо и мясопродукты",
-          species_options: [{ id: SPECIES, name: "Говядина" }],
           legacy_tariffs: [tariff({})],
         }),
       ),
     );
     renderEditor();
     const diag = await screen.findByTestId("tariffs-legacy-diag");
-    expect(diag).toHaveTextContent(/требующих миграции: 1/);
+    expect(diag).toHaveTextContent(/вне области «Мясо и мясопродукты»: 1/);
     expect(diag).toHaveTextContent(/Обратитесь к ответственному за прейскурант/);
   });
 

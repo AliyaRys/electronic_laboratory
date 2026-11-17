@@ -91,9 +91,7 @@ export function intervalPayload(laboratoryId: string, code: string, draft: Metho
 export function draftAcceptedValues(draft: MethodDraft): string[] {
   return [
     ...draft.accepted,
-    ...draft.extra.filter(
-      (value) => value.trim() !== "" && !draft.accepted.includes(value),
-    ),
+    ...draft.extra.filter((value) => value.trim() !== "" && !draft.accepted.includes(value)),
   ];
 }
 
@@ -203,7 +201,8 @@ export function MethodsEditorPage(): React.ReactElement {
   const scopedContext = methods.data !== undefined && !("code" in methods.data) ? methods.data : null;
 
   const rows = useMemo(
-    () => (scopedContext === null ? [] : buildMethodRows(scopedContext.indicators, scopedContext.active_rules)),
+    () =>
+      scopedContext === null ? [] : buildMethodRows(scopedContext.indicators, scopedContext.active_rules),
     [scopedContext],
   );
 
@@ -457,8 +456,7 @@ export function MethodsEditorPage(): React.ReactElement {
     });
   }
 
-  const LEAD =
-    "Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ.";
+  const LEAD = "Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ.";
 
   if (context.loading) {
     return (

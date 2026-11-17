@@ -81,7 +81,9 @@ async def validate_researches(db: AsyncSession, party: Party, payload: Examinati
 
     expected_kinds = {
         BACTERIOSCOPY: "TEXT",
-        MICROSCOPY: "INTEGER",
+        # ТЗ DR42 §5.1: the microscopy field is a nonnegative decimal; saved
+        # INTEGER snapshots keep reading (the write contract accepts DECIMAL).
+        MICROSCOPY: "DECIMAL",
         PH: "DECIMAL",
         COOKING: "ENUM",
         COPPER: "ENUM",
@@ -106,6 +108,18 @@ async def validate_researches(db: AsyncSession, party: Party, payload: Examinati
             errors.append(
                 ProblemItem(path=f"researches.{PH}.value", field_id="VSE-F25", message="pH должен быть от 0 до 14.")
             )
+
+    # ТЗ DR42 §5.1: the microscopy field is a nonnegative decimal; the wire
+    # grammar alone still admits a sign, so the FT bound is enforced here.
+    micro = by_id.get(MICROSCOPY)
+    if micro is not None and micro.kind == "DECIMAL" and Decimal(str(micro.value)) < 0:
+        errors.append(
+            ProblemItem(
+                path=f"researches.{MICROSCOPY}.value",
+                field_id="VSE-F24",
+                message="Микроскопия — неотрицательное десятичное число.",
+            )
+        )
 
     allowed_reactions = {"POSITIVE", "NEGATIVE", "ПОЛОЖИТЕЛЬНАЯ", "ОТРИЦАТЕЛЬНАЯ"}
     for indicator in (COPPER, PEROXIDASE):

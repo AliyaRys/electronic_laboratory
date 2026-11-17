@@ -136,8 +136,8 @@
   accent-color: var(--app-teal);
 }
 
-.vse-research input[type="number"],
 .vse-research input[type="text"],
+.vse-research input[type="date"],
 .vse-research select,
 .vse-research textarea,
 .vse-finding-row input,
@@ -338,6 +338,34 @@
   padding: 16px;
   color: var(--app-muted-readable);
   min-width: 0;
+}
+
+/* ТЗ DR42 §4.3: the per-line evaluation column (verdict + norm criterion). */
+.vse-invoice-evaluation {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.vse-invoice-evaluation[data-evaluation="IN_NORM"] {
+  color: #176346;
+}
+
+.vse-invoice-evaluation[data-evaluation="DEVIATION"] {
+  color: #9b3440;
+}
+
+.vse-invoice-evaluation[data-evaluation="UNKNOWN"] {
+  color: var(--app-muted, #5a5a5a);
+}
+
+.vse-invoice-criterion {
+  font-weight: 600;
+  color: var(--app-muted, #5a5a5a);
+  white-space: normal;
 }
 
 .vse-invoice-pending p {

@@ -223,12 +223,14 @@ function ResearchCard({
           </div>
         )
       ) : null}
-      {kind === "INTEGER" || kind === "DECIMAL" || kind === "TEXT" ? (
+      {kind === "DECIMAL" || kind === "TEXT" ? (
         <input
-          type={kind === "TEXT" ? "text" : "number"}
-          inputMode={kind === "TEXT" ? undefined : "decimal"}
-          step={kind === "INTEGER" ? 1 : "any"}
-          min={kind === "INTEGER" ? 0 : undefined}
+          type="text"
+          inputMode={kind === "DECIMAL" ? "decimal" : undefined}
+          // ТЗ DR42 §5.2: a text input with the decimal keyboard keeps the
+          // intermediate typing («2,») on screen until blur/submit; the
+          // comma is normalised to the dot wire form by the value model.
+          autoComplete="off"
           value={entry.value}
           disabled={disabled}
           aria-label={label}
@@ -269,10 +271,11 @@ function ResearchCard({
         <div className="vse-dose-grid">
           <label>
             Мощность дозы от партии, мкЗв/ч
+            {/* ТЗ DR42 §5.2: both dosimetry readings are decimal text inputs. */}
             <input
-              type="number"
-              step="any"
-              min={0}
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
               value={entry.first}
               disabled={disabled}
               aria-label="Мощность дозы от партии, мкЗв/ч"
@@ -282,9 +285,9 @@ function ResearchCard({
           <label>
             Гамма-фон в помещении, мкЗв/ч
             <input
-              type="number"
-              step="any"
-              min={0}
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
               value={entry.last}
               disabled={disabled}
               aria-label="Гамма-фон в помещении, мкЗв/ч"

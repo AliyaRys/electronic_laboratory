@@ -20,6 +20,9 @@ export type CheckServiceRuleWrite = components["schemas"]["CheckServiceRuleWrite
 export type Readiness = components["schemas"]["Readiness"];
 export type MethodsContext = components["schemas"]["MethodsContext"];
 export type CatalogIndicator = components["schemas"]["CatalogIndicator"];
+export type TariffsContext = components["schemas"]["TariffsContext"];
+export type SpeciesOption = components["schemas"]["SpeciesOption"];
+export type TariffsContextTyped = TariffsContext;
 export type MethodsContextTyped = Omit<MethodsContext, "active_rules"> & {
   active_rules: MethodRuleTyped[];
 };
@@ -159,6 +162,22 @@ export async function fetchTariffs(
       params: { query },
       signal: signal ?? null,
     }) as Promise<RawResult<TariffsPage>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+/** ТЗ DR42 §3 (Вариант A): the tariff editor context — the DR31 laboratory +
+ * meat-area scope, the species options by human name and the legacy
+ * mis-scoped rows for the migration diagnostics. */
+export async function fetchTariffsContext(
+  laboratoryId: string,
+  signal?: AbortSignal | null,
+): Promise<TariffsContextTyped | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/catalogs/tariffs/context", {
+      params: { query: { laboratory_id: laboratoryId } },
+      signal: signal ?? null,
+    }) as Promise<RawResult<TariffsContext>>,
   );
   return "problem" in settled ? settled.problem : settled.data;
 }

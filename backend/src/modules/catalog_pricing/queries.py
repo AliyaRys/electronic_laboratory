@@ -122,9 +122,7 @@ def _page(items: list[Any], total: int, page: int) -> tuple[list[Any], int, int,
     return items, total, page, PAGE_SIZE
 
 
-async def method_rule_page(
-    db: AsyncSession, laboratory_id: UUID, page: int
-) -> tuple[list[MethodRuleView], int]:
+async def method_rule_page(db: AsyncSession, laboratory_id: UUID, page: int) -> tuple[list[MethodRuleView], int]:
     """The method-rule page of one laboratory's meat catalog (DR31 §9).
 
     The scope is the laboratory and the product area only: species/state GUIDs
@@ -163,11 +161,7 @@ async def tariff_page(
         if product_species_id is None
         else (Tariff.product_species_id == product_species_id)
     )
-    scope = (
-        select(func.count())
-        .select_from(Tariff)
-        .where(Tariff.laboratory_id == laboratory_id, species_term)
-    )
+    scope = select(func.count()).select_from(Tariff).where(Tariff.laboratory_id == laboratory_id, species_term)
     total = int((await db.execute(scope)).scalar_one())
     rows = (
         (

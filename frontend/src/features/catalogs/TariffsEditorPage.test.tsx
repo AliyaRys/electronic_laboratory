@@ -52,6 +52,15 @@ const server = setupServer(
       { laboratory_id: LAB, product_scope_id: SPECIES, laboratory_name: "Лаборатория №1 г. Казань" },
     ]),
   ),
+  http.get("*/api/v1/catalogs/tariffs/context", () =>
+    HttpResponse.json({
+      laboratory: { id: LAB, name: "Лаборатория №1 г. Казань" },
+      product_area_code: "meat",
+      product_area_name: "Мясо и мясопродукты",
+      species_options: [{ id: SPECIES, name: "Говядина" }],
+      legacy_tariffs: [],
+    }),
+  ),
   http.get("*/api/v1/catalogs/tariffs", ({ request }) => {
     tariffsSpy(new URL(request.url).searchParams.get("laboratory_id"));
     return HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 });
@@ -138,6 +147,37 @@ describe("TariffsEditorPage", () => {
     expect(await screen.findByText(/Лаборатория №1 г\. Казань/)).toBeInTheDocument();
     await waitFor(() => expect(tariffsSpy).toHaveBeenCalledWith(LAB));
     expect(screen.queryByText(new RegExp(LAB.slice(0, 8)))).toBeNull();
+  });
+
+  it("DR42 §3: the species is picked by its human name and the GUID stays internal", async () => {
+    const act = userEvent.setup();
+    renderEditor();
+    await screen.findByRole("button", { name: /Вид продукции/ });
+    expect(screen.queryByText(new RegExp(SPECIES.slice(0, 8)))).toBeNull();
+    expect(screen.getByText(/Мясо и мясопродукты/)).toBeInTheDocument();
+    // The assigned species is preselected; switching names navigates with the
+    // internal GUID in the URL only.
+    await act.click(screen.getByRole("button", { name: /Вид продукции/ }));
+    await act.click(screen.getByRole("option", { name: "Говядина" }));
+    await waitFor(() => expect(tariffsSpy).toHaveBeenCalledWith(LAB));
+  });
+
+  it("DR42 §3: the legacy mis-scoped rows are shown as migration diagnostics", async () => {
+    server.use(
+      http.get("*/api/v1/catalogs/tariffs/context", () =>
+        HttpResponse.json({
+          laboratory: { id: LAB, name: "Лаборатория №1 г. Казань" },
+          product_area_code: "meat",
+          product_area_name: "Мясо и мясопродукты",
+          species_options: [{ id: SPECIES, name: "Говядина" }],
+          legacy_tariffs: [tariff({})],
+        }),
+      ),
+    );
+    renderEditor();
+    const diag = await screen.findByTestId("tariffs-legacy-diag");
+    expect(diag).toHaveTextContent(/требующих миграции: 1/);
+    expect(diag).toHaveTextContent(/Обратитесь к ответственному за прейскурант/);
   });
 
   it("a foreign laboratory query does not override the HEAD scope", async () => {

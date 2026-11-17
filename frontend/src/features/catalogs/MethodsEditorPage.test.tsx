@@ -1,4 +1,4 @@
-﻿/**
+/**
  * «Нормы исследований» editor page (ТЗ DR36 §19): the page opens immediately
  * with the full VSE-F18–F29 registry for «Мясо и мясопродукты» inside ONE
  * section «Диапазоны нормы»; unset interval rows show their «Норма от/до»
@@ -65,15 +65,13 @@ function contextFixture(overrides: Partial<MethodsContextTyped> = {}): MethodsCo
       result_schema:
         item.kind === "DECIMAL"
           ? "DECIMAL"
-          : item.kind === "INTEGER"
-            ? "INTEGER_NONNEGATIVE"
-            : item.kind === "TEXT"
-              ? "TEXT"
-              : item.kind === "DOSIMETRY"
-                ? "DOSIMETRY_PAIR"
-                : item.kind === "BOOLEAN"
-                  ? "BOOLEAN_MATCH"
-                  : "ENUM",
+          : item.kind === "TEXT"
+            ? "TEXT"
+            : item.kind === "DOSIMETRY"
+              ? "DOSIMETRY_PAIR"
+              : item.kind === "BOOLEAN"
+                ? "BOOLEAN_MATCH"
+                : "ENUM",
       unit_id: item.unit ?? null,
       mandatory: item.mandatory,
       conditional: item.code === "VSE-F21",
@@ -220,8 +218,8 @@ describe("MethodsEditorPage", () => {
     expect(screen.queryByRole("button", { name: "Добавить норму" })).toBeNull();
     // The canonical conditional flag of F21 is annotated (joined meta line).
     expect(
-      screen.getAllByText((_, element) =>
-        element?.textContent?.includes("Обязательно для указанных видов продукции") ?? false,
+      screen.getAllByText(
+        (_, element) => element?.textContent?.includes("Обязательно для указанных видов продукции") ?? false,
       ).length,
     ).toBeGreaterThan(0);
   });
@@ -485,9 +483,7 @@ describe("MethodsEditorPage", () => {
     await act.click(within(block).getByRole("button", { name: "Добавить вариант" }));
     // A custom empty row was appended (an extra Оценка select) and is
     // removable with the square −.
-    await waitFor(() =>
-      expect(within(block).getAllByLabelText(/Оценка/).length).toBe(registryRows + 1),
-    );
+    await waitFor(() => expect(within(block).getAllByLabelText(/Оценка/).length).toBe(registryRows + 1));
     const removeButtons = within(block).getAllByRole("button", { name: /^Удалить вариант:/ });
     // §19.10: only the custom variant can be removed — registry variants
     // keep the reserved third column without an active −.
@@ -504,9 +500,9 @@ describe("MethodsEditorPage", () => {
     expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeEnabled();
     await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
     await waitFor(() => expect(putSpy).toHaveBeenCalled());
-    expect((putSpy.mock.calls[0][0] as { rule: { accepted_values: string[] } }).rule.accepted_values).toContain(
-      "Соленый вкус",
-    );
+    expect(
+      (putSpy.mock.calls[0][0] as { rule: { accepted_values: string[] } }).rule.accepted_values,
+    ).toContain("Соленый вкус");
   });
 
   it("an added but never filled variant is dropped: no request and no payload value (§11.2)", async () => {
@@ -526,7 +522,9 @@ describe("MethodsEditorPage", () => {
       .findByRole("heading", { name: cooking.name })
       .then((heading) => heading.closest("article"))) as HTMLElement;
     await act.click(within(block).getByRole("button", { name: "Добавить вариант" }));
-    await waitFor(() => expect(within(block).getAllByLabelText(/Оценка/).length).toBe((cooking.options ?? []).length + 1));
+    await waitFor(() =>
+      expect(within(block).getAllByLabelText(/Оценка/).length).toBe((cooking.options ?? []).length + 1),
+    );
     // The row itself is NOT dirty while the field stays empty.
     expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
     expect(putSpy).not.toHaveBeenCalled();

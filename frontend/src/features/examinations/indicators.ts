@@ -10,7 +10,7 @@
  * answers REQUIRED_RESULT_MISSING when the product demands it.
  */
 
-export type ResearchKind = "BOOLEAN" | "INTEGER" | "DECIMAL" | "ENUM" | "TEXT" | "DOSIMETRY";
+export type ResearchKind = "BOOLEAN" | "DECIMAL" | "ENUM" | "TEXT" | "DOSIMETRY";
 
 export interface EnumOption {
   value: string;
@@ -109,7 +109,8 @@ export const INDICATORS: readonly IndicatorDef[] = Object.freeze([
     id: "72c55a55-4708-58d5-8d69-ec1c7ee2d1f9",
     code: "VSE-F24",
     name: "Микроскопия",
-    kind: "INTEGER",
+    // ТЗ DR42 §5.1: the FT field is a nonnegative decimal (2 / 2.5 / 2,5).
+    kind: "DECIMAL",
     mandatory: false,
     addName: "микроскопию",
   }),

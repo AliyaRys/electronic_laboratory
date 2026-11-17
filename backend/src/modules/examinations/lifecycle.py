@@ -170,9 +170,7 @@ async def update_examination(
     if payload.specialist_id is None:
         specialist_id, specialist_name = row.specialist_id, row.specialist_name
     else:
-        specialist_id, specialist_name = await _resolve_specialist(
-            db, party, payload.specialist_id, ctx.actor_id
-        )
+        specialist_id, specialist_name = await _resolve_specialist(db, party, payload.specialist_id, ctx.actor_id)
 
     # 9. The sample selection is applied through the same internal contract;
     #    the card keeps exactly one current link (the schema is one link per

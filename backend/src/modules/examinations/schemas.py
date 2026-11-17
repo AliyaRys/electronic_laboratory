@@ -43,12 +43,6 @@ class BooleanResearch(StrictModel):
     value: bool
 
 
-class IntegerResearch(StrictModel):
-    indicator_id: uuid.UUID
-    kind: Literal["INTEGER"]
-    value: int = Field(ge=0)
-
-
 class DecimalResearch(StrictModel):
     indicator_id: uuid.UUID
     kind: Literal["DECIMAL"]
@@ -81,7 +75,7 @@ class DosimetryResearch(StrictModel):
 
 
 ResearchWrite = Annotated[
-    BooleanResearch | IntegerResearch | DecimalResearch | EnumResearch | TextResearch | DosimetryResearch,
+    BooleanResearch | DecimalResearch | EnumResearch | TextResearch | DosimetryResearch,
     Field(discriminator="kind"),
 ]
 

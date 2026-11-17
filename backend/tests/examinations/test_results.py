@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from types import SimpleNamespace
 
@@ -38,13 +39,30 @@ async def result_env(db_session: AsyncSession) -> SimpleNamespace:
     return SimpleNamespace(lab=lab, actor=actor)
 
 
-def test_microscopy_zero_is_result_and_invalid_numbers_fail() -> None:
-    zero = research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "INTEGER", "value": 0})
-    assert zero.value == 0
+def test_microscopy_is_nonnegative_decimal_and_invalid_numbers_fail() -> None:
+    """ТЗ DR42 §5.1: VSE-F24 accepts 2 / 2.5 as decimal strings; the wire
+    form carries a dot; negatives, NaN/Infinity, exponent forms, empty
+    performed values and JSON floats are all rejected."""
+    two_and_half = research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": "2.5"})
+    assert two_and_half.value == "2.5"
+    zero = research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": "0"})
+    assert zero.value == "0"
+    # 2,5 is normalised by the client; the wire form rejects the comma.
     with pytest.raises(ValidationError):
-        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "INTEGER", "value": -1})
+        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": "2,5"})
     with pytest.raises(ValidationError):
-        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "INTEGER", "value": 1.5})
+        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": "NaN"})
+    with pytest.raises(ValidationError):
+        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": "Infinity"})
+    with pytest.raises(ValidationError):
+        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": "2e1"})
+    with pytest.raises(ValidationError):
+        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": ""})
+    with pytest.raises(ValidationError):
+        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": 1.5})
+    # The legacy INTEGER write kind no longer matches the FT field type.
+    with pytest.raises(ValidationError):
+        research_adapter.validate_python({"indicatorId": str(MICROSCOPY), "kind": "INTEGER", "value": 2})
 
 
 def test_dosimetry_requires_both_decimal_readings() -> None:
@@ -90,3 +108,37 @@ async def test_ph_over_14_fails_server_validation(db_session: AsyncSession, resu
     with pytest.raises(ProblemError) as raised:
         await validate_researches(db_session, party, parsed)
     assert raised.value.code == "VALIDATION_ERROR"
+
+
+def test_microscopy_negative_fails_medical_validation() -> None:
+    """ТЗ DR42 §5.1: the FT bound (nonnegative) is enforced by the medical
+    validation; the wire grammar only fixes the decimal shape."""
+    write = ExaminationWrite.model_validate(
+        {
+            **payload(trich=False).model_dump(mode="json", by_alias=True),
+            "researches": [
+                *payload(trich=False).model_dump(mode="json", by_alias=True)["researches"],
+                {"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": "-1"},
+            ],
+        }
+    )
+    # classification_snapshot without a product never triggers the trichinelloscopy
+    # lookup, so no session access happens.
+    party = SimpleNamespace(classification_snapshot={}, incoming_document_id=None)
+    with pytest.raises(ProblemError) as raised:
+        asyncio.run(validate_researches(None, party, write))  # type: ignore[arg-type]
+    assert any("неотрицательное" in item.message for item in raised.value.errors)
+
+
+def test_microscopy_decimal_passes_medical_validation() -> None:
+    write = ExaminationWrite.model_validate(
+        {
+            **payload(trich=False).model_dump(mode="json", by_alias=True),
+            "researches": [
+                *payload(trich=False).model_dump(mode="json", by_alias=True)["researches"],
+                {"indicatorId": str(MICROSCOPY), "kind": "DECIMAL", "value": "2.5"},
+            ],
+        }
+    )
+    party = SimpleNamespace(classification_snapshot={}, incoming_document_id=None)
+    asyncio.run(validate_researches(None, party, write))  # type: ignore[arg-type]

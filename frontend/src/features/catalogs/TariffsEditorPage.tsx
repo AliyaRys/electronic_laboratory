@@ -1,16 +1,23 @@
 /**
- * «Стоимость исследований ВСЭ» editor page (ТЗ-DR6 §9, mockup
- * directory-price-edit.html).
+ * «Стоимость исследований ВСЭ» editor page (ТЗ-DR6 §9, ТЗ DR42 §2/§3 Вариант A,
+ * mockup directory-price-edit.html).
+ *
+ * The context is the same DR31 laboratory + meat-area scope as the norm
+ * catalog: the tariffs stay scoped by the concrete Mercury species, the user
+ * selects it by its human name (the GUID is an internal API field) and the
+ * POST/PUT scope is exactly the scope PricingRequest uses for the card. The
+ * legacy rows whose product_species_id holds a laboratory UUID are shown as
+ * the «требует миграции» diagnostics — never edited, copied or deleted
+ * silently, and never treated as a valid scope by pricing.
  *
  * Cards are built from the SHARED INDICATORS registry (VSE-F18–29) joined
- * with the real tariffs of the laboratory/product scope; the CHECK service
- * codes are filtered out by exact service_code and shown on the «Платные
- * услуги» page instead (never by a Russian substring). A missing price stays
- * an empty field with «Не настроено»; an explicit 0,00 stays a valid price;
- * DecimalString never passes through a float. One «Сохранить справочник»
- * saves ONLY the dirty cards sequentially. Prices are monetary RUB values and
- * do not depend on the presence or measurement unit of a clinical norm. A partial failure keeps the
- * failed cards dirty with a per-card message and retry re-sends only those.
+ * with the real tariffs of the chosen species scope; the CHECK service codes
+ * are filtered out by exact service_code and shown on the «Платные услуги»
+ * page instead. A missing price stays an empty field with «Не настроено»; an
+ * explicit 0,00 stays a valid price; DecimalString never passes through a
+ * float. One «Сохранить справочник» saves ONLY the dirty cards sequentially.
+ * A partial failure keeps the failed cards dirty with a per-card message and
+ * retry re-sends only those.
  */
 import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
@@ -20,7 +27,16 @@ import { INDICATORS } from "../examinations/indicators";
 import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
-import { createTariff, deleteTariff, fetchTariffs, updateTariff, type Problem, type TariffView } from "./api";
+import { SelectDropdown } from "../../shared/ui/SelectDropdown";
+import {
+  createTariff,
+  deleteTariff,
+  fetchTariffs,
+  fetchTariffsContext,
+  updateTariff,
+  type Problem,
+  type TariffView,
+} from "./api";
 import { BulkPriceDialog } from "./BulkPriceDialog";
 import { CatalogEditorPage, CatalogSectionHeader, PriceCard, SaveSummary } from "./editor-parts";
 import { CatalogContextSlot } from "./catalog-context-slot";
@@ -89,13 +105,34 @@ export function TariffsEditorPage(): React.ReactElement {
   const context = useCatalogContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const { laboratoryId, productSpeciesId, canEdit, canBulk, allowedToSwitch } = context;
-  const scoped = laboratoryId !== null && productSpeciesId !== null;
+  const params = new URLSearchParams(location.search);
+  const { laboratoryId, canEdit, canBulk, allowedToSwitch } = context;
+  const scoped = laboratoryId !== null;
+
+  // ТЗ DR42 §3: the tariff editor context carries the species options by
+  // human name and the legacy mis-scoped rows; the page context has no
+  // species selector of its own any more (the DR31 laboratory scope).
+  const tariffsContext = useQuery({
+    queryKey: [laboratoryId, null, null, "/catalogs/tariffs/context", "tariffs-context"],
+    queryFn: ({ signal }) => fetchTariffsContext(laboratoryId ?? "", signal),
+    enabled: scoped,
+  });
+  const tariffContextData =
+    tariffsContext.data !== undefined && !("code" in tariffsContext.data) ? tariffsContext.data : null;
+
+  // The species scope: the URL value first, then the laboratory's assigned
+  // product scope (only when it is a real species, never the legacy
+  // laboratory-id fallback). Nothing is invented.
+  const assignedSpecies =
+    context.productSpeciesValid && context.productSpeciesId !== null ? context.productSpeciesId : null;
+  const speciesId = params.get("product_species_id") ?? assignedSpecies;
+  const speciesOptions = tariffContextData?.species_options ?? [];
+  const speciesKnown = speciesId !== null && speciesOptions.some((option) => option.id === speciesId);
 
   const tariffs = useQuery({
-    queryKey: [laboratoryId, productSpeciesId, null, "/catalogs/tariffs", "tariffs"],
-    queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", productSpeciesId ?? "", 1, signal),
-    enabled: scoped,
+    queryKey: [laboratoryId, speciesId, null, "/catalogs/tariffs", "tariffs"],
+    queryFn: ({ signal }) => fetchTariffs(laboratoryId ?? "", speciesId, 1, signal),
+    enabled: scoped && speciesId !== null && speciesKnown,
   });
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -129,7 +166,7 @@ export function TariffsEditorPage(): React.ReactElement {
   useDirtyGuard(dirty, "Справочник стоимости");
 
   const save = async (): Promise<void> => {
-    if (savePending || laboratoryId === null || productSpeciesId === null) return;
+    if (savePending || laboratoryId === null || speciesId === null) return;
     const failures: { key: string; message: string }[] = [];
     let saved = 0;
     let conflicted = false;
@@ -162,7 +199,7 @@ export function TariffsEditorPage(): React.ReactElement {
         const result = await createTariff(
           {
             laboratory_id: laboratoryId,
-            product_species_id: productSpeciesId,
+            product_species_id: speciesId,
             service_code: card.serviceCode,
             unit_id: TARIFF_CURRENCY,
             price,
@@ -259,7 +296,13 @@ export function TariffsEditorPage(): React.ReactElement {
     );
   }
 
-  const problem = tariffs.data !== undefined && "code" in tariffs.data ? (tariffs.data as Problem) : null;
+  const tariffsProblem =
+    tariffs.data !== undefined && "code" in tariffs.data ? (tariffs.data as Problem) : null;
+  const contextProblem =
+    tariffsContext.data !== undefined && "code" in tariffsContext.data
+      ? (tariffsContext.data as Problem)
+      : null;
+  const legacyTariffs = tariffContextData?.legacy_tariffs ?? [];
 
   return (
     <CatalogEditorPage
@@ -270,85 +313,138 @@ export function TariffsEditorPage(): React.ReactElement {
       {summary !== null ? (
         <SaveSummary state={summary.state} text={summary.text} details={summary.details} />
       ) : null}
-      {scoped ? (
-        <section className="vse-catalog-section" aria-labelledby="tariffs-section-title">
-          <CatalogSectionHeader
-            icon="directory-price"
-            title="Исследования ВСЭ"
-            description="Укажите стоимость каждого исследования."
-          />
-          {tariffs.isLoading ? (
-            <StatusView state="loading" title="Загрузка тарифов…" />
-          ) : problem !== null ? (
-            <StatusView
-              state={problem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
-              title={problem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить тарифы."}
-              detail={problem.detail}
-              onRetry={() => void tariffs.refetch()}
-            />
-          ) : (
-            <div className="vse-catalog-cards">
-              {cards.map((card, index) => {
-                const key = card.tariff?.id ?? `new-${index}`;
-                if (card.unknown) {
-                  return (
-                    <article className="vse-catalog-diag" key={key} data-testid={`tariff-diag-${key}`}>
-                      Тариф вне общего каталога показателей. Код услуги: <code>{card.serviceCode}</code>.
-                      Наименование недоступно в read model — значение не редактируется на этой странице.
-                    </article>
-                  );
-                }
-                const draft = drafts[key];
-                const conflict =
-                  conflicts[key] === true && draft !== undefined
-                    ? { serverValue: card.tariff?.price ?? "", draftValue: draft }
-                    : undefined;
-                return (
-                  <PriceCard
-                    key={key}
-                    name={card.name}
-                    mandatory={card.mandatory}
-                    value={draft ?? card.tariff?.price ?? ""}
-                    unset={card.tariff === null && draft === undefined}
-                    error={errors[key]}
-                    busy={savePending}
-                    readOnly={!canEdit}
-                    conflict={conflict}
-                    onKeepMine={conflict !== undefined ? () => void keepMine(card, key) : undefined}
-                    onTakeServer={conflict !== undefined ? () => takeServer(key) : undefined}
-                    onChange={(next) => {
-                      setDrafts((current) => ({ ...current, [key]: next }));
-                      setSummary(null);
-                    }}
-                    secondary={
-                      card.tariff !== null && canEdit ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={savePending}
-                          aria-label={`Удалить тариф: ${card.name}`}
-                          onClick={() => {
-                            setDeleteError("");
-                            setDeleteTarget({ card, key, tariff: card.tariff as TariffView });
-                          }}
-                        >
-                          Удалить
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                );
-              })}
+      {!scoped ? (
+        <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." />
+      ) : contextProblem !== null ? (
+        <StatusView
+          state={contextProblem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
+          title={
+            contextProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить контекст справочника."
+          }
+          detail={contextProblem.detail}
+          onRetry={() => void tariffsContext.refetch()}
+        />
+      ) : (
+        <>
+          {/* ТЗ DR42 §3 (Вариант A): the species scope picked by its human
+              name; the GUID travels only in the URL as an internal field. */}
+          <section className="vse-catalog-section" aria-label="Область справочника">
+            <div className="vse-catalog-field">
+              <SelectDropdown
+                id="tariffs-species"
+                label="Вид продукции"
+                value={speciesId ?? ""}
+                options={[
+                  { value: "", label: "Выберите вид продукции" },
+                  ...speciesOptions.map((option) => ({ value: option.id, label: option.name })),
+                ]}
+                placeholder="Выберите вид продукции"
+                disabled={savePending}
+                onChange={(next) => {
+                  const search = new URLSearchParams(location.search);
+                  if (next === "") search.delete("product_species_id");
+                  else search.set("product_species_id", next);
+                  navigate(`/catalogs?${search.toString()}`);
+                }}
+              />
+              <p className="vse-catalog-context-note">
+                Категория продукции: {tariffContextData?.product_area_name ?? "Мясо и мясопродукты"} · тарифы
+                настраиваются отдельно для каждого вида продукции.
+              </p>
             </div>
-          )}
-        </section>
-      ) : null}
-      {!scoped ? <StatusView state="empty" title="Выберите лабораторию, чтобы открыть справочник." /> : null}
+            {/* The legacy mis-scoped rows are shown as the migration
+                diagnostics only: no silent deletion, no copying between
+                laboratories, no price substitution. */}
+            {legacyTariffs.length > 0 ? (
+              <article className="vse-catalog-diag" data-testid="tariffs-legacy-diag">
+                Обнаружено устаревших строк тарифов, требующих миграции: {legacyTariffs.length}. В них видом
+                продукции ошибочно записан идентификатор лаборатории; расчёт их не использует. Обратитесь к
+                ответственному за прейскурант для переноса цен на реальные виды продукции.
+              </article>
+            ) : null}
+          </section>
+          {speciesId === null || !speciesKnown ? (
+            <StatusView state="empty" title="Выберите вид продукции, чтобы открыть тарифы." />
+          ) : speciesId !== null && speciesId !== undefined ? (
+            <section className="vse-catalog-section" aria-labelledby="tariffs-section-title">
+              <CatalogSectionHeader
+                icon="directory-price"
+                title="Исследования ВСЭ"
+                description="Укажите стоимость каждого исследования."
+              />
+              {tariffs.isLoading ? (
+                <StatusView state="loading" title="Загрузка тарифов…" />
+              ) : tariffsProblem !== null ? (
+                <StatusView
+                  state={tariffsProblem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
+                  title={tariffsProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить тарифы."}
+                  detail={tariffsProblem.detail}
+                  onRetry={() => void tariffs.refetch()}
+                />
+              ) : (
+                <div className="vse-catalog-cards">
+                  {cards.map((card, index) => {
+                    const key = card.tariff?.id ?? `new-${index}`;
+                    if (card.unknown) {
+                      return (
+                        <article className="vse-catalog-diag" key={key} data-testid={`tariff-diag-${key}`}>
+                          Тариф вне общего каталога показателей. Код услуги: <code>{card.serviceCode}</code>.
+                          Наименование недоступно в read model — значение не редактируется на этой странице.
+                        </article>
+                      );
+                    }
+                    const draft = drafts[key];
+                    const conflict =
+                      conflicts[key] === true && draft !== undefined
+                        ? { serverValue: card.tariff?.price ?? "", draftValue: draft }
+                        : undefined;
+                    return (
+                      <PriceCard
+                        key={key}
+                        name={card.name}
+                        mandatory={card.mandatory}
+                        value={draft ?? card.tariff?.price ?? ""}
+                        unset={card.tariff === null && draft === undefined}
+                        error={errors[key]}
+                        busy={savePending}
+                        readOnly={!canEdit}
+                        conflict={conflict}
+                        onKeepMine={conflict !== undefined ? () => void keepMine(card, key) : undefined}
+                        onTakeServer={conflict !== undefined ? () => takeServer(key) : undefined}
+                        onChange={(next) => {
+                          setDrafts((current) => ({ ...current, [key]: next }));
+                          setSummary(null);
+                        }}
+                        secondary={
+                          card.tariff !== null && canEdit ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={savePending}
+                              aria-label={`Удалить тариф: ${card.name}`}
+                              onClick={() => {
+                                setDeleteError("");
+                                setDeleteTarget({ card, key, tariff: card.tariff as TariffView });
+                              }}
+                            >
+                              Удалить
+                            </Button>
+                          ) : undefined
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ) : null}
+        </>
+      )}
       <div className="vse-catalog-actions">
         <Button type="button" variant="secondary" onClick={() => void navigate("/catalogs")}>
           Отменить
         </Button>
-        {canBulk && scoped ? (
+        {canBulk && scoped && speciesId !== null ? (
           <Button type="button" variant="secondary" onClick={() => setBulkOpen(true)}>
             Применить стоимость к лабораториям
           </Button>
@@ -392,7 +488,7 @@ export function TariffsEditorPage(): React.ReactElement {
         >
           <BulkPriceDialog
             laboratories={context.laboratories}
-            productSpeciesId={productSpeciesId ?? ""}
+            productSpeciesId={speciesId ?? ""}
             onClose={() => {
               setBulkOpen(false);
               void tariffs.refetch();
@@ -488,6 +584,9 @@ export function TariffsEditorPage(): React.ReactElement {
   function pickLaboratory(id: string): void {
     const search = new URLSearchParams(location.search);
     search.set("laboratory_id", id);
+    // The species scope belongs to the chosen laboratory: switching the lab
+    // never carries the previous species selection.
+    search.delete("product_species_id");
     navigate(`/catalogs?${search.toString()}`);
   }
 }

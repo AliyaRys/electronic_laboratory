@@ -515,6 +515,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalogs/tariffs/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tariffs Context
+         * @description ТЗ DR42 §3 (Вариант A): the tariff editor context — the same DR31
+         *     laboratory + meat-area scope as the norm catalog, the species options by
+         *     human name and the legacy mis-scoped rows for the honest migration
+         *     diagnostics. No prices are created, copied or migrated here.
+         */
+        get: operations["get_tariffs_context_api_v1_catalogs_tariffs_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalogs/tariffs": {
         parameters: {
             query?: never;
@@ -1833,7 +1856,7 @@ export interface components {
             /** Stamp */
             stamp: string;
             /** Researches */
-            researches: (components["schemas"]["BooleanResearch"] | components["schemas"]["IntegerResearch"] | components["schemas"]["DecimalResearch"] | components["schemas"]["EnumResearch"] | components["schemas"]["TextResearch"] | components["schemas"]["DosimetryResearch"])[];
+            researches: (components["schemas"]["BooleanResearch"] | components["schemas"]["DecimalResearch"] | components["schemas"]["EnumResearch"] | components["schemas"]["TextResearch"] | components["schemas"]["DosimetryResearch"])[];
             /** Invasivefindings */
             invasiveFindings?: components["schemas"]["InvasiveFinding"][];
             /** Noncontagiousfindings */
@@ -1955,21 +1978,6 @@ export interface components {
             compartment?: ("COMPLIANT" | "DIRTY_OR_DAMAGED") | null;
             /** Jointcarriage */
             jointCarriage?: ("NONE" | "SEPARATED" | "NOT_SEPARATED") | null;
-        };
-        /** IntegerResearch */
-        IntegerResearch: {
-            /**
-             * Indicatorid
-             * Format: uuid
-             */
-            indicatorId: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "INTEGER";
-            /** Value */
-            value: number;
         };
         /**
          * IntervalRule
@@ -2323,7 +2331,7 @@ export interface components {
          */
         PricingPreviewRequest: {
             /** Researches */
-            researches?: (components["schemas"]["BooleanResearch"] | components["schemas"]["IntegerResearch"] | components["schemas"]["DecimalResearch"] | components["schemas"]["EnumResearch"] | components["schemas"]["TextResearch"] | components["schemas"]["DosimetryResearch"])[];
+            researches?: (components["schemas"]["BooleanResearch"] | components["schemas"]["DecimalResearch"] | components["schemas"]["EnumResearch"] | components["schemas"]["TextResearch"] | components["schemas"]["DosimetryResearch"])[];
         };
         /**
          * PricingPreviewResponse
@@ -3067,6 +3075,23 @@ export interface components {
             reference?: string | null;
         };
         /**
+         * SpeciesOption
+         * @description One selectable product species of the tariff scope (ТЗ DR42 §2, Вариант A).
+         *
+         *     The user picks the species by its human-readable Mercury name; the GUID is
+         *     an internal API field only — it is never typed by a user and never shown
+         *     as a technical value.
+         */
+        SpeciesOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * SyncAccepted
          * @description API-04: the 202 answer of POST /arrivals/sync — never a sync confirmation.
          */
@@ -3143,6 +3168,31 @@ export interface components {
             /** Version */
             version: number;
             source: components["schemas"]["SourceRef"];
+        };
+        /**
+         * TariffsContext
+         * @description The editor context of «Стоимость исследований ВСЭ» (ТЗ DR42 §3).
+         *
+         *     The context is the same DR31 laboratory + meat-area scope as the norm
+         *     catalog; tariffs stay scoped by the concrete Mercury species (owner
+         *     decision DR14, Вариант A), so the context additionally carries the species
+         *     options by name and the legacy mis-scoped rows.
+         *
+         *     ``legacy_tariffs`` are the historical rows whose ``product_species_id``
+         *     holds a laboratory UUID — never a species. They are returned for the
+         *     explicit «требует миграции» diagnostics only: the editor never edits,
+         *     copies or deletes them silently, and pricing never treats them as valid.
+         */
+        TariffsContext: {
+            laboratory: components["schemas"]["_LaboratoryRef"];
+            /** Product Area Code */
+            product_area_code: string;
+            /** Product Area Name */
+            product_area_name: string;
+            /** Species Options */
+            species_options: components["schemas"]["SpeciesOption"][];
+            /** Legacy Tariffs */
+            legacy_tariffs: components["schemas"]["TariffView"][];
         };
         /**
          * TerritoryOptionView
@@ -4299,6 +4349,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tariffs_context_api_v1_catalogs_tariffs_context_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TariffsContext"];
+                };
             };
             /** @description Validation Error */
             422: {

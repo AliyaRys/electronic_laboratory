@@ -347,5 +347,6 @@ export function useCatalogContext(): CatalogContext {
     scopeStore,
     productType,
     location.search,
+    needsLaboratoryOptions,
   ]);
 }

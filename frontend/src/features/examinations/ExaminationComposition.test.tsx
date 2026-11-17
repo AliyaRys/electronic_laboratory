@@ -144,14 +144,13 @@ describe("DR30 examination composition", () => {
 
   it("DR35 §12.3: the single eligible specialist is a readonly select, never a UUID", () => {
     renderForm();
-    // ТЗ §12.3: the select keeps only the single eligible name, readonly,
-    // in the same visual field format as the multi-choice case.
-    const select = screen.getByRole("combobox", { name: "Специалист Госветслужбы" }) as HTMLSelectElement;
+    // ТЗ §12.3: the styled select keeps only the single eligible name,
+    // readonly, in the same visual field format as the multi-choice case.
+    const select = screen.getByRole("button", { name: /Специалист Госветслужбы/ });
     expect(select).toBeTruthy();
-    expect(select.disabled).toBe(true);
-    expect(select.options).toHaveLength(1);
-    expect(select.options[0].text).toBe("Кузнецова Алиса Викторовна");
-    expect(select.value).toBe(ME);
+    expect(select).toBeDisabled();
+    expect(select.textContent).toContain("Кузнецова Алиса Викторовна");
+    expect(select.textContent).not.toContain(ME.slice(0, 8));
     expect(screen.queryByText(new RegExp(ME))).toBeNull();
   });
 
@@ -255,8 +254,9 @@ describe("DR30 examination composition", () => {
       "MATCH",
     );
     await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
-    await user.type(screen.getByRole("spinbutton", { name: "Температура в толще мышц, °C" }), "3.0");
-    await user.click(screen.getByRole("radio", { name: "Пригодно" }));
+    await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "3.0");
+    await user.click(screen.getByRole("button", { name: /Результат ВСЭ/ }));
+    await user.click(screen.getByRole("option", { name: "Пригодно" }));
     await user.click(screen.getByRole("button", { name: "Завершить ВСЭ" }));
     expect(bodies).toHaveLength(1);
     const researches = (bodies[0] as { researches: { indicatorId: string; kind: string; value: unknown }[] })

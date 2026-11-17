@@ -227,8 +227,8 @@ describe("ExaminationForm", () => {
 
   it("DR35 §12.3: the scoped specialist is prefilled and visible without UUIDs", () => {
     renderForm();
-    const select = screen.getByRole("combobox", { name: "Специалист Госветслужбы" });
-    expect((select as HTMLSelectElement).value).toBe(ME);
+    const select = screen.getByRole("button", { name: /Специалист Госветслужбы/ });
+    expect((select as HTMLElement).className).not.toContain("is-placeholder");
     expect(select.textContent).toContain("Врач Ветеринарный");
     expect(screen.queryByText(new RegExp(ME))).toBeNull();
   });

@@ -23,6 +23,7 @@ import { Button } from "../../shared/ui/Button";
 import { Field } from "../../shared/ui/Field";
 import { FormSection } from "../../shared/ui/FormSection";
 import { ReadonlyField } from "../../shared/ui/ReadonlyField";
+import { SelectDropdown } from "../../shared/ui/SelectDropdown";
 import { StatusView } from "../../shared/ui/StatusView";
 import type { IncomingView } from "../arrivals/api";
 import { revisionEtag } from "../arrivals/api";
@@ -336,59 +337,56 @@ export function ExaminationForm({
         onChange={(next) => form.setValue("sample", next.sample, { shouldDirty: true })}
       />
 
-      <FormSection
-        icon="check-complete"
-        title="Итог экспертизы"
-        description="Заключение, стоимость и специалист, проводивший ВСЭ."
-      >
-        <div className="vse-sample-inputs">
-          <label className="app-field">
-            <span className="app-field-heading">
-              <span>Дата отбора проб *</span>
-            </span>
-            <input
-              type="date"
-              max={today}
-              value={values.sample.collectedOn}
+      <FormSection icon="check-complete" title="Итог экспертизы" description="Заключение, стоимость и специалист, проводивший ВСЭ.">
+        {/* ТЗ DR42 §6: the mockup grid — дата и отметка занимают широкую
+            строку, result/direction/specialist идут колонками по 4. */}
+        <div className="vse-exam-grid">
+          <div className="vse-span6">
+            <label className="app-field">
+              <span className="app-field-heading">
+                <span>Дата отбора проб *</span>
+              </span>
+              <input
+                type="date"
+                max={today}
+                value={values.sample.collectedOn}
+                disabled={busy}
+                aria-label="Дата отбора проб"
+                onChange={(event) =>
+                  form.setValue("sample", { ...values.sample, collectedOn: event.target.value }, { shouldDirty: true })
+                }
+              />
+            </label>
+          </div>
+          <div className="vse-span6 vse-lab-sample-field">
+            <label className="vse-sent-flag">
+              <input
+                type="checkbox"
+                checked={values.sentToLab}
+                disabled={busy || (isEdit && view.sent_to_lab)}
+                onChange={(event) => form.setValue("sentToLab", event.target.checked, { shouldDirty: true })}
+              />
+              Пробы отправлены на специальные лабораторные исследования
+            </label>
+          </div>
+          {view === null || view.status === "COMPLETED" ? (
+            <OutcomeFields
+              value={values.outcome}
               disabled={busy}
-              aria-label="Дата отбора проб"
-              onChange={(event) =>
-                form.setValue(
-                  "sample",
-                  { ...values.sample, collectedOn: event.target.value },
-                  { shouldDirty: true },
-                )
-              }
+              onChange={(next) => form.setValue("outcome", next, { shouldDirty: true })}
             />
-          </label>
-        </div>
-        <label className="vse-sent-flag">
-          <input
-            type="checkbox"
-            checked={values.sentToLab}
-            disabled={busy || (isEdit && view.sent_to_lab)}
-            onChange={(event) => form.setValue("sentToLab", event.target.checked, { shouldDirty: true })}
-          />
-          Пробы отправлены на специальные лабораторные исследования
-        </label>
-        {view === null || view.status === "COMPLETED" ? (
-          <OutcomeFields
-            value={values.outcome}
+          ) : (
+            <p className="vse-exam-note vse-span12">
+              Карточка в ожидании: итог и направление вводятся отдельным действием после ответа специальной лаборатории.
+            </p>
+          )}
+          <SpecialistChoice
+            formView={formView}
+            values={values}
             disabled={busy}
-            onChange={(next) => form.setValue("outcome", next, { shouldDirty: true })}
+            onChange={(next) => form.setValue("specialistId", next, { shouldDirty: true })}
           />
-        ) : (
-          <p className="vse-exam-note">
-            Карточка в ожидании: итог и направление вводятся отдельным действием после ответа специальной
-            лаборатории.
-          </p>
-        )}
-        <SpecialistChoice
-          formView={formView}
-          values={values}
-          disabled={busy}
-          onChange={(next) => form.setValue("specialistId", next, { shouldDirty: true })}
-        />
+        </div>
       </FormSection>
 
       <FormSection
@@ -497,47 +495,33 @@ function SpecialistChoice({
     // only the current name, readonly in the same visual field format.
     return (
       <div className="vse-span4">
-        <label className="app-field">
-          <span className="app-field-heading">
-            <span>Специалист Госветслужбы *</span>
-          </span>
-          <select
-            value={options[0].id}
-            disabled={true}
-            aria-label="Специалист Госветслужбы"
-            onChange={(event) => onChange(event.target.value)}
-          >
-            <option value={options[0].id}>{options[0].fullName}</option>
-          </select>
-        </label>
+        <SelectDropdown
+          id="exam-specialist"
+          label="Специалист Госветслужбы *"
+          value={options[0].id}
+          options={options.map((option) => ({ value: option.id, label: option.fullName }))}
+          placeholder="Выберите специалиста"
+          disabled={true}
+          onChange={onChange}
+        />
       </div>
     );
   }
   return (
     <div className="vse-span4">
-      <label className="app-field">
-        <span className="app-field-heading">
-          <span>Специалист Госветслужбы *</span>
-        </span>
-        <select
-          value={values.specialistId}
-          disabled={disabled}
-          aria-label="Специалист Госветслужбы"
-          onChange={(event) => onChange(event.target.value)}
-        >
-          <option value="" disabled>
-            Выберите специалиста
-          </option>
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.fullName}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="vse-exam-note">
-        Выбран специалист, проводящий ВСЭ; оператор сохранения остаётся в аудите.
-      </p>
+      <SelectDropdown
+        id="exam-specialist"
+        label="Специалист Госветслужбы *"
+        value={values.specialistId}
+        options={[
+          { value: "", label: "Выберите специалиста" },
+          ...options.map((option) => ({ value: option.id, label: option.fullName })),
+        ]}
+        placeholder="Выберите специалиста"
+        disabled={disabled}
+        onChange={onChange}
+      />
+      <p className="vse-exam-note">Выбран специалист, проводящий ВСЭ; оператор сохранения остаётся в аудите.</p>
     </div>
   );
 }

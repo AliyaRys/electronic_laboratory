@@ -15,6 +15,46 @@ import { moneyLabel, pricingUnitLabel } from "../arrivals/api";
 import { formatDecimalDisplay } from "../../shared/lib/domain";
 import { StatusView } from "../../shared/ui/StatusView";
 
+/** The Russian wording of one evaluation snapshot (ТЗ DR42 §4.3). */
+export function evaluationLabel(status: string | undefined): string {
+  if (status === "IN_NORM") return "Норма";
+  if (status === "DEVIATION") return "Отклонение";
+  return "Нет оценки нормы";
+}
+
+/** The readable criterion of the applied norm from the method snapshot. */
+export function normCriterion(line: { method_snapshot?: { rule?: unknown } | null }): string | null {
+  const rule = line.method_snapshot?.rule;
+  if (rule === null || rule === undefined || typeof rule !== "object") return null;
+  const typed = rule as { type?: string; lower?: string; upper?: string; accepted_values?: string[] };
+  if (typed.type === "interval") {
+    if (typed.lower === undefined && typed.upper === undefined) return null;
+    return `от ${typed.lower ?? "—"} до ${typed.upper ?? "—"}`;
+  }
+  if (typed.type === "qualitative" && Array.isArray(typed.accepted_values) && typed.accepted_values.length > 0) {
+    return `норма: ${typed.accepted_values.join(", ")}`;
+  }
+  return null;
+}
+
+function EvaluationBadge({
+  line,
+}: {
+  line: {
+    method_snapshot?: { rule?: unknown } | null;
+    evaluation?: { status?: string } | null;
+  };
+}): React.ReactElement {
+  const criterion = normCriterion(line);
+  const status = line.evaluation?.status;
+  return (
+    <span className="vse-invoice-evaluation" data-evaluation={status ?? "UNKNOWN"}>
+      {evaluationLabel(status)}
+      {criterion !== null ? <span className="vse-invoice-criterion"> · {criterion}</span> : null}
+    </span>
+  );
+}
+
 /** The debounce window of the preview (ТЗ §13.4: 250–400 ms). */
 export const PRICING_DEBOUNCE_MS = 300;
 
@@ -143,6 +183,7 @@ export function PricingSection({
             <th scope="col">Единица</th>
             <th scope="col">Тариф</th>
             <th scope="col">Сумма</th>
+            <th scope="col">Оценка</th>
           </tr>
         </thead>
         <tbody>
@@ -153,12 +194,18 @@ export function PricingSection({
               <td>{pricingUnitLabel(line.unit_id)}</td>
               <td>{moneyLabel(line.unit_price)}</td>
               <td>{moneyLabel(line.amount)}</td>
+              {/* ТЗ DR42 §4.3: the applied norm and the evaluation snapshot
+                  travel with the line; the verdict is never repainted by the
+                  browser and never invents an outcome. */}
+              <td>
+                <EvaluationBadge line={line} />
+              </td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr>
-            <th scope="row" colSpan={4}>
+            <th scope="row" colSpan={5}>
               Итого к оплате
             </th>
             <td>{moneyLabel(snapshot.total)}</td>

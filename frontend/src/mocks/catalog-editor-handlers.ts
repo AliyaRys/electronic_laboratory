@@ -131,9 +131,7 @@ export const catalogEditorHandlers: HttpHandler[] = [
   ),
   // The DR31/DR36 read model of «Нормы исследований»: the full registry, the
   // meat scope and the active rules (fixture data only, no mockup numbers).
-  http.get("*/api/v1/catalogs/methods/context", () =>
-    HttpResponse.json(methodsContextFixture([...methods])),
-  ),
+  http.get("*/api/v1/catalogs/methods/context", () => HttpResponse.json(methodsContextFixture([...methods]))),
   http.post("*/api/v1/catalogs/methods", async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const indicator = INDICATORS.find((item) => item.code === body["code"]) ?? temperature;
@@ -182,15 +180,13 @@ function methodsContextFixture(rules: Array<Record<string, unknown>>): Record<st
       result_schema:
         item.kind === "DECIMAL"
           ? "DECIMAL"
-          : item.kind === "INTEGER"
-            ? "INTEGER_NONNEGATIVE"
-            : item.kind === "TEXT"
-              ? "TEXT"
-              : item.kind === "DOSIMETRY"
-                ? "DOSIMETRY_PAIR"
-                : item.kind === "BOOLEAN"
-                  ? "BOOLEAN_MATCH"
-                  : "ENUM",
+          : item.kind === "TEXT"
+            ? "TEXT"
+            : item.kind === "DOSIMETRY"
+              ? "DOSIMETRY_PAIR"
+              : item.kind === "BOOLEAN"
+                ? "BOOLEAN_MATCH"
+                : "ENUM",
       unit_id: item.unit ?? null,
       mandatory: item.mandatory,
       conditional: item.code === "VSE-F21",
@@ -270,15 +266,13 @@ export function methodsScenarioHandlers(scenario: MethodsScenario): HttpHandler[
       result_schema:
         item.kind === "DECIMAL"
           ? "DECIMAL"
-          : item.kind === "INTEGER"
-            ? "INTEGER_NONNEGATIVE"
-            : item.kind === "TEXT"
-              ? "TEXT"
-              : item.kind === "DOSIMETRY"
-                ? "DOSIMETRY_PAIR"
-                : item.kind === "BOOLEAN"
-                  ? "BOOLEAN_MATCH"
-                  : "ENUM",
+          : item.kind === "TEXT"
+            ? "TEXT"
+            : item.kind === "DOSIMETRY"
+              ? "DOSIMETRY_PAIR"
+              : item.kind === "BOOLEAN"
+                ? "BOOLEAN_MATCH"
+                : "ENUM",
       unit_id: item.unit ?? null,
       mandatory: item.mandatory,
       conditional: item.code === "VSE-F21",

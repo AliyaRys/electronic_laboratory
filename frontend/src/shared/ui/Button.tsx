@@ -27,6 +27,12 @@ export interface ButtonProps {
   className?: string | undefined;
   /** React 19: ref is an ordinary prop (Radix initial-focus needs it). */
   ref?: Ref<HTMLButtonElement> | undefined;
+  /** ТЗ DR46 §3.2: hover/focus tooltip wiring for icon-only actions. */
+  onMouseEnter?: (() => void) | undefined;
+  onMouseLeave?: (() => void) | undefined;
+  onFocus?: (() => void) | undefined;
+  onBlur?: (() => void) | undefined;
+  ariaDescribedBy?: string | undefined;
 }
 
 export function Button({
@@ -43,6 +49,11 @@ export function Button({
   className,
   ariaLabel,
   ref,
+  onMouseEnter,
+  onMouseLeave,
+  onFocus,
+  onBlur,
+  ariaDescribedBy,
 }: ButtonProps): React.ReactElement {
   const text = busy ? busyLabel : (label ?? undefined);
   const content: ReactNode = busy ? busyLabel : (children ?? text);
@@ -56,6 +67,11 @@ export function Button({
       disabled={disabled || busy}
       aria-busy={busy ? "true" : undefined}
       aria-label={iconOnly ? text : ariaLabel}
+      aria-describedby={ariaDescribedBy}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onFocus={onFocus}
+      onBlur={onBlur}
       onClick={onClick}
     >
       {icon !== undefined && !busy ? <Icon name={icon} /> : null}

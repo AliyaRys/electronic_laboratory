@@ -44,7 +44,7 @@ export const PRODUCTS: Readonly<Record<ProductType, { label: string; shortLabel:
 export interface AppHeaderProps {
   mode?: HeaderMode;
   user: HeaderUser | null;
-  institution?: string;
+  institution?: string | undefined;
   product?: ProductType;
   active?: HeaderActive;
   /** /profile route: the user link is the current page (mockup profile.html). */
@@ -173,7 +173,7 @@ function ProductSwitcher({
 export function AppHeader({
   mode = "work",
   user,
-  institution = "Лаборатория ВСЭ",
+  institution,
   product = "meat",
   active = "",
   profileActive = false,
@@ -293,7 +293,7 @@ export function AppHeader({
         </span>
         <div className="brand-copy">
           <strong>Электронная лаборатория ВСЭ</strong>
-          <span>{institution}</span>
+          {institution !== undefined ? <span>{institution}</span> : null}
         </div>
       </a>
       <nav
@@ -305,16 +305,20 @@ export function AppHeader({
       </nav>
       <div className="user-area">
         {user !== null ? (
+          // ТЗ DR41 §3.1: the compact initials live in the avatar; the full
+          // name stays in the accessible name and title of the profile link
+          // and never stretches the header.
           <a
             id="profile"
             className={`user-link${profileActive ? " active" : ""}`}
             href={profileHref}
+            title={user.fullName}
+            aria-label={user.fullName}
             aria-current={profileActive ? "page" : undefined}
           >
             <span className="avatar" aria-hidden="true">
               {user.initials}
             </span>
-            <span className="user-name">{user.fullName}</span>
           </a>
         ) : null}
         <button id="logout" type="button" className="logout" onClick={onLogout}>

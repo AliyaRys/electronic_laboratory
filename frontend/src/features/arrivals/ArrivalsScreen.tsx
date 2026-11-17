@@ -52,8 +52,6 @@ export interface ArrivalsScreenProps {
   onHide?: ((partyId: string) => void) | undefined;
   sync?: React.ReactElement | undefined;
   syncStatus?: string;
-  /** DR7 §6.3: обезличенные счётчики прохода (страницы/импортировано). */
-  syncDiagnostics?: string | null;
 }
 
 const OPTIONAL_COLUMN_LABELS: Readonly<Record<string, string>> = Object.freeze({
@@ -87,7 +85,6 @@ export function ArrivalsScreen({
   onHide,
   sync,
   syncStatus,
-  syncDiagnostics,
 }: ArrivalsScreenProps): React.ReactElement {
   const table = (): React.ReactElement => {
     switch (queue) {
@@ -148,15 +145,14 @@ export function ArrivalsScreen({
           <h1>Поступления</h1>
           <p>{STAGE_DESCRIPTIONS[queue]}</p>
         </div>
-        {/* DR29 §3: the sync status lives IN the sync group, directly above
-            the refresh button — one composition, one source of the text.
-            Without a button (e.g. an ANALYST session) no group is rendered. */}
+        {/* DR29 §3 / ТЗ DR41 §5: the sync status lives IN the sync group,
+            directly above the refresh button — ONE compact role=status with
+            the short user text; technical counters are never appended. */}
         {sync !== undefined ? (
           <div className="arrivals-sync">
             {(syncStatus ?? "") !== "" ? (
               <p className="arrivals-sync-status" role="status">
                 {syncStatus}
-                {syncDiagnostics !== null && syncDiagnostics !== undefined ? ` ${syncDiagnostics}` : ""}
               </p>
             ) : null}
             {sync}
@@ -164,7 +160,6 @@ export function ArrivalsScreen({
         ) : (syncStatus ?? "") !== "" ? (
           <p className="arrivals-sync-status" role="status">
             {syncStatus}
-            {syncDiagnostics !== null && syncDiagnostics !== undefined ? ` ${syncDiagnostics}` : ""}
           </p>
         ) : null}
       </div>

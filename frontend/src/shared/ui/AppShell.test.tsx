@@ -57,7 +57,9 @@ function renderShellWith(overrides: Partial<UserView>, path = "/"): void {
 }
 
 async function waitForUser(): Promise<void> {
-  await waitFor(() => expect(screen.getByText("Анна Кузнецова")).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("link", { name: "Анна Кузнецова" })).toBeInTheDocument(),
+  );
 }
 
 function renderShell(path = "/"): void {
@@ -83,7 +85,7 @@ function renderShell(path = "/"): void {
 describe("AppShell", () => {
   it("mounts the canonical header and the route outlet", async () => {
     renderShell();
-    await waitFor(() => expect(screen.getByText("Анна Кузнецова")).toBeInTheDocument());
+    await waitForUser();
     expect(screen.getByText("Содержимое страницы")).toBeInTheDocument();
     expect(screen.getByRole("banner")).toBeInTheDocument();
   });
@@ -110,7 +112,7 @@ describe("AppShell", () => {
 
   it("never shows an open examination's specialist as the current user", async () => {
     renderShell();
-    await waitFor(() => expect(screen.getByText("Анна Кузнецова")).toBeInTheDocument());
+    await waitForUser();
     expect(screen.queryByText(examinationSpecialist)).toBeNull();
   });
 
@@ -135,7 +137,7 @@ describe("AppShell", () => {
     await waitFor(() =>
       expect(screen.getByText(/Ошибка соединения|Не удалось|не распознан/)).toBeInTheDocument(),
     );
-    expect(screen.queryByText("Анна Кузнецова")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Анна Кузнецова" })).toBeNull();
   });
 
   it("an ADMIN user gets the administration header without working navigation", async () => {
@@ -243,5 +245,58 @@ describe("AppShell contextual reports navigation (DR37)", () => {
       "aria-current",
       "page",
     );
+  });
+});
+
+describe("AppShell institution line (ТЗ DR41 §3.2)", () => {
+  it("a VET sees the laboratory_name of the assigned scope under the brand", async () => {
+    renderShellWith({
+      scopes: [
+        {
+          laboratory_id: LAB,
+          product_scope_id: null,
+          laboratory_name: "ГБУ «Лаборатория №1 г. Казань»",
+        },
+      ],
+    });
+    await waitForUser();
+    expect(screen.getByText("ГБУ «Лаборатория №1 г. Казань»")).toBeInTheDocument();
+    // A UUID is never shown as the institution.
+    expect(screen.queryByText(LAB)).toBeNull();
+  });
+
+  it("a scope without a laboratory_name shows «Лаборатория не указана»", async () => {
+    renderShell();
+    await waitForUser();
+    expect(screen.getByText("Лаборатория не указана")).toBeInTheDocument();
+  });
+
+  it("an ANALYST sees «Республика Татарстан», never a selected laboratory name", async () => {
+    renderShellWith({
+      role: "ANALYST",
+      scopes: [
+        {
+          laboratory_id: OTHER_LAB,
+          product_scope_id: null,
+          laboratory_name: "ГБУ «Лаборатория №1 г. Казань»",
+        },
+      ],
+    });
+    await waitForUser();
+    expect(screen.getByText("Республика Татарстан")).toBeInTheDocument();
+    expect(screen.queryByText("ГБУ «Лаборатория №1 г. Казань»")).toBeNull();
+  });
+
+  it("an ADMIN sees «Республика Татарстан»", async () => {
+    renderShellWith({ role: "ADMIN", scopes: [] });
+    await waitForUser();
+    expect(screen.getByText("Республика Татарстан")).toBeInTheDocument();
+  });
+
+  it("the full name stays accessible through title, but is not visible text", async () => {
+    renderShell();
+    await waitForUser();
+    expect(screen.queryByText("Анна Кузнецова")).toBeNull();
+    expect(screen.getByTitle("Анна Кузнецова")).toBeInTheDocument();
   });
 });

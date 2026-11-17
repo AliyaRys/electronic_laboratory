@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+﻿import type { Meta, StoryObj } from "@storybook/react";
 import { AppHeader, type HeaderUser } from "./AppHeader";
 
 const user: HeaderUser = { fullName: "Анна Кузнецова", initials: "АК" };
@@ -84,7 +84,7 @@ export const Admin: Story = {
     mode: "admin",
     user,
     active: "users",
-    institution: "Главная ветеринарная лаборатория",
+    institution: "Республика Татарстан",
     onLogout: () => undefined,
   },
 };
@@ -94,7 +94,7 @@ export const AdminWithoutReports: Story = {
     mode: "admin",
     user,
     active: "users",
-    institution: "Главная ветеринарная лаборатория",
+    institution: "Республика Татарстан",
     onLogout: () => undefined,
   },
 };
@@ -104,7 +104,7 @@ export const AnalystSelectedLab: Story = {
     mode: "analyst",
     user,
     active: "reports",
-    institution: "Аналитический отдел",
+    institution: "Республика Татарстан",
     links: selectedLabLinks,
     onLogout: () => undefined,
   },
@@ -114,13 +114,17 @@ export const AnalystNoLab: Story = {
   args: {
     mode: "analyst",
     user,
-    institution: "Аналитический отдел",
+    institution: "Республика Татарстан",
     links: { reports: "/labs" },
     onLogout: () => undefined,
   },
 };
 export const NoProducts: Story = {
   args: { mode: "no-products", user, institution: "Лаборатория ВСЭ №1 г. Казань", onLogout: () => undefined },
+};
+/** ТЗ DR41 §3.2: an assigned scope without a laboratory_name. */
+export const WorkMissingLabName: Story = {
+  args: { mode: "work", user, product: "meat", active: "arrivals", institution: "Лаборатория не указана", onLogout: () => undefined },
 };
 export const LongData: Story = {
   args: {

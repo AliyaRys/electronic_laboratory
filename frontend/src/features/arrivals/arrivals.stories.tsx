@@ -550,6 +550,25 @@ export const СтраницаОжидаемыеОбновление: StoryObj = 
   }),
 };
 
+/* ТЗ DR41 §5: the short user statuses of the sync — one compact role=status
+   per state; technical counters are never shown in this line. */
+export const СтраницаОжидаемыеОбновляем: StoryObj = {
+  name: "Страница / Ожидаемые — обновляем поступления",
+  ...FullScreen("EXPECTED", expectedRows, { busy: true, syncStatus: "Обновляем поступления…" }),
+};
+export const СтраницаОжидаемыеНовыеПоступления: StoryObj = {
+  name: "Страница / Ожидаемые — новые поступления",
+  ...FullScreen("EXPECTED", expectedRows, {
+    syncStatus: "Обновление завершено. Новых поступлений: 1.",
+  }),
+};
+export const СтраницаОжидаемыеБезНовых: StoryObj = {
+  name: "Страница / Ожидаемые — новых поступлений нет",
+  ...FullScreen("EXPECTED", expectedRows, {
+    syncStatus: "Обновление завершено. Новых поступлений нет.",
+  }),
+};
+
 export const СтраницаУзкийЭкран: StoryObj = {
   name: "Страница / Ожидаемые 390 px",
   parameters: { viewport: { width: 390, height: 844 } },

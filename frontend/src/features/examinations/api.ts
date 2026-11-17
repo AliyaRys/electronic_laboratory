@@ -24,6 +24,8 @@ export type ExaminationFormView = components["schemas"]["ExaminationFormView"];
 /** DR35 §13.3: the server pricing preview (the same snapshot the save stores). */
 export type PricingPreviewResponse = components["schemas"]["PricingPreviewResponse"];
 export type PricingSnapshotView = PricingPreviewResponse["snapshot"];
+/** ТЗ DR44 §2: the compact server examination summary of an arrival row. */
+export type ExaminationSummaryView = components["schemas"]["ExaminationSummary"];
 /** The body of the preview: only the fully performed researches (§13.3). */
 export type PricingPreviewRequestBody = { researches: ResearchWrite[] };
 
@@ -53,6 +55,16 @@ async function settle<TData>(
 
 /** Query key of one examination card (exact keys, commands bind them). */
 export const examinationKey = (examinationId: string): readonly unknown[] => ["examinations", examinationId];
+
+/**
+ * ТЗ DR44 §3: the exact Russian result wording of the compact «ВСЭ» column —
+ * ONE dictionary, never duplicated in the table.
+ */
+export function examinationOutcomeLabel(value: string | null | undefined): string {
+  if (value === "FIT") return "Пригодно";
+  if (value === "UNFIT") return "Непригодно";
+  return "—";
+}
 
 export async function fetchExamination(
   examinationId: string,

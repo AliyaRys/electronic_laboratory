@@ -11,9 +11,8 @@
 import { useEffect, useRef, useState } from "react";
 import "../../shared/ui/check-section.css";
 import { fetchPricingPreview, type PricingPreviewRequestBody, type PricingSnapshotView } from "./api";
+import { SnapshotPricingTable } from "./PricingSnapshotTable";
 import type { Problem } from "../../shared/api/problem";
-import { moneyLabel, pricingUnitLabel } from "../arrivals/api";
-import { formatDecimalDisplay } from "../../shared/lib/domain";
 import { StatusView } from "../../shared/ui/StatusView";
 
 /**
@@ -67,55 +66,11 @@ function EvaluationBadge({
   );
 }
 
+/** Re-exported for the shared snapshot renderer (ТЗ DR44 Task 5). */
+export { EvaluationBadge };
+
 /** The debounce window of the preview (ТЗ §13.4: 250–400 ms). */
 export const PRICING_DEBOUNCE_MS = 300;
-
-/**
- * The saved pricing snapshot of a card (view page, DR43): the SAME invoice
- * look and the same server lines — nothing is recomputed in the browser.
- */
-export function SavedInvoice({ snapshot }: { snapshot: PricingSnapshotView }): React.ReactElement {
-  return (
-    <div className="vse-rec-invoice-table-wrap">
-      <table className="vse-rec-invoice-table">
-        <caption className="vse-visually-hidden">Расчёт стоимости услуг по сверке</caption>
-        <thead>
-          <tr>
-            <th scope="col">Услуга</th>
-            <th scope="col">Единица расчёта</th>
-            <th scope="col">Количество</th>
-            <th scope="col">Тариф</th>
-            <th scope="col">Сумма</th>
-          </tr>
-        </thead>
-        <tbody>
-          {snapshot.lines.map((line) => (
-            <tr key={line.service_code}>
-              <td>{line.name}</td>
-              <td>{pricingUnitLabel(line.unit_id)}</td>
-              <td>{formatDecimalDisplay(line.quantity)}</td>
-              <td>{moneyLabel(line.unit_price)}</td>
-              <td>{moneyLabel(line.amount)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="vse-rec-invoice-total">
-        <span>Итого</span>
-        <strong>{moneyLabel(snapshot.total)}</strong>
-      </p>
-      <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
-        <input type="checkbox" checked={snapshot.fair} disabled readOnly aria-label="Ярмарка" />
-        <span>
-          <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
-          <span className="vse-rec-invoice-waiver-note">
-            Сверка данных и ВСЭ по этой партии проводятся без оплаты.
-          </span>
-        </span>
-      </label>
-    </div>
-  );
-}
 
 export type PricingPreviewState =
   | { status: "empty" }
@@ -234,56 +189,10 @@ export function PricingSection({
   return (
     <div aria-live="polite">
       {state.status === "recalculating" ? <p className="vse-exam-note">Пересчитываем стоимость…</p> : null}
-      {/* DR43: the same reconciliation invoice look — one shared stylesheet,
-          the server lines are never recomputed in the browser. */}
-      <div className="vse-rec-invoice-table-wrap">
-        <table className="vse-rec-invoice-table">
-          <caption className="vse-visually-hidden">Расчёт стоимости услуг по сверке</caption>
-          <thead>
-            <tr>
-              <th scope="col">Услуга</th>
-              <th scope="col">Единица расчёта</th>
-              <th scope="col">Количество</th>
-              <th scope="col">Тариф</th>
-              <th scope="col">Сумма</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snapshot.lines.map((line) => (
-              <tr key={line.service_code}>
-                <td>
-                  {line.name}
-                  {/* ТЗ DR42 §4.3: the applied norm and the evaluation
-                      snapshot travel with the line; the verdict is never
-                      repainted by the browser and never invents an outcome. */}
-                  <EvaluationBadge line={line} />
-                </td>
-                <td>{pricingUnitLabel(line.unit_id)}</td>
-                <td>{formatDecimalDisplay(line.quantity)}</td>
-                <td>{moneyLabel(line.unit_price)}</td>
-                <td>{moneyLabel(line.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="vse-rec-invoice-total">
-          <span>Итого</span>
-          {/* The total is the server value; the client never computes it. */}
-          <strong>{moneyLabel(snapshot.total)}</strong>
-        </p>
-      </div>
-      {/* The fair flag belongs to the party's reconciliation step; the card
-          only reflects the SERVER preview state — the browser never fakes a
-          zero and never switches the mode. */}
-      <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
-        <input type="checkbox" checked={snapshot.fair} disabled readOnly aria-label="Ярмарка" />
-        <span>
-          <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
-          <span className="vse-rec-invoice-waiver-note">
-            Сверка данных и ВСЭ по этой партии проводятся без оплаты.
-          </span>
-        </span>
-      </label>
+      {/* DR44: one shared snapshot renderer; after the DR43 merge it carries
+          the same reconciliation invoice look (vse-rec-invoice-*) and the
+          server fair flag as a disabled Ярмарка checkbox. */}
+      <SnapshotPricingTable snapshot={snapshot} />
     </div>
   );
 }

@@ -22,6 +22,7 @@ __all__ = [
     "NoncontagiousFinding",
     "ExaminationWrite",
     "ExaminationView",
+    "ExaminationSampleView",
     "OutcomeWrite",
     "FormParticipantEntry",
     "FormClassificationEntry",
@@ -173,6 +174,22 @@ class OutcomeWrite(StrictModel):
         return self
 
 
+class ExaminationSampleView(BaseModel):
+    """ТЗ DR44 §2/Task 3: the linked physical sample fact of the card.
+
+    Read through ``ExaminationSample -> SampleCollection`` with ONE join —
+    never by searching the party's collection list. ``revision`` is the card
+    revision the read happened at (the card ``rev``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    collected_on: str
+    mass_kg: DecimalString
+    revision: int
+
+
 class ExaminationView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -188,6 +205,9 @@ class ExaminationView(BaseModel):
     noncontagious_findings: list[object]
     pricing: dict[str, object]
     sample_collection_id: str
+    # ТЗ DR44 Task 3: the linked physical sample (date + mass), never a search
+    # of the party's collection list.
+    sample: ExaminationSampleView
     outcome: str | None
     direction: str | None
     reason: str | None

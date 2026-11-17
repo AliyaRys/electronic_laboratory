@@ -232,8 +232,6 @@ describe("ReportViewPage capability guard (DR37)", () => {
     await screen.findByText("Матрица сохранённого отчёта");
     expect(screen.queryByRole("button", { name: "Скачать PDF" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Удалить отчёт" })).toBeNull();
-    expect(
-      screen.getByText("Действия с отчётом недоступны: нет соответствующих полномочий."),
-    ).toBeVisible();
+    expect(screen.getByText("Действия с отчётом недоступны: нет соответствующих полномочий.")).toBeVisible();
   });
 });

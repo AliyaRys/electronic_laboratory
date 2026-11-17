@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.examinations.models import Examination, ExaminationSample, ExaminationTombstone
-from backend.src.modules.examinations.schemas import ExaminationView
+from backend.src.modules.examinations.schemas import ExaminationSampleView, ExaminationView
 from backend.src.modules.identity.models import User
+from backend.src.modules.samples.models import SampleCollection
 
 __all__ = ["get_examination", "get_tombstone", "examination_deleted", "build_view", "get_view"]
 
@@ -59,7 +60,16 @@ async def current_collection_id(db: AsyncSession, examination_id: uuid.UUID) -> 
 
 
 async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
-    collection_id = await current_collection_id(db, row.id)
+    # ТЗ DR44 Task 3: the linked sample is read by ONE join through the
+    # ExaminationSample link — never by searching the party's collection list.
+    linked = (
+        await db.execute(
+            select(ExaminationSample.collection_id, SampleCollection.collected_on, SampleCollection.mass_kg)
+            .join(SampleCollection, SampleCollection.id == ExaminationSample.collection_id)
+            .where(ExaminationSample.examination_id == row.id)
+        )
+    ).first()
+    collection_id, collected_on, sample_mass = linked
     findings = row.findings_snapshot
     # DR35 §12.3/§14: the displayed specialist is the saved specialist_id; an
     # existing pre-DR35 row keeps the audit actor as the displayed specialist
@@ -82,6 +92,12 @@ async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
         noncontagious_findings=list(cast(list[object], findings.get("noncontagious", []))),
         pricing=dict(row.pricing_snapshot),
         sample_collection_id=str(collection_id),
+        sample=ExaminationSampleView(
+            id=str(collection_id),
+            collected_on=collected_on.isoformat(),
+            mass_kg=str(sample_mass),
+            revision=row.rev,
+        ),
         outcome=row.outcome,
         direction=row.direction,
         reason=row.reason,

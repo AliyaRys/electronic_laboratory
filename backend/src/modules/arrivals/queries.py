@@ -13,6 +13,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal, cast
 
 from sqlalchemy import Column, MetaData, String, Table, func, select
@@ -31,6 +32,7 @@ from backend.src.modules.arrivals.schemas import (
     AccompanyingDocumentView,
     ClassificationView,
     ConfirmationSummary,
+    ExaminationSummary,
     ExternalFields,
     IncomingView,
     QuantitySet,
@@ -39,6 +41,7 @@ from backend.src.modules.arrivals.schemas import (
     trailer_projection,
 )
 from backend.src.modules.catalog_pricing.schemas import PricingSnapshot
+from backend.src.modules.examinations.models import Examination
 from backend.src.modules.identity.models import User
 from backend.src.modules.integrations.vetis.document_types import document_type_label
 from backend.src.modules.integrations.vetis.models import VetisContour
@@ -56,6 +59,8 @@ __all__ = [
     "accompanying_documents_of",
     "arrival_page",
     "build_incoming_view",
+    "combined_total_of",
+    "examination_summaries",
     "party_view",
     "previous_vse_fields",
     "queue_of",
@@ -635,23 +640,126 @@ async def _open_examination_id(db: AsyncSession, party_id: uuid.UUID) -> uuid.UU
     return (await db.execute(select(_EXAMINATIONS.c.id).where(_EXAMINATIONS.c.party_id == party_id).limit(1))).scalar()
 
 
+# --- ТЗ DR44 §2: the bulk examination summary (no N+1, no VetIS) -------------------
+
+
+def combined_total_of(
+    reconciliation_total: str | None,
+    reconciliation_currency: str | None,
+    examination_total: str | None,
+    examination_currency: str | None,
+) -> str | None:
+    """ТЗ DR44 §2: the server-side Decimal sum of the two frozen totals.
+
+    The sum exists ONLY when both totals are present and the currencies match;
+    a missing обязательный component is never substituted by zero and a saved
+    ``0.00`` stays data. The result is a scale-2 decimal string.
+    """
+    if reconciliation_total is None or examination_total is None:
+        return None
+    if reconciliation_currency != examination_currency:
+        return None
+    combined = Decimal(reconciliation_total) + Decimal(examination_total)
+    return str(combined.quantize(Decimal("0.01")))
+
+
+def _examination_summary_of(
+    examination: Examination,
+    legacy_specialist_name: str | None,
+    reconciliation_pricing: PricingSnapshot | None,
+) -> ExaminationSummary:
+    pricing: PricingSnapshot | None = None
+    if examination.pricing_snapshot is not None:
+        try:
+            pricing = PricingSnapshot.model_validate(examination.pricing_snapshot)
+        except Exception:  # noqa: BLE001 - a corrupt legacy value stays absent
+            pricing = None
+    # The frozen selected ФИО wins; a legacy row keeps ONLY the existing
+    # server fallback (the resolved display name) — never created_by-as-login,
+    # never a UUID and never the current user.
+    specialist_name = examination.specialist_name or legacy_specialist_name
+    total = combined_total_of(
+        reconciliation_pricing.total if reconciliation_pricing is not None else None,
+        reconciliation_pricing.currency if reconciliation_pricing is not None else None,
+        pricing.total if pricing is not None else None,
+        pricing.currency if pricing is not None else None,
+    )
+    currency = None
+    if (
+        pricing is not None
+        and reconciliation_pricing is not None
+        and pricing.currency == reconciliation_pricing.currency
+    ):
+        currency = pricing.currency
+    return ExaminationSummary(
+        id=str(examination.id),
+        number=examination.number,
+        status=examination.status,
+        outcome=examination.outcome,
+        specialist_name=specialist_name,
+        pricing=pricing,
+        combined_total=total,
+        currency=currency,
+    )
+
+
+async def examination_summaries(
+    db: AsyncSession,
+    party_ids: list[uuid.UUID],
+    reconciliation_pricings: dict[uuid.UUID, PricingSnapshot | None] | None = None,
+) -> dict[uuid.UUID, ExaminationSummary]:
+    """The examination summaries of one PAGE in ONE SQL read (no N+1).
+
+    One join against ``users`` resolves the legacy display name of a pre-DR35
+    row; the frozen ``specialist_name`` of newer rows is never recomputed. The
+    frozen сверка totals arrive already validated (``reconciliation_summaries``)
+    — no second validation pass, no VetIS call, no per-row query.
+    """
+    if not party_ids or not await _examinations_available(db):
+        return {}
+    rows = await db.execute(
+        select(Examination, User.full_name)
+        .join(User, User.id == func.coalesce(Examination.specialist_id, Examination.created_by), isouter=True)
+        .where(Examination.party_id.in_(party_ids))
+    )
+    pricings = reconciliation_pricings or {}
+    return {
+        examination.party_id: _examination_summary_of(
+            examination, legacy_name, pricings.get(examination.party_id)
+        )
+        for examination, legacy_name in rows.all()
+    }
+
+
 async def build_incoming_view(
     db: AsyncSession,
     party: Party,
     document: IncomingDocument,
     *,
     reconciliation_summary: ReconciliationSummary | None | _UNSET = _UNSET(),
+    examination_summary: ExaminationSummary | None | _UNSET = _UNSET(),
 ) -> IncomingView:
     """The API-04 ``IncomingView`` of one arrival.
 
-    ``reconciliation_summary`` carries the page's bulk read (ТЗ DR39); the
-    default sentinel loads the summary of this one party with one query for
-    the single-read endpoint.
+    ``reconciliation_summary`` carries the page's bulk read (ТЗ DR39);
+    ``examination_summary`` carries the page's bulk ВСЭ read (ТЗ DR44). The
+    default sentinels load the summaries of this one party with one query each
+    for the single-read endpoint.
     """
     if isinstance(reconciliation_summary, _UNSET):
         summary = (await reconciliation_summaries(db, [party.id])).get(party.id)
     else:
         summary = reconciliation_summary
+    if isinstance(examination_summary, _UNSET):
+        exam_summary = (
+            await examination_summaries(
+                db,
+                [party.id],
+                {party.id: summary.pricing if summary is not None else None},
+            )
+        ).get(party.id)
+    else:
+        exam_summary = examination_summary
     has_reconciliation, confirmation = await started_flags(db, party.id)
     document_payload = document.source_snapshot["vdDocument"]
     batch = document_payload["batch"] if isinstance(document_payload, dict) else {}
@@ -679,6 +787,7 @@ async def build_incoming_view(
         reconciliation=summary,
         queue=queue_label,
         examination_id=str(examination_id) if examination_id is not None else None,
+        examination=exam_summary,
         revision=party.rev,
         # ТЗ DR9 §6: freshness is shown SEPARATELY from the local queue state;
         # the list gate (arrival_page) already excludes stale rows from EXPECTED.

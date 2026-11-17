@@ -297,6 +297,13 @@ export const ICON_DEFINITIONS: Readonly<Record<string, readonly IconPart[]>> = O
     ["path", { d: "M8 2h8" }],
     ["path", { d: "M7 16h10" }],
   ],
+  // ТЗ DR44 §3: доступная подсказка «Что входит в стоимость» (VseIcon.js
+  // реестр + Storybook, затем этот адаптер).
+  "question-circle": [
+    ["circle", { cx: "12", cy: "12", r: "9" }],
+    ["path", { d: "M9.5 9.2a2.5 2.5 0 1 1 3.55 2.27c-.76.35-1.55 1-1.55 1.83v.3" }],
+    ["line", { x1: "12", y1: "16.6", x2: "12", y2: "16.61" }],
+  ],
 });
 
 export type IconName = keyof typeof ICON_DEFINITIONS & string;
@@ -397,3 +404,6 @@ export const EXAM_SECTION_ICON_NAMES: readonly IconName[] = Object.freeze([
   "exam-research",
   "exam-sample",
 ]);
+
+/** ТЗ DR44 §3: help icons of accessible tooltips (VseIcon.js + this adapter). */
+export const HELP_ICON_NAMES: readonly IconName[] = Object.freeze(["question-circle"]);

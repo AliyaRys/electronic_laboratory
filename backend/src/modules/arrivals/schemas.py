@@ -1,4 +1,4 @@
-"""API-04 arrival read/write contracts (strict DTOs, ``extra=forbid``).
+﻿"""API-04 arrival read/write contracts (strict DTOs, ``extra=forbid``).
 
 The source snapshot is the external eVSD shape as received from VetIS: it is
 validated strictly on import and stored as JSONB. Product levels are kept
@@ -19,7 +19,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from backend.src.core.problems import ProblemItem
-from backend.src.modules.catalog_pricing.schemas import PricingSnapshot
+from backend.src.modules.catalog_pricing.schemas import MoneyStringType, PricingSnapshot
 from backend.src.modules.integrations.vetis.models import VetisContour
 
 __all__ = [
@@ -34,6 +34,7 @@ __all__ = [
     "ClassificationEntry",
     "ConfirmationSummary",
     "ReconciliationSummary",
+    "ExaminationSummary",
     "IncomingView",
     "Comparison",
     "Inspection",
@@ -409,6 +410,30 @@ class ReconciliationSummary(BaseModel):
     pricing: PricingSnapshot | None = None
 
 
+class ExaminationSummary(BaseModel):
+    """ТЗ DR44 §2: the compact server-side summary of the saved ВСЭ.
+
+    Sources of truth: the frozen ``Examination`` row (number/status/outcome/
+    ``specialist_name`` — NEVER ``created_by`` or the current user) and the
+    frozen ``pricing_snapshot`` validated through the strict ``PricingSnapshot``.
+    ``combined_total`` is the SERVER Decimal sum of the frozen сверка total and
+    the frozen ВСЭ total; it exists ONLY when both snapshots are valid and the
+    currencies match (a missing component is never substituted by zero, and
+    ``0.00`` stays data).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    number: str
+    status: str
+    outcome: str | None = None
+    specialist_name: str | None = None
+    pricing: PricingSnapshot | None = None
+    combined_total: MoneyStringType | None = None
+    currency: str | None = None
+
+
 class IncomingView(BaseModel):
     """API-04 ``IncomingView``."""
 
@@ -425,6 +450,8 @@ class IncomingView(BaseModel):
     reconciliation: ReconciliationSummary | None = None
     queue: Literal["EXPECTED", "WORK", "ACCEPTED"]
     examination_id: str | None
+    # ТЗ DR44 §2: the compact ВСЭ summary of the row (absent = None).
+    examination: ExaminationSummary | None = None
     revision: int
     # ТЗ DR9 §6: the freshness diagnostics of the source observation, shown
     # separately from the local queue state (never a fabricated UTILIZED).
@@ -567,3 +594,5 @@ class ReconciliationView(BaseModel):
     route: Literal["EXAMINATION", "CONCLUSION", "NONE"] | None
     errors: list[ProblemItem]
     complete: bool
+
+

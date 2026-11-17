@@ -191,12 +191,7 @@ describe("WorkArrivalsTable", () => {
   });
 
   it("a null pricing snapshot and null author stay honest «—»", () => {
-    render(
-      <WorkArrivalsTable
-        labId={LAB}
-        items={[withReconciliation(base, null, { author_name: null })]}
-      />,
-    );
+    render(<WorkArrivalsTable labId={LAB} items={[withReconciliation(base, null, { author_name: null })]} />);
     const dashes = screen.getAllByText("—");
     expect(dashes.length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText("0,00 ₽")).toBeNull();
@@ -206,7 +201,9 @@ describe("WorkArrivalsTable", () => {
     render(
       <WorkArrivalsTable
         labId={LAB}
-        items={[withReconciliation(base, "230.00", { author_name: "Иванова Анна Петровна Очень-Очень-Длинная" })]}
+        items={[
+          withReconciliation(base, "230.00", { author_name: "Иванова Анна Петровна Очень-Очень-Длинная" }),
+        ]}
       />,
     );
     expect(screen.getByTitle("Иванова Анна Петровна Очень-Очень-Длинная")).toBeTruthy();
@@ -233,6 +230,44 @@ describe("WorkArrivalsTable", () => {
   });
 });
 
+/** ТЗ DR44 §3: the compact server examination summary of a completed row. */
+function withExamination(
+  view: IncomingView,
+  overrides: {
+    outcome?: "FIT" | "UNFIT" | null;
+    combined_total?: string | null;
+    specialist_name?: string | null;
+    number?: string;
+    expiry?: Record<string, string | null>;
+  } = {},
+): IncomingView {
+  return {
+    ...withReconciliation(view),
+    external: {
+      ...view.external,
+      fields: {
+        ...view.external.fields,
+        expiresOn: "2026-11-10",
+        expiresOnFrom: null,
+        expiresOnTo: null,
+        expiresOnInformal: null,
+        ...overrides.expiry,
+      },
+    },
+    examination: {
+      id: "77777777-1111-4222-8333-444444444444",
+      number: overrides.number ?? "Г-1024",
+      status: "COMPLETED",
+      outcome: overrides.outcome !== undefined ? overrides.outcome : "FIT",
+      specialist_name:
+        overrides.specialist_name !== undefined ? overrides.specialist_name : "Смирнова Ольга Ивановна",
+      pricing: { lines: [], total: "20.00", currency: "RUB", fair: false },
+      combined_total: overrides.combined_total !== undefined ? overrides.combined_total : "250.00",
+      currency: "RUB",
+    },
+  };
+}
+
 describe("CompletedArrivalsTable", () => {
   it("shows the completed date and the real author in the optional column", () => {
     render(
@@ -253,13 +288,102 @@ describe("CompletedArrivalsTable", () => {
     expect(screen.getByText("Иванова Анна Петровна")).toBeTruthy();
   });
 
+  // ТЗ DR44 §3: the five real values of a completed row.
+  it("shows Пригодно, the combined frozen cost, expiry, specialist and number", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[withExamination({ ...base, queue: "ACCEPTED" })]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    expect(screen.getByText("Пригодно")).toBeTruthy();
+    expect(screen.getByText("250,00 ₽")).toBeTruthy();
+    expect(screen.getByText("до 10.11.2026")).toBeTruthy();
+    expect(screen.getByText("Смирнова Ольга Ивановна")).toBeTruthy();
+    expect(screen.getByText("Г-1024")).toBeTruthy();
+  });
+
+  it("shows Непригодно for an unfit outcome", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[withExamination({ ...base, queue: "ACCEPTED" }, { outcome: "UNFIT" })]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    expect(screen.getByText("Непригодно")).toBeTruthy();
+  });
+
+  it("a saved zero combined cost stays «0,00 ₽», never «—»", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[withExamination({ ...base, queue: "ACCEPTED" }, { combined_total: "0.00" })]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    expect(screen.getByText("0,00 ₽")).toBeTruthy();
+  });
+
+  it("a missing summary or combined total keeps honest «—»", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[withExamination({ ...base, queue: "ACCEPTED" }, { combined_total: null })]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByText("0,00 ₽")).toBeNull();
+  });
+
+  it("the expiry keeps the source TYPE: single date, interval, informal and absence", () => {
+    const renderWith = (expiry: Record<string, string | null>): void => {
+      render(
+        <CompletedArrivalsTable
+          labId={LAB}
+          items={[withExamination({ ...base, queue: "ACCEPTED" }, { expiry })]}
+          hiddenColumns={new Set()}
+        />,
+      );
+    };
+    renderWith({ expiresOn: null, expiresOnFrom: "2026-11-01", expiresOnTo: "2026-11-20" });
+    expect(screen.getByText("с 01.11.2026 по 20.11.2026")).toBeTruthy();
+    renderWith({
+      expiresOn: null,
+      expiresOnFrom: null,
+      expiresOnTo: null,
+      expiresOnInformal: "до конца месяца",
+    });
+    expect(screen.getByText("до конца месяца")).toBeTruthy();
+    renderWith({ expiresOn: null, expiresOnFrom: null, expiresOnTo: null, expiresOnInformal: null });
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("the cost header carries the accessible help tooltip", async () => {
+    const user = userEvent.setup();
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[withExamination({ ...base, queue: "ACCEPTED" })]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    const help = screen.getByRole("button", { name: "Что входит в стоимость" });
+    await user.tab();
+    await user.hover(help);
+    expect(await screen.findByText("Стоимость сверки данных + стоимость ВСЭ")).toBeTruthy();
+    expect(help.getAttribute("aria-describedby")).toBeTruthy();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("Стоимость сверки данных + стоимость ВСЭ")).toBeNull();
+  });
+
   it("the date is Reconciliation.completed_at, never the receipt confirmed_at", () => {
     render(
       <CompletedArrivalsTable
         labId={LAB}
-        items={[
-          withReconciliation({ ...base, queue: "ACCEPTED" }, "230.00"),
-        ]}
+        items={[withReconciliation({ ...base, queue: "ACCEPTED" }, "230.00")]}
         hiddenColumns={new Set(["checkAuthor"])}
       />,
     );

@@ -12,11 +12,7 @@ import { RequireSession } from "./RequireSession";
 import { useMe } from "../shared/api/me";
 import { StatusView } from "../shared/ui/StatusView";
 import { Button } from "../shared/ui/Button";
-import {
-  fetchOperational,
-  operationalKey,
-  type OperationalView,
-} from "../features/reports/api";
+import { fetchOperational, operationalKey, type OperationalView } from "../features/reports/api";
 import { reportAccess } from "../features/reports/reportCapabilities";
 
 export function OperationalReportPage(): React.ReactElement {

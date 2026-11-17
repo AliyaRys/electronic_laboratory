@@ -223,4 +223,3 @@ export async function fetchReportFile(
     return { problem: networkProblem(thrown instanceof Error ? thrown.message : "Ошибка сети.") };
   }
 }
-

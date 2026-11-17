@@ -548,7 +548,9 @@ test.describe("arrivals", () => {
 
   // --- ТЗ DR39 e2e: reconciliation metadata, queue-aware sort, date filter ----
 
-  test("WORK shows the real frozen cost, author and completed date; sorting is server order with URL and F5", async ({ page }) => {
+  test("WORK shows the real frozen cost, author and completed date; sorting is server order with URL and F5", async ({
+    page,
+  }) => {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(String(error)));
     await mockSessionAndArrivals(page);
@@ -576,10 +578,15 @@ test.describe("arrivals", () => {
       }
       const queue = url.searchParams.get("queue") ?? "EXPECTED";
       if (queue !== "WORK") {
-        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+        });
       }
       // The SERVER answers in its own order; the page must never re-sort.
-      const items = url.searchParams.get("sort") === "asc" ? [older, workWithSummary] : [workWithSummary, older];
+      const items =
+        url.searchParams.get("sort") === "asc" ? [older, workWithSummary] : [workWithSummary, older];
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -629,7 +636,11 @@ test.describe("arrivals", () => {
       const queue = url.searchParams.get("queue") ?? "EXPECTED";
       if (queue === "ACCEPTED" && url.searchParams.has("page") === false) listReads.push(url.search);
       if (queue !== "ACCEPTED") {
-        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+        });
       }
       // One день exactly: the mock honours the wire filter.
       const on = url.searchParams.get("reconciled_on");
@@ -691,7 +702,9 @@ test.describe("arrivals", () => {
       });
     });
     // A stale deep link: the params are stripped from the URL and the reads.
-    await page.goto(`/labs/${LAB}/arrivals?queue=work&reconciled_on=2026-11-06&reconciled_from=2026-11-05T10%3A00%3A00%2B03%3A00`);
+    await page.goto(
+      `/labs/${LAB}/arrivals?queue=work&reconciled_on=2026-11-06&reconciled_from=2026-11-05T10%3A00%3A00%2B03%3A00`,
+    );
     await expect(page.getByText("говядина")).toBeVisible();
     await expect(page).not.toHaveURL(/reconciled/);
     expect(reads.every((entry) => !entry.includes("reconciled"))).toBe(true);
@@ -725,12 +738,262 @@ test.describe("arrivals", () => {
     await page.route("**/api/v1/arrivals?*", (route) => {
       const url = new URL(route.request().url());
       if (url.searchParams.get("queue") === "ACCEPTED") {
-        return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ code: "NETWORK", detail: "Сеть недоступна." }) });
+        return route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "NETWORK", detail: "Сеть недоступна." }),
+        });
       }
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+      });
     });
     await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
     await expect(page.getByText(/Не удалось загрузить поступления/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Повторить" })).toBeVisible();
+  });
+
+  // --- ТЗ DR44 §3 e2e: the completed arrivals row and the saved card -----------
+
+  const EXAM_ID = "77777777-1111-4222-8333-444444444444";
+
+  /** DR44 §2: the compact server-side summary attached to one accepted row. */
+  function examSummary(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: EXAM_ID,
+      number: "№ 154/2026",
+      status: "COMPLETED",
+      outcome: "FIT",
+      specialist_name: "Сафина Гульнара Ильдаровна",
+      pricing: { lines: [], total: "250.00", currency: "RUB", fair: false },
+      combined_total: "480.00",
+      currency: "RUB",
+      ...overrides,
+    };
+  }
+
+  /** An accepted row whose expiry is an INTERVAL (the type survives the trip). */
+  function acceptedWithExam(summary: Record<string, unknown>, fields: Record<string, unknown> = {}) {
+    return {
+      ...acceptedRowFixture(),
+      examination_id: EXAM_ID,
+      examination: summary,
+      external: {
+        ...singleView.external,
+        fields: {
+          ...singleView.external.fields,
+          documentUuid: "1f0e6d2a-1111-4222-8333-444444444444",
+          expiresOnFrom: "2026-11-01",
+          expiresOnTo: "2026-11-10",
+          ...fields,
+        },
+      },
+    };
+  }
+
+  function examCard(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: EXAM_ID,
+      party_id: PARTY,
+      laboratory_id: LAB,
+      number: "№ 154/2026",
+      stamp: "кл-1471",
+      status: "COMPLETED",
+      sent_to_lab: false,
+      researches: [{ indicatorId: "c8d1e50e-bf49-5475-bb82-860f6fc47e74", kind: "ENUM", value: "MATCH" }],
+      invasive_findings: [],
+      noncontagious_findings: [],
+      pricing: { lines: [], total: "250.00", currency: "RUB", fair: false },
+      sample_collection_id: "44444444-4444-4444-8444-444444444444",
+      sample: {
+        id: "44444444-4444-4444-8444-444444444444",
+        collected_on: "2026-11-05",
+        mass_kg: "0.800000",
+        revision: 1,
+      },
+      outcome: "FIT",
+      direction: "SALE",
+      reason: null,
+      specialist_id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+      specialist_name: "Сафина Гульнара Ильдаровна",
+      created_by: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+      created_at: "2026-11-06T10:00:00Z",
+      first_completed_at: "2026-11-06T12:00:00Z",
+      revision: 1,
+      ...overrides,
+    };
+  }
+
+  async function mockExaminationRead(page: Page, view: Record<string, unknown>): Promise<void> {
+    await page.route(`**/api/v1/examinations/${EXAM_ID}`, (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(view) });
+      }
+      return route.fulfill({ status: 405, contentType: "application/json", body: "{}" });
+    });
+  }
+
+  test("DR44: the FIT row carries all five values and opens the saved card, then returns to ACCEPTED", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockSessionAndArrivals(page);
+    const row = acceptedWithExam(examSummary());
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("laboratory_id") !== LAB) {
+        return route.fulfill({ status: 403, contentType: "application/json", body: "{}" });
+      }
+      const queue = url.searchParams.get("queue") ?? "EXPECTED";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: queue === "ACCEPTED" ? [row] : [],
+          total: queue === "ACCEPTED" ? 1 : 0,
+          page: 1,
+          page_size: 20,
+        }),
+      });
+    });
+    await page.route(`**/api/v1/arrivals/${PARTY}`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(row) }),
+    );
+    await mockExaminationRead(page, examCard());
+
+    await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
+    // The five DR44 §3 column values of one row.
+    await expect(page.getByRole("cell", { name: "Пригодно", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "480,00 ₽", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "с 01.11.2026 по 10.11.2026" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Сафина Гульнара Ильдаровна" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "№ 154/2026" })).toBeVisible();
+    // The accessible cost hint stays with the header.
+    await expect(page.getByRole("button", { name: "Что входит в стоимость" })).toBeVisible();
+
+    // The eye action opens the SAVED card (the real examination id).
+    await page.getByRole("link", { name: "Открыть карточку ВСЭ" }).click();
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/examinations/${EXAM_ID}`));
+    await expect(page.getByRole("heading", { name: "ВСЭ № 154/2026" })).toBeVisible();
+    await expect(page.getByLabel("Результат")).toHaveValue("Пригодно · В реализацию без ограничений");
+    await expect(page.getByLabel("Специалист Госветслужбы")).toHaveValue("Сафина Гульнара Ильдаровна");
+
+    // Back: the ACCEPTED row keeps all five values (no refetch fabrication).
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/arrivals\\?queue=accepted`));
+    await expect(page.getByRole("cell", { name: "Пригодно", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "480,00 ₽", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "№ 154/2026" })).toBeVisible();
+    expect(errors).toEqual([]);
+    await shot(page, "dr44-accepted-fit-row");
+  });
+
+  test("DR44: UNFIT shows «Непригодно» in the row; direction and reason live only in the card", async ({
+    page,
+  }) => {
+    await mockSessionAndArrivals(page);
+    const summary = examSummary({
+      outcome: "UNFIT",
+      pricing: { lines: [], total: "300.00", currency: "RUB", fair: false },
+      combined_total: "530.00",
+    });
+    const row = acceptedWithExam(summary);
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("laboratory_id") !== LAB) {
+        return route.fulfill({ status: 403, contentType: "application/json", body: "{}" });
+      }
+      const queue = url.searchParams.get("queue") ?? "EXPECTED";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: queue === "ACCEPTED" ? [row] : [],
+          total: queue === "ACCEPTED" ? 1 : 0,
+          page: 1,
+          page_size: 20,
+        }),
+      });
+    });
+    await page.route(`**/api/v1/arrivals/${PARTY}`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(row) }),
+    );
+    await mockExaminationRead(
+      page,
+      examCard({
+        outcome: "UNFIT",
+        direction: "DISPOSAL",
+        reason: "Посторонние включения",
+      }),
+    );
+
+    await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
+    await expect(page.getByRole("cell", { name: "Непригодно", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "530,00 ₽", exact: true })).toBeVisible();
+    // The compact column never carries the direction or the reason.
+    await expect(page.getByText("На утилизацию")).toHaveCount(0);
+    await expect(page.getByText("Посторонние включения")).toHaveCount(0);
+
+    // The card itself carries the direction and the reason.
+    await page.getByRole("link", { name: "Открыть карточку ВСЭ" }).click();
+    await expect(page.getByLabel("Результат")).toHaveValue("Непригодно · На утилизацию");
+    await expect(page.getByLabel("Причина направления")).toHaveValue("Посторонние включения");
+    await shot(page, "dr44-unfit-card");
+  });
+
+  test("DR44: a WAITING card fabricates no outcome and stays out of ACCEPTED", async ({ page }) => {
+    await mockSessionAndArrivals(page);
+    const waitingRow = {
+      ...acceptedRowFixture(),
+      queue: "WORK",
+      examination_id: EXAM_ID,
+      examination: examSummary({
+        status: "WAITING",
+        outcome: null,
+        specialist_name: null,
+        combined_total: null,
+      }),
+    };
+    await page.route("**/api/v1/arrivals?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("laboratory_id") !== LAB) {
+        return route.fulfill({ status: 403, contentType: "application/json", body: "{}" });
+      }
+      const queue = url.searchParams.get("queue") ?? "EXPECTED";
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: queue === "WORK" ? [waitingRow] : [],
+          total: queue === "WORK" ? 1 : 0,
+          page: 1,
+          page_size: 20,
+        }),
+      });
+    });
+    await page.route(`**/api/v1/arrivals/${PARTY}`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(waitingRow),
+      }),
+    );
+    await mockExaminationRead(page, examCard({ status: "WAITING", outcome: null, direction: null }));
+
+    // ACCEPTED lists nothing: a waiting card is not a completed arrival.
+    await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
+    await expect(page.getByText("По заданным условиям завершенные поступления не найдены")).toBeVisible();
+    await expect(page.getByText("Пригодно")).toHaveCount(0);
+    await expect(page.getByText("Непригодно")).toHaveCount(0);
+
+    // The waiting card itself shows no fabricated conclusion.
+    await page.goto(`/labs/${LAB}/examinations/${EXAM_ID}`);
+    await expect(page.getByRole("heading", { name: "ВСЭ № 154/2026" })).toBeVisible();
+    await expect(page.getByText("Итог не указан: карточка ожидает ответа лаборатории.")).toBeVisible();
+    await expect(page.getByText("Пригодно · В реализацию без ограничений")).toHaveCount(0);
+    await shot(page, "dr44-waiting-honest");
   });
 });

@@ -841,3 +841,54 @@
   outline: 3px solid #75bfc2;
   outline-offset: 1px;
 }
+
+/* ТЗ DR44 §3: доступная подсказка в заголовке таблицы. Иконка-триггер не
+   сдвигает макет (инлайн после текста), всплывающий текст позиционируется
+   абсолютно и не обрезается скроллером таблицы. */
+.app-table-header-compound {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.app-help-tooltip {
+  position: relative;
+  display: inline-flex;
+}
+.app-help-tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--app-muted-readable);
+  cursor: help;
+}
+.app-help-tooltip-trigger svg {
+  width: 16px;
+  height: 16px;
+}
+.app-help-tooltip-trigger:focus-visible {
+  outline: 2px solid var(--app-focus, #1d4ed8);
+  outline-offset: 1px;
+}
+.app-help-tooltip-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 200px;
+  padding: 8px 10px;
+  border: 1px solid var(--app-line);
+  border-radius: 8px;
+  background: var(--app-panel);
+  color: var(--app-text, #1a1a1a);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 12%);
+  white-space: nowrap;
+  text-transform: none;
+}

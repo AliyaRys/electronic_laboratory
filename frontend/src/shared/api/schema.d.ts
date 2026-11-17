@@ -1802,6 +1802,53 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /**
+         * ExaminationSampleView
+         * @description ТЗ DR44 §2/Task 3: the linked physical sample fact of the card.
+         *
+         *     Read through ``ExaminationSample -> SampleCollection`` with ONE join —
+         *     never by searching the party's collection list. ``revision`` is the card
+         *     revision the read happened at (the card ``rev``).
+         */
+        ExaminationSampleView: {
+            /** Id */
+            id: string;
+            /** Collected On */
+            collected_on: string;
+            /** Mass Kg */
+            mass_kg: string;
+            /** Revision */
+            revision: number;
+        };
+        /**
+         * ExaminationSummary
+         * @description ТЗ DR44 §2: the compact server-side summary of the saved ВСЭ.
+         *
+         *     Sources of truth: the frozen ``Examination`` row (number/status/outcome/
+         *     ``specialist_name`` — NEVER ``created_by`` or the current user) and the
+         *     frozen ``pricing_snapshot`` validated through the strict ``PricingSnapshot``.
+         *     ``combined_total`` is the SERVER Decimal sum of the frozen сверка total and
+         *     the frozen ВСЭ total; it exists ONLY when both snapshots are valid and the
+         *     currencies match (a missing component is never substituted by zero, and
+         *     ``0.00`` stays data).
+         */
+        ExaminationSummary: {
+            /** Id */
+            id: string;
+            /** Number */
+            number: string;
+            /** Status */
+            status: string;
+            /** Outcome */
+            outcome?: string | null;
+            /** Specialist Name */
+            specialist_name?: string | null;
+            pricing?: components["schemas"]["PricingSnapshot"] | null;
+            /** Combined Total */
+            combined_total?: string | null;
+            /** Currency */
+            currency?: string | null;
+        };
         /** ExaminationView */
         ExaminationView: {
             /** Id */
@@ -1830,6 +1877,7 @@ export interface components {
             };
             /** Sample Collection Id */
             sample_collection_id: string;
+            sample: components["schemas"]["ExaminationSampleView"];
             /** Outcome */
             outcome: string | null;
             /** Direction */
@@ -1964,6 +2012,7 @@ export interface components {
             queue: "EXPECTED" | "WORK" | "ACCEPTED";
             /** Examination Id */
             examination_id: string | null;
+            examination?: components["schemas"]["ExaminationSummary"] | null;
             /** Revision */
             revision: number;
             /**

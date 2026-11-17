@@ -122,7 +122,11 @@ export function ReconciliationDateFilter({
         <span>{summary !== "" ? summary : "Выбрать дату"}</span>
       </button>
       {open ? (
-        <div className="arrivals-columns-popover arrivals-date-popover" role="group" aria-label="Дата сверки данных">
+        <div
+          className="arrivals-columns-popover arrivals-date-popover"
+          role="group"
+          aria-label="Дата сверки данных"
+        >
           <div className="arrivals-columns-title">Дата сверки данных</div>
           <fieldset className="arrivals-date-modes">
             <label>

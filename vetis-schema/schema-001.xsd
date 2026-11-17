@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema targetNamespace="http://api.vetrf.ru/schema/cdm/application/ws-definitions" elementFormDefault="qualified" version="1.4" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:apl="http://api.vetrf.ru/schema/cdm/application" xmlns:bs="http://api.vetrf.ru/schema/cdm/base">
+
+    <xs:import namespace="http://api.vetrf.ru/schema/cdm/base" schemaLocation="http://api2.vetrf.ru:80/platform/services/2.0/ApplicationManagementService?SCHEMA%2FCanonicalDataModel_14%2Fwsdl%2Fxsd%2Fbase_v1.4"/>
+    <xs:import namespace="http://api.vetrf.ru/schema/cdm/application" schemaLocation="http://api2.vetrf.ru:80/platform/services/2.0/ApplicationManagementService?SCHEMA%2FCanonicalDataModel_14%2Fwsdl%2Fxsd%2Fapplication_v1.4"/>
+
+    <xs:element name="unsupportedApplicationDataTypeFault" type="bs:FaultInfo"/>
+    <xs:element name="unknownServiceIdFault" type="bs:FaultInfo"/>
+
+    <xs:element name="submitApplicationRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="apiKey" type="apl:APIKey" minOccurs="1" maxOccurs="1"/>
+                <xs:element ref="apl:application" minOccurs="1" maxOccurs="1"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="submitApplicationResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element ref="apl:application" minOccurs="1" maxOccurs="1"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="receiveApplicationResultRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="apiKey" type="apl:APIKey" minOccurs="1" maxOccurs="1"/>
+                <xs:element name="issuerId" type="bs:UUID" minOccurs="1" maxOccurs="1"/>
+                <xs:element name="applicationId" type="bs:UUID" minOccurs="1" maxOccurs="1"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="receiveApplicationResultResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element ref="apl:application" minOccurs="1" maxOccurs="1"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+</xs:schema>

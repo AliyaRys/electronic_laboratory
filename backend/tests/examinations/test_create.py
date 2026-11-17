@@ -26,6 +26,7 @@ from backend.src.modules.catalog_pricing.mandatory import (
 from backend.src.modules.catalog_pricing.models import MethodRule, Tariff
 from backend.src.modules.examinations.commands import save_examination
 from backend.src.modules.examinations.models import Examination, ExaminationSample
+from backend.src.modules.examinations.queries import get_view
 from backend.src.modules.examinations.schemas import ExaminationWrite
 from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole, UserScope
@@ -449,6 +450,43 @@ async def test_create_and_read_api_contract(db_session: AsyncSession, test_db_en
         assert fetched.status_code == 200
         assert fetched.json()["party_id"] == str(party.id)
         assert fetched.headers["cache-control"] == "no-store"
+
+
+async def test_view_carries_the_linked_sample_not_a_list_search(
+    db_session: AsyncSession, env: SimpleNamespace
+) -> None:
+    """ТЗ DR44 Task 3: the sample comes from the ExaminationSample link."""
+    await configure(db_session, env.lab.id, BEEF, trich=False)
+    party = await party_with_confirmation(db_session, env.lab.id, BEEF)
+    created = await save_examination(
+        context(env.actor.id),
+        party.id,
+        payload(trich=False, specialist_id=env.actor.id, expected_total="15.00"),
+        uow=db_session,
+    )
+    # Many later collections of the same party: the linked one is never
+    # "the first item of the page".
+    from datetime import date as date_type
+
+    for index in range(25):
+        db_session.add(
+            SampleCollection(
+                party_id=party.id,
+                laboratory_id=env.lab.id,
+                product_species_id=BEEF,
+                classification_snapshot={},
+                collected_on=date_type(2026, 1, index % 28 + 1),
+                mass_kg=Decimal("0.5"),
+                collected_by=env.actor.id,
+            )
+        )
+    await db_session.commit()
+    view = await get_view(db_session, uuid.UUID(created.id))
+    assert view.sample is not None
+    assert view.sample.id == created.sample_collection_id
+    assert view.sample.collected_on == date_type.today().isoformat()
+    assert Decimal(view.sample.mass_kg) == Decimal("0.800000")
+    assert view.sample.revision == 1
 
 
 def test_waiting_and_outcome_matrix_are_strict() -> None:

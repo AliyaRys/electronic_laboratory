@@ -77,6 +77,13 @@ function card(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     noncontagious_findings: [],
     pricing: { lines: [], total: "250.00", currency: "RUB", fair: false },
     sample_collection_id: COLLECTION,
+    // DR44 Task 3: the linked physical sample fact of the card (GET contract).
+    sample: {
+      id: COLLECTION,
+      collected_on: "2026-11-06",
+      mass_kg: "12.6",
+      revision: 1,
+    },
     outcome: null,
     direction: null,
     reason: null,
@@ -573,5 +580,92 @@ test.describe("examination lifecycle", () => {
     if (inputBox === null || panelBox === null) throw new Error("panel or input not found");
     expect(panelBox.y - (inputBox.y + inputBox.height)).toBeGreaterThanOrEqual(-1);
     await shot(page, "dr30-parity-1440");
+  });
+
+  // --- ТЗ DR44 §4 e2e: the saved-card view matches vse-view -------------------
+
+  test("DR44: the saved COMPLETED FIT view shows sections, researches, sample, outcome, specialist and frozen pricing", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockMe(page);
+    await mockParty(page);
+    await mockExamination(
+      page,
+      card({
+        status: "COMPLETED",
+        outcome: "FIT",
+        direction: "SALE",
+        specialist_name: "Сафина Гульнара Ильдаровна",
+        first_completed_at: "2026-11-07T11:00:00Z",
+        pricing: {
+          lines: [
+            {
+              service_code: "ec2fba68-e4d1-5c82-9591-92ee9da5293e",
+              name: "Температура в толще мышц",
+              quantity: "1",
+              unit_id: "service",
+              unit_price: "5.00",
+              amount: "5.00",
+            },
+          ],
+          total: "255.00",
+          currency: "RUB",
+          fair: false,
+        },
+      }),
+    );
+    await page.goto(`/labs/${LAB}/examinations/${EXAM}`);
+
+    // The mockup title row: eyebrow + «ВСЭ № 12/2026».
+    await expect(page.getByText("Просмотр записи")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "ВСЭ № 12/2026" })).toBeVisible();
+
+    // The six mockup sections, in order.
+    const titles = [
+      "Сведения об экспертизе",
+      "Участники и продукция",
+      "Исследования ВСЭ",
+      "Проба",
+      "Итог экспертизы",
+      "Расчёт стоимости услуг",
+    ];
+    let previousY = -1;
+    for (const title of titles) {
+      const heading = page.getByRole("heading", { name: title, level: 2 });
+      await expect(heading).toBeVisible();
+      const box = (await heading.boundingBox()) as { y: number };
+      expect(box.y).toBeGreaterThan(previousY);
+      previousY = box.y;
+    }
+
+    // Researches carry the canonical Russian names, never «Показатель <uuid>».
+    await expect(page.getByText("Органолептическое исследование").first()).toBeVisible();
+    await expect(page.getByText("Идентификация продукции").first()).toBeVisible();
+    await expect(page.getByText("Температура в толще мышц").first()).toBeVisible();
+    await expect(page.getByText(/Показатель /)).toHaveCount(0);
+    // Typed value formatting matches the create form (4,5 °C).
+    await expect(
+      page
+        .locator('article[data-indicator-id="ec2fba68-e4d1-5c82-9591-92ee9da5293e"]')
+        .getByLabel("Сохранённое значение"),
+    ).toHaveValue("4,5 °C");
+
+    // The linked physical sample (view.sample), not a generic phrase.
+    await expect(page.getByLabel("Дата отбора пробы")).toHaveValue("06.11.2026");
+    await expect(page.getByLabel("Масса пробы, кг")).toHaveValue("12,6");
+    await expect(page.getByText("Отбор пробы этой партии")).toHaveCount(0);
+
+    // The saved outcome, direction, specialist and first completion.
+    await expect(page.getByLabel("Результат")).toHaveValue("Пригодно · В реализацию без ограничений");
+    await expect(page.getByLabel("Специалист Госветслужбы")).toHaveValue("Сафина Гульнара Ильдаровна");
+    await expect(page.getByLabel("Дата первого завершения")).toHaveValue("07.11.2026 14:00"); // 11:00Z → мск
+
+    // The frozen pricing snapshot: the line and the frozen total, no preview.
+    await expect(page.getByText("Итого к оплате")).toBeVisible();
+    await expect(page.getByText("255,00 ₽").first()).toBeVisible();
+    expect(errors).toEqual([]);
+    await shot(page, "dr44-completed-fit-view");
   });
 });

@@ -135,6 +135,27 @@ const acceptedRows: IncomingView[] = [
     },
     examination_id: "77777777-1111-4222-8333-444444444444",
     reconciliation: summary("2026-11-05T07:10:00Z", "230.00", "Иванова Анна Петровна"),
+    // ТЗ DR44 §3: the real server summary fills ВСЭ/Стоимость/Срок/Автор/Номер.
+    external: {
+      ...party({}).external,
+      fields: {
+        ...party({}).external.fields,
+        expiresOn: "2026-11-10",
+        expiresOnFrom: null,
+        expiresOnTo: null,
+        expiresOnInformal: null,
+      },
+    },
+    examination: {
+      id: "77777777-1111-4222-8333-444444444444",
+      number: "Г-1024",
+      status: "COMPLETED",
+      outcome: "FIT",
+      specialist_name: "Смирнова Ольга Ивановна",
+      pricing: { lines: [], total: "20.00", currency: "RUB", fair: false },
+      combined_total: "250.00",
+      currency: "RUB",
+    },
   }),
   party({
     party_id: "0c1b2d3e-1111-4222-8333-444444444444",
@@ -150,6 +171,16 @@ const acceptedRows: IncomingView[] = [
     },
     examination_id: null,
     reconciliation: summary("2026-11-06T08:35:00Z", "230.00", "Смирнов Пётр Васильевич"),
+    external: {
+      ...party({}).external,
+      fields: {
+        ...party({}).external.fields,
+        expiresOn: null,
+        expiresOnFrom: "2026-11-01",
+        expiresOnTo: "2026-11-20",
+        expiresOnInformal: null,
+      },
+    },
   }),
 ];
 
@@ -245,14 +276,23 @@ export const ФильтрыВРаботе: StoryObj = {
   name: "Панель фильтров / в работе (сортировка сверки)",
   render: () => (
     <div style={{ padding: 16, background: "#f5f9f8" }}>
-      <ArrivalsFilters q="" onSearch={() => {}} sort="desc" onSortChange={() => {}} sortLabels={SORT_LABELS_BY_QUEUE.WORK} />
+      <ArrivalsFilters
+        q=""
+        onSearch={() => {}}
+        sort="desc"
+        onSortChange={() => {}}
+        sortLabels={SORT_LABELS_BY_QUEUE.WORK}
+      />
     </div>
   ),
 };
 
 // --- ТЗ DR39 §7: the reconciliation date filter states ----------------------------
 
-const dateFilterGrid = (applied: { on: string; from: string; to: string }, initialOpen = false): React.ReactElement => (
+const dateFilterGrid = (
+  applied: { on: string; from: string; to: string },
+  initialOpen = false,
+): React.ReactElement => (
   <div style={{ padding: 16, background: "#f5f9f8", display: "flex", gap: 16, flexWrap: "wrap" }}>
     <ReconciliationDateFilter applied={applied} onApply={() => {}} initialOpen={initialOpen} />
   </div>
@@ -293,8 +333,7 @@ function RangeErrorStory(): React.ReactElement {
 
 export const ДатаФильтрДлиннаяСводка: StoryObj = {
   name: "Фильтр даты сверки / длинная подпись",
-  render: () =>
-    dateFilterGrid({ on: "", from: "2026-11-05T10:00", to: "2026-12-31T23:59" }),
+  render: () => dateFilterGrid({ on: "", from: "2026-11-05T10:00", to: "2026-12-31T23:59" }),
 };
 
 export const ДатаФильтрУзкийЭкран: StoryObj = {

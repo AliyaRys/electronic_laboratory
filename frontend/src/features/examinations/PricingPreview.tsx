@@ -31,7 +31,11 @@ export function normCriterion(line: { method_snapshot?: { rule?: unknown } | nul
     if (typed.lower === undefined && typed.upper === undefined) return null;
     return `от ${typed.lower ?? "—"} до ${typed.upper ?? "—"}`;
   }
-  if (typed.type === "qualitative" && Array.isArray(typed.accepted_values) && typed.accepted_values.length > 0) {
+  if (
+    typed.type === "qualitative" &&
+    Array.isArray(typed.accepted_values) &&
+    typed.accepted_values.length > 0
+  ) {
     return `норма: ${typed.accepted_values.join(", ")}`;
   }
   return null;

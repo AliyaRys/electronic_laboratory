@@ -337,7 +337,11 @@ export function ExaminationForm({
         onChange={(next) => form.setValue("sample", next.sample, { shouldDirty: true })}
       />
 
-      <FormSection icon="check-complete" title="Итог экспертизы" description="Заключение, стоимость и специалист, проводивший ВСЭ.">
+      <FormSection
+        icon="check-complete"
+        title="Итог экспертизы"
+        description="Заключение, стоимость и специалист, проводивший ВСЭ."
+      >
         {/* ТЗ DR42 §6: the mockup grid — дата и отметка занимают широкую
             строку, result/direction/specialist идут колонками по 4. */}
         <div className="vse-exam-grid">
@@ -353,7 +357,11 @@ export function ExaminationForm({
                 disabled={busy}
                 aria-label="Дата отбора проб"
                 onChange={(event) =>
-                  form.setValue("sample", { ...values.sample, collectedOn: event.target.value }, { shouldDirty: true })
+                  form.setValue(
+                    "sample",
+                    { ...values.sample, collectedOn: event.target.value },
+                    { shouldDirty: true },
+                  )
                 }
               />
             </label>
@@ -377,7 +385,8 @@ export function ExaminationForm({
             />
           ) : (
             <p className="vse-exam-note vse-span12">
-              Карточка в ожидании: итог и направление вводятся отдельным действием после ответа специальной лаборатории.
+              Карточка в ожидании: итог и направление вводятся отдельным действием после ответа специальной
+              лаборатории.
             </p>
           )}
           <SpecialistChoice
@@ -521,7 +530,9 @@ function SpecialistChoice({
         disabled={disabled}
         onChange={onChange}
       />
-      <p className="vse-exam-note">Выбран специалист, проводящий ВСЭ; оператор сохранения остаётся в аудите.</p>
+      <p className="vse-exam-note">
+        Выбран специалист, проводящий ВСЭ; оператор сохранения остаётся в аудите.
+      </p>
     </div>
   );
 }

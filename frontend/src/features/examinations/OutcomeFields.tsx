@@ -75,7 +75,8 @@ export function OutcomeFields({
                 : next === "UNFIT"
                   ? {
                       outcome: "UNFIT",
-                      direction: value.direction === "" || value.direction === "SALE" ? "DISPOSAL" : value.direction,
+                      direction:
+                        value.direction === "" || value.direction === "SALE" ? "DISPOSAL" : value.direction,
                       reason: value.reason,
                     }
                   : { outcome: "", direction: "", reason: "" },

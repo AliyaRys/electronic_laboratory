@@ -43,19 +43,52 @@ function OpenStory(): React.ReactElement {
 }
 
 export const Placeholder: Story = {
-  render: () => <SelectDropdown label="Результат ВСЭ" value="" options={RESULT_OPTIONS} placeholder="Выберите результат" onChange={() => {}} />,
+  render: () => (
+    <SelectDropdown
+      label="Результат ВСЭ"
+      value=""
+      options={RESULT_OPTIONS}
+      placeholder="Выберите результат"
+      onChange={() => {}}
+    />
+  ),
 };
 
 export const Selected: Story = {
-  render: () => <SelectDropdown label="Результат ВСЭ" value="UNFIT" options={RESULT_OPTIONS} placeholder="Выберите результат" onChange={() => {}} />,
+  render: () => (
+    <SelectDropdown
+      label="Результат ВСЭ"
+      value="UNFIT"
+      options={RESULT_OPTIONS}
+      placeholder="Выберите результат"
+      onChange={() => {}}
+    />
+  ),
 };
 
 export const Disabled: Story = {
-  render: () => <SelectDropdown label="Результат ВСЭ" value="" options={RESULT_OPTIONS} placeholder="Выберите результат" disabled onChange={() => {}} />,
+  render: () => (
+    <SelectDropdown
+      label="Результат ВСЭ"
+      value=""
+      options={RESULT_OPTIONS}
+      placeholder="Выберите результат"
+      disabled
+      onChange={() => {}}
+    />
+  ),
 };
 
 export const LongNames: Story = {
-  render: () => <SelectDropdown label="Направление по результатам ВСЭ" value="" options={LONG_OPTIONS} placeholder="Выберите направление" onChange={() => {}} />,
+  render: () => (
+    <SelectDropdown
+      label="Направление по результатам ВСЭ"
+      value=""
+      options={LONG_OPTIONS}
+      placeholder="Выберите направление"
+      onChange={() => {}}
+    />
+  ),
 };
 
 export const OpenWithOverlay: Story = {

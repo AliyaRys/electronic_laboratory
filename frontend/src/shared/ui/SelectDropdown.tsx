@@ -46,7 +46,8 @@ export function SelectDropdown({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const listboxId = id ?? `select-${useId()}`;
+  const generatedId = useId();
+  const listboxId = id ?? `select-${generatedId}`;
   const labelId = `${listboxId}-label`;
 
   const selected = value === "" ? null : (options.find((option) => option.value === value) ?? null);
@@ -109,7 +110,12 @@ export function SelectDropdown({
       return;
     }
     if (!open) {
-      if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (
+        event.key === "Enter" ||
+        event.key === " " ||
+        event.key === "ArrowDown" ||
+        event.key === "ArrowUp"
+      ) {
         event.preventDefault();
         openList();
       }

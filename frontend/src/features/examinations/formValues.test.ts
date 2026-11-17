@@ -29,7 +29,10 @@ function valuesWith(researches: ExaminationFormValues["researches"]): Examinatio
   // Universally mandatory FT researches are always performed in these fixtures.
   for (const def of INDICATORS) {
     if (def.mandatory && researches[def.id] === undefined) {
-      researches[def.id] = emptyResearch({ performed: true, value: def.kind === "DECIMAL" ? "4" : def.options?.[0]?.value ?? "" });
+      researches[def.id] = emptyResearch({
+        performed: true,
+        value: def.kind === "DECIMAL" ? "4" : (def.options?.[0]?.value ?? ""),
+      });
     }
   }
   return {

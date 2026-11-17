@@ -761,7 +761,9 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border 0.15s, box-shadow 0.15s;
+  transition:
+    border 0.15s,
+    box-shadow 0.15s;
 }
 .app-select-trigger:hover:not(:disabled) {
   border-color: #a6c4c5;

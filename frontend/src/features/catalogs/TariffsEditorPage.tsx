@@ -117,7 +117,8 @@ export function TariffsEditorPage(): React.ReactElement {
     queryFn: ({ signal }) => fetchTariffsContext(laboratoryId ?? "", signal),
     enabled: scoped,
   });
-  const tariffContextData = tariffsContext.data !== undefined && !("code" in tariffsContext.data) ? tariffsContext.data : null;
+  const tariffContextData =
+    tariffsContext.data !== undefined && !("code" in tariffsContext.data) ? tariffsContext.data : null;
 
   // The species scope: the URL value first, then the laboratory's assigned
   // product scope (only when it is a real species, never the legacy
@@ -295,9 +296,12 @@ export function TariffsEditorPage(): React.ReactElement {
     );
   }
 
-  const tariffsProblem = tariffs.data !== undefined && "code" in tariffs.data ? (tariffs.data as Problem) : null;
+  const tariffsProblem =
+    tariffs.data !== undefined && "code" in tariffs.data ? (tariffs.data as Problem) : null;
   const contextProblem =
-    tariffsContext.data !== undefined && "code" in tariffsContext.data ? (tariffsContext.data as Problem) : null;
+    tariffsContext.data !== undefined && "code" in tariffsContext.data
+      ? (tariffsContext.data as Problem)
+      : null;
   const legacyTariffs = tariffContextData?.legacy_tariffs ?? [];
 
   return (
@@ -314,7 +318,9 @@ export function TariffsEditorPage(): React.ReactElement {
       ) : contextProblem !== null ? (
         <StatusView
           state={contextProblem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
-          title={contextProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить контекст справочника."}
+          title={
+            contextProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить контекст справочника."
+          }
           detail={contextProblem.detail}
           onRetry={() => void tariffsContext.refetch()}
         />
@@ -351,9 +357,9 @@ export function TariffsEditorPage(): React.ReactElement {
                 laboratories, no price substitution. */}
             {legacyTariffs.length > 0 ? (
               <article className="vse-catalog-diag" data-testid="tariffs-legacy-diag">
-                Обнаружено устаревших строк тарифов, требующих миграции: {legacyTariffs.length}. В них видом продукции
-                ошибочно записан идентификатор лаборатории; расчёт их не использует. Обратитесь к ответственному за
-                прейскурант для переноса цен на реальные виды продукции.
+                Обнаружено устаревших строк тарифов, требующих миграции: {legacyTariffs.length}. В них видом
+                продукции ошибочно записан идентификатор лаборатории; расчёт их не использует. Обратитесь к
+                ответственному за прейскурант для переноса цен на реальные виды продукции.
               </article>
             ) : null}
           </section>

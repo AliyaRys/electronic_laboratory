@@ -16,7 +16,13 @@ const OPTIONS: readonly SelectOption[] = [
 function Harness(): React.ReactElement {
   const [value, setValue] = useState("");
   return (
-    <SelectDropdown label="Результат ВСЭ" value={value} options={OPTIONS} placeholder="Выберите результат" onChange={setValue} />
+    <SelectDropdown
+      label="Результат ВСЭ"
+      value={value}
+      options={OPTIONS}
+      placeholder="Выберите результат"
+      onChange={setValue}
+    />
   );
 }
 
@@ -79,9 +85,7 @@ describe("SelectDropdown", () => {
 
   it("a disabled trigger never opens the list", async () => {
     const user = userEvent.setup();
-    render(
-      <SelectDropdown label="Результат ВСЭ" value="" options={OPTIONS} disabled onChange={() => {}} />,
-    );
+    render(<SelectDropdown label="Результат ВСЭ" value="" options={OPTIONS} disabled onChange={() => {}} />);
     await user.click(screen.getByRole("button", { name: /Результат ВСЭ/ }));
     expect(screen.queryByRole("listbox")).toBeNull();
   });

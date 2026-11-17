@@ -5,7 +5,11 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { HttpResponse } from "msw";
 import { createQueryClient } from "../../app/providers";
 import { applyScenario, catalogWorker } from "../../mocks/catalog-editor-browser";
-import { RULE_TEMPERATURE, methodsScenarioHandlers, type MethodsScenario } from "../../mocks/catalog-editor-handlers";
+import {
+  RULE_TEMPERATURE,
+  methodsScenarioHandlers,
+  type MethodsScenario,
+} from "../../mocks/catalog-editor-handlers";
 import { TariffsEditorPage } from "./TariffsEditorPage";
 import { CheckServicesEditorPage } from "./CheckServicesEditorPage";
 import { MethodsEditorPage } from "./MethodsEditorPage";
@@ -132,9 +136,7 @@ export const NormsReadOnly: Story = {
 
 /** Loading skeleton внутри секции реального размера (§15.1). */
 export const NormsLoadingSkeleton: Story = {
-  render: () => (
-    <PageStory route="/catalogs?tab=methods" scenario={{ contextDelay: 600000 }} />
-  ),
+  render: () => <PageStory route="/catalogs?tab=methods" scenario={{ contextDelay: 600000 }} />,
 };
 
 /** Ошибка сети: честный статус с «Повторить» внутри рабочей области (§15.2). */
@@ -142,7 +144,9 @@ export const NormsNetworkError: Story = {
   render: () => (
     <PageStory
       route="/catalogs?tab=methods"
-      scenario={{ contextProblem: { code: "UPSTREAM", detail: "Сервер справочников недоступен.", status: 503 } }}
+      scenario={{
+        contextProblem: { code: "UPSTREAM", detail: "Сервер справочников недоступен.", status: 503 },
+      }}
     />
   ),
 };
@@ -182,8 +186,9 @@ const clickByText = (root: Document | HTMLElement, text: string): void => {
 };
 
 const setValue = (input: HTMLInputElement, value: string): void => {
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")
-    ?.set as (value: string) => void;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set as (
+    value: string,
+  ) => void;
   setter.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 };
@@ -208,7 +213,10 @@ export const NormsPartialSave: Story = {
         putResults: {
           [RULE_TEMPERATURE]: () =>
             HttpResponse.json(
-              { code: "VALIDATION_ERROR", detail: "Тип нормы не соответствует каноническому типу результата." },
+              {
+                code: "VALIDATION_ERROR",
+                detail: "Тип нормы не соответствует каноническому типу результата.",
+              },
               { status: 422 },
             ),
         },

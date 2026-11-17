@@ -159,7 +159,7 @@ async def test_plain_url_answers_completed_only(dispose_env: SimpleNamespace) ->
         assert item["evsd_uuid"] is not None
         assert item["consignor_name"] == "Хозяйство готовое"
         assert item["specialist_id"] is not None
-        assert item["specialist_name"] == "Ветеринарный врач"
+        assert item["specialist_name"] == env.vet.full_name
         assert item["first_completed_at"] is not None
 
         waiting = await http.get(  # type: ignore[attr-defined]
@@ -184,7 +184,8 @@ async def test_foreign_laboratory_is_forbidden(dispose_env: SimpleNamespace) -> 
         answer = await http.get(  # type: ignore[attr-defined]
             "/api/v1/examinations", params={"laboratory_id": str(uuid.uuid4())}
         )
-        assert answer.status_code == 403  # type: ignore[attr-defined]
+        # A foreign laboratory UUID is never confirmed (hide_foreign).
+        assert answer.status_code == 404  # type: ignore[attr-defined]
 
 
 async def test_filters_and_ordering(dispose_env: SimpleNamespace) -> None:

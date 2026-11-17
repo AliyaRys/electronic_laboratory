@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +19,9 @@ from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.confirmation import downstream_route, ensure_confirmed
 from backend.src.modules.arrivals.models import IncomingDocument, Party
 from backend.src.modules.catalog_pricing.schemas import ResearchValue
+from backend.src.core.contracts import Page
 from backend.src.modules.examinations import commands, deletion, form_model, lifecycle, queries
+from backend.src.modules.examinations import journal as journal_model
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.examinations.schemas import (
     ExaminationFormView,
@@ -28,6 +31,7 @@ from backend.src.modules.examinations.schemas import (
     PricingPreviewRequest,
     PricingPreviewResponse,
 )
+from backend.src.modules.examinations.journal import ExaminationJournalItem
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session
@@ -251,6 +255,49 @@ async def complete_waiting(
     await db.commit()
     response.headers["ETag"] = format_etag(view.revision)
     return view
+
+
+@router.get("", response_model=Page[ExaminationJournalItem])
+async def list_examination_journal(
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    laboratory_id: uuid.UUID,
+    status: Annotated[
+        Literal["WAITING", "COMPLETED"], Query(description="Статус карточки; по умолчанию COMPLETED.")
+    ] = "COMPLETED",
+    q: str | None = None,
+    outcome: Annotated[Literal["FIT", "UNFIT"] | None, Query()] = None,
+    specialist_id: uuid.UUID | None = None,
+    occurred_from: datetime | None = None,
+    occurred_to: Annotated[datetime | None, Query(description="Исключающая верхняя граница периода.")] = None,
+    sort: Annotated[Literal["asc", "desc"], Query()] = "desc",
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> Page[ExaminationJournalItem]:
+    """The scoped journal read model (ТЗ DR45 §2): a plain URL answers the
+    COMPLETED cards only; the status filter selects ``Examination.status``.
+    """
+    identity, _actor = principal
+    await authorizer.authorize(
+        db, identity.actor_id, "examination:read", ScopeTarget(laboratory_id=laboratory_id), hide_foreign=True
+    )
+    items, total = await journal_model.journal_page(
+        db,
+        laboratory_id,
+        status=status,
+        q=q,
+        outcome=outcome,
+        specialist_id=specialist_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        sort=sort,
+        page=page,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return Page[ExaminationJournalItem](
+        items=items, total=total, page=page, page_size=journal_model.JOURNAL_PAGE_SIZE
+    )
 
 
 @router.get("/{examination_id}", response_model=ExaminationView)

@@ -95,6 +95,31 @@ async function mockMe(page: Page, role = "HEAD", capabilities: string[] = REPORT
   );
 }
 
+/** The operational tile of the reports hub (a real GET on the reports page). */
+async function mockOperational(page: Page): Promise<void> {
+  await page.route("**/api/v1/reports/operational*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        processed_parties: 0,
+        product_identifications: 0,
+        transport_inspections: 0,
+        current_sample_balances: [],
+        period: { date_from: "2026-01-01T00:00:00Z", date_to: "2026-12-31T00:00:00Z" },
+      }),
+    }),
+  );
+  // The hub title needs the laboratory name (GET /api/v1/contexts/laboratories).
+  await page.route("**/api/v1/contexts/laboratories*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ laboratory_id: LAB, name: "Е2Е лаборатория А" }]),
+    }),
+  );
+}
+
 function summary(id: string, year: number, half: number): Record<string, unknown> {
   return {
     id,
@@ -218,6 +243,7 @@ test.describe("report creation", () => {
 test.describe("report list", () => {
   test("25 saved reports: page 2 shows the rest and back returns to page 1", async ({ page }) => {
     await mockMe(page);
+    await mockOperational(page);
     const items = Array.from({ length: 25 }, (_value, index) =>
       summary(`${REPORT}-${index}`, 2026, index % 2 === 0 ? 1 : 2),
     );
@@ -256,6 +282,7 @@ test.describe("report list", () => {
 
   test("the list link and create affordance are keyboard-accessible", async ({ page }) => {
     await mockMe(page);
+    await mockOperational(page);
     await page.route("**/api/v1/reports/5vet*", (route: Route) =>
       route.fulfill({
         status: 200,

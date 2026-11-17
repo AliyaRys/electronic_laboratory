@@ -327,7 +327,8 @@ test.describe("arrivals", () => {
       ["accepted", "accepted"],
     ] as const) {
       await page.goto(`/labs/${LAB}/arrivals?queue=${stage}`);
-      await expect(page.getByText("RU016:260812-005102")).toBeVisible();
+      // The UUID ВСД column shows the eVSD UUID, not the document number.
+      await expect(page.getByText("1f0e6d2a-1111-4222-8333-444444444444").first()).toBeVisible();
       await page.screenshot({
         path: `../docs/implementation/evidence/DR3-arrivals-${label}-1440.png`,
         fullPage: true,
@@ -350,7 +351,7 @@ test.describe("arrivals", () => {
     await mockSessionAndArrivals(page);
     await mockStageRows(page);
     await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
-    await expect(page.getByText("RU016:260812-005102")).toBeVisible();
+    await expect(page.getByText("1f0e6d2a-1111-4222-8333-444444444444").first()).toBeVisible();
     const trigger = page.getByRole("button", { name: "Выбрать столбцы таблицы" });
     await trigger.click();
     await expect(page.getByRole("group", { name: "Столбцы таблицы" })).toBeVisible();
@@ -661,7 +662,7 @@ test.describe("arrivals", () => {
     await page.getByRole("textbox", { name: "Дата", exact: true }).fill("2026-11-06");
     await page.getByRole("button", { name: "Применить" }).click();
     await expect(page).toHaveURL(/reconciled_on=2026-11-06/);
-    await expect(page.getByText(/06\.11\.2026/)).toBeVisible(); // Russian summary
+    await expect(page.getByText(/06\.11\.2026/).first()).toBeVisible(); // Russian summary
     await expect(page.getByText(/не найдены/)).toBeVisible(); // the honest empty state
 
     // F5: the filter survives and still filters.

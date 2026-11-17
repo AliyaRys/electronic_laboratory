@@ -183,11 +183,15 @@ export async function fetchUsers(
 ): Promise<UsersPage | Problem> {
   // ``/users`` carries both GET and POST in the schema; the union of fetch
   // options defeats plain assignability, so the call is narrowed explicitly.
+  // The filters ride under ``params.query`` — flattened keys are silently
+  // dropped by openapi-fetch, which used to ignore q/role/status/page.
   const get = apiClient.GET as unknown as (
     path: "/api/v1/users",
-    options: { params?: UsersQuery; signal?: AbortSignal | null },
+    options: { params?: { query?: UsersQuery }; signal?: AbortSignal | null },
   ) => Promise<RawResult<UsersPage>>;
-  const settled = await settle(get("/api/v1/users", { params: query, signal: signal ?? null }));
+  const settled = await settle(
+    get("/api/v1/users", { params: { query }, signal: signal ?? null }),
+  );
   return "problem" in settled ? settled.problem : settled.data;
 }
 

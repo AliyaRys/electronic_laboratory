@@ -38,6 +38,15 @@ async function login(page: Page, loginName: string, password: string): Promise<v
   await page.getByRole("button", { name: "Войти" }).click();
 }
 
+/** Server-side list search: the persistent E2E database keeps every run's
+ * created users, so a seeded user can be beyond page 1 of the newest-first
+ * list; the §5 list search (q) narrows it back to one row. */
+async function searchUser(page: Page, name: string): Promise<void> {
+  await page.getByLabel("Поиск (ФИО, логин, email)").fill(name);
+  await page.getByLabel("Поиск (ФИО, логин, email)").press("Enter");
+  await page.waitForURL(/q=/);
+}
+
 test.describe("identity", () => {
   test("test_four_role_landing", async ({ page }) => {
     // ADMIN → the administration section (/users, API-02 «Начальные маршруты»).
@@ -111,6 +120,7 @@ test.describe("identity", () => {
     // recover the per-session CSRF value from the root-scoped cookie.
     await page.reload();
     await expect(page).toHaveURL(/\/users$/);
+    await searchUser(page, "Заблокирован Е2Е");
     const rowAny = page.locator("tr", { hasText: "Заблокирован Е2Е" });
     await expect(rowAny).toBeVisible();
 
@@ -183,6 +193,7 @@ test.describe("identity", () => {
     await login(page, seed.admin.login, seed.admin.password);
     await expect(page).toHaveURL(/\/users$/);
     // Same SPA session as above (see test_password_reset_keeps_blocked).
+    await searchUser(page, "Связанный Е2Е");
     const linkedRow = page.locator("tr", { hasText: "Связанный Е2Е" });
     await linkedRow.getByRole("button", { name: "Действия со строкой" }).click();
     await page.getByRole("menuitem", { name: "Удалить" }).click();

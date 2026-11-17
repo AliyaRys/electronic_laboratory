@@ -11,7 +11,7 @@
  * disease rows (invasive / noncontagious) keep the existing FindingsFields
  * logic; the collapsed state is a compact add-button without a heavy block.
  */
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import type { ExaminationView } from "./api";
 import { FormSection } from "../../shared/ui/FormSection";
 import { INDICATORS, INVASIVE_DISEASES, NONCONTAGIOUS_DISEASES, indicator } from "./indicators";
@@ -101,22 +101,6 @@ export function ResearchFields({
           );
         })}
       </div>
-      {addButtons.length > 0 ? (
-        <div className="vse-research-addzone" aria-label="Дополнительные исследования">
-          {addButtons.map((def) => (
-            <button
-              key={def.id}
-              type="button"
-              className="vse-research-add"
-              disabled={disabled}
-              aria-label={`Добавить ${def.addName}`}
-              onClick={() => setEntry(def.id, { ...values.researches[def.id], performed: true })}
-            >
-              ＋ Добавить {def.addName}
-            </button>
-          ))}
-        </div>
-      ) : null}
       {notes.length > 0 ? (
         <ul className="vse-research-notes" aria-label="Особенности расчёта стоимости">
           {notes.map((note) => (
@@ -125,27 +109,78 @@ export function ResearchFields({
         </ul>
       ) : null}
       {children}
-      <FindingsFields
-        title="Инвазионные болезни"
-        hint="Добавьте каждую обнаруженную болезнь и укажите орган или ткань."
-        items={values.invasive}
-        diseases={INVASIVE_DISEASES}
-        withLocation
-        disabled={disabled}
-        addLabel="Добавить инвазионные болезни"
-        removePrefix="Удалить инвазионную болезнь"
-        onChange={(next) => onChange({ ...values, invasive: next })}
-      />
-      <FindingsFields
-        title="Незаразные болезни"
-        items={values.noncontagious}
-        diseases={NONCONTAGIOUS_DISEASES}
-        withLocation={false}
-        disabled={disabled}
-        addLabel="Добавить незаразное заболевание"
-        removePrefix="Удалить незаразное заболевание"
-        onChange={(next) => onChange({ ...values, noncontagious: next })}
-      />
+      {/* ТЗ DR46 §3.5: the active disease editors appear ABOVE the common
+          addzone (DOM order), one editor per group and only while the group
+          has rows. The payload and values.invasive/noncontagious format are
+          unchanged. */}
+      {values.invasive.length > 0 ? (
+        <FindingsEditor
+          title="Инвазионные болезни"
+          hint="Добавьте каждую обнаруженную болезнь и укажите орган или ткань."
+          items={values.invasive}
+          diseases={INVASIVE_DISEASES}
+          withLocation
+          disabled={disabled}
+          removePrefix="Удалить инвазионную болезнь"
+          onChange={(next) => onChange({ ...values, invasive: next })}
+        />
+      ) : null}
+      {values.noncontagious.length > 0 ? (
+        <FindingsEditor
+          title="Незаразные болезни"
+          items={values.noncontagious}
+          diseases={NONCONTAGIOUS_DISEASES}
+          withLocation={false}
+          disabled={disabled}
+          removePrefix="Удалить незаразное заболевание"
+          onChange={(next) => onChange({ ...values, noncontagious: next })}
+        />
+      ) : null}
+      {/* ТЗ DR46 §3.5: ONE common addzone with the optional research buttons
+          and BOTH disease add buttons — same dashed .vse-research-add style,
+          auto width, never a full-row grid span. */}
+      <div className="vse-research-addzone" aria-label="Дополнительные исследования">
+        {addButtons.map((def) => (
+          <button
+            key={def.id}
+            type="button"
+            className="vse-research-add"
+            disabled={disabled}
+            aria-label={`Добавить ${def.addName}`}
+            onClick={() => setEntry(def.id, { ...values.researches[def.id], performed: true })}
+          >
+            ＋ Добавить {def.addName}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="vse-research-add"
+          disabled={disabled}
+          aria-label="Добавить инвазионные болезни"
+          onClick={() =>
+            onChange({
+              ...values,
+              invasive: [...values.invasive, { disease: "", location: "", otherText: "" }],
+            })
+          }
+        >
+          ＋ Добавить инвазионные болезни
+        </button>
+        <button
+          type="button"
+          className="vse-research-add"
+          disabled={disabled}
+          aria-label="Добавить незаразное заболевание"
+          onClick={() =>
+            onChange({
+              ...values,
+              noncontagious: [...values.noncontagious, { disease: "", location: "", otherText: "" }],
+            })
+          }
+        >
+          ＋ Добавить незаразное заболевание
+        </button>
+      </div>
     </FormSection>
   );
 }
@@ -331,38 +366,48 @@ function ResearchCard({
   );
 }
 
-interface FindingsFieldsProps {
+export interface FindingsEditorProps {
   title: string;
   hint?: string;
   items: FindingEntry[];
   diseases?: readonly string[] | undefined;
   withLocation: boolean;
   disabled: boolean;
-  addLabel: string;
   removePrefix: string;
   onChange: (items: FindingEntry[]) => void;
 }
 
-export function FindingsFields({
+/** ТЗ DR46 §3.5: the active disease editor WITHOUT its own add-button (the
+ * add action lives in the common addzone above the section). When a row is
+ * added the focus moves into the first select of the new row. */
+export function FindingsEditor({
   title,
   hint,
   items,
   diseases = [],
   withLocation,
   disabled,
-  addLabel,
   removePrefix,
   onChange,
-}: FindingsFieldsProps): React.ReactElement {
+}: FindingsEditorProps): React.ReactElement {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const previousCount = useRef(0);
+  useEffect(() => {
+    if (items.length > previousCount.current) {
+      const rows = rootRef.current?.querySelectorAll(".vse-finding-row");
+      rows?.[rows.length - 1]?.querySelector("select")?.focus();
+    }
+    previousCount.current = items.length;
+  }, [items.length]);
   const set = (index: number, next: FindingEntry): void => {
     const copy = items.slice();
     copy[index] = next;
     onChange(copy);
   };
   return (
-    <div className="vse-findings">
-      {items.length > 0 ? <h3 className="vse-findings-title">{title}</h3> : null}
-      {items.length > 0 && hint !== undefined ? <p className="vse-findings-hint">{hint}</p> : null}
+    <div className="vse-findings" ref={rootRef}>
+      <h3 className="vse-findings-title">{title}</h3>
+      {hint !== undefined ? <p className="vse-findings-hint">{hint}</p> : null}
       {items.map((item, index) => (
         <div className={withLocation ? "vse-finding-row" : "vse-finding-row single"} key={index}>
           <select
@@ -401,15 +446,6 @@ export function FindingsFields({
           </button>
         </div>
       ))}
-      <button
-        type="button"
-        className="vse-research-add"
-        disabled={disabled}
-        aria-label={addLabel}
-        onClick={() => onChange([...items, { disease: "", location: "", otherText: "" }])}
-      >
-        ＋ {addLabel}
-      </button>
     </div>
   );
 }

@@ -53,6 +53,51 @@ describe("PricingSection evaluation display", () => {
 
   it("UNKNOWN with no norm is never shown as an in-norm verdict", () => {
     render(<PricingSection state={state} disabled={false} onRetry={() => {}} />);
-    expect(screen.getByText("Нет оценки нормы")).toBeTruthy();
+    expect(screen.getByText("Оценка не определена")).toBeTruthy();
+  });
+
+  it("NOT_APPLICABLE carries its neutral wording (ТЗ DR41-B §7.2)", () => {
+    const snapshotNotApplicable: PricingSnapshotView = {
+      ...snapshot,
+      lines: [
+        {
+          ...snapshot.lines[0],
+          evaluation: { status: "NOT_APPLICABLE", evaluation_mode: "NONE" },
+        },
+      ],
+    };
+    render(
+      <PricingSection
+        state={{ status: "success", snapshot: snapshotNotApplicable }}
+        disabled={false}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByText("Оценка по норме не применяется")).toBeTruthy();
+  });
+
+  it("a legacy INTEGER norm with a fractional value shows the honest re-save hint (ТЗ DR41-B §7.2)", () => {
+    const snapshotLegacy: PricingSnapshotView = {
+      ...snapshot,
+      lines: [
+        {
+          ...snapshot.lines[0],
+          evaluation: {
+            status: "UNKNOWN",
+            rule_type: "interval",
+            evaluation_mode: "CONFIGURABLE",
+            hint: "Норма сохранена в устаревшем целочисленном формате: пересохраните норму показателя в справочнике.",
+          },
+        },
+      ],
+    };
+    render(
+      <PricingSection
+        state={{ status: "success", snapshot: snapshotLegacy }}
+        disabled={false}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByText(/пересохраните норму/i)).toBeTruthy();
   });
 });

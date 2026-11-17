@@ -128,6 +128,38 @@ def _method_definition(payload: MethodRuleWrite) -> CatalogIndicatorDef:
         ) from None
 
 
+def _refuse_fixed_or_none(definition: CatalogIndicatorDef) -> None:
+    """ТЗ DR41-B §6.4: POST/PUT of a norm for a FIXED/NONE indicator is an
+    honest 422 — the fixed FT rules are not catalog rows and a free-text
+    research has no norm at all."""
+    if definition.evaluation_mode == "FIXED":
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="code",
+                    field_id=definition.code,
+                    message=(
+                        f"Норма исследования «{definition.name}» ({definition.code}) фиксирована методикой ФТ "
+                        "и не настраивается в справочнике."
+                    ),
+                )
+            ]
+        )
+    if definition.evaluation_mode == "NONE":
+        raise validation_error(
+            [
+                ProblemItem(
+                    path="code",
+                    field_id=definition.code,
+                    message=(
+                        f"Исследование «{definition.name}» ({definition.code}) не имеет нормы: "
+                        "результат вводится текстом без оценки нормы."
+                    ),
+                )
+            ]
+        )
+
+
 def _validate_rule_shape(definition: CatalogIndicatorDef, payload: MethodRuleWrite) -> None:
     """Server-side typed validation (DR31 §8.4): the rule shape must match the
     canonical result schema of the indicator — never the client's claim."""
@@ -156,6 +188,7 @@ async def create_method_rule(db: AsyncSession, payload: MethodRuleWrite) -> Meth
     The version and the provenance source are server-side data.
     """
     definition = _method_definition(payload)
+    _refuse_fixed_or_none(definition)
     _validate_rule_shape(definition, payload)
     previous = (
         (
@@ -207,6 +240,7 @@ async def update_method_rule(db: AsyncSession, row: MethodRule, payload: MethodR
     norm row stays the norm of its indicator.
     """
     definition = _method_definition(payload)
+    _refuse_fixed_or_none(definition)
     _validate_rule_shape(definition, payload)
     if definition.id != row.indicator_id:
         raise validation_error(

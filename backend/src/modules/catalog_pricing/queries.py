@@ -225,24 +225,29 @@ async def readiness(db: AsyncSession, laboratory_id: UUID, product_species_id: U
     missing: list[ReadinessMissing] = []
 
     for indicator in sorted(_mandatory.MANDATORY_INDICATOR_IDS, key=str):
-        rule = (
-            await db.execute(
-                select(MethodRule.id).where(
-                    MethodRule.laboratory_id == laboratory_id,
-                    MethodRule.product_area_code == MEAT_AREA_CODE,
-                    MethodRule.indicator_id == indicator,
-                    MethodRule.active,
+        # ТЗ DR41-B §6.4: FIXED/NONE mandatory indicators do not require an
+        # active MethodRule in readiness; the tariff check stays.
+        definition = _mandatory.INDICATOR_BY_ID.get(indicator)
+        requires_rule = definition is None or definition.evaluation_mode == "CONFIGURABLE"
+        if requires_rule:
+            rule = (
+                await db.execute(
+                    select(MethodRule.id).where(
+                        MethodRule.laboratory_id == laboratory_id,
+                        MethodRule.product_area_code == MEAT_AREA_CODE,
+                        MethodRule.indicator_id == indicator,
+                        MethodRule.active,
+                    )
                 )
-            )
-        ).scalar_one_or_none()
-        if rule is None:
-            missing.append(
-                ReadinessMissing(
-                    input_id=f"method:{indicator}",
-                    field="method_rules",
-                    message="Отсутствует действующая методика и норма обязательного показателя.",
+            ).scalar_one_or_none()
+            if rule is None:
+                missing.append(
+                    ReadinessMissing(
+                        input_id=f"method:{indicator}",
+                        field="method_rules",
+                        message="Отсутствует действующая методика и норма обязательного показателя.",
+                    )
                 )
-            )
         # Price is independent from the clinical norm and its measurement
         # unit. A tariff can be configured before the methodologist supplies
         # INPUT-02, and pricing later resolves it by the stable service code.

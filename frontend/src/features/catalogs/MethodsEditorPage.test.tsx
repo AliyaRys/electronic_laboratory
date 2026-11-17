@@ -21,6 +21,9 @@ import { MethodsEditorPage } from "./MethodsEditorPage";
 
 const LAB = "11111111-2222-4333-8444-555555555555";
 
+/** ТЗ DR41-B §6: the fixed FT rules and the norm-free research. */
+const FIXED_CODES = new Set(["VSE-F18", "VSE-F19", "VSE-F22", "VSE-F27", "VSE-F28"]);
+
 const microscopy = INDICATORS.find((item) => item.code === "VSE-F24") as (typeof INDICATORS)[number];
 const temperature = INDICATORS.find((item) => item.code === "VSE-F20") as (typeof INDICATORS)[number];
 const cooking = INDICATORS.find((item) => item.code === "VSE-F26") as (typeof INDICATORS)[number];
@@ -76,6 +79,11 @@ function contextFixture(overrides: Partial<MethodsContextTyped> = {}): MethodsCo
       mandatory: item.mandatory,
       conditional: item.code === "VSE-F21",
       options: item.options ? item.options.map((option) => option.label) : null,
+      evaluation_mode: FIXED_CODES.has(item.code)
+        ? "FIXED"
+        : item.code === "VSE-F23"
+          ? "NONE"
+          : "CONFIGURABLE",
     })),
     active_rules: [...activeRules, ...createdRules],
     missing: INDICATORS.filter(
@@ -193,8 +201,15 @@ describe("MethodsEditorPage", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByTestId("methods-area-name")).toHaveTextContent("Мясо и мясопродукты");
-    for (const indicator of INDICATORS) {
+    // ТЗ DR41-B §6: only the CONFIGURABLE indicators are catalog rows.
+    const configurable = INDICATORS.filter((item) => !FIXED_CODES.has(item.code) && item.code !== "VSE-F23");
+    for (const indicator of configurable) {
       expect(screen.getByText(indicator.name)).toBeInTheDocument();
+    }
+    for (const indicator of INDICATORS.filter(
+      (item) => FIXED_CODES.has(item.code) || item.code === "VSE-F23",
+    )) {
+      expect(screen.queryByText(indicator.name)).toBeNull();
     }
     // F30/F31 are party dictionaries, never catalog norms.
     expect(screen.queryByText("Инвазионные болезни")).toBeNull();
@@ -454,12 +469,28 @@ describe("MethodsEditorPage", () => {
     expect(screen.getByRole("button", { name: "Сохранить моё значение" })).toBeInTheDocument();
   });
 
-  it("a TEXT research shows the calm explanation in the common geometry", async () => {
-    const bacterioscopy = INDICATORS.find((item) => item.code === "VSE-F23") as (typeof INDICATORS)[number];
+  it("бактериоскопия is not a catalog row any more (ТЗ DR41-B §6.2)", async () => {
     renderEditor();
-    await screen.findByText("Результат вводится текстом; диапазон нормы не задаётся.");
-    expect(screen.getByText(bacterioscopy.name)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Настроить" })).toBeNull();
+    await screen.findByTestId("methods-area-name");
+    expect(screen.queryByText("Результат вводится текстом; диапазон нормы не задаётся.")).toBeNull();
+    expect(screen.queryByText("Бактериоскопия")).toBeNull();
+  });
+
+  it("a legacy rule of a fixed indicator stays an honest diagnostic (ТЗ DR41-B §6.4)", async () => {
+    const organoleptic = INDICATORS.find((item) => item.code === "VSE-F18") as (typeof INDICATORS)[number];
+    activeRules = [
+      intervalRule({
+        id: "bbbbbbbb-0000-4000-8000-000000000004",
+        indicator_id: organoleptic.id,
+        result_schema: "ENUM",
+        unit_id: "",
+        rule: { type: "qualitative", accepted_values: ["Соответствует"] },
+      }),
+    ];
+    renderEditor();
+    await screen.findByTestId(`method-legacy-bbbbbbbb-0000-4000-8000-000000000004`);
+    expect(screen.getByText(/фиксирована методикой ФТ и не настраивается/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
   });
 
   it("a qualitative block uses the square ＋/− buttons and removable custom variants (§19.9/§19.10)", async () => {
@@ -530,13 +561,13 @@ describe("MethodsEditorPage", () => {
     expect(putSpy).not.toHaveBeenCalled();
     // The unset (create) path behaves the same: no POST without a value.
     const unsetBlock = (await screen
-      .findByRole("heading", { name: "Реакция с сернокислой медью" })
+      .findByRole("heading", { name: "Трихинеллоскопия" })
       .then((heading) => heading.closest("article"))) as HTMLElement;
     await act.click(within(unsetBlock).getByRole("button", { name: "Добавить вариант" }));
     expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
     expect(postSpy).not.toHaveBeenCalled();
     // A typed custom variant IS sent; the still-empty second one is dropped.
-    const reaction = INDICATORS.find((item) => item.code === "VSE-F27") as (typeof INDICATORS)[number];
+    const reaction = INDICATORS.find((item) => item.code === "VSE-F21") as (typeof INDICATORS)[number];
     const reactionRows = (reaction.options ?? []).length;
     await act.click(within(unsetBlock).getByRole("button", { name: "Добавить вариант" }));
     await act.type(
@@ -546,7 +577,7 @@ describe("MethodsEditorPage", () => {
     await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
     await waitFor(() => expect(postSpy).toHaveBeenCalled());
     const payload = postSpy.mock.calls[0][0] as { code: string; rule: { accepted_values: string[] } };
-    expect(payload.code).toBe("VSE-F27");
+    expect(payload.code).toBe("VSE-F21");
     // The registry variants plus the typed extra; the never-filled added
     // variant is absent and no empty string travels (§11.2).
     expect(payload.rule.accepted_values).toContain("Бурой окраски нет");

@@ -15,12 +15,21 @@ import { type ReactNode } from "react";
 import type { ExaminationView } from "./api";
 import { FormSection } from "../../shared/ui/FormSection";
 import { INDICATORS, INVASIVE_DISEASES, NONCONTAGIOUS_DISEASES, indicator } from "./indicators";
+import { evaluationLabel } from "./PricingPreview";
 import {
   pricingNotes,
   type ExaminationFormValues,
   type FindingEntry,
   type ResearchEntry,
 } from "./formValues";
+
+/** ТЗ DR41-B §7: the typed evaluation of one performed result, taken from
+ * the server preview — never derived from the local `performed` state. */
+export interface ResearchEvaluation {
+  status: string;
+  /** The honest re-save hint of a legacy norm, when the server sent one. */
+  hint?: string;
+}
 
 export interface ResearchFieldsProps {
   values: ExaminationFormValues;
@@ -29,6 +38,9 @@ export interface ResearchFieldsProps {
   disabled: boolean;
   /** DR35 §9.3: the party's required indicator ids from the server read model. */
   requiredResearchIds: ReadonlySet<string>;
+  /** ТЗ DR41-B §7.2: the per-indicator evaluation snapshot of the live
+   * server preview (absent while the preview has not answered yet). */
+  evaluations?: ReadonlyMap<string, ResearchEvaluation> | undefined;
   onChange: (values: ExaminationFormValues) => void;
   /** Rendered under the cards: server-side pricing warnings come here. */
   children?: ReactNode;
@@ -39,6 +51,7 @@ export function ResearchFields({
   view,
   disabled,
   requiredResearchIds,
+  evaluations,
   onChange,
   children,
 }: ResearchFieldsProps): React.ReactElement {
@@ -81,6 +94,7 @@ export function ResearchFields({
               options={def.options}
               required={isRequired(def.id)}
               entry={entry}
+              evaluation={evaluations?.get(def.id)}
               disabled={disabled}
               onChange={(next) => setEntry(def.id, next)}
             />
@@ -145,6 +159,7 @@ interface ResearchCardProps {
   options?: readonly { value: string; label: string; other?: boolean }[] | undefined;
   required: boolean;
   entry: ResearchEntry;
+  evaluation?: ResearchEvaluation | undefined;
   disabled: boolean;
   onChange: (entry: ResearchEntry) => void;
 }
@@ -158,15 +173,27 @@ function ResearchCard({
   options,
   required,
   entry,
+  evaluation,
   disabled,
   onChange,
 }: ResearchCardProps): React.ReactElement {
+  // ТЗ DR41-B §7.2: the typed server evaluation is the only source of the
+  // highlight; the text always travels with the colour. While the preview
+  // has not answered yet the badge stays calm — no fabricated verdict.
+  const evaluationStatus = evaluation?.status;
+  const hasEvaluation = evaluationStatus === "IN_NORM" || evaluationStatus === "DEVIATION";
   const heading = (
     <header className="vse-research-head">
       <h4>
         {name}
         {required ? <span aria-hidden="true"> *</span> : null}
       </h4>
+      {evaluationStatus !== undefined ? (
+        <span className="vse-research-evaluation" data-evaluation={evaluationStatus}>
+          {evaluationLabel(evaluationStatus)}
+          {evaluation?.hint ? <span className="vse-research-hint"> · {evaluation.hint}</span> : null}
+        </span>
+      ) : null}
       {!required ? (
         <button
           type="button"
@@ -182,7 +209,11 @@ function ResearchCard({
   );
   const label = name + (unit !== undefined ? `, ${unit}` : "");
   return (
-    <article className={required ? "vse-research primary" : "vse-research"}>
+    <article
+      className={required ? "vse-research primary" : "vse-research"}
+      data-evaluation={evaluationStatus ?? undefined}
+      data-evaluated={hasEvaluation ? "true" : undefined}
+    >
       {heading}
       {kind === "BOOLEAN" ? (
         required ? (

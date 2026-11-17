@@ -50,6 +50,7 @@ import { ResearchFields } from "./ResearchFields";
 import { SampleSelection } from "./SampleSelection";
 import { OutcomeFields } from "./OutcomeFields";
 import { PricingSection, usePricingPreview, type PricingPreviewState } from "./PricingPreview";
+import { type ResearchEvaluation } from "./ResearchFields";
 import { INDICATORS } from "./indicators";
 
 export interface ExaminationFormProps {
@@ -184,6 +185,24 @@ export function ExaminationForm({
 
   const preview: PricingPreviewState = usePricingPreview(party.party_id, previewRequest);
   const confirmedPreviewTotal = preview.status === "success" ? preview.snapshot.total : null;
+  // ТЗ DR41-B §7.2: the research cards are highlighted by the typed server
+  // evaluation of the live preview — after every result change and on the
+  // first load with data; the doctor's FIT/UNFIT outcome is never touched.
+  const cardEvaluations = useMemo(() => {
+    const map = new Map<string, ResearchEvaluation>();
+    if (preview.status === "success" || preview.status === "recalculating") {
+      for (const line of preview.snapshot.lines) {
+        const evaluation = line.evaluation as { status?: unknown; hint?: unknown } | null | undefined;
+        if (evaluation !== null && evaluation !== undefined && typeof evaluation.status === "string") {
+          map.set(line.service_code, {
+            status: evaluation.status,
+            ...(typeof evaluation.hint === "string" ? { hint: evaluation.hint } : {}),
+          });
+        }
+      }
+    }
+    return map;
+  }, [preview]);
 
   const runCreate = (mode: "WAITING" | "COMPLETED"): void => {
     // Readable per-field client errors first; the schema parse is the last
@@ -323,6 +342,7 @@ export function ExaminationForm({
         view={view}
         disabled={busy}
         requiredResearchIds={requiredResearchIds}
+        evaluations={cardEvaluations}
         onChange={(next) => {
           form.setValue("researches", next.researches, { shouldDirty: true });
           form.setValue("invasive", next.invasive, { shouldDirty: true });

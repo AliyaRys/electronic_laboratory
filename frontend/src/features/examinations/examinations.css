@@ -368,6 +368,40 @@
   white-space: normal;
 }
 
+/* ТЗ DR41-B §7.2: the research card highlight is driven by the typed server
+   evaluation. The colour is never the only carrier — the badge always keeps
+   its text, and the calm tones leave the doctor's outcome untouched. */
+.vse-research-evaluation {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--app-muted, #5a5a5a);
+  text-align: right;
+}
+
+.vse-research-evaluation .vse-research-hint {
+  font-weight: 600;
+  white-space: normal;
+}
+
+.vse-research[data-evaluated="true"][data-evaluation="IN_NORM"] {
+  border-color: #4d9e7f;
+  background: #f2f9f5;
+}
+
+.vse-research[data-evaluated="true"][data-evaluation="DEVIATION"] {
+  border-color: #c97985;
+  background: #fbf3f4;
+}
+
+.vse-research-evaluation[data-evaluation="IN_NORM"] {
+  color: #176346;
+}
+
+.vse-research-evaluation[data-evaluation="DEVIATION"] {
+  color: #9b3440;
+}
+
 .vse-invoice-pending p {
   margin: 0;
   overflow-wrap: anywhere;

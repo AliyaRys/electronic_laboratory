@@ -36,6 +36,7 @@ __all__ = [
     "MEAT_AREA_NAME",
     "MANUAL_SOURCE_NAME",
     "INDICATOR_BY_CODE",
+    "INDICATOR_BY_ID",
     "indicator_by_code",
     "CatalogIndicatorDef",
     "CATALOG_INDICATORS",
@@ -93,10 +94,50 @@ class CatalogIndicatorDef:
     mandatory: bool
     conditional: bool = False
     options: tuple[str, ...] | None = None
+    # ТЗ DR41-B §6.4: how the verdict of one performed result comes about.
+    # FIXED — the accepted variants are fixed by the FT methodology; NONE —
+    # the research has no norm at all (free text); CONFIGURABLE — the
+    # interval bounds are configured in the norm catalog.
+    evaluation_mode: str = "CONFIGURABLE"
+    # For FIXED indicators: the wire value → evaluation status mapping (the
+    # legacy Russian labels of the pre-registry rows are accepted too) and
+    # the applied-rule criterion text of the snapshot.
+    fixed_values: dict[str, str] | None = None
+    fixed_criterion: str | None = None
 
 
 _MATCH_OPTIONS = ("Соответствует", "Не соответствует")
 _REACTION_OPTIONS = ("Отрицательная", "Положительная")
+
+# ТЗ DR41-B §6.1: the fixed qualitative rules live in this registry, never in
+# catalog rows and never in the methodist's input. The mapping accepts both
+# the enum wire codes of the form and the legacy Russian labels, so old saved
+# data keeps evaluating.
+_MATCH_FIXED = {
+    "MATCH": "IN_NORM",
+    "Соответствует": "IN_NORM",
+    "MISMATCH": "DEVIATION",
+    "Не соответствует": "DEVIATION",
+    # The legacy BOOLEAN_MATCH rows stored a bool result.
+    True: "IN_NORM",
+    False: "DEVIATION",
+}
+_COPPER_FIXED = {
+    "NEGATIVE": "IN_NORM",
+    "Отрицательная": "IN_NORM",
+    "POSITIVE": "DEVIATION",
+    "Положительная": "DEVIATION",
+    True: "DEVIATION",
+    False: "IN_NORM",
+}
+_PEROXIDASE_FIXED = {
+    "POSITIVE": "IN_NORM",
+    "Положительная": "IN_NORM",
+    "NEGATIVE": "DEVIATION",
+    "Отрицательная": "DEVIATION",
+    True: "IN_NORM",
+    False: "DEVIATION",
+}
 _COOKING_OPTIONS = (
     "Бульон прозрачный, аромат специфический",
     "Бульон мутный",
@@ -115,6 +156,9 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         unit=None,
         mandatory=True,
         options=_MATCH_OPTIONS,
+        evaluation_mode="FIXED",
+        fixed_values=_MATCH_FIXED,
+        fixed_criterion="норма: Соответствует",
     ),
     CatalogIndicatorDef(
         id=IDENTIFICATION_INDICATOR_ID,
@@ -124,6 +168,9 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         unit=None,
         mandatory=True,
         options=_MATCH_OPTIONS,
+        evaluation_mode="FIXED",
+        fixed_values=_MATCH_FIXED,
+        fixed_criterion="норма: Соответствует",
     ),
     CatalogIndicatorDef(
         id=TEMPERATURE_INDICATOR_ID,
@@ -150,6 +197,9 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         unit=None,
         mandatory=False,
         options=_MATCH_OPTIONS,
+        evaluation_mode="FIXED",
+        fixed_values=_MATCH_FIXED,
+        fixed_criterion="норма: Соответствует",
     ),
     CatalogIndicatorDef(
         id=BACTERIOSCOPY_INDICATOR_ID,
@@ -158,6 +208,7 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         result_schema="TEXT",
         unit=None,
         mandatory=False,
+        evaluation_mode="NONE",
     ),
     CatalogIndicatorDef(
         id=MICROSCOPY_INDICATOR_ID,
@@ -194,6 +245,9 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         unit=None,
         mandatory=False,
         options=_REACTION_OPTIONS,
+        evaluation_mode="FIXED",
+        fixed_values=_COPPER_FIXED,
+        fixed_criterion="норма: Отрицательная",
     ),
     CatalogIndicatorDef(
         id=PEROXIDASE_INDICATOR_ID,
@@ -203,6 +257,9 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         unit=None,
         mandatory=False,
         options=_REACTION_OPTIONS,
+        evaluation_mode="FIXED",
+        fixed_values=_PEROXIDASE_FIXED,
+        fixed_criterion="норма: Положительная",
     ),
     CatalogIndicatorDef(
         id=DOSIMETRY_INDICATOR_ID,
@@ -229,6 +286,10 @@ MANUAL_SOURCE_NAME = "Ручная настройка справочника н�
 # Stable code → canonical definition; the write contract is keyed by code
 # (VSE-F18–F29) and every technical field is resolved from this registry.
 INDICATOR_BY_CODE: dict[str, CatalogIndicatorDef] = {item.code: item for item in CATALOG_INDICATORS}
+
+# Stable id → canonical definition; the evaluation path is keyed by the
+# indicator id of the performed result.
+INDICATOR_BY_ID: dict[UUID, CatalogIndicatorDef] = {item.id: item for item in CATALOG_INDICATORS}
 
 
 def indicator_by_code(code: str) -> CatalogIndicatorDef:

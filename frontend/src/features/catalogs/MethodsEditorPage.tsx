@@ -3,9 +3,11 @@
  *
  * ONE norm set per laboratory for «Мясо и мясопродукты»: the context is
  * resolved by the laboratory and the product area only (no species/state
- * selectors, no Mercury GUIDs, no party data, no technical fields). The full
- * VSE-F18–F29 registry is listed right away inside ONE section «Диапазоны
- * нормы» — every unset interval row shows its «Норма от/до» fields directly
+ * selectors, no Mercury GUIDs, no party data, no technical fields). ТЗ DR41-B
+ * §6: only the CONFIGURABLE indicators (F20/F21/F24/F25/F26/F29) are editable
+ * rows — the fixed FT rules (F18/F19/F22/F27/F28) and the norm-free
+ * бактериоскопия (F23) never appear as configurable lines. Every unset
+ * interval row shows its «Норма от/до» fields directly
  * (no «Настроить» step, no separate unset list) and qualitative blocks use
  * the square ＋/− composition of the mockup. A null boundary stays null
  * (never 0); lower ≤ upper is enforced; technical metadata (source,
@@ -117,12 +119,22 @@ interface RowModel {
   kind: "interval" | "qualitative" | "text";
   /** Unknown to the shared registry: honest diagnostic, no invented name. */
   unknown: boolean;
+  /** ТЗ DR41-B §6.1–6.3: a FIXED/NONE indicator with a legacy rule — never
+   * editable, an honest diagnostic of the non-configurable rule. */
+  legacy: boolean;
 }
 
 /** Annotation of the conditionally mandatory F21 (spec §4, GUID list — never
  * a per-species policy invented here). */
 const CONDITIONAL_NOTE = "Обязательно для указанных видов продукции";
 const TEXT_NOTE = "Результат вводится текстом; диапазон нормы не задаётся.";
+
+/** ТЗ DR41-B §6: only the CONFIGURABLE indicators are ever catalog rows —
+ * the fixed FT rules (F18/F19/F22/F27/F28) and the norm-free бактериоскопия
+ * (F23) never appear as editable norm lines. */
+function isConfigurable(indicator: CatalogIndicator): boolean {
+  return indicator.evaluation_mode === undefined || indicator.evaluation_mode === "CONFIGURABLE";
+}
 
 /**
  * The registry-driven rows (§6.1): every expected indicator of the context is
@@ -138,6 +150,23 @@ export function buildMethodRows(
   const rows: RowModel[] = [];
   for (const indicator of indicators) {
     const rule = byIndicator.get(indicator.id) ?? null;
+    if (!isConfigurable(indicator)) {
+      // ТЗ DR41-B §6.4: the fixed/none indicator is not a catalog row; a
+      // legacy rule created before the registry stays an honest diagnostic.
+      if (rule !== null) {
+        rows.push({
+          key: rule.id,
+          rule,
+          indicator,
+          name: indicator.name,
+          unit: undefined,
+          kind: "text",
+          unknown: false,
+          legacy: true,
+        });
+      }
+      continue;
+    }
     const kind: RowModel["kind"] =
       indicator.result_schema === "TEXT"
         ? "text"
@@ -152,6 +181,7 @@ export function buildMethodRows(
       unit: rule?.unit_id === "" ? undefined : (rule?.unit_id ?? indicator.unit_id ?? undefined),
       kind,
       unknown: false,
+      legacy: false,
     });
   }
   for (const rule of rules) {
@@ -164,6 +194,7 @@ export function buildMethodRows(
       unit: rule.unit_id === "" ? undefined : rule.unit_id,
       kind: rule.rule.type === "qualitative" ? "qualitative" : "interval",
       unknown: true,
+      legacy: false,
     });
   }
   return rows;
@@ -231,7 +262,7 @@ export function MethodsEditorPage(): React.ReactElement {
   const dirty = useMemo(
     () =>
       rows.some((row) => {
-        if (row.unknown) return false;
+        if (row.unknown || row.legacy) return false;
         const draft = drafts[row.key];
         if (draft === undefined) return false;
         if (row.rule === null) {
@@ -266,7 +297,7 @@ export function MethodsEditorPage(): React.ReactElement {
     let saved = 0;
     let conflicted = false;
     for (const row of rows) {
-      if (row.unknown) continue;
+      if (row.unknown || row.legacy) continue;
       const draft = drafts[row.key];
       // A conflicted row waits for the explicit §12.6 choice; a second
       // «Сохранить» never re-submits the stale draft against the fresh
@@ -480,9 +511,10 @@ export function MethodsEditorPage(): React.ReactElement {
 
   const problem = methods.data !== undefined && "code" in methods.data ? (methods.data as Problem) : null;
 
-  const intervalRows = rows.filter((row) => row.kind === "interval");
-  const qualitativeRows = rows.filter((row) => row.kind === "qualitative");
-  const textRows = rows.filter((row) => row.kind === "text");
+  const intervalRows = rows.filter((row) => row.kind === "interval" && !row.legacy);
+  const qualitativeRows = rows.filter((row) => row.kind === "qualitative" && !row.legacy);
+  const textRows = rows.filter((row) => row.kind === "text" && !row.unknown && !row.legacy);
+  const legacyRows = rows.filter((row) => row.legacy && row.indicator !== null);
 
   /** §15.1: the loading skeleton keeps the section geometry. */
   const skeleton =
@@ -761,6 +793,15 @@ export function MethodsEditorPage(): React.ReactElement {
                   <div className="vse-catalog-norm-name">{row.name}</div>
                   <p className="vse-catalog-norm-meta">{TEXT_NOTE}</p>
                 </div>
+              </article>
+            ))}
+            {/* ТЗ DR41-B §6: a legacy norm of a fixed/none indicator is never
+                editable — an honest diagnostic keeps the data visible. */}
+            {legacyRows.map((row) => (
+              <article className="vse-catalog-diag" key={row.key} data-testid={`method-legacy-${row.key}`}>
+                {row.indicator?.evaluation_mode === "NONE"
+                  ? `Исследование «${row.name}» не имеет нормы: результат вводится текстом в форме ВСЭ без оценки.`
+                  : `Норма исследования «${row.name}» фиксирована методикой ФТ и не настраивается в справочнике.`}
               </article>
             ))}
           </div>

@@ -117,7 +117,9 @@ async def test_context_opens_without_mercury_data_or_parties(api_env: SimpleName
         assert context["product_area_name"] == "Мясо и мясопродукты"
         assert [item["code"] for item in context["indicators"]] == [f"VSE-F{n}" for n in range(18, 30)]
         assert context["active_rules"] == []
-        assert len(context["missing"]) == 12
+        # ТЗ DR41-B §6.4: only the CONFIGURABLE indicators are ever «missing» —
+        # F18/F19 (FIXED) and F23 (NONE) need no MethodRule at all.
+        assert len(context["missing"]) == 6
         # Новый контекст больше не несёт видов/состояний продукции.
         for key in ("species_options", "states", "product_species", "product_state"):
             assert key not in context

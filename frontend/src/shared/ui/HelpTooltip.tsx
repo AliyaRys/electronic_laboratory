@@ -22,9 +22,7 @@ export interface TooltipProps {
 export function Tooltip({ text, children }: TooltipProps): React.ReactElement {
   const [open, setOpen] = useState(false);
   const popupId = useId();
-  const child = isValidElement(children)
-    ? (children as React.ReactElement<Record<string, unknown>>)
-    : null;
+  const child = isValidElement(children) ? (children as React.ReactElement<Record<string, unknown>>) : null;
   return (
     <span
       className="app-help-tooltip"

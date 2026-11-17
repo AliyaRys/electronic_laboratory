@@ -726,8 +726,41 @@ export const СохранённыеИсследованияУзкийЭкран:
 };
 
 export const СохранённыйРасчёт: StoryObj = {
+  name: "Сохранённый расчёт · четыре столбца (ТЗ DR46 §3.4)",
   render: () => <SavedPricingTable snapshot={savedSnapshot} />,
   parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
+export const СохранённыйРасчётДлинноеИсследование: StoryObj = {
+  name: "Сохранённый расчёт · длинное название",
+  render: () => (
+    <SavedPricingTable
+      snapshot={{
+        ...savedSnapshot,
+        lines: [
+          ...savedSnapshot.lines.slice(0, 1),
+          {
+            service_code: "ANTIBIOTICS",
+            name: "Определение антибиотиков и сульфаниламидных препаратов в пробах мясной продукции методом жидкостной хроматографии",
+            quantity: "2",
+            unit_id: "sample",
+            unit_price: "120.00",
+            amount: "240.00",
+            method_snapshot: null,
+            evaluation: { status: "IN_NORM" },
+          },
+          ...savedSnapshot.lines.slice(1),
+        ],
+        total: "645.00",
+      }}
+    />
+  ),
+};
+
+export const СохранённыйРасчётМобильный: StoryObj = {
+  name: "Сохранённый расчёт · 390 px (скролл внутри таблицы)",
+  render: () => <SavedPricingTable snapshot={savedSnapshot} />,
+  parameters: { viewport: { defaultViewport: "mobile1" } },
 };
 
 export const СохранённыйРасчётЯрмарка: StoryObj = {

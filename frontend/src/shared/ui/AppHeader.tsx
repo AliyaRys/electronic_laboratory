@@ -54,11 +54,41 @@ export interface RoadmapProduct {
 }
 
 export const ROADMAP_PRODUCTS: readonly RoadmapProduct[] = Object.freeze([
-  Object.freeze({ key: "meat", label: "Мясо и мясопродукты", shortLabel: "Мясо", icon: "meat", available: true }),
-  Object.freeze({ key: "milk", label: "Молоко и молочные продукты", shortLabel: "Молоко", icon: "milk", available: false }),
-  Object.freeze({ key: "eggs", label: "Яйца и яйцепродукция", shortLabel: "Яйца", icon: "product-eggs", available: false }),
-  Object.freeze({ key: "fish", label: "Рыба и рыбная продукция", shortLabel: "Рыба", icon: "product-fish", available: false }),
-  Object.freeze({ key: "honey", label: "Мёд и медовая продукция", shortLabel: "Мёд", icon: "product-honey", available: false }),
+  Object.freeze({
+    key: "meat",
+    label: "Мясо и мясопродукты",
+    shortLabel: "Мясо",
+    icon: "meat",
+    available: true,
+  }),
+  Object.freeze({
+    key: "milk",
+    label: "Молоко и молочные продукты",
+    shortLabel: "Молоко",
+    icon: "milk",
+    available: false,
+  }),
+  Object.freeze({
+    key: "eggs",
+    label: "Яйца и яйцепродукция",
+    shortLabel: "Яйца",
+    icon: "product-eggs",
+    available: false,
+  }),
+  Object.freeze({
+    key: "fish",
+    label: "Рыба и рыбная продукция",
+    shortLabel: "Рыба",
+    icon: "product-fish",
+    available: false,
+  }),
+  Object.freeze({
+    key: "honey",
+    label: "Мёд и медовая продукция",
+    shortLabel: "Мёд",
+    icon: "product-honey",
+    available: false,
+  }),
   Object.freeze({
     key: "plant",
     label: "Растительная пищевая продукция",
@@ -187,9 +217,7 @@ function ProductSwitcher({
             setOpen(true);
             // The focus lands on the first (and only) available option.
             requestAnimationFrame(() => {
-              rootRef.current
-                ?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)')
-                ?.focus();
+              rootRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)')?.focus();
             });
           }
         }}
@@ -231,9 +259,7 @@ function ProductSwitcher({
                 <Icon name={item.icon} />
               </span>
               <span className="product-option-label">{item.label}</span>
-              {!enabled ? (
-                <span className="product-option-status">{ROADMAP_STATUS_LABEL}</span>
-              ) : null}
+              {!enabled ? <span className="product-option-status">{ROADMAP_STATUS_LABEL}</span> : null}
             </button>
           );
         })}

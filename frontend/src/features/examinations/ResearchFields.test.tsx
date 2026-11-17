@@ -37,7 +37,11 @@ function renderCards(evaluations: ReadonlyMap<string, ResearchEvaluation>): void
 }
 
 /** Stateful harness: the add/remove actions go through the real onChange. */
-function StatefulCards({ evaluations }: { evaluations: ReadonlyMap<string, ResearchEvaluation> }): React.ReactElement {
+function StatefulCards({
+  evaluations,
+}: {
+  evaluations: ReadonlyMap<string, ResearchEvaluation>;
+}): React.ReactElement {
   const [values, setValues] = useState<ExaminationFormValues>(baseValues);
   return (
     <ResearchFields
@@ -71,8 +75,9 @@ describe("ResearchFields addzone and disease editors (ТЗ DR46 §3.5)", () => {
     const addzone = document.querySelector(".vse-research-addzone");
     expect(editor).not.toBeNull();
     // DOM order: the active editor goes BEFORE the common addzone.
-    expect(editor?.compareDocumentPosition(addzone as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const select = editor?.querySelector(".vse-finding-row select");
+    const position = editor !== null ? editor.compareDocumentPosition(addzone as Node) : 0;
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const select = editor?.querySelector(".vse-finding-row select") ?? null;
     expect(document.activeElement).toBe(select);
   });
 

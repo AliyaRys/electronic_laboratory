@@ -303,10 +303,7 @@ function ExaminationViewContent(): React.ReactElement {
                     single-column stack — never the 3/3/6 form grid. */}
                 <div className="vse-sample-view-stack">
                   <ReadonlyField label="Дата отбора пробы" value={formatRuDate(view.sample.collected_on)} />
-                  <ReadonlyField
-                    label="Масса пробы, кг"
-                    value={formatDecimalDisplay(view.sample.mass_kg)}
-                  />
+                  <ReadonlyField label="Масса пробы, кг" value={formatDecimalDisplay(view.sample.mass_kg)} />
                   <ReadonlyField
                     label="Пробы отправлены в специальную лабораторию"
                     value={view.sent_to_lab ? "Да" : "Нет"}

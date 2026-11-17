@@ -125,6 +125,20 @@ function renderRoute(): void {
 }
 
 describe("ExaminationViewPage", () => {
+  it("a 404 route problem shows the honest «Просмотр записи» title (DR44 fix-loop)", async () => {
+    server.use(
+      http.get(`*/api/v1/examinations/${EXAM}`, () =>
+        HttpResponse.json(
+          { code: "NOT_FOUND", detail: "Карточка не найдена в доступной области." },
+          { status: 404 },
+        ),
+      ),
+    );
+    renderRoute();
+    expect(await screen.findByRole("heading", { name: "Просмотр записи" })).toBeTruthy();
+    expect(screen.getAllByText("Карточка не найдена в доступной области.").length).toBeGreaterThan(0);
+  });
+
   it("a WAITING card shows no conclusion and offers the separate late outcome", async () => {
     server.use(http.get(`*/api/v1/examinations/${EXAM}`, () => HttpResponse.json(card({}))));
     renderRoute();

@@ -139,7 +139,7 @@ function ExaminationViewContent(): React.ReactElement {
         <nav className="vse-breadcrumb" aria-label="Навигация">
           <Link to={`/labs/${labId}/examinations`}>← Журнал ВСЭ</Link>
         </nav>
-        <h1>Карточка ВСЭ</h1>
+        <h1>Просмотр записи</h1>
         <StatusView
           state={cardProblem.status === 404 ? "not-found" : "network-error"}
           title={

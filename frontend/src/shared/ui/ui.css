@@ -889,6 +889,10 @@
   font-size: 12px;
   font-weight: 500;
   box-shadow: 0 6px 18px rgb(0 0 0 / 12%);
-  white-space: nowrap;
+  /* DR44 fix-loop: the text wraps — a long hint must never be clipped on a
+     390px screen by a nowrap popup. */
+  white-space: normal;
+  max-width: min(320px, calc(100vw - 32px));
+  overflow-wrap: break-word;
   text-transform: none;
 }

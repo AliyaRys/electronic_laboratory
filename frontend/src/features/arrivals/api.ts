@@ -292,41 +292,73 @@ const MOSCOW_OFFSET = "+03:00";
  * ТЗ DR39 §3: the wire range of a user «С/По» period. Both datetime-local
  * values are treated in Europe/Moscow (+03:00, never the browser timezone);
  * the INCLUSIVE «По» minute is normalized to the half-open upper bound of the
- * next minute, so the chosen minute itself passes the server filter.
+ * next minute, so the chosen minute itself passes the server filter. A
+ * foreign/stale deep link in the wire form is recovered
+ * (normalizeReconciledLocal); a value that cannot be parsed honestly resets
+ * the filter ({} — nothing is sent), never a TypeError/RangeError.
  */
 export function reconciliationRangeQuery(
   fromLocal: string,
   toLocal: string,
-): { reconciled_from: string; reconciled_to: string } {
+): { reconciled_from?: string; reconciled_to?: string } {
+  const from = normalizeReconciledLocal(fromLocal);
+  const to = normalizeReconciledLocal(toLocal);
+  if (from === "" || to === "") return {};
   return {
-    reconciled_from: `${fromLocal}:00${MOSCOW_OFFSET}`,
-    reconciled_to: nextMinuteIso(`${toLocal}:00${MOSCOW_OFFSET}`),
+    reconciled_from: `${from}:00${MOSCOW_OFFSET}`,
+    reconciled_to: nextMinuteIso(`${to}:00${MOSCOW_OFFSET}`),
   };
 }
 
-function nextMinuteIso(value: string): string {
+/** ТЗ DR39 §3: the inclusive «По» minute → the half-open next-minute UTC ISO. */
+export function nextMinuteIso(value: string): string {
   const instant = new Date(value);
   if (Number.isNaN(instant.getTime())) throw new TypeError(`Некорректная дата: ${value}`);
   return new Date(instant.getTime() + 60_000).toISOString();
+}
+
+/**
+ * DR39 fix-loop: a foreign/stale deep link may carry the WIRE form
+ * («2026-11-05T10:00:00+03:00») instead of the datetime-local shape. The
+ * offset ISO instant is recovered into the datetime-local Europe/Moscow
+ * shape; an invalid value degrades to "" — the filter is honestly dropped,
+ * never rendered with a TypeError/RangeError.
+ */
+export function normalizeReconciledLocal(value: string): string {
+  if (value === "") return "";
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value;
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return "";
+  // The fixed Europe/Moscow shift (+03:00) — never the browser timezone.
+  return new Date(instant.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 16);
 }
 
 /** ТЗ DR39 §7: the Russian validation error of a period, or null when valid. */
 export function reconciliationRangeError(fromLocal: string, toLocal: string): string | null {
   if (fromLocal === "" && toLocal === "") return null;
   if (fromLocal === "" || toLocal === "") return "Укажите обе границы диапазона даты сверки данных.";
-  const from = new Date(`${fromLocal}:00${MOSCOW_OFFSET}`);
-  const to = new Date(`${toLocal}:00${MOSCOW_OFFSET}`);
+  const from = new Date(`${normalizeReconciledLocal(fromLocal)}:00${MOSCOW_OFFSET}`);
+  const to = new Date(`${normalizeReconciledLocal(toLocal)}:00${MOSCOW_OFFSET}`);
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
     return "Укажите обе границы диапазона даты сверки данных.";
   }
   return from.getTime() > to.getTime() ? "Начало диапазона даты сверки не может быть позже его конца." : null;
 }
 
-/** ТЗ DR39 §4.2: the Russian summary of an applied date filter (no ISO text). */
+/** ТЗ DR39 §4.2: the Russian summary of an applied date filter (no ISO text).
+ * A foreign wire-form range is recovered; a value that cannot be parsed
+ * yields "" — no RangeError escapes into the render. */
 export function reconciliationSummaryLabel(applied: { on: string; from: string; to: string }): string {
-  if (applied.on !== "") return formatMoscowDate(`${applied.on}T00:00:00Z`);
+  if (applied.on !== "") {
+    const onInstant = new Date(`${applied.on}T00:00:00Z`);
+    if (Number.isNaN(onInstant.getTime())) return "";
+    return formatMoscowDate(onInstant);
+  }
   if (applied.from !== "" && applied.to !== "") {
-    return `с ${formatMoscowDateTime(`${applied.from}:00${MOSCOW_OFFSET}`)} по ${formatMoscowDateTime(`${applied.to}:00${MOSCOW_OFFSET}`)}`;
+    const fromInstant = new Date(`${normalizeReconciledLocal(applied.from)}:00${MOSCOW_OFFSET}`);
+    const toInstant = new Date(`${normalizeReconciledLocal(applied.to)}:00${MOSCOW_OFFSET}`);
+    if (Number.isNaN(fromInstant.getTime()) || Number.isNaN(toInstant.getTime())) return "";
+    return `с ${formatMoscowDateTime(fromInstant)} по ${formatMoscowDateTime(toInstant)}`;
   }
   return "";
 }

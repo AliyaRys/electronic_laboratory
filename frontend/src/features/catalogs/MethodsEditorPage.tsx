@@ -131,9 +131,21 @@ const TEXT_NOTE = "Результат вводится текстом; диап�
 
 /** ТЗ DR41-B §6: only the CONFIGURABLE indicators are ever catalog rows —
  * the fixed FT rules (F18/F19/F22/F27/F28) and the norm-free бактериоскопия
- * (F23) never appear as editable norm lines. */
+ * (F23) never appear as editable norm lines. DR41-B fix-loop: a registry row
+ * WITHOUT ``evaluation_mode`` is no longer silently CONFIGURABLE — the honest
+ * mode is UNKNOWN (never editable, an explicit diagnostic). */
+export type EvaluationMode = "CONFIGURABLE" | "FIXED" | "NONE" | "UNKNOWN";
+
+export function evaluationMode(indicator: CatalogIndicator): EvaluationMode {
+  const mode = indicator.evaluation_mode;
+  if (mode === "CONFIGURABLE" || mode === "FIXED" || mode === "NONE") return mode;
+  // The contract carries ``evaluation_mode`` as a required string; anything
+  // else (absent on a legacy row, or an unexpected literal) is UNKNOWN.
+  return "UNKNOWN";
+}
+
 function isConfigurable(indicator: CatalogIndicator): boolean {
-  return indicator.evaluation_mode === undefined || indicator.evaluation_mode === "CONFIGURABLE";
+  return evaluationMode(indicator) === "CONFIGURABLE";
 }
 
 /**
@@ -153,9 +165,12 @@ export function buildMethodRows(
     if (!isConfigurable(indicator)) {
       // ТЗ DR41-B §6.4: the fixed/none indicator is not a catalog row; a
       // legacy rule created before the registry stays an honest diagnostic.
-      if (rule !== null) {
+      // DR41-B fix-loop: an UNKNOWN mode without a rule is still surfaced as
+      // an honest diagnostic row — the absence never silently becomes a
+      // configurable «Не настроено».
+      if (rule !== null || evaluationMode(indicator) === "UNKNOWN") {
         rows.push({
-          key: rule.id,
+          key: rule?.id ?? `missing-${indicator.id}`,
           rule,
           indicator,
           name: indicator.name,
@@ -801,7 +816,9 @@ export function MethodsEditorPage(): React.ReactElement {
               <article className="vse-catalog-diag" key={row.key} data-testid={`method-legacy-${row.key}`}>
                 {row.indicator?.evaluation_mode === "NONE"
                   ? `Исследование «${row.name}» не имеет нормы: результат вводится текстом в форме ВСЭ без оценки.`
-                  : `Норма исследования «${row.name}» фиксирована методикой ФТ и не настраивается в справочнике.`}
+                  : row.indicator !== null && evaluationMode(row.indicator) === "UNKNOWN"
+                    ? `Режим оценки исследования «${row.name}» неизвестен системе: строка не редактируется в справочнике.`
+                    : `Норма исследования «${row.name}» фиксирована методикой ФТ и не настраивается в справочнике.`}
               </article>
             ))}
           </div>

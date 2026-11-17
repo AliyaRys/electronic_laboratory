@@ -43,19 +43,31 @@ export function ReconciliationDateFilter({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent): void => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
-
   const close = (): void => {
     setOpen(false);
     triggerRef.current?.focus();
   };
+
+  // ТЗ DR39 fix-loop: the pointerdown outside handler closes WITH the focus
+  // return (same as Escape/toggle); the trigger itself is skipped so its
+  // following click stays a plain toggle and never re-opens the popover.
+  const handlePointerDown = (event: PointerEvent): void => {
+    const target = event.target as Node;
+    if (triggerRef.current?.contains(target)) return;
+    if (!rootRef.current?.contains(target)) {
+      // preventDefault keeps the browser from moving the focus to the
+      // clicked element AFTER our focus() — the trigger stays focused.
+      event.preventDefault();
+      close();
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const toggle = (): void => {
     if (open) {
@@ -150,7 +162,7 @@ export function ReconciliationDateFilter({
           </fieldset>
           {mode === "date" ? (
             <div className="arrivals-date-inputs">
-              <label htmlFor="arrivals-reconciled-on">Дата</label>
+              <label htmlFor="arrivals-reconciled-on">Дата сверки</label>
               <input
                 id="arrivals-reconciled-on"
                 type="date"

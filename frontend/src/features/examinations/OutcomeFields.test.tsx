@@ -103,4 +103,30 @@ describe("OutcomeFields", () => {
     await user.click(screen.getByRole("option", { name: "Непригодно" }));
     expect(seen).toEqual([{ outcome: "UNFIT", direction: "DISPOSAL", reason: "" }]);
   });
+
+  it("the reason heading is a sibling <label htmlFor>, never a nested label (DR42 fix-loop)", async () => {
+    const user = userEvent.setup();
+    let value = emptyOutcome();
+    const View = (): React.ReactElement => (
+      <OutcomeFields
+        value={value}
+        disabled={false}
+        onChange={(next) => {
+          value = next;
+          rerender(<View />);
+        }}
+      />
+    );
+    const { rerender, container } = render(<View />);
+    const resultTrigger = screen.getByRole("button", { name: /Результат ВСЭ/ });
+    await user.click(resultTrigger);
+    await user.click(screen.getByRole("option", { name: "Непригодно" }));
+    rerender(<View />);
+    const html = container.innerHTML;
+    // The invalid construction «<label ...><label htmlFor …» never renders.
+    expect(html).not.toMatch(/<label[^>]*>\s*<label/);
+    expect(screen.getByRole("textbox", { name: "Причина направления *" })).toBeTruthy();
+    await user.type(screen.getByRole("textbox", { name: "Причина направления *" }), "Посторонние включения");
+    expect(value.reason).toBe("Посторонние включения");
+  });
 });

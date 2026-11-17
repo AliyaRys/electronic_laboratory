@@ -12,7 +12,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter } from "react-router";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { ExaminationForm, initialSample } from "./ExaminationForm";
+import { ExaminationForm, initialSample, toResearchValue } from "./ExaminationForm";
 import type { CollectionView } from "../samples/api";
 import type { IncomingView } from "../arrivals/api";
 import type { ExaminationFormView } from "./api";
@@ -311,5 +311,20 @@ describe("ExaminationForm", () => {
     expect(await screen.findByText(/Не удалось сохранить ВСЭ|Ошибка соединения/)).toBeTruthy();
     expect((screen.getByRole("textbox", { name: "Номер ВСЭ *" }) as HTMLInputElement).value).toBe("№ 900");
     expect(screen.queryByText(/сохранена/i)).toBeNull();
+  });
+
+  it("DR42 fix-loop: an intermediate decimal input never travels into the preview", () => {
+    const temperatureId = INDICATORS.find((def) => def.code === "VSE-F20")?.id ?? "";
+    // «2,» is the user still typing the fraction — nothing is sent.
+    expect(toResearchValue(temperatureId, "DECIMAL", "2,", "")).toBeNull();
+    expect(toResearchValue(temperatureId, "DECIMAL", "2.", "")).toBeNull();
+    expect(toResearchValue(temperatureId, "DECIMAL", "2, ", "")).toBeNull();
+    // A completed value keeps the comma→dot normalization.
+    expect(toResearchValue(temperatureId, "DECIMAL", "2,5", "")).toMatchObject({
+      indicatorId: temperatureId,
+      kind: "DECIMAL",
+      value: "2.5",
+    });
+    expect(toResearchValue(temperatureId, "DECIMAL", "2", "")).toMatchObject({ value: "2" });
   });
 });

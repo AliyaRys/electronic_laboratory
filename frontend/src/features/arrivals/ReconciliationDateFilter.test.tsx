@@ -10,11 +10,10 @@ import { ReconciliationDateFilter, type AppliedReconciliationDate } from "./Reco
 
 const EMPTY: AppliedReconciliationDate = { on: "", from: "", to: "" };
 
-/** The single-date input (the mode radio shares the label text «Дата»). */
+/** The single-date input (the mode radio keeps the label text «Дата»). */
 function dateInput(): HTMLInputElement {
-  const candidates = screen.getAllByLabelText("Дата");
-  const input = candidates.find((entry) => entry instanceof HTMLInputElement && entry.type === "date");
-  if (!(input instanceof HTMLInputElement)) throw new Error("Поле «Дата» не найдено.");
+  const input = screen.getByLabelText("Дата сверки");
+  if (!(input instanceof HTMLInputElement)) throw new Error("Поле «Дата сверки» не найдено.");
   return input;
 }
 
@@ -90,7 +89,7 @@ describe("ReconciliationDateFilter", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: /Дата сверки данных/ }));
   });
 
-  it("a click outside closes the popover and returns focus", async () => {
+  it("a click outside closes the popover and returns focus to the trigger", async () => {
     const onApply = vi.fn();
     render(
       <div>
@@ -101,6 +100,7 @@ describe("ReconciliationDateFilter", () => {
     expect(screen.getByRole("group", { name: "Дата сверки данных" })).toBeTruthy();
     await userEvent.click(screen.getByTestId("outside"));
     expect(screen.queryByRole("group", { name: "Дата сверки данных" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Дата сверки данных/ }));
   });
 
   it("opening restores the APPLIED values as the draft", async () => {

@@ -97,10 +97,13 @@ export function OutcomeFields({
       </div>
       {unfit ? (
         <div className="vse-span12">
-          <label className="app-field">
-            <span className="app-field-heading">
-              <label htmlFor={`${idPrefix}-reason`}>Причина направления *</label>
-            </span>
+          <div className="app-field">
+            {/* DR42 fix-loop: a label cannot nest another label — the heading is
+                an explicit sibling <label htmlFor>, the textarea keeps its
+                accessible name. */}
+            <label className="app-field-heading" htmlFor={`${idPrefix}-reason`}>
+              Причина направления *
+            </label>
             <textarea
               id={`${idPrefix}-reason`}
               value={value.reason}
@@ -108,7 +111,7 @@ export function OutcomeFields({
               maxLength={2000}
               onChange={(event) => onChange({ ...value, reason: event.target.value })}
             />
-          </label>
+          </div>
         </div>
       ) : null}
       <p className="vse-exam-note vse-span12">

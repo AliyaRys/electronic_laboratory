@@ -563,8 +563,9 @@ function SpecialistChoice({
 
 /** One typed preview research from the form entry (client conversion only —
  * the server validates and prices). ТЗ DR42 §5: the comma normalises to the
- * dot wire form without any binary float. */
-function toResearchValue(
+ * dot wire form without any binary float. Exported for the honest DR42
+ * fix-loop tests of the intermediate-input semantics. */
+export function toResearchValue(
   indicatorId: string,
   kind: string,
   value: string,
@@ -574,6 +575,11 @@ function toResearchValue(
     case "BOOLEAN":
       return { indicatorId, kind: "BOOLEAN", value: value === "true" };
     case "DECIMAL": {
+      // ТЗ DR42 §5 fix-loop: an intermediate input («2,») is not yet a value —
+      // the trailing separator means the user is still typing the fraction,
+      // so nothing half-finished travels into the preview. The completed
+      // «2,45»/«2.45» normalizes as before.
+      if (/[.,]\s*$/.test(value)) return null;
       const normalized = normalizeDecimalInput(value);
       return normalized !== null ? { indicatorId, kind: "DECIMAL", value: normalized } : null;
     }

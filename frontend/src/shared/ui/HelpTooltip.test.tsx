@@ -1,4 +1,6 @@
 /** HelpTooltip unit tests (ТЗ DR44 §3): hover + focus, Escape, describedby. */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -44,6 +46,15 @@ describe("HelpTooltip", () => {
     await user.hover(trigger);
     const popup = await screen.findByRole("tooltip");
     expect(trigger.getAttribute("aria-describedby")).toBe(popup.getAttribute("id"));
+  });
+
+  it("a long hint wraps on a narrow screen: no nowrap, an honest max-width (DR44 fix-loop)", () => {
+    // jsdom does not apply the stylesheet — the contract is asserted on the
+    // CSS source of the shared popup class.
+    const css = readFileSync(join(process.cwd(), "src", "shared", "ui", "ui.css"), "utf8");
+    const block = /(\.app-help-tooltip-popup\s*\{[^}]*\})/.exec(css)?.[1] ?? "";
+    expect(block).not.toMatch(/white-space:\s*nowrap/);
+    expect(block).toMatch(/max-width/);
   });
 
   it("the accessible name never depends on the tooltip text", () => {

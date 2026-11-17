@@ -64,7 +64,12 @@ SampleSelection = Annotated[NewSample | ReuseSample | EditSample, Field(discrimi
 
 
 class CollectionView(BaseModel):
-    """API-06 ``CollectionView``: one available physical collection fact."""
+    """API-06 ``CollectionView``: one available physical collection fact.
+
+    DR45 §4: the display values ``product_name``/``evsd_uuid``/
+    ``collected_by_name`` are already resolved by the server — the UI never
+    shows raw party/user identifiers. ``product_species_id``, ``party_id``
+    and ``collected_by`` stay for the write paths and technical API use."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -76,6 +81,10 @@ class CollectionView(BaseModel):
     collected_on: date
     mass_kg: str
     collected_by: str
+    # DR45 §4: the human-readable projection.
+    product_name: str | None
+    evsd_uuid: str
+    collected_by_name: str | None
     created_at: datetime
     disposal_id: str | None
     revision: int
@@ -83,13 +92,19 @@ class CollectionView(BaseModel):
 
 class BalanceView(BaseModel):
     """API-06 balance line: the live mass of one laboratory/species basket with
-    its revision (the value the disposal dialog confirms against)."""
+    its revision (the value the disposal dialog confirms against).
+
+    DR45 §4: ``product_name`` is the normalized display name of the active
+    species group; ``product_species_id`` stays a technical field for the
+    disposal command only."""
 
     model_config = ConfigDict(extra="forbid")
 
     product_species_id: str
     mass_kg: str
     revision: int
+    # DR45 §4: the human-readable projection.
+    product_name: str | None
 
 
 class DisposalWrite(StrictModel):
@@ -108,7 +123,10 @@ class DisposalWrite(StrictModel):
 
 
 class DisposalView(BaseModel):
-    """API-06 ``DisposalView``: the immutable full-disposal fact."""
+    """API-06 ``DisposalView``: the immutable full-disposal fact.
+
+    DR45 §4: the display values ``product_name``/``actor_name`` are already
+    resolved by the server — the history never shows a species/user UUID."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -120,3 +138,7 @@ class DisposalView(BaseModel):
     external_vsd_number: str
     actor_id: str
     recorded_at: datetime
+    # DR45 §4: the human-readable projection; the command path builds the row
+    # view alone and the read model enriches it with the joined names.
+    product_name: str | None = None
+    actor_name: str | None = None

@@ -310,7 +310,7 @@ async def test_balance_carries_product_name(db_session: AsyncSession, lab, actor
     await db_session.commit()
     balances = await queries.balance_list(db_session, lab.id)
     assert balances, "balance lines expected"
-    assert balances[0].product_name == "продукция"
+    assert balances[0].product_name == "говядина"
 
 
 async def test_collection_view_carries_readable_fields(
@@ -363,7 +363,7 @@ async def test_collection_view_carries_readable_fields(
     items, total = await queries.collection_page(env.db, env.own.id, 1)
     assert total >= 1
     view = items[0]
-    assert view.product_name == "продукция"
+    assert view.product_name == "говядина"
     assert view.evsd_uuid == str(evsd_uuid)
     assert view.collected_by_name == "Ветеринарный врач"
 
@@ -402,5 +402,5 @@ async def test_disposal_view_carries_product_and_actor_names(
     items, total = await queries.disposal_page(env.db, env.own.id, 1)
     assert total == 1
     view = items[0]
-    assert view.product_name == "продукция"
+    assert view.product_name == "говядина"
     assert view.actor_name == "Ветеринарный врач"

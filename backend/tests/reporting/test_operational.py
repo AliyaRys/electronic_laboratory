@@ -379,16 +379,16 @@ async def test_confirmed_receipt_persists_service_facts(
     """The real flow: a saved reconciliation (the client sends NO services) is
     confirmed externally; the confirmation itself freezes the two performed
     service facts atomically, and the operational report counts +1/+1."""
+    from backend.src.core.contracts import CommandContext
     from backend.src.modules.arrivals.confirmation import confirm_receipt  # noqa: F401
     from backend.src.modules.arrivals.models import Reconciliation
     from backend.src.modules.arrivals.reconciliation import save_reconciliation
     from backend.src.modules.arrivals.schemas import ReconciliationWrite
     from backend.src.modules.arrivals.validation import normalize_payload
-    from backend.src.core.contracts import CommandContext
     from backend.src.modules.catalog_pricing.models import CheckServiceRule, Tariff
     from backend.tests.arrivals.test_confirmation import real_payload
+    from backend.tests.arrivals.test_dr11_pricing import CHECK_RULE_SOURCE, TARIFF_SOURCE, UNIT
     from backend.tests.arrivals.test_import_and_queues import document
-    from backend.tests.arrivals.test_dr11_pricing import CHECK_RULE_SOURCE, UNIT, TARIFF_SOURCE
 
     # CHECK pricing must be configured for the laboratory: global rules plus
     # the two laboratory tariffs (prices 0 keep the flow honest and simple).
@@ -461,10 +461,10 @@ async def test_backfill_0022_enriches_confirmed_rows_idempotently(
 ) -> None:
     """A historical CONFIRMED row saved with empty services gets the two
     performed facts; RETURNED rows stay untouched; a second run adds nothing."""
-    from sqlalchemy import text
-
     import importlib.util
     from pathlib import Path
+
+    from sqlalchemy import text
 
     spec = importlib.util.spec_from_file_location(
         "dr45_service_facts_migration",

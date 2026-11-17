@@ -26,8 +26,8 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "0022_journal_service_facts"
 down_revision: str | Sequence[str] | None = "0020_dr35_specialist"  # type: ignore[name-defined]

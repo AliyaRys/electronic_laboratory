@@ -452,9 +452,58 @@ async def test_confirmed_receipt_persists_service_facts(
     performed = {item["code"] for item in row.services if isinstance(item, dict) and item.get("performed") is True}
     assert performed == {"PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"}
 
+
+# --- DR45 §6: the idempotent CONFIRMED backfill (migration 0022) ----------------------
+
+
+async def test_backfill_0022_enriches_confirmed_rows_idempotently(
+    db_session: AsyncSession, lab, actor, party: Party
+) -> None:
+    """A historical CONFIRMED row saved with empty services gets the two
+    performed facts; RETURNED rows stay untouched; a second run adds nothing."""
+    from sqlalchemy import text
+
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "dr45_service_facts_migration",
+        Path(__file__).resolve().parents[2] / "migrations/versions/0022_journal_service_facts.py",
+    )
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    confirmed = await make_reconciliation(db_session, party, actor, services=[])
+    returned_party = await new_party(db_session, lab)
+    returned = await make_reconciliation(
+        db_session, returned_party, actor, state="RETURNED", services=[]
+    )
+    await db_session.commit()
+
+    engine = db_session.bind
+    async with engine.begin() as conn:  # type: ignore[union-attr]
+        for _attempt in range(2):
+            await conn.run_sync(lambda sync_conn: migration.backfill_service_facts(sync_conn))  # type: ignore[arg-type]
+
+    stored = (
+        await db_session.execute(
+            text("SELECT services FROM reconciliations WHERE id = :id"), {"id": confirmed.id}
+        )
+    ).scalar_one()
+    performed = {item["code"] for item in stored if item.get("performed") is True}
+    assert performed == {"PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"}
+
+    returned_services = (
+        await db_session.execute(
+            text("SELECT services FROM reconciliations WHERE id = :id"), {"id": returned.id}
+        )
+    ).scalar_one()
+    assert returned_services == []
+
     view = await operational_query(
         db_session, lab.id, datetime(2020, 1, 1, tzinfo=UTC), datetime(2030, 1, 1, tzinfo=UTC)
     )
-    assert view.processed_parties == 1
+    assert view.processed_parties == 2
     assert view.product_identifications == 1
     assert view.transport_inspections == 1

@@ -86,7 +86,6 @@ async def journal_page(
     ``first_completed_at`` and ordered by it; WAITING cards use
     ``created_at``. The window is half-open ``[from; to)``.
     """
-    from backend.src.modules.examinations.models import ExaminationStatus
 
     order_column = Examination.first_completed_at if status == "COMPLETED" else Examination.created_at
     primary = order_column.desc() if sort == "desc" else order_column.asc()

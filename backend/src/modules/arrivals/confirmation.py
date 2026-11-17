@@ -293,6 +293,18 @@ async def confirm_receipt(uow: AsyncSession, evidence: ReceiptEvidence | None) -
         reconciliation.returned_quantity = float(returned_quantity)
         reconciliation.returned_unit_id = evidence.unit_id
         reconciliation.rev = (reconciliation.rev or 1) + 1
+        # ТЗ DR45 §6: the SERVER is the owner of the service facts. A
+        # confirmed acceptance freezes the two CHECK facts atomically with
+        # the confirmation (the client never sends services); a full return
+        # gets nothing. The freeze is idempotent: a fact already stored by
+        # this reconciliation is never duplicated.
+        if _DECISION_TO_STATE[evidence.decision] == "CONFIRMED":
+            services = [item for item in (reconciliation.services or []) if isinstance(item, dict)]
+            stored_codes = {str(item.get("code")) for item in services if item.get("performed") is True}
+            for code in ("PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"):
+                if code not in stored_codes:
+                    services.append({"code": code, "performed": True})
+            reconciliation.services = services  # type: ignore[assignment]
 
     # The party view now carries the confirmation — its ETag must move.
     party.rev = (party.rev or 1) + 1

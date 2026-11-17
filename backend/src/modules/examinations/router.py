@@ -12,16 +12,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.commands import CommandContext, format_etag, resolve_if_match
-from backend.src.core.contracts import CommandStateView
+from backend.src.core.contracts import CommandStateView, Page
 from backend.src.core.database import async_session
 from backend.src.core.durability import DurabilityGuard, get_durability_guard
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.confirmation import downstream_route, ensure_confirmed
 from backend.src.modules.arrivals.models import IncomingDocument, Party
 from backend.src.modules.catalog_pricing.schemas import ResearchValue
-from backend.src.core.contracts import Page
 from backend.src.modules.examinations import commands, deletion, form_model, lifecycle, queries
 from backend.src.modules.examinations import journal as journal_model
+from backend.src.modules.examinations.journal import ExaminationJournalItem
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.examinations.schemas import (
     ExaminationFormView,
@@ -31,7 +31,6 @@ from backend.src.modules.examinations.schemas import (
     PricingPreviewRequest,
     PricingPreviewResponse,
 )
-from backend.src.modules.examinations.journal import ExaminationJournalItem
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session

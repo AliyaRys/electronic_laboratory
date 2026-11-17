@@ -16,18 +16,13 @@ const disposal = {
   external_vsd_number: "ВСД-001",
   actor_id: "00000000-0000-4000-8000-000000000001",
   recorded_at: "2026-11-06T10:00:00Z",
+  product_name: "Говядина",
+  actor_name: "Ветеринарный врач",
 };
 
 function renderHistory(): void {
   render(
-    <DisposalHistory
-      items={[disposal]}
-      collections={[]}
-      total={1}
-      page={1}
-      loading={false}
-      onPageChange={() => undefined}
-    />,
+    <DisposalHistory items={[disposal]} total={1} page={1} loading={false} onPageChange={() => undefined} />,
   );
 }
 
@@ -36,6 +31,12 @@ describe("DisposalHistory", () => {
     renderHistory();
     expect(screen.getByText("ВСД-001")).toBeTruthy();
     expect(screen.getByText("12.6")).toBeTruthy();
+    // ТЗ DR45 §4: the display values are the server-resolved names, never a
+    // species/user UUID.
+    expect(screen.getByText("Говядина")).toBeTruthy();
+    expect(screen.getByText("Ветеринарный врач")).toBeTruthy();
+    expect(screen.queryByText(disposal.product_species_id)).toBeNull();
+    expect(screen.queryByText(disposal.actor_id)).toBeNull();
     // No row action menus, no textboxes: the history is never editable.
     expect(screen.queryByRole("button", { name: "Действия со строкой" })).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
@@ -52,25 +53,11 @@ describe("DisposalHistory", () => {
 
   it("the loading and empty states are distinct", () => {
     const { rerender } = render(
-      <DisposalHistory
-        items={null}
-        collections={[]}
-        total={0}
-        page={1}
-        loading
-        onPageChange={() => undefined}
-      />,
+      <DisposalHistory items={null} total={0} page={1} loading onPageChange={() => undefined} />,
     );
     expect(screen.getByText("Загрузка…")).toBeTruthy();
     rerender(
-      <DisposalHistory
-        items={[]}
-        collections={[]}
-        total={0}
-        page={1}
-        loading={false}
-        onPageChange={() => undefined}
-      />,
+      <DisposalHistory items={[]} total={0} page={1} loading={false} onPageChange={() => undefined} />,
     );
     expect(screen.getByText("За выбранный период утилизаций нет.")).toBeTruthy();
   });
@@ -78,14 +65,7 @@ describe("DisposalHistory", () => {
   it("pagination is honest about the pages", async () => {
     const onPageChange = vi.fn();
     render(
-      <DisposalHistory
-        items={[disposal]}
-        collections={[]}
-        total={25}
-        page={1}
-        loading={false}
-        onPageChange={onPageChange}
-      />,
+      <DisposalHistory items={[disposal]} total={25} page={1} loading={false} onPageChange={onPageChange} />,
     );
     expect(screen.getByText("Страница 1 из 2")).toBeTruthy();
   });

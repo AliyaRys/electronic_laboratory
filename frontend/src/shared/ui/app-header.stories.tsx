@@ -55,6 +55,20 @@ export const WorkMilk: Story = {
     onLogout: () => undefined,
   },
 };
+/** ТЗ DR45 §5: the production work header carries the STATIC single-product
+ * context — no button, no caret, no milk option. */
+export const WorkStaticMeat: Story = {
+  args: {
+    mode: "work",
+    user,
+    product: "meat",
+    productStatic: true,
+    active: "arrivals",
+    institution: "Лаборатория ВСЭ №1 г. Казань",
+    links: selectedLabLinks,
+    onLogout: () => undefined,
+  },
+};
 /** VET: «Отчёты» leads into the section, but the hub shows only «Учёт проб». */
 export const VetSamplesOnly: Story = {
   args: {

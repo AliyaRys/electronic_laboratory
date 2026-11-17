@@ -14,7 +14,7 @@ export default meta;
 const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const SPECIES = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
-const balance = { product_species_id: SPECIES, mass_kg: "12.6", revision: 3 };
+const balance = { product_species_id: SPECIES, mass_kg: "12.6", revision: 3, product_name: "Говядина" };
 
 const disposal = {
   id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
@@ -25,6 +25,8 @@ const disposal = {
   external_vsd_number: "ВСД-001",
   actor_id: "00000000-0000-4000-8000-000000000001",
   recorded_at: "2026-11-06T10:00:00Z",
+  product_name: "Говядина",
+  actor_name: "Ветеринарный врач",
 };
 
 export const ДиалогУтилизации: StoryObj<typeof DisposalDialog> = {
@@ -55,7 +57,6 @@ export const ИсторияУтилизаций: StoryObj<typeof DisposalHistory
   render: (args) => <DisposalHistory {...args} />,
   args: {
     items: [disposal],
-    collections: [],
     total: 1,
     page: 1,
     loading: false,
@@ -67,7 +68,6 @@ export const ИсторияПусто: StoryObj<typeof DisposalHistory> = {
   render: (args) => <DisposalHistory {...args} />,
   args: {
     items: [],
-    collections: [],
     total: 0,
     page: 1,
     loading: false,
@@ -83,7 +83,6 @@ export const ИсторияСтраницы: StoryObj<typeof DisposalHistory> = 
       id: `dddddddd-dddd-4ddd-8ddd-dddddddddddd`.slice(0, 34) + index.toString().padStart(2, "0"),
       external_vsd_number: `ВСД-0${index + 1}`,
     })),
-    collections: [],
     total: 25,
     page: 1,
     loading: false,

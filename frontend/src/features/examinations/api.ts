@@ -66,6 +66,88 @@ export function examinationOutcomeLabel(value: string | null | undefined): strin
   return "—";
 }
 
+/** DR45 §2: the scoped journal read model item (snake_case wire). */
+export type ExaminationJournalItem = components["schemas"]["ExaminationJournalItem"];
+/** §2: the scoped author options of the journal filter. */
+export type JournalAuthor = components["schemas"]["JournalAuthor"];
+
+export interface JournalQuery {
+  laboratory_id: string;
+  /** Absent status = COMPLETED (the server default; the plain URL). */
+  status?: "WAITING" | "COMPLETED" | null;
+  q?: string | null;
+  outcome?: "FIT" | "UNFIT" | null;
+  occurred_from?: string | null;
+  /** Exclusive upper boundary of the Moscow calendar window. */
+  occurred_to?: string | null;
+  sort?: "asc" | "desc" | null;
+  /** §2: the server filters the displayed specialist BEFORE count/page. */
+  specialist_id?: string | null;
+  page?: number;
+}
+
+/** DR45 §2: the journal query key (URL-state joins the key). */
+export const journalKey = (query: JournalQuery): readonly unknown[] => [
+  "examinations",
+  "journal",
+  query.laboratory_id,
+  query.status ?? "COMPLETED",
+  query.q ?? "",
+  query.outcome ?? "",
+  query.occurred_from ?? "",
+  query.occurred_to ?? "",
+  query.sort ?? "desc",
+  query.page ?? 1,
+];
+
+export async function fetchJournal(
+  query: JournalQuery,
+  signal?: AbortSignal | null,
+): Promise<{ items: ExaminationJournalItem[]; total: number; page: number; page_size: number } | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/examinations", {
+      params: {
+        query: {
+          laboratory_id: query.laboratory_id,
+          status: query.status ?? null,
+          q: query.q ?? null,
+          outcome: query.outcome ?? null,
+          occurred_from: query.occurred_from ?? null,
+          occurred_to: query.occurred_to ?? null,
+          sort: query.sort ?? null,
+          specialist_id: query.specialist_id ?? null,
+          page: query.page ?? 1,
+        },
+      } as never,
+      signal: signal ?? null,
+    }) as Promise<
+      RawResult<{ items: ExaminationJournalItem[]; total: number; page: number; page_size: number }>
+    >,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+/** The scoped author options of the journal filter (§2): ONE query over the
+ * laboratory's journal cards, never the full user list. */
+export const journalAuthorsKey = (laboratoryId: string): readonly unknown[] => [
+  "examinations",
+  "journal-authors",
+  laboratoryId,
+];
+
+export async function fetchJournalAuthors(
+  laboratoryId: string,
+  signal?: AbortSignal | null,
+): Promise<JournalAuthor[] | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/examinations/authors", {
+      params: { query: { laboratory_id: laboratoryId } },
+      signal: signal ?? null,
+    }) as Promise<RawResult<JournalAuthor[]>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
 export async function fetchExamination(
   examinationId: string,
   signal?: AbortSignal | null,

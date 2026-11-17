@@ -7,6 +7,9 @@
     milk: { label: 'Молоко и молочная продукция', shortLabel: 'Молоко' },
   };
 
+  /* ТЗ DR45 §5: the static single-product context of the production header. */
+  const STATIC_PRODUCT_LABEL = 'Мясо и мясопродукты';
+
   /* Canonical shell icons. Change a path here, never inside an individual page. */
   const icons = {
     arrivals: [
@@ -87,7 +90,12 @@
   };
 
   const readStoredProduct = () => {
-    try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      // ТЗ DR45 §5: production is meat-only; a legacy stored 'milk' context
+      // is normalized to 'meat' on read (never restored as milk).
+      return stored === 'milk' ? 'meat' : stored;
+    } catch { return null; }
   };
 
   const saveProduct = product => {
@@ -150,12 +158,17 @@
     userName = 'Анна Кузнецова',
     userInitials = 'АК',
     menuOpen = false,
+    // ТЗ DR45 §5: the single-product static variant of the production work
+    // header (no button, no caret, no milk option) — see README.
+    productStatic = false,
     links = {},
     onProductChange,
     onLogout,
   } = {}) => {
     if (!['work', 'admin', 'analyst', 'no-products'].includes(mode)) throw new TypeError('Неизвестный режим шапки');
     if (!products[product]) product = 'meat';
+    // ТЗ DR45 §5: the static variant is the meat-only production context.
+    if (productStatic && mode === 'work') product = 'meat';
     const header = create('header', 'topbar');
     header.dataset.appHeader = '';
     header.dataset.appHeaderMode = mode;
@@ -208,30 +221,46 @@
     }
 
     const switcher = create('div', `nav-item product-switcher${menuOpen ? ' open' : ''}`);
-    const trigger = create('button', 'navlink product-trigger');
-    trigger.id = 'product-switcher';
-    trigger.type = 'button';
-    trigger.setAttribute('aria-haspopup', 'listbox');
-    trigger.setAttribute('aria-expanded', String(menuOpen));
-    const productIcon = iconSlot(product, 'product-icon');
-    productIcon.dataset.productIcon = product;
-    const productLabel = create('span', 'navtext', products[product].label);
+    let trigger = null;
+    let menu = null;
+    const productIcon = iconSlot('meat', 'product-icon');
+    productIcon.dataset.productIcon = 'meat';
+    const productLabel = create('span', 'navtext', '');
     productLabel.dataset.productLabel = '';
-    trigger.append(productIcon, productLabel, api.createIcon('caret', 'nav-caret'));
-    const menu = create('div', 'journal-menu product-menu');
-    menu.setAttribute('role', 'listbox');
-    menu.setAttribute('aria-label', 'Тип продукции');
-    Object.entries(products).forEach(([key, config]) => {
-      const option = create('button', key === product ? 'active' : '', config.label);
-      option.type = 'button';
-      option.setAttribute('role', 'option');
-      option.setAttribute('aria-selected', String(key === product));
-      option.dataset.productOption = key;
-      option.prepend(iconSlot(key, 'product-icon'));
-      menu.append(option);
-    });
-    switcher.append(trigger, menu);
-    if (mode === 'work') nav.append(switcher);
+    // ТЗ DR45 §5: the production work header shows the STATIC single-product
+    // context «Мясо и мясопродукты» — no button, no listbox, no caret and no
+    // milk option. The interactive switcher stays only for the documented
+    // stories/legacy mockups (productStatic: false, the previous contract).
+    if (productStatic) {
+      switcher.dataset.productStatic = 'meat';
+      productLabel.textContent = STATIC_PRODUCT_LABEL;
+      switcher.append(productIcon, productLabel);
+      nav.append(switcher);
+    } else {
+      trigger = create('button', 'navlink product-trigger');
+      trigger.id = 'product-switcher';
+      trigger.type = 'button';
+      trigger.setAttribute('aria-haspopup', 'listbox');
+      trigger.setAttribute('aria-expanded', String(menuOpen));
+      productIcon.replaceChildren(api.createIcon(product));
+      productIcon.dataset.productIcon = product;
+      productLabel.textContent = products[product].label;
+      trigger.append(productIcon, productLabel, api.createIcon('caret', 'nav-caret'));
+      menu = create('div', 'journal-menu product-menu');
+      menu.setAttribute('role', 'listbox');
+      menu.setAttribute('aria-label', 'Тип продукции');
+      Object.entries(products).forEach(([key, config]) => {
+        const option = create('button', key === product ? 'active' : '', config.label);
+        option.type = 'button';
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(key === product));
+        option.dataset.productOption = key;
+        option.prepend(iconSlot(key, 'product-icon'));
+        menu.append(option);
+      });
+      switcher.append(trigger, menu);
+      if (mode === 'work') nav.append(switcher);
+    }
     if (mode === 'no-products' && !nav.childElementCount) nav.hidden = true;
 
     const userArea = create('div', 'user-area');
@@ -246,52 +275,59 @@
     header.append(brand, nav, userArea);
 
     const setOpen = (open, returnFocus = false) => {
+      if (!trigger) return;
       switcher.classList.toggle('open', open);
       trigger.setAttribute('aria-expanded', String(open));
       if (returnFocus) trigger.focus();
     };
 
     const setProduct = nextProduct => {
-      if (!products[nextProduct]) return;
-      header.dataset.product = nextProduct;
-      productLabel.textContent = products[nextProduct].label;
-      trigger.setAttribute('aria-label', `Тип продукции: ${products[nextProduct].label}`);
-      trigger.dataset.shortLabel = products[nextProduct].shortLabel;
-      productIcon.replaceChildren(api.createIcon(nextProduct));
-      productIcon.dataset.productIcon = nextProduct;
+      // ТЗ DR45 §5: a stored/requested 'milk' context never restores milk —
+      // it is normalized to the single production product 'meat'.
+      const normalized = nextProduct === 'milk' ? 'meat' : nextProduct;
+      if (!products[normalized]) return;
+      header.dataset.product = normalized;
+      productLabel.textContent = productStatic ? STATIC_PRODUCT_LABEL : products[normalized].label;
+      productIcon.replaceChildren(api.createIcon(normalized));
+      productIcon.dataset.productIcon = normalized;
+      if (!trigger) return;
+      trigger.setAttribute('aria-label', `Тип продукции: ${products[normalized].label}`);
+      trigger.dataset.shortLabel = products[normalized].shortLabel;
       menu.querySelectorAll('[data-product-option]').forEach(option => {
-        const selected = option.dataset.productOption === nextProduct;
+        const selected = option.dataset.productOption === normalized;
         option.classList.toggle('active', selected);
         option.setAttribute('aria-selected', String(selected));
       });
     };
 
-    trigger.addEventListener('click', () => setOpen(!switcher.classList.contains('open')));
-    trigger.addEventListener('keydown', event => {
-      if (event.key !== 'ArrowDown') return;
-      event.preventDefault();
-      setOpen(true);
-      menu.querySelector('[aria-selected="true"]')?.focus();
-    });
-    [...menu.querySelectorAll('[data-product-option]')].forEach((option, index, optionsList) => {
-      option.addEventListener('click', () => {
-        const nextProduct = option.dataset.productOption;
-        if (onProductChange) onProductChange(nextProduct, header);
-        else setProduct(nextProduct);
-        setOpen(false, true);
+    if (trigger) {
+      trigger.addEventListener('click', () => setOpen(!switcher.classList.contains('open')));
+      trigger.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown') return;
+        event.preventDefault();
+        setOpen(true);
+        menu.querySelector('[aria-selected="true"]')?.focus();
       });
-      option.addEventListener('keydown', event => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
+      [...menu.querySelectorAll('[data-product-option]')].forEach((option, index, optionsList) => {
+        option.addEventListener('click', () => {
+          const nextProduct = option.dataset.productOption;
+          if (onProductChange) onProductChange(nextProduct, header);
+          else setProduct(nextProduct);
           setOpen(false, true);
-        }
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-          event.preventDefault();
-          const direction = event.key === 'ArrowDown' ? 1 : -1;
-          optionsList[(index + direction + optionsList.length) % optionsList.length].focus();
-        }
+        });
+        option.addEventListener('keydown', event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setOpen(false, true);
+          }
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const direction = event.key === 'ArrowDown' ? 1 : -1;
+            optionsList[(index + direction + optionsList.length) % optionsList.length].focus();
+          }
+        });
       });
-    });
+    }
     logout.addEventListener('click', event => onLogout?.(event, header));
     header.addEventListener('keydown', event => {
       if (event.key === 'Escape' && switcher.classList.contains('open')) setOpen(false, true);

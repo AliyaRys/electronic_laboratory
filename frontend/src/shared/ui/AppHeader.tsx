@@ -41,6 +41,24 @@ export const PRODUCTS: Readonly<Record<ProductType, { label: string; shortLabel:
     milk: Object.freeze({ label: "Молоко и молочная продукция", shortLabel: "Молоко", icon: "milk" }),
   });
 
+function StaticProductContext(): React.ReactElement {
+  /** ТЗ DR45 §5: the production work header shows the STATIC single-product
+   * context «Мясо и мясопродукты» — no button, no listbox, no caret and no
+   * milk option. The interactive switcher stays only for stories/legacy. */
+  return (
+    <div className="nav-item product-switcher" data-product-static="meat">
+      <span className="product-icon" aria-hidden="true" data-product-icon="meat">
+        <Icon name="meat" />
+      </span>
+      <span className="navtext" data-product-label="">
+        {STATIC_PRODUCT_LABEL}
+      </span>
+    </div>
+  );
+}
+
+export const STATIC_PRODUCT_LABEL = "Мясо и мясопродукты";
+
 export interface AppHeaderProps {
   mode?: HeaderMode;
   user: HeaderUser | null;
@@ -52,6 +70,9 @@ export interface AppHeaderProps {
   links?: HeaderLinks;
   onProductChange?: ((product: ProductType) => void) | undefined;
   onLogout: () => void;
+  /** ТЗ DR45 §5: the static single-product production context (no switcher,
+   * no caret, no milk option); the interactive switcher stays for stories. */
+  productStatic?: boolean;
 }
 
 function NavLink({
@@ -180,6 +201,7 @@ export function AppHeader({
   links = {},
   onProductChange,
   onLogout,
+  productStatic = false,
 }: AppHeaderProps): React.ReactElement {
   const workMode = mode === "work";
   const brandHref =
@@ -301,7 +323,13 @@ export function AppHeader({
         aria-label={mode === "no-products" ? "Рабочие разделы недоступны" : "Основная навигация"}
       >
         {nav}
-        {workMode ? <ProductSwitcher product={product} onProductChange={onProductChange} /> : null}
+        {workMode ? (
+          productStatic ? (
+            <StaticProductContext />
+          ) : (
+            <ProductSwitcher product={product} onProductChange={onProductChange} />
+          )
+        ) : null}
       </nav>
       <div className="user-area">
         {user !== null ? (

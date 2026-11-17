@@ -37,6 +37,9 @@ export const MilkArrivals = { name: 'Молоко · Поступления' };
 export const MeatJournal = { name: 'Мясо · Журнал ВСЭ', args: { product: 'meat', active: 'journal' } };
 export const Directories = { name: 'Справочники', args: { product: 'meat', active: 'directories' } };
 export const ProductMenu = { name: 'Меню продукции открыто', args: { menuOpen: true } };
+// ТЗ DR45 §5: производственный single-product вариант — статичный контекст
+// «Мясо и мясопродукты» без кнопки, стрелки и опции «молоко».
+export const ProductStatic = { name: 'Статичный контекст (мясо)', args: { productStatic: true, product: 'meat', active: 'arrivals' } };
 export const LongInstitution = {
   name: 'Длинное название учреждения',
   args: { institution: 'Государственная ветеринарная лаборатория ветеринарно-санитарной экспертизы №12' },

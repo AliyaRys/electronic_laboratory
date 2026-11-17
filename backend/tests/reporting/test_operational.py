@@ -368,3 +368,142 @@ async def test_list_report_sources_applies_half_year_boundaries(
     half2 = await list_report_sources(db_session, lab.id, 2026, 2)
     assert half1 == []
     assert len(half2) == 1
+
+
+# --- DR45 §6: the server owns the service facts --------------------------------------
+
+
+async def test_confirmed_receipt_persists_service_facts(
+    db_session: AsyncSession, lab, actor, party: Party
+) -> None:
+    """The real flow: a saved reconciliation (the client sends NO services) is
+    confirmed externally; the confirmation itself freezes the two performed
+    service facts atomically, and the operational report counts +1/+1."""
+    from backend.src.core.contracts import CommandContext
+    from backend.src.modules.arrivals.confirmation import confirm_receipt  # noqa: F401
+    from backend.src.modules.arrivals.models import Reconciliation
+    from backend.src.modules.arrivals.reconciliation import save_reconciliation
+    from backend.src.modules.arrivals.schemas import ReconciliationWrite
+    from backend.src.modules.arrivals.validation import normalize_payload
+    from backend.src.modules.catalog_pricing.models import CheckServiceRule, Tariff
+    from backend.tests.arrivals.test_confirmation import real_payload
+    from backend.tests.arrivals.test_dr11_pricing import CHECK_RULE_SOURCE, TARIFF_SOURCE, UNIT
+    from backend.tests.arrivals.test_import_and_queues import document
+
+    # CHECK pricing must be configured for the laboratory: global rules plus
+    # the two laboratory tariffs (prices 0 keep the flow honest and simple).
+    db_session.add_all(
+        [
+            CheckServiceRule(
+                service_code=code,
+                unit_id=UNIT,
+                multiplier_basis="ONE_SERVICE",
+                applicable_decisions=["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"],
+                version=1,
+                source=CHECK_RULE_SOURCE,
+            )
+            for code in ("PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION")
+        ]
+    )
+    db_session.add_all(
+        [
+            Tariff(
+                laboratory_id=lab.id,
+                product_species_id=None,
+                service_code=code,
+                unit_id="RUB",
+                price=Decimal("0.00"),
+                version=1,
+                source=TARIFF_SOURCE,
+            )
+            for code in ("PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION")
+        ]
+    )
+    await db_session.commit()
+
+    evsd = uuid.uuid4()
+    fresh = await arrivals_commands.upsert_incoming(db_session, document(evsd, lab.id))
+    await db_session.commit()
+    payload = normalize_payload(
+        ReconciliationWrite.model_validate(real_payload().model_dump(mode="json", by_alias=True))
+    )
+    await save_reconciliation(
+        CommandContext(actor_id=actor, idempotency_key=str(uuid.uuid4()), expected_revision=fresh.rev),
+        fresh.id,
+        payload,
+        uow=db_session,
+    )
+    await db_session.commit()
+
+    from backend.tests.fixtures.receipt_evidence import (
+        FixtureReceiptEvidenceReader,
+        confirm_via_reader,
+        receipt_evidence,
+    )
+
+    reader = FixtureReceiptEvidenceReader()
+    reader.plant(fresh.id, receipt_evidence(evsd))
+    first = await confirm_via_reader(db_session, reader, fresh.id)
+    await db_session.commit()
+    assert first is not None
+
+    row = (await db_session.execute(select(Reconciliation).where(Reconciliation.party_id == fresh.id))).scalar_one()
+    assert row.state == "CONFIRMED"
+    performed = {item["code"] for item in row.services if isinstance(item, dict) and item.get("performed") is True}
+    assert performed == {"PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"}
+
+
+# --- DR45 §6: the idempotent CONFIRMED backfill (migration 0022) ----------------------
+
+
+async def test_backfill_0022_enriches_confirmed_rows_idempotently(
+    db_session: AsyncSession, lab, actor, party: Party
+) -> None:
+    """A historical CONFIRMED row saved with empty services gets the two
+    performed facts; RETURNED rows stay untouched; a second run adds nothing."""
+    import importlib.util
+    from pathlib import Path
+
+    from sqlalchemy import text
+
+    spec = importlib.util.spec_from_file_location(
+        "dr45_service_facts_migration",
+        Path(__file__).resolve().parents[2] / "migrations/versions/0022_journal_service_facts.py",
+    )
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    confirmed = await make_reconciliation(db_session, party, actor, services=[])
+    returned_party = await new_party(db_session, lab)
+    returned = await make_reconciliation(
+        db_session, returned_party, actor, state="RETURNED", services=[]
+    )
+    await db_session.commit()
+
+    engine = db_session.bind
+    async with engine.begin() as conn:  # type: ignore[union-attr]
+        for _attempt in range(2):
+            await conn.run_sync(lambda sync_conn: migration.backfill_service_facts(sync_conn))  # type: ignore[arg-type]
+
+    stored = (
+        await db_session.execute(
+            text("SELECT services FROM reconciliations WHERE id = :id"), {"id": confirmed.id}
+        )
+    ).scalar_one()
+    performed = {item["code"] for item in stored if item.get("performed") is True}
+    assert performed == {"PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"}
+
+    returned_services = (
+        await db_session.execute(
+            text("SELECT services FROM reconciliations WHERE id = :id"), {"id": returned.id}
+        )
+    ).scalar_one()
+    assert returned_services == []
+
+    view = await operational_query(
+        db_session, lab.id, datetime(2020, 1, 1, tzinfo=UTC), datetime(2030, 1, 1, tzinfo=UTC)
+    )
+    assert view.processed_parties == 2
+    assert view.product_identifications == 1
+    assert view.transport_inspections == 1

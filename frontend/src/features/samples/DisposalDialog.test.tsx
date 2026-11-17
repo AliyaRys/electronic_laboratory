@@ -25,6 +25,7 @@ const balance = {
   product_species_id: SPECIES,
   mass_kg: "12.6",
   revision: 1,
+  product_name: "Говядина",
 };
 
 function renderDialog(
@@ -98,6 +99,8 @@ describe("DisposalDialog", () => {
             external_vsd_number: "ВСД-001",
             actor_id: "00000000-0000-4000-8000-000000000001",
             recorded_at: "2026-11-06T10:00:00Z",
+            product_name: "Говядина",
+            actor_name: "Ветеринарный врач",
           },
           { status: 201 },
         );
@@ -135,7 +138,7 @@ describe("DisposalDialog", () => {
       <QueryClientProvider client={client}>
         <DisposalDialog
           laboratoryId={LAB}
-          balance={{ product_species_id: SPECIES, mass_kg: "13.4", revision: 2 }}
+          balance={{ product_species_id: SPECIES, mass_kg: "13.4", revision: 2, product_name: "Говядина" }}
           open
           today="2026-11-06"
           onClose={() => undefined}

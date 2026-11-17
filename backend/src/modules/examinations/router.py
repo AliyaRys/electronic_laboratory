@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.commands import CommandContext, format_etag, resolve_if_match
-from backend.src.core.contracts import CommandStateView
+from backend.src.core.contracts import CommandStateView, Page
 from backend.src.core.database import async_session
 from backend.src.core.durability import DurabilityGuard, get_durability_guard
 from backend.src.core.problems import ProblemError, not_found
@@ -19,6 +20,8 @@ from backend.src.modules.arrivals.confirmation import downstream_route, ensure_c
 from backend.src.modules.arrivals.models import IncomingDocument, Party
 from backend.src.modules.catalog_pricing.schemas import ResearchValue
 from backend.src.modules.examinations import commands, deletion, form_model, lifecycle, queries
+from backend.src.modules.examinations import journal as journal_model
+from backend.src.modules.examinations.journal import ExaminationJournalItem
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.examinations.schemas import (
     ExaminationFormView,
@@ -251,6 +254,97 @@ async def complete_waiting(
     await db.commit()
     response.headers["ETag"] = format_etag(view.revision)
     return view
+
+
+@router.get("/authors", response_model=list[journal_model.JournalAuthor])
+async def list_journal_authors(
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    laboratory_id: uuid.UUID,
+) -> list[journal_model.JournalAuthor]:
+    """The scoped author options of the journal filter (§2): ONE query over
+    the laboratory's own journal cards — never the full user list."""
+    identity, _actor = principal
+    await authorizer.authorize(
+        db, identity.actor_id, "examination:read", ScopeTarget(laboratory_id=laboratory_id), hide_foreign=True
+    )
+    return await journal_model.journal_authors(db, laboratory_id)
+
+
+_JOURNAL_ALLOWED_PARAMS = frozenset(
+    {"laboratory_id", "status", "q", "outcome", "specialist_id", "occurred_from", "occurred_to", "sort", "page"}
+)
+
+
+def _validate_journal_params(request: Request, status: str) -> None:
+    """§2: an unknown or incompatible journal query is an honest 422, never a
+    silently ignored filter (a lying `total` is a worse answer than an
+    explicit problem)."""
+    unknown = sorted(set(request.query_params.keys()) - _JOURNAL_ALLOWED_PARAMS)
+    if unknown:
+        raise ProblemError(
+            status=422,
+            code="VALIDATION_ERROR",
+            title="Validation error",
+            detail=f"Неизвестные параметры журнала: {', '.join(unknown)}.",
+        )
+    if status == "WAITING" and any(
+        key in request.query_params for key in ("outcome", "occurred_from", "occurred_to")
+    ):
+        # The completion period and the outcome filter are meaningful for
+        # COMPLETED cards only; a WAITING query cannot combine them.
+        raise ProblemError(
+            status=422,
+            code="VALIDATION_ERROR",
+            title="Validation error",
+            detail="Итог и период завершения доступны только для вкладки завершённых карточек.",
+        )
+
+
+@router.get("", response_model=Page[ExaminationJournalItem])
+async def list_examination_journal(
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    laboratory_id: uuid.UUID,
+    status: Annotated[
+        Literal["WAITING", "COMPLETED"], Query(description="Статус карточки; по умолчанию COMPLETED.")
+    ] = "COMPLETED",
+    q: str | None = None,
+    outcome: Annotated[Literal["FIT", "UNFIT"] | None, Query()] = None,
+    specialist_id: uuid.UUID | None = None,
+    occurred_from: datetime | None = None,
+    occurred_to: Annotated[datetime | None, Query(description="Исключающая верхняя граница периода.")] = None,
+    sort: Annotated[Literal["asc", "desc"], Query()] = "desc",
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> Page[ExaminationJournalItem]:
+    """The scoped journal read model (ТЗ DR45 §2): a plain URL answers the
+    COMPLETED cards only; the status filter selects ``Examination.status``.
+    """
+    identity, _actor = principal
+    _validate_journal_params(request, status)
+    await authorizer.authorize(
+        db, identity.actor_id, "examination:read", ScopeTarget(laboratory_id=laboratory_id), hide_foreign=True
+    )
+    items, total = await journal_model.journal_page(
+        db,
+        laboratory_id,
+        status=status,
+        q=q,
+        outcome=outcome,
+        specialist_id=specialist_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        sort=sort,
+        page=page,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return Page[ExaminationJournalItem](
+        items=items, total=total, page=page, page_size=journal_model.JOURNAL_PAGE_SIZE
+    )
 
 
 @router.get("/{examination_id}", response_model=ExaminationView)

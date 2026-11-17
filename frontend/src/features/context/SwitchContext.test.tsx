@@ -481,12 +481,14 @@ describe("product context switch", () => {
     });
 
     await act(async () => {
+      // ТЗ DR45 §5: production is meat-only; a requested 'milk' context is
+      // normalized to 'meat' (never restored as milk).
       await switchContext(queryClient, { productType: "milk" });
     });
 
     // The in-flight read of the previous context is cancelled — it can never
     // land in the new product context.
-    expect(useContextStore.getState().productType).toBe("milk");
+    expect(useContextStore.getState().productType).toBe("meat");
     await act(async () => {
       settle("stale-answer");
     });

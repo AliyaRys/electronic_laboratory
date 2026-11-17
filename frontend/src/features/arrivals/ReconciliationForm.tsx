@@ -283,7 +283,9 @@ function toPayload(values: FormValues, party: IncomingView): ReconciliationWrite
       type: values.transaction_planned === true ? values.transaction_type : null,
     },
     fair: values.fair,
-    services: [],
+    // ТЗ DR45 §6: the CLIENT never sends services — the performed CHECK
+    // service facts are derived and frozen by the server with the receipt
+    // confirmation; the old empty client list is no longer a data source.
   };
 }
 

@@ -9,19 +9,18 @@
  * examination id renders a disabled, non-navigating link label.
  */
 import { DataTable, type DataTableColumn } from "../../shared/ui/DataTable";
-import { snapshotProduct, type CollectionView, type DisposalView } from "./api";
+import type { DisposalView } from "./api";
 
 const COLUMNS: readonly DataTableColumn[] = [
   { id: "disposed_on", header: "Дата утилизации" },
   { id: "product", header: "Вид продукции" },
   { id: "mass", header: "Вес, кг" },
   { id: "number", header: "Номер исходящей эВСД" },
-  { id: "actor", header: "Провёл (идентификатор)" },
+  { id: "actor", header: "Провёл" },
 ];
 
 export interface DisposalHistoryProps {
   items: DisposalView[] | null;
-  collections: readonly CollectionView[];
   total: number;
   page: number;
   loading: boolean;
@@ -30,7 +29,6 @@ export interface DisposalHistoryProps {
 
 export function DisposalHistory({
   items,
-  collections,
   total,
   page,
   loading,
@@ -51,12 +49,15 @@ export function DisposalHistory({
           cells: [
             { columnId: "disposed_on", value: item.disposed_on },
             {
+              // ТЗ DR45 §4: the server-resolved product name; the species id
+              // is never shown and the name never depends on the current
+              // collections page.
               columnId: "product",
-              value: speciesLabel(item.product_species_id, collections),
+              value: item.product_name ?? "Данные не найдены",
             },
             { columnId: "mass", value: item.mass_kg },
             { columnId: "number", value: item.external_vsd_number },
-            { columnId: "actor", value: item.actor_id },
+            { columnId: "actor", value: item.actor_name ?? "Данные не найдены" },
           ],
         }))}
       />
@@ -89,11 +90,4 @@ export function DisposalHistory({
       </p>
     </section>
   );
-}
-
-/** The known species name of a disposal from the collection snapshots; the
- * honest identifier otherwise. */
-function speciesLabel(speciesId: string, collections: readonly CollectionView[]): string {
-  const match = collections.find((item) => item.product_species_id === speciesId);
-  return match !== undefined ? snapshotProduct(match) : speciesId;
 }

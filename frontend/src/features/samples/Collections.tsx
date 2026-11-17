@@ -4,14 +4,14 @@
  * corrections happen through the allowed card edit, never here.
  */
 import { DataTable, type DataTableColumn } from "../../shared/ui/DataTable";
-import { snapshotProduct, type CollectionView } from "./api";
+import type { CollectionView } from "./api";
 
 const COLUMNS: readonly DataTableColumn[] = [
   { id: "product", header: "Вид продукции" },
   { id: "collected_on", header: "Дата отбора" },
   { id: "mass", header: "Вес, кг" },
-  { id: "party", header: "Партия (идентификатор)" },
-  { id: "author", header: "Отобрал (идентификатор)" },
+  { id: "evsd", header: "UUID ВСД" },
+  { id: "author", header: "Отобрал" },
 ];
 
 export interface CollectionsProps {
@@ -42,11 +42,14 @@ export function Collections({
         rows={(items ?? []).map((item) => ({
           id: item.id,
           cells: [
-            { columnId: "product", value: snapshotProduct(item) },
+            // ТЗ DR45 §4: the server-resolved display values — the product
+            // name, the party's eVSD UUID and the collector's ФИО; the raw
+            // party/user ids are never shown.
+            { columnId: "product", value: item.product_name ?? "Данные не найдены" },
             { columnId: "collected_on", value: item.collected_on },
             { columnId: "mass", value: item.mass_kg },
-            { columnId: "party", value: item.party_id },
-            { columnId: "author", value: item.collected_by },
+            { columnId: "evsd", value: item.evsd_uuid || "Не указан" },
+            { columnId: "author", value: item.collected_by_name ?? "Данные не найдены" },
           ],
         }))}
       />

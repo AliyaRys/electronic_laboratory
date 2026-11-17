@@ -162,26 +162,16 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "Выйти" })).toBeInTheDocument();
   });
 
-  it("a milk-scoped VET defaults to the milk product context", async () => {
+  it("the production work header shows the static single-product meat context (ТЗ DR45 §5)", async () => {
+    // A legacy stored 'milk' context is normalized to 'meat', never restored.
     useContextStore.getState().setProductType("milk");
     renderShell();
     await waitForUser();
-    expect(
-      screen.getByRole("button", { name: "Тип продукции: Молоко и молочная продукция" }),
-    ).toBeInTheDocument();
-  });
-
-  it("switching the product updates the scope store and the trigger label", async () => {
-    const userEvent = (await import("@testing-library/user-event")).default.setup();
-    useContextStore.getState().setProductType("milk");
-    renderShell();
-    await waitForUser();
-    const trigger = screen.getByRole("button", { name: "Тип продукции: Молоко и молочная продукция" });
-    await userEvent.click(trigger);
-    await userEvent.click(screen.getByRole("option", { name: "Мясо и продукты убоя" }));
-
     expect(useContextStore.getState().productType as ProductType).toBe("meat");
-    expect(screen.getByRole("button", { name: "Тип продукции: Мясо и продукты убоя" })).toBeInTheDocument();
+    // No interactive switcher: not a button, no listbox, no milk option.
+    expect(screen.queryByRole("button", { name: /Тип продукции/ })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Тип продукции" })).toBeNull();
+    expect(screen.getByText("Мясо и мясопродукты")).toBeInTheDocument();
   });
 });
 

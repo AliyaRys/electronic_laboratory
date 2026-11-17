@@ -13,7 +13,7 @@ export default {
     },
   },
   argTypes: {
-    product: { control: 'inline-radio', options: ['meat', 'milk'], description: 'Активный тип продукции' },
+    product: { control: 'inline-radio', options: ['meat'], description: 'Активный тип продукции (production — только мясо)' },
     mode: { control: 'inline-radio', options: ['work', 'admin', 'analyst'], description: 'Контекст навигации' },
     active: { control: 'inline-radio', options: ['arrivals', 'journal', 'directories', 'users', 'reports'], description: 'Активный раздел' },
     institution: { control: 'text', description: 'Название учреждения; длинное значение не меняет ширину бренда' },
@@ -23,7 +23,7 @@ export default {
   },
   args: {
     mode: 'work',
-    product: 'milk',
+    product: 'meat',
     active: 'arrivals',
     institution: 'Лаборатория ВСЭ №1 г. Казань',
     userName: 'Анна Кузнецова',
@@ -33,13 +33,15 @@ export default {
   render: args => renderHeader(args),
 };
 
-export const MilkArrivals = { name: 'Молоко · Поступления' };
+export const MilkArrivals = { name: 'Мясо · Поступления' };
 export const MeatJournal = { name: 'Мясо · Журнал ВСЭ', args: { product: 'meat', active: 'journal' } };
 export const Directories = { name: 'Справочники', args: { product: 'meat', active: 'directories' } };
-export const ProductMenu = { name: 'Меню продукции открыто', args: { menuOpen: true } };
-// ТЗ DR45 §5: производственный single-product вариант — статичный контекст
-// «Мясо и мясопродукты» без кнопки, стрелки и опции «молоко».
-export const ProductStatic = { name: 'Статичный контекст (мясо)', args: { productStatic: true, product: 'meat', active: 'arrivals' } };
+export const ProductMenu = {
+  name: 'Дорожная карта продукции открыта',
+  args: { menuOpen: true },
+};
+// ТЗ DR46 §3.1: производственный roadmap-вариант — «Мясо и мясопродукты»
+// выбрано, остальные направления честно недоступны («Пока недоступно»).
 export const LongInstitution = {
   name: 'Длинное название учреждения',
   args: { institution: 'Государственная ветеринарная лаборатория ветеринарно-санитарной экспертизы №12' },

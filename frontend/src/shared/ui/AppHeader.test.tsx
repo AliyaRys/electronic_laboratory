@@ -90,7 +90,7 @@ describe("AppHeader", () => {
       "Мёд и медовая продукция",
       "Растительная пищевая продукция",
     ]) {
-      const option = screen.getByRole("option", { name: new RegExp(`${name} Пока недоступно`) });
+      const option = screen.getByRole("option", { name: new RegExp(`${name}.*Пока недоступно`) });
       expect(option).toBeDisabled();
       expect(option).toHaveAttribute("aria-disabled", "true");
       expect(option).toHaveAttribute("aria-selected", "false");

@@ -7,6 +7,7 @@ import {
   CHECK_SECTIONS,
   EXAM_SECTION_ICON_NAMES,
   ICON_NAMES,
+  PRODUCT_ICON_NAMES,
 } from "./legacy-icons";
 
 /** Catalog of the adapted registry — the adapter adds no SVG of its own. */
@@ -77,6 +78,23 @@ function IconCatalog(): React.ReactElement {
         }}
       >
         {EXAM_SECTION_ICON_NAMES.map((name) => (
+          <li key={name} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <Icon name={name} />
+            <code>{name}</code>
+          </li>
+        ))}
+      </ul>
+      <h3>Иконки шапки (продуктовые направления, ТЗ DR46 §3.1)</h3>
+      <ul
+        style={{
+          listStyle: "none",
+          padding: 0,
+          display: "grid",
+          gap: 8,
+          gridTemplateColumns: "repeat(3, minmax(220px, 1fr))",
+        }}
+      >
+        {PRODUCT_ICON_NAMES.map((name) => (
           <li key={name} style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <Icon name={name} />
             <code>{name}</code>

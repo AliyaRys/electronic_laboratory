@@ -37,27 +37,39 @@ export interface HeaderLinks {
 
 export const PRODUCTS: Readonly<Record<ProductType, { label: string; shortLabel: string; icon: IconName }>> =
   Object.freeze({
-    meat: Object.freeze({ label: "Мясо и продукты убоя", shortLabel: "Мясо", icon: "meat" }),
-    milk: Object.freeze({ label: "Молоко и молочная продукция", shortLabel: "Молоко", icon: "milk" }),
+    meat: Object.freeze({ label: "Мясо и мясопродукты", shortLabel: "Мясо", icon: "meat" }),
+    milk: Object.freeze({ label: "Молоко и молочные продукты", shortLabel: "Молоко", icon: "milk" }),
   });
 
-function StaticProductContext(): React.ReactElement {
-  /** ТЗ DR45 §5: the production work header shows the STATIC single-product
-   * context «Мясо и мясопродукты» — no button, no listbox, no caret and no
-   * milk option. The interactive switcher stays only for stories/legacy. */
-  return (
-    <div className="nav-item product-switcher" data-product-static="meat">
-      <span className="product-icon" aria-hidden="true" data-product-icon="meat">
-        <Icon name="meat" />
-      </span>
-      <span className="navtext" data-product-label="">
-        {STATIC_PRODUCT_LABEL}
-      </span>
-    </div>
-  );
+/** ТЗ DR46 §3.1: the roadmap configuration of the product switcher. Only
+ * ``meat`` is the supported production context; the other entries are an
+ * honest roadmap («Пока недоступно») — they never change the URL, storage,
+ * requests or permissions, and do not extend the business API. */
+export interface RoadmapProduct {
+  key: string;
+  label: string;
+  shortLabel: string;
+  icon: IconName;
+  available: boolean;
 }
 
-export const STATIC_PRODUCT_LABEL = "Мясо и мясопродукты";
+export const ROADMAP_PRODUCTS: readonly RoadmapProduct[] = Object.freeze([
+  Object.freeze({ key: "meat", label: "Мясо и мясопродукты", shortLabel: "Мясо", icon: "meat", available: true }),
+  Object.freeze({ key: "milk", label: "Молоко и молочные продукты", shortLabel: "Молоко", icon: "milk", available: false }),
+  Object.freeze({ key: "eggs", label: "Яйца и яйцепродукция", shortLabel: "Яйца", icon: "product-eggs", available: false }),
+  Object.freeze({ key: "fish", label: "Рыба и рыбная продукция", shortLabel: "Рыба", icon: "product-fish", available: false }),
+  Object.freeze({ key: "honey", label: "Мёд и медовая продукция", shortLabel: "Мёд", icon: "product-honey", available: false }),
+  Object.freeze({
+    key: "plant",
+    label: "Растительная пищевая продукция",
+    shortLabel: "Продукция",
+    icon: "product-plant",
+    available: false,
+  }),
+]);
+
+/** ТЗ DR46 §3.1: the visible unavailability wording shared by the DOM. */
+export const ROADMAP_STATUS_LABEL = "Пока недоступно";
 
 export interface AppHeaderProps {
   mode?: HeaderMode;
@@ -70,9 +82,6 @@ export interface AppHeaderProps {
   links?: HeaderLinks;
   onProductChange?: ((product: ProductType) => void) | undefined;
   onLogout: () => void;
-  /** ТЗ DR45 §5: the static single-product production context (no switcher,
-   * no caret, no milk option); the interactive switcher stays for stories. */
-  productStatic?: boolean;
 }
 
 function NavLink({
@@ -128,7 +137,21 @@ function ProductSwitcher({
     if (returnFocus) triggerRef.current?.focus();
   };
 
-  const options = Object.entries(PRODUCTS) as [ProductType, (typeof PRODUCTS)[ProductType]][];
+  // ТЗ DR46 §3.1: the only available option keeps the roving focus; the
+  // unavailable roadmap entries are excluded from keyboard navigation.
+  const enabledOptions = ROADMAP_PRODUCTS.filter((item) => item.available);
+
+  const focusOption = (direction: 1 | -1): void => {
+    const options = Array.from(
+      rootRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') ?? [],
+    );
+    if (options.length === 0) return;
+    const index = options.indexOf(document.activeElement as HTMLButtonElement);
+    const next = index === -1 ? 0 : (index + direction + options.length) % options.length;
+    options[next]?.focus();
+  };
+
+  const current = PRODUCTS[product] ?? PRODUCTS.meat;
   return (
     <div
       className={`nav-item product-switcher${open ? " open" : ""}`}
@@ -138,6 +161,15 @@ function ProductSwitcher({
           event.preventDefault();
           close(true);
         }
+        if (!open) return;
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          focusOption(1);
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          focusOption(-1);
+        }
       }}
     >
       <button
@@ -146,46 +178,66 @@ function ProductSwitcher({
         className="navlink product-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Тип продукции: ${PRODUCTS[product].label}`}
-        data-short-label={PRODUCTS[product].shortLabel}
+        aria-label={`Тип продукции: ${current.label}`}
+        data-short-label={current.shortLabel}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" && !open) {
             event.preventDefault();
             setOpen(true);
+            // The focus lands on the first (and only) available option.
+            requestAnimationFrame(() => {
+              rootRef.current
+                ?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)')
+                ?.focus();
+            });
           }
         }}
       >
         <span className="product-icon" aria-hidden="true" data-product-icon={product}>
-          <Icon name={PRODUCTS[product].icon} />
+          <Icon name={current.icon} />
         </span>
         <span className="navtext" data-product-label="">
-          {PRODUCTS[product].label}
+          {current.label}
         </span>
         <span className="nav-caret" aria-hidden="true">
           <Icon name="caret" />
         </span>
       </button>
       <div className="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
-        {options.map(([key, config]) => (
-          <button
-            key={key}
-            type="button"
-            role="option"
-            aria-selected={key === product}
-            data-product-option={key}
-            className={key === product ? "active" : ""}
-            onClick={() => {
-              onProductChange?.(key);
-              close(true);
-            }}
-          >
-            <span className="product-icon" aria-hidden="true">
-              <Icon name={config.icon} />
-            </span>
-            {config.label}
-          </button>
-        ))}
+        {ROADMAP_PRODUCTS.map((item) => {
+          const selected = item.key === product;
+          const enabled = item.available;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              aria-disabled={!enabled}
+              disabled={!enabled}
+              data-product-option={item.key}
+              className={selected ? "active" : ""}
+              onClick={
+                enabled
+                  ? () => {
+                      onProductChange?.(item.key as ProductType);
+                      close(true);
+                    }
+                  : undefined
+              }
+            >
+              <span className="product-icon" aria-hidden="true">
+                <Icon name={item.icon} />
+              </span>
+              <span className="product-option-label">{item.label}</span>
+              {!enabled ? (
+                <span className="product-option-status">{ROADMAP_STATUS_LABEL}</span>
+              ) : null}
+            </button>
+          );
+        })}
+        {enabledOptions.length === 0 ? null : null}
       </div>
     </div>
   );
@@ -201,7 +253,6 @@ export function AppHeader({
   links = {},
   onProductChange,
   onLogout,
-  productStatic = false,
 }: AppHeaderProps): React.ReactElement {
   const workMode = mode === "work";
   const brandHref =
@@ -323,13 +374,7 @@ export function AppHeader({
         aria-label={mode === "no-products" ? "Рабочие разделы недоступны" : "Основная навигация"}
       >
         {nav}
-        {workMode ? (
-          productStatic ? (
-            <StaticProductContext />
-          ) : (
-            <ProductSwitcher product={product} onProductChange={onProductChange} />
-          )
-        ) : null}
+        {workMode ? <ProductSwitcher product={product} onProductChange={onProductChange} /> : null}
       </nav>
       <div className="user-area">
         {user !== null ? (

@@ -61,4 +61,20 @@ describe("Icon", () => {
     });
     expect(getCheckSection("milk" as never)).toBeUndefined();
   });
+
+  it("exposes the roadmap product icons of the header (ТЗ DR46 §3.1)", () => {
+    for (const name of [
+      "meat",
+      "milk",
+      "product-eggs",
+      "product-fish",
+      "product-honey",
+      "product-plant",
+    ] as const) {
+      expect(ICON_NAMES).toContain(name);
+      const { container, unmount } = render(<Icon name={name} />);
+      expect(container.querySelector("svg")).not.toBeNull();
+      unmount();
+    }
+  });
 });

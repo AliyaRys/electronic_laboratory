@@ -1,23 +1,24 @@
 /**
- * ExaminationViewPage (E04, API-05): the card view at
- * /labs/:labId/examinations/:examinationId.
+ * ExaminationViewPage (E04, API-05, ТЗ DR44 §4): the saved card view at
+ * /labs/:labId/examinations/:examinationId, composed like ``vse-view.html``.
  *
- * Readonly: the participants, the four classification levels and the accepted
- * volume (SC-033/034) plus the saved номер/клеймо/исследования/проба/итог.
- * Actions are strictly separate: the same-day edit (PUT), the explicit late
- * completion of a WAITING card (complete-waiting — the outcome block only)
- * and the delete dialog. A WAITING card shows NO conclusion: no outcome,
- * direction or reason is displayed (SC-047) and no print/download control
- * exists here at all.
+ * Six white sections reuse the shared components of the create page
+ * (FormSection/ReadonlyField/ExaminationFactsSection/ParticipantsSection) and
+ * the readonly saved-card components (SavedResearchResults/SavedPricingTable).
+ * The mockup's demonstration data and per-carcass rows are NOT carried over:
+ * the actual model is ONE result per accepted party. Actions are strictly
+ * separate: the same-day edit (PUT), the explicit late completion of a
+ * WAITING card (the outcome block only) and the delete dialog. A WAITING card
+ * shows NO fabricated conclusion (SC-047).
  */
 import "../features/examinations/examinations.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { RequireSession } from "./RequireSession";
-import { fetchArrival } from "../features/arrivals/api";
-import type { IncomingView, Problem } from "../features/arrivals/api";
-import { fetchCollections, type CollectionView } from "../features/samples/api";
+import { fetchArrival, formatRuDate, type IncomingView, type Problem } from "../features/arrivals/api";
+import type { CollectionView } from "../features/samples/api";
+import { fetchCollections } from "../features/samples/api";
 import {
   completeWaiting,
   examinationKey,
@@ -25,21 +26,42 @@ import {
   fetchExaminationForm,
   type ExaminationView,
   type OutcomeWrite,
+  type PricingSnapshotView,
 } from "../features/examinations/api";
+import { SavedPricingTable } from "../features/examinations/SavedPricingTable";
+import { SavedResearchResults } from "../features/examinations/SavedResearchResults";
+import { ExaminationFactsSection, ParticipantsSection } from "../features/examinations/ExaminationSections";
 import { ExaminationForm } from "../features/examinations/ExaminationForm";
-import { PartyReadonlyFacts } from "../features/examinations/ExaminationSections";
 import { OutcomeFields, outcomeText } from "../features/examinations/OutcomeFields";
 import { DeleteDialog } from "../features/examinations/DeleteDialog";
 import { emptyOutcome, type OutcomeEntry } from "../features/examinations/formValues";
 import { useCommand } from "../shared/api/command";
 import { Button } from "../shared/ui/Button";
-import { InfoField } from "../shared/ui/InfoField";
+import { FormSection } from "../shared/ui/FormSection";
+import { ReadonlyField } from "../shared/ui/ReadonlyField";
 import { StatusView } from "../shared/ui/StatusView";
+import { formatDecimalDisplay } from "../shared/lib/domain";
+import { formatMoscowCellDateTime } from "../shared/lib/dates";
 import { useMe } from "../shared/api/me";
 
 /** Same calendar day in Europe/Moscow (the server's day rule, SPEC-05). */
 function moscowDay(iso: string): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow" }).format(new Date(iso));
+}
+
+/** ТЗ DR44 §4.1: «ВСЭ №154» stays, «154» becomes «ВСЭ №154». */
+export function examinationTitle(number: string): string {
+  const trimmed = number.trim();
+  return trimmed.startsWith("№") ? `ВСЭ ${trimmed}` : `ВСЭ №${trimmed}`;
+}
+
+/** The frozen pricing snapshot of the card (honest absence on damage). */
+function savedSnapshot(view: ExaminationView): PricingSnapshotView | null {
+  try {
+    return view.pricing as PricingSnapshotView;
+  } catch {
+    return null;
+  }
 }
 
 export function ExaminationViewPage(): React.ReactElement {
@@ -86,7 +108,7 @@ function ExaminationViewContent(): React.ReactElement {
   const collections = useQuery({
     queryKey: [labId ?? null, view?.party_id ?? null, "available-collections"],
     queryFn: ({ signal }) => fetchCollections({ laboratory_id: labId ?? "", page: 1 }, signal),
-    enabled: view !== null && labId !== undefined,
+    enabled: view !== null && labId !== undefined && editing,
   });
   const allCollections: CollectionView[] =
     collections.data !== undefined && !("code" in collections.data)
@@ -98,7 +120,7 @@ function ExaminationViewContent(): React.ReactElement {
   const formViewQuery = useQuery({
     queryKey: [labId ?? null, view?.party_id ?? null, "examination-form"],
     queryFn: ({ signal }) => fetchExaminationForm(view?.party_id ?? "", signal),
-    enabled: view !== null && labId !== undefined,
+    enabled: view !== null && labId !== undefined && editing,
   });
   const formView =
     formViewQuery.data !== undefined && !("code" in formViewQuery.data) ? formViewQuery.data : null;
@@ -175,44 +197,39 @@ function ExaminationViewContent(): React.ReactElement {
   const problem = command.error;
 
   return (
-    <div className="vse-app vse-page">
+    <div className="vse-app vse-page vse-exam-page">
       <nav className="vse-breadcrumb" aria-label="Навигация">
         <Link to={`/labs/${labId}/examinations`}>← Журнал ВСЭ</Link>
       </nav>
-      <h1>Карточка ВСЭ {view.number}</h1>
-      <div className="vse-samples-links">
-        <span className={`vse-status-badge ${waiting ? "waiting" : "completed"}`}>
-          {waiting ? "Ожидание результатов" : "Завершено"}
-        </span>
-        {canAct && sameDay && !editing ? (
-          <Button variant="primary" onClick={() => setEditing(true)}>
-            Исправить карточку
-          </Button>
-        ) : null}
-        {canAct && sameDay && !editing ? (
-          <Button variant="danger" onClick={() => setDeleting(true)}>
-            Удалить
-          </Button>
-        ) : null}
-        {canAct && !sameDay ? (
-          <span className="vse-arrival-hint">
-            После дня создания доступны только действия над итогом ожидающей карточки (AT-07).
+      {/* ТЗ DR44 §4.1: the mockup title row — eyebrow, h1 and the actions. */}
+      <div className="vse-page-head">
+        <div>
+          <p className="vse-eyebrow">Просмотр записи</p>
+          <h1>{examinationTitle(view.number)}</h1>
+        </div>
+        <div className="vse-page-actions">
+          <span className={`vse-status-badge ${waiting ? "waiting" : "completed"}`}>
+            {waiting ? "Ожидание результатов" : "Завершено"}
           </span>
-        ) : null}
+          {canAct && sameDay && !editing ? (
+            <Button variant="primary" onClick={() => setEditing(true)}>
+              Исправить карточку
+            </Button>
+          ) : null}
+          {canAct && sameDay && !editing ? (
+            <Button variant="danger" onClick={() => setDeleting(true)}>
+              Удалить
+            </Button>
+          ) : null}
+          {canAct && !sameDay ? (
+            <span className="vse-arrival-hint">
+              После дня создания доступны только действия над итогом ожидающей карточки (AT-07).
+            </span>
+          ) : null}
+        </div>
       </div>
 
-      {/* In edit mode the form itself carries the party sections (DR30);
-          outside the edit the readonly facts stay a separate block. */}
-      {partyView !== null && !editing ? (
-        <PartyReadonlyFacts party={partyView} headline="Подтверждённая партия" />
-      ) : !editing && !party.isLoading ? (
-        <StatusView
-          state="network-error"
-          title="Не удалось загрузить партию."
-          detail={problemOf(party.data)?.detail}
-        />
-      ) : null}
-
+      {/* In edit mode the form itself carries the party sections (DR30). */}
       {editing ? (
         <ExaminationForm
           party={partyView as IncomingView}
@@ -230,158 +247,160 @@ function ExaminationViewContent(): React.ReactElement {
           onCancel={() => setEditing(false)}
         />
       ) : (
-        <section className="vse-exam-block" aria-label="Карточка ВСЭ">
-          <h3>Карточка ВСЭ</h3>
-          <dl className="vse-exam-facts">
-            <div>
-              <dt>Номер ВСЭ</dt>
-              <dd>{view.number}</dd>
-            </div>
-            <div>
-              <dt>Ветеринарное клеймо</dt>
-              <dd>{view.stamp}</dd>
-            </div>
-            <div>
-              <dt>Дата и время создания</dt>
-              <dd>{view.created_at}</dd>
-            </div>
-            <div>
-              <dt>Специалист Госветслужбы</dt>
-              <dd>{view.specialist_name ?? "—"}</dd>
-            </div>
-            <div>
-              <dt>Связанная проба</dt>
-              <dd>Отбор пробы этой партии</dd>
-            </div>
-            <div>
-              <dt>Пробы отправлены в спец. лабораторию</dt>
-              <dd>{view.sent_to_lab ? "Да" : "Нет"}</dd>
-            </div>
-          </dl>
-        </section>
-      )}
-
-      {!editing ? (
-        <section className="vse-exam-block" aria-label="Исследования ВСЭ">
-          <h3>Исследования ВСЭ</h3>
-          {view.researches.length === 0 ? (
-            <p className="vse-exam-note">Результаты не сохранены.</p>
-          ) : (
-            <dl className="vse-exam-facts">
-              {view.researches.map((raw, index) => {
-                const item = raw as {
-                  indicatorId?: string;
-                  kind?: string;
-                  value?: unknown;
-                  otherText?: string | null;
-                };
-                const pair =
-                  item.kind === "DOSIMETRY" ? (item.value as { first: string; last: string }) : null;
-                return (
-                  <div key={item.indicatorId ?? index}>
-                    <dt>{`Показатель ${item.indicatorId ?? index + 1}`}</dt>
-                    <dd>
-                      {item.kind === "BOOLEAN"
-                        ? item.value === true
-                          ? "Не обнаружено"
-                          : "Обнаружено"
-                        : item.kind === "DOSIMETRY" && pair !== null
-                          ? `${pair.first} / ${pair.last} мкЗв/ч`
-                          : `${String(item.value ?? "—")}${item.otherText ? ` (${item.otherText})` : ""}`}
-                    </dd>
-                  </div>
-                );
-              })}
-            </dl>
-          )}
-          {view.invasive_findings.length > 0 || view.noncontagious_findings.length > 0 ? (
-            <dl className="vse-exam-facts">
-              {view.invasive_findings.map((raw, index) => {
-                const item = raw as { disease: string; location: string; otherText?: string | null };
-                return (
-                  <div key={`invasive-${index}`}>
-                    <dt>Инвазионная болезнь</dt>
-                    <dd>{`${item.disease} — ${item.location}${item.otherText ? ` (${item.otherText})` : ""}`}</dd>
-                  </div>
-                );
-              })}
-              {view.noncontagious_findings.map((raw, index) => {
-                const item = raw as { disease: string; otherText?: string | null };
-                return (
-                  <div key={`noncontagious-${index}`}>
-                    <dt>Незаразная болезнь</dt>
-                    <dd>{`${item.disease}${item.otherText ? ` (${item.otherText})` : ""}`}</dd>
-                  </div>
-                );
-              })}
-            </dl>
-          ) : null}
-          <InfoField
-            label="Расчёт стоимости"
-            value={
-              typeof (view.pricing as { total?: unknown }).total === "string"
-                ? `${(view.pricing as { total: string }).total} ₽`
-                : "—"
-            }
-          />
-        </section>
-      ) : null}
-
-      {!editing ? (
-        waiting ? (
-          canAct ? (
-            <section className="vse-exam-block" aria-label="Итог экспертизы">
-              <h3>Итог специальной лаборатории</h3>
-              <p className="vse-exam-note">
-                Заключение формируется только после завершения карточки. Подтверждение ответа — отдельное
-                действие; изменение остальных полей после дня создания невозможно.
-              </p>
-              <OutcomeFields
-                variant="late"
-                idPrefix="late"
-                value={outcome}
-                disabled={command.status === "pending"}
-                onChange={(next) => setOutcome(next)}
+        <>
+          {partyView === null ? (
+            party.isLoading ? null : (
+              <StatusView
+                state="network-error"
+                title="Не удалось загрузить партию."
+                detail={problemOf(party.data)?.detail}
               />
-              <div className="vse-form-actions">
-                <Button
-                  variant="primary"
-                  busy={command.status === "pending"}
-                  busyLabel="Завершаем ожидание…"
-                  aria-label="Завершить ожидание результата"
-                  onClick={() => runLateOutcome()}
-                >
-                  Завершить ожидание
-                </Button>
-              </div>
-              {lateError !== "" ? (
-                <StatusView state="forbidden" title="Проверьте введённые значения." detail={lateError} />
-              ) : null}
-              {problem !== null && problem.code !== "VALIDATION_ERROR" ? (
-                <StatusView
-                  state="network-error"
-                  title="Не удалось завершить карточку."
-                  detail={problem.detail}
-                  trace={problem.trace_id !== "" ? `trace_id: ${problem.trace_id}` : undefined}
-                  onRetry={() => void command.retry()}
-                />
-              ) : null}
-            </section>
+            )
           ) : (
-            <section className="vse-exam-block" aria-label="Итог экспертизы">
-              <h3>Итог экспертизы</h3>
-              <p className="vse-exam-note">Итог не указан: карточка ожидает ответа лаборатории.</p>
-            </section>
-          )
-        ) : (
-          <section className="vse-exam-block" aria-label="Итог экспертизы">
-            <h3>Итог экспертизы</h3>
-            <InfoField label="Результат" value={outcomeText(view.outcome, view.direction)} />
-            {view.reason !== null ? <InfoField label="Причина направления" value={view.reason} /> : null}
-            <InfoField label="Дата первого завершения" value={view.first_completed_at ?? "—"} />
-          </section>
-        )
-      ) : null}
+            <>
+              {/* 1 «Сведения об экспертизе»: the card facts + the document. */}
+              <ExaminationFactsSection party={partyView}>
+                <div className="vse-span6">
+                  <ReadonlyField label="Номер ВСЭ" value={view.number} />
+                </div>
+                <div className="vse-span6">
+                  <ReadonlyField
+                    label="Дата и время создания"
+                    value={formatMoscowCellDateTime(view.created_at)}
+                  />
+                </div>
+                <div className="vse-span6">
+                  <ReadonlyField
+                    label="Статус карточки"
+                    value={waiting ? "Ожидание результатов" : "Завершено"}
+                  />
+                </div>
+              </ExaminationFactsSection>
+
+              {/* 2 «Участники и продукция»: the create-page component + клеймо. */}
+              <ParticipantsSection party={partyView}>
+                <div className="vse-span6">
+                  <ReadonlyField label="Ветеринарное клеймо" value={view.stamp} />
+                </div>
+              </ParticipantsSection>
+
+              {/* 3 «Исследования ВСЭ»: only really saved researches. */}
+              <SavedResearchResults view={view} />
+
+              {/* 4 «Проба»: the linked physical sample from view.sample. */}
+              <FormSection
+                icon="exam-sample"
+                title="Проба"
+                description="Данные физической пробы, отобранной для этой партии."
+              >
+                <div className="vse-exam-grid">
+                  <div className="vse-span3">
+                    <ReadonlyField label="Дата отбора пробы" value={formatRuDate(view.sample.collected_on)} />
+                  </div>
+                  <div className="vse-span3">
+                    <ReadonlyField
+                      label="Масса пробы, кг"
+                      value={formatDecimalDisplay(view.sample.mass_kg)}
+                    />
+                  </div>
+                  <div className="vse-span6">
+                    <ReadonlyField
+                      label="Пробы отправлены в специальную лабораторию"
+                      value={view.sent_to_lab ? "Да" : "Нет"}
+                    />
+                  </div>
+                </div>
+              </FormSection>
+
+              {/* 5 «Итог экспертизы»: WAITING never fabricates a conclusion. */}
+              {waiting ? (
+                <FormSection
+                  icon="check-complete"
+                  title="Итог экспертизы"
+                  description="Заключение и специалист, проводивший ВСЭ."
+                >
+                  <p className="vse-exam-note">Итог не указан: карточка ожидает ответа лаборатории.</p>
+                  {canAct ? (
+                    <>
+                      <p className="vse-exam-note">
+                        Заключение формируется только после завершения карточки. Подтверждение ответа —
+                        отдельное действие; изменение остальных полей после дня создания невозможно.
+                      </p>
+                      <OutcomeFields
+                        variant="late"
+                        idPrefix="late"
+                        value={outcome}
+                        disabled={command.status === "pending"}
+                        onChange={(next) => setOutcome(next)}
+                      />
+                      <div className="vse-form-actions">
+                        <Button
+                          variant="primary"
+                          busy={command.status === "pending"}
+                          busyLabel="Завершаем ожидание…"
+                          aria-label="Завершить ожидание результата"
+                          onClick={() => runLateOutcome()}
+                        >
+                          Завершить ожидание
+                        </Button>
+                      </div>
+                      {lateError !== "" ? (
+                        <StatusView
+                          state="forbidden"
+                          title="Проверьте введённые значения."
+                          detail={lateError}
+                        />
+                      ) : null}
+                      {problem !== null && problem.code !== "VALIDATION_ERROR" ? (
+                        <StatusView
+                          state="network-error"
+                          title="Не удалось завершить карточку."
+                          detail={problem.detail}
+                          trace={problem.trace_id !== "" ? `trace_id: ${problem.trace_id}` : undefined}
+                          onRetry={() => void command.retry()}
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
+                </FormSection>
+              ) : (
+                <FormSection
+                  icon="check-complete"
+                  title="Итог экспертизы"
+                  description="Заключение и специалист, проводивший ВСЭ."
+                >
+                  <div className="vse-exam-grid">
+                    <div className="vse-span6">
+                      <ReadonlyField label="Результат" value={outcomeText(view.outcome, view.direction)} />
+                    </div>
+                    <div className="vse-span6">
+                      <ReadonlyField label="Специалист Госветслужбы" value={view.specialist_name ?? "—"} />
+                    </div>
+                    {view.reason !== null ? (
+                      <div className="vse-span6">
+                        <ReadonlyField label="Причина направления" value={view.reason} />
+                      </div>
+                    ) : null}
+                    <div className="vse-span6">
+                      <ReadonlyField
+                        label="Дата первого завершения"
+                        value={
+                          view.first_completed_at !== null
+                            ? formatMoscowCellDateTime(view.first_completed_at)
+                            : "—"
+                        }
+                      />
+                    </div>
+                  </div>
+                </FormSection>
+              )}
+
+              {/* 6 «Расчёт стоимости услуг»: the frozen snapshot, no preview. */}
+              <SavedPricingTable snapshot={savedSnapshot(view)} />
+            </>
+          )}
+        </>
+      )}
 
       <DeleteDialog
         view={view}

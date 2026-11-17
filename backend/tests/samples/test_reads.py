@@ -297,3 +297,110 @@ async def test_read_roles_matrix(dispose_env: SimpleNamespace, actor: uuid.UUID,
                 params={"laboratory_id": str(uuid.uuid4())},
             )
             assert answer.status_code == 403, answer.text  # type: ignore[attr-defined]
+
+
+# --- DR45: human-readable accounting projections (§4) -------------------------------
+
+
+async def test_balance_carries_product_name(db_session: AsyncSession, lab, actor: uuid.UUID, party) -> None:
+    """The balance line shows the frozen product name, never a species UUID."""
+    from backend.src.modules.samples import queries
+
+    await apply_sample(db_session, actor, party.id, uuid.uuid4(), new_sample("0.8"))
+    await db_session.commit()
+    balances = await queries.balance_list(db_session, lab.id)
+    assert balances, "balance lines expected"
+    assert balances[0].product_name == "продукция"
+
+
+async def test_collection_view_carries_readable_fields(
+    db_session: AsyncSession, dispose_env: SimpleNamespace, actor: uuid.UUID, party
+) -> None:
+    """A collection fact shows the product name, the eVSD UUID of its party
+    and the ФИО of the collector — no raw user/party identifiers in the UI."""
+    from backend.src.modules.arrivals.models import IncomingDocument, Party, ReceiptConfirmation
+    from backend.src.modules.samples import queries
+
+    env = dispose_env
+    evsd_uuid = uuid.uuid4()
+    incoming = IncomingDocument(
+        contour="PILOT",
+        evsd_uuid=evsd_uuid,
+        laboratory_id=env.own.id,
+        external_status="COMPLETED",
+        source_snapshot={"vdDocument": {"batch": {}}},
+        content_hash=uuid.uuid4().hex * 2,
+        fetched_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+    )
+    env.db.add(incoming)
+    await env.db.flush()
+    readable_party = Party(
+        incoming_document_id=incoming.id,
+        laboratory_id=env.own.id,
+        classification_snapshot=dict(party.classification_snapshot),
+    )
+    env.db.add(readable_party)
+    await env.db.flush()
+    env.db.add(
+        ReceiptConfirmation(
+            party_id=readable_party.id,
+            operation_id=uuid.uuid4(),
+            source_evsd_uuid=evsd_uuid,
+            fingerprint=uuid.uuid4().hex * 2,
+            evidence={},
+            accepted_mass_kg=Decimal("100"),
+            accepted_quantity=Decimal("4"),
+            accepted_unit_id=str(uuid.uuid4()),
+            returned_mass_kg=Decimal("0"),
+            returned_quantity=Decimal("0"),
+            classification_snapshot=dict(readable_party.classification_snapshot),
+            previous_sufficient=False,
+        )
+    )
+    await apply_sample(env.db, actor, readable_party.id, uuid.uuid4(), new_sample("0.8"))
+    await env.db.commit()
+
+    items, total = await queries.collection_page(env.db, env.own.id, 1)
+    assert total >= 1
+    view = items[0]
+    assert view.product_name == "продукция"
+    assert view.evsd_uuid == str(evsd_uuid)
+    assert view.collected_by_name == "Ветеринарный врач"
+
+
+async def test_disposal_view_carries_product_and_actor_names(
+    db_session: AsyncSession, dispose_env: SimpleNamespace, actor: uuid.UUID, party
+) -> None:
+    """The disposal history names the product and the actor — never a UUID."""
+    from datetime import date
+
+    from backend.src.core.contracts import CommandContext
+    from backend.src.modules.samples import queries
+    from backend.src.modules.samples.commands import dispose_samples
+
+    env = dispose_env
+    species = species_id(party)
+    await apply_sample(env.db, actor, party.id, uuid.uuid4(), new_sample("0.8"))
+    await env.db.commit()
+    ctx = CommandContext(
+        actor_id=actor,
+        idempotency_key=str(uuid.uuid4()),
+        expected_revision=await basket_rev(env.db, env.own.id, species),
+    )
+    await dispose_samples(
+        ctx,
+        write_payload(
+            laboratory_id=env.own.id,
+            product_species_id=species,
+            disposed_on=date.today(),
+            external_vsd_number="ВСД-005",
+            expected_mass_kg="0.8",
+        ),
+        uow=env.db,
+    )
+    await env.db.commit()
+    items, total = await queries.disposal_page(env.db, env.own.id, 1)
+    assert total == 1
+    view = items[0]
+    assert view.product_name == "продукция"
+    assert view.actor_name == "Ветеринарный врач"

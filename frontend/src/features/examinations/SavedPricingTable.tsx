@@ -24,7 +24,9 @@ export function SavedPricingTable({
         <p className="vse-exam-note">Расчёт стоимости не сохранён.</p>
       ) : (
         <div className="vse-invoice-scroll">
-          <SnapshotPricingTable snapshot={snapshot} />
+          {/* ТЗ DR46 §3.4: the named readonly variant of the shared renderer —
+              four columns, no tfoot, the total below the table. */}
+          <SnapshotPricingTable snapshot={snapshot} variant="saved-examination" />
         </div>
       )}
     </FormSection>

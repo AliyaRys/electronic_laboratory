@@ -147,6 +147,60 @@ async function mockCollections(page: Page, items: unknown[]): Promise<void> {
   );
 }
 
+/** DR35 §4: the frozen reconciliation read model — the single read source of
+ * the create page. Without this mock the page cannot render its form. */
+const REQUIRED_RESEARCH_IDS = [
+  "c8d1e50e-bf49-5475-bb82-860f6fc47e74",
+  "5410ca53-ffae-5a27-ab8d-51cb20fe4011",
+  "ec2fba68-e4d1-5c82-9591-92ee9da5293e",
+];
+
+const formView = {
+  party_id: PARTY,
+  laboratory_id: LAB,
+  participants: {
+    senderOwner: { name: "Шайдуллин Азат Рашидович", state: "SOURCE_XML" },
+    senderEnterprise: { name: "КФХ Шайдуллин Азат Рашидович", state: "SOURCE_XML" },
+    receiverOwner: { name: "Хусаинова Зельфия Тимергалиевна", state: "SOURCE_XML" },
+    receiverEnterprise: { name: "АО «Агропромышленный парк „Казань“»", state: "SOURCE_XML" },
+  },
+  product: { id: "p", name: "Мясо и мясопродукты" },
+  sub_product: { id: "sp", name: "Говядина" },
+  product_item: { id: "pi", name: "Говядина в четвертинах охлаждённая" },
+  unit: { id: "u", name: "штука" },
+  product_type: 1,
+  product_type_label: "Мясо и мясопродукты",
+  accepted: { massKg: "140.5", quantity: "2", unitId: "шт", unitName: "штука" },
+  required_research_ids: REQUIRED_RESEARCH_IDS,
+  eligible_specialists: [{ id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f", fullName: "Кузнецова Алиса Викторовна" }],
+  source_revision: "3f0e6d2a-1111-4222-8333-444444444444",
+  reconciliation_revision: 1,
+  revision: 1,
+};
+
+async function mockForm(page: Page): Promise<void> {
+  await page.route(`**/api/v1/examinations/parties/${PARTY}/form`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(formView) }),
+  );
+}
+
+/** ТЗ DR42 §13: the live pricing preview of the form (read/compute only). */
+async function mockPricingPreview(page: Page): Promise<void> {
+  await page.route(`**/api/v1/examinations/parties/${PARTY}/pricing-preview`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        snapshot: { lines: [], total: "0.00", currency: "RUB", fair: false },
+        acceptedQuantity: "2",
+        acceptedUnitId: "шт",
+        fair: false,
+        revision: 1,
+      }),
+    }),
+  );
+}
+
 async function mockExamination(page: Page, view: Record<string, unknown>): Promise<void> {
   await page.route(`**/api/v1/examinations/${EXAM}`, (route) => {
     if (route.request().method() === "GET") {
@@ -164,6 +218,8 @@ async function openCreate(
 ): Promise<void> {
   await mockMe(page);
   await mockCollections(page, collections);
+  await mockForm(page);
+  await mockPricingPreview(page);
   // The journal/list projection glob is registered first; the exact party
   // path handler wins for the single-party fetches.
   await page.route("**/api/v1/arrivals?*", (route) =>
@@ -197,17 +253,19 @@ async function fillMandatory(page: Page): Promise<void> {
 }
 
 test.describe("examination lifecycle", () => {
-  test("REUSE is the default sample mode and the create actions are strictly separate", async ({ page }) => {
+  test("a create performs a fresh NEW sample and the create actions are strictly separate", async ({ page }) => {
     const posts: unknown[] = [];
+    const today = new Date().toISOString().slice(0, 10);
     await openCreate(page, posts);
-    // Header shows the session user; the party facts are readonly.
-    await expect(page.getByText("Специалист: Кузнецова Алиса Викторовна")).toBeVisible();
+    // The party facts are readonly; the specialist is a session fact.
+    await expect(page.getByText("Новая запись")).toBeVisible();
     await expect(page.getByLabel("UUID ВСД")).toHaveValue("1c0d1a2b-1111-4222-8333-444444444444");
-    await expect(page.getByLabel("Принятый вес, кг")).toHaveValue("140.5");
-    await expect(page.getByLabel("Название предприятия").first()).toHaveValue(/Шайдуллин/);
-    // REUSE is preselected with the available collection of the same party.
-    await expect(page.getByLabel("Доступная проба")).toHaveValue(COLLECTION);
-    await expect(page.getByLabel("Вес взятой пробы, кг")).toHaveCount(0);
+    await expect(page.getByLabel("Принятый вес, кг")).toHaveValue("140,5");
+    await expect(page.getByLabel("Предприятие").first()).toHaveValue(/Шайдуллин/);
+    // DR35 §11.2: a create is always a fresh NEW sampling, 0.8 kg by default.
+    await expect(page.getByLabel("Вес взятой пробы, кг")).toHaveValue("0.8");
+    await expect(page.getByLabel("Дата отбора проб")).toHaveValue(today);
+    await expect(page.getByLabel(/использовать имеющуюся пробу/i)).toHaveCount(0);
     // No draft, no outgoing-document field, no parts/head/organs, no
     // «Условно-пригодно» anywhere on the screen.
     await expect(page.getByRole("button", { name: /черновик/i })).toHaveCount(0);
@@ -229,7 +287,7 @@ test.describe("examination lifecycle", () => {
     expect(payload["outcome"]).toBeNull();
     expect(payload["direction"]).toBeNull();
     expect(payload["reason"]).toBeNull();
-    expect(payload["sample"]).toEqual({ mode: "REUSE", collectionId: COLLECTION });
+    expect(payload["sample"]).toEqual({ mode: "NEW", collectedOn: today, massKg: "0.8" });
     await shot(page, "create-waiting-view");
   });
 
@@ -241,7 +299,7 @@ test.describe("examination lifecycle", () => {
     const today = new Date().toISOString().slice(0, 10);
     await expect(page.getByLabel("Дата отбора проб")).toHaveValue(today);
     await expect(page.getByLabel("Вес взятой пробы, кг")).toHaveValue("0.8");
-    await expect(page.getByLabel("Использовать имеющуюся пробу")).toBeDisabled();
+    await expect(page.getByLabel(/использовать имеющуюся пробу/i)).toHaveCount(0);
     await shot(page, "create-new-sample");
   });
 
@@ -262,9 +320,12 @@ test.describe("examination lifecycle", () => {
     );
     await fillMandatory(page);
     // No auto outcome: the block starts empty and the direction is locked.
-    await expect(page.getByLabel("Направление по результатам ВСЭ *")).toBeDisabled();
-    await page.getByRole("radio", { name: "Пригодно", exact: true }).check();
-    await expect(page.getByLabel("Направление по результатам ВСЭ *")).toHaveValue("SALE");
+    await expect(page.getByRole("button", { name: "Направление по результатам ВСЭ * Выберите направление" })).toBeDisabled();
+    await page.getByRole("button", { name: /Результат ВСЭ/ }).click();
+    await page.getByRole("option", { name: "Пригодно", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Направление по результатам ВСЭ * В реализацию без ограничений" }),
+    ).toBeEnabled();
     await page.getByRole("button", { name: "Завершить ВСЭ" }).click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/examinations/${EXAM}`));
     const payload = posts[0] as Record<string, unknown>;
@@ -272,7 +333,9 @@ test.describe("examination lifecycle", () => {
     expect(payload["outcome"]).toBe("FIT");
     expect(payload["direction"]).toBe("SALE");
     expect(payload["reason"]).toBeNull();
-    await expect(page.getByText("Пригодно · В реализацию без ограничений")).toBeVisible();
+    // The saved card leaves the form: the vse-view renders the honest result.
+    await expect(page.getByText("Просмотр записи")).toBeVisible();
+    await expect(page.getByLabel("Результат")).toHaveValue("Пригодно · В реализацию без ограничений");
     await shot(page, "completed-view");
   });
 
@@ -291,6 +354,8 @@ test.describe("examination lifecycle", () => {
     const posts: unknown[] = [];
     await mockMe(page);
     await mockCollections(page, []);
+    await mockForm(page);
+    await mockPricingPreview(page);
     await page.route("**/api/v1/arrivals?*", (route) =>
       route.fulfill({
         status: 200,
@@ -321,7 +386,8 @@ test.describe("examination lifecycle", () => {
     await page.getByLabel("Органолептическое исследование").selectOption("MATCH");
     await page.getByLabel("Идентификация продукции").selectOption("MATCH");
     await page.getByLabel("Температура в толще мышц, °C").fill("3");
-    await page.getByRole("radio", { name: "Пригодно", exact: true }).check();
+    await page.getByRole("button", { name: /Результат ВСЭ/ }).click();
+    await page.getByRole("option", { name: "Пригодно", exact: true }).click();
     await page.getByRole("button", { name: "Завершить ВСЭ" }).click();
     await expect(page.getByText("Карточка изменена другим пользователем.")).toBeVisible(); // The input is never merged or cleared: the doctor sees the typed values.
     await expect(page.getByLabel("Номер ВСЭ *")).toHaveValue("№ 13/2026");
@@ -351,16 +417,21 @@ test.describe("examination lifecycle", () => {
       });
     });
     await page.goto(`/labs/${LAB}/examinations/${EXAM}`);
-    await expect(page.getByRole("heading", { name: "Карточка ВСЭ № 12/2026" })).toBeVisible();
+    // The vse-view title row: eyebrow + «ВСЭ № 12/2026».
+    await expect(page.getByText("Просмотр записи")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "ВСЭ № 12/2026" })).toBeVisible();
     // No conclusion while WAITING (SC-047): no outcome text, no reason, no
-    // print/download affordance, and an old card offers no edit/delete.
+    // print/download affordance, an old card offers no edit/delete, and the
+    // honest «итог не указан» note stands in the «Итог экспертизы» section.
+    await expect(page.getByText("Итог не указан: карточка ожидает ответа лаборатории.")).toBeVisible();
     await expect(page.getByText("В реализацию без ограничений")).toHaveCount(0);
     await expect(page.getByText("Условно-пригодно")).toHaveCount(0);
     await expect(page.getByRole("link", { name: /заключени|печать|скачат/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Исправить карточку" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Удалить" })).toHaveCount(0);
     // The late outcome is one explicit action with its own payload only.
-    await page.getByRole("radio", { name: "Пригодно", exact: true }).check();
+    await page.getByRole("button", { name: /Результат специальной лаборатории/ }).click();
+    await page.getByRole("option", { name: "Пригодно", exact: true }).click();
     await page.getByRole("button", { name: "Завершить ожидание", exact: true }).click();
     await expect(page.getByText("Завершено").first()).toBeVisible();
     expect(posts).toEqual([{ outcome: "FIT", direction: "SALE" }]);
@@ -445,6 +516,8 @@ test.describe("examination lifecycle", () => {
       partyExamId = null;
       return route.fulfill({ status: 204, body: "" });
     });
+    await mockForm(page);
+    await mockPricingPreview(page);
     // Step 1: delete the WAITING card through the dialog.
     await page.goto(`/labs/${LAB}/examinations/${EXAM}`);
     await expect(page.getByRole("button", { name: "Удалить" })).toBeVisible();
@@ -455,10 +528,9 @@ test.describe("examination lifecycle", () => {
     // Step 2: the party is creatable again — open the create form.
     await page.goto(`/labs/${LAB}/arrivals/${PARTY}/examination/new`);
     await expect(page.getByRole("heading", { name: "Создание карточки ВСЭ" })).toBeVisible();
-    // Step 3: REUSE of the available collection is the default sample entry.
-    await expect(page.getByLabel("Использовать имеющуюся пробу")).toBeChecked();
-    await expect(page.getByLabel("Доступная проба")).toHaveValue(COLLECTION);
-    await expect(page.getByLabel("Вес взятой пробы, кг")).toHaveCount(0);
+    // Step 3: DR35 §11.2 — a create is always a fresh NEW sampling (0.8 kg).
+    await expect(page.getByLabel("Вес взятой пробы, кг")).toHaveValue("0.8");
+    await expect(page.getByLabel(/использовать имеющуюся пробу/i)).toHaveCount(0);
     await shot(page, "delete-then-reuse-create");
   });
 
@@ -487,39 +559,52 @@ test.describe("examination lifecycle", () => {
 
   test("the journal shows only real cards and the tabs switch the status", async ({ page }) => {
     await mockMe(page);
-    await page.route("**/api/v1/arrivals?*", (route) => {
+    // DR45 §2: the journal projection is GET /api/v1/examinations?…
+    const journalItem = {
+      examination_id: EXAM,
+      party_id: PARTY,
+      laboratory_id: LAB,
+      number: "№ 12/2026",
+      stamp: "кл-1471",
+      status: "WAITING",
+      created_at: "2026-11-07T10:00:00Z",
+      first_completed_at: null,
+      outcome: null,
+      specialist_id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+      specialist_name: "Кузнецова Алиса Викторовна",
+      evsd_uuid: "1c0d1a2b-1111-4222-8333-444444444444",
+      consignor_name: "КФХ Шайдуллин Азат Рашидович",
+    };
+    await page.route(/\/api\/v1\/examinations\/authors\?/, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+    );
+    await page.route(/\/api\/v1\/examinations\?/, (route) => {
       const url = new URL(route.request().url());
-      const status = url.searchParams.get("result") ?? "WAITING";
-      const items = status === "WAITING" ? [{ ...partyView, examination_id: EXAM }] : [];
+      const status = url.searchParams.get("status") ?? "COMPLETED";
+      const items = status === "WAITING" ? [journalItem] : [];
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ items, total: items.length, page: 1, page_size: 20 }),
       });
     });
-    await page.route(`**/api/v1/arrivals/${PARTY}`, (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ...partyView, examination_id: EXAM }),
-      }),
-    );
     await mockExamination(page, card());
-    await page.goto(`/labs/${LAB}/examinations`);
-    await expect(page.getByRole("heading", { name: "Журнал ВСЭ" })).toBeVisible();
+    // The journal defaults to COMPLETED; the waiting projection is explicit.
+    await page.goto(`/labs/${LAB}/examinations?status=WAITING`);
+    await expect(page.getByRole("heading", { name: "Журнал ВСЭ мяса и мясопродуктов" })).toBeVisible();
     // The waiting tab lists the card with a visible status badge.
     await expect(page.getByRole("tab", { name: "Ожидание результатов" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     await expect(page.getByText("1c0d1a2b-1111-4222-8333-444444444444")).toBeVisible();
-    await expect(page.getByText("Ожидание результатов").nth(1)).toBeVisible();
     await page.getByRole("link", { name: /Просмотр карточки ВСЭ/ }).click();
     await expect(page).toHaveURL(new RegExp(`/examinations/${EXAM}`));
-    // Back to the journal: the completed tab queries the other projection.
-    await page.goBack();
-    await page.getByRole("tab", { name: "Завершённые" }).click();
-    await expect(page).toHaveURL(/status=COMPLETED/);
+    // Back to the journal: the completed tab queries the other projection and
+    // is honest about the empty result (the plain URL carries no status).
+    await page.goto(`/labs/${LAB}/examinations`);
+    await expect(page.getByRole("tab", { name: "Завершённые" })).toHaveAttribute("aria-selected", "true");
+    await expect(page).not.toHaveURL(/status=/);
     await expect(page.getByText("Карточек в этом статусе нет.")).toBeVisible();
     await shot(page, "journal-completed");
   });
@@ -568,14 +653,13 @@ test.describe("examination lifecycle", () => {
     );
     expect(width).toBeGreaterThan(0);
     expect(width).toBeLessThanOrEqual(1181);
-    // The specialist is a readonly fact, never a manual select.
-    await expect(page.getByLabel("Специалист")).toHaveValue("Кузнецова Алиса Викторовна");
-    await expect(page.getByLabel("Специалист")).toHaveAttribute("readonly", "");
+    // The specialist is a readonly session fact, never a manual select.
+    await expect(page.getByRole("button", { name: /Специалист Госветслужбы/ })).toBeDisabled();
     expect(await page.getByRole("combobox", { name: /специалист/i }).count()).toBe(0);
     await expect(page.getByRole("button", { name: /черновик/i })).toHaveCount(0);
     // The sticky action panel never covers the page content at its end.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    const inputBox = await page.getByLabel("Принятое количество").boundingBox();
+    const inputBox = await page.getByLabel("Принятое количество мест, шт.").boundingBox();
     const panelBox = await page.locator(".vse-exam-actions").boundingBox();
     if (inputBox === null || panelBox === null) throw new Error("panel or input not found");
     expect(panelBox.y - (inputBox.y + inputBox.height)).toBeGreaterThanOrEqual(-1);

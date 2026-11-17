@@ -160,7 +160,10 @@ test.describe("vetis read sync", () => {
 
     await page.goto(`/labs/${LAB}/arrivals`);
     await page.getByRole("button", { name: "Обновить" }).click();
-    await expect(page.getByText(/Обновление не выполнено/)).toBeVisible({ timeout: 10_000 });
+    // INTEGRATION_NOT_CONFIGURED carries its own honest wording (DR3 §8.4).
+    await expect(page.getByText(/Обновление из ВетИС недоступно: интеграция не настроена/)).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("analyst cannot run the sync: no refresh button, no posts", async ({ page }) => {

@@ -27,7 +27,7 @@ const ORDER = [
 test("started form renders the CHK sections in the fixed order (1440)", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(STARTED);
-  await expect(page.getByText("Решение о приёмке", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Результаты сверки" })).toBeVisible();
   const headings = await page.locator(".vse-check-section h2").allTextContents();
   expect(headings).toEqual(ORDER);
   await page.screenshot({ path: "test-results/a02-form-1440.png", fullPage: true });
@@ -47,7 +47,7 @@ test("narrow 390 story keeps the form usable", async ({ page }) => {
 test("story interaction: marking a mismatch reveals the fact inputs", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(STARTED);
-  await expect(page.getByText("Решение о приёмке", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Результаты сверки" })).toBeVisible();
   await expect(page.getByLabel("Фактическое значение")).toHaveCount(0);
   await page.getByRole("radio", { name: "Не совпадает: Вес, кг", exact: true }).click();
   const actual = page.getByLabel("Фактическое значение");

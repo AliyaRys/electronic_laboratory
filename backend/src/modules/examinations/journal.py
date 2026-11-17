@@ -26,7 +26,7 @@ from backend.src.modules.arrivals.models import IncomingDocument, Party
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.identity.models import User
 
-__all__ = ["ExaminationJournalItem", "JOURNAL_PAGE_SIZE", "journal_page"]
+__all__ = ["ExaminationJournalItem", "JournalAuthor", "JOURNAL_PAGE_SIZE", "journal_page", "journal_authors"]
 
 JOURNAL_PAGE_SIZE = 20
 
@@ -166,3 +166,37 @@ async def journal_page(
             )
         )
     return items, int(total)
+
+
+class JournalAuthor(BaseModel):
+    """One scoped journal author option: the id plus the display ФИО."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    full_name: str
+
+
+async def journal_authors(db: AsyncSession, laboratory_id: uuid.UUID) -> list[JournalAuthor]:
+    """The authors who actually lead the journal of one laboratory (§2).
+
+    ONE query over the journal rows of the laboratory — no user list, no
+    per-row lookups: the displayed specialist (frozen ФИО preferred) of each
+    card resolves once, grouped by the id.
+    """
+    display_id = func.coalesce(Examination.specialist_id, Examination.created_by)
+    rows = (
+        await db.execute(
+            select(
+                display_id,
+                # The frozen ФИО wins; the user's current name is the fallback.
+                func.min(func.coalesce(Examination.specialist_name, User.full_name)),
+            )
+            .select_from(Examination)
+            .outerjoin(User, User.id == display_id)
+            .where(Examination.laboratory_id == laboratory_id)
+            .group_by(display_id)
+            .order_by(func.min(func.coalesce(Examination.specialist_name, User.full_name)))
+        )
+    ).all()
+    return [JournalAuthor(id=str(author_id), full_name=name or "") for author_id, name in rows if name]

@@ -548,7 +548,9 @@ test.describe("arrivals", () => {
 
   // --- ТЗ DR39 e2e: reconciliation metadata, queue-aware sort, date filter ----
 
-  test("WORK shows the real frozen cost, author and completed date; sorting is server order with URL and F5", async ({ page }) => {
+  test("WORK shows the real frozen cost, author and completed date; sorting is server order with URL and F5", async ({
+    page,
+  }) => {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(String(error)));
     await mockSessionAndArrivals(page);
@@ -576,10 +578,15 @@ test.describe("arrivals", () => {
       }
       const queue = url.searchParams.get("queue") ?? "EXPECTED";
       if (queue !== "WORK") {
-        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+        });
       }
       // The SERVER answers in its own order; the page must never re-sort.
-      const items = url.searchParams.get("sort") === "asc" ? [older, workWithSummary] : [workWithSummary, older];
+      const items =
+        url.searchParams.get("sort") === "asc" ? [older, workWithSummary] : [workWithSummary, older];
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -629,7 +636,11 @@ test.describe("arrivals", () => {
       const queue = url.searchParams.get("queue") ?? "EXPECTED";
       if (queue === "ACCEPTED" && url.searchParams.has("page") === false) listReads.push(url.search);
       if (queue !== "ACCEPTED") {
-        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+        });
       }
       // One день exactly: the mock honours the wire filter.
       const on = url.searchParams.get("reconciled_on");
@@ -691,7 +702,9 @@ test.describe("arrivals", () => {
       });
     });
     // A stale deep link: the params are stripped from the URL and the reads.
-    await page.goto(`/labs/${LAB}/arrivals?queue=work&reconciled_on=2026-11-06&reconciled_from=2026-11-05T10%3A00%3A00%2B03%3A00`);
+    await page.goto(
+      `/labs/${LAB}/arrivals?queue=work&reconciled_on=2026-11-06&reconciled_from=2026-11-05T10%3A00%3A00%2B03%3A00`,
+    );
     await expect(page.getByText("говядина")).toBeVisible();
     await expect(page).not.toHaveURL(/reconciled/);
     expect(reads.every((entry) => !entry.includes("reconciled"))).toBe(true);
@@ -725,9 +738,17 @@ test.describe("arrivals", () => {
     await page.route("**/api/v1/arrivals?*", (route) => {
       const url = new URL(route.request().url());
       if (url.searchParams.get("queue") === "ACCEPTED") {
-        return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ code: "NETWORK", detail: "Сеть недоступна." }) });
+        return route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "NETWORK", detail: "Сеть недоступна." }),
+        });
       }
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }) });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], total: 0, page: 1, page_size: 20 }),
+      });
     });
     await page.goto(`/labs/${LAB}/arrivals?queue=accepted`);
     await expect(page.getByText(/Не удалось загрузить поступления/)).toBeVisible();

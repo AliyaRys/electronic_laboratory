@@ -245,14 +245,23 @@ export const ФильтрыВРаботе: StoryObj = {
   name: "Панель фильтров / в работе (сортировка сверки)",
   render: () => (
     <div style={{ padding: 16, background: "#f5f9f8" }}>
-      <ArrivalsFilters q="" onSearch={() => {}} sort="desc" onSortChange={() => {}} sortLabels={SORT_LABELS_BY_QUEUE.WORK} />
+      <ArrivalsFilters
+        q=""
+        onSearch={() => {}}
+        sort="desc"
+        onSortChange={() => {}}
+        sortLabels={SORT_LABELS_BY_QUEUE.WORK}
+      />
     </div>
   ),
 };
 
 // --- ТЗ DR39 §7: the reconciliation date filter states ----------------------------
 
-const dateFilterGrid = (applied: { on: string; from: string; to: string }, initialOpen = false): React.ReactElement => (
+const dateFilterGrid = (
+  applied: { on: string; from: string; to: string },
+  initialOpen = false,
+): React.ReactElement => (
   <div style={{ padding: 16, background: "#f5f9f8", display: "flex", gap: 16, flexWrap: "wrap" }}>
     <ReconciliationDateFilter applied={applied} onApply={() => {}} initialOpen={initialOpen} />
   </div>
@@ -293,8 +302,7 @@ function RangeErrorStory(): React.ReactElement {
 
 export const ДатаФильтрДлиннаяСводка: StoryObj = {
   name: "Фильтр даты сверки / длинная подпись",
-  render: () =>
-    dateFilterGrid({ on: "", from: "2026-11-05T10:00", to: "2026-12-31T23:59" }),
+  render: () => dateFilterGrid({ on: "", from: "2026-11-05T10:00", to: "2026-12-31T23:59" }),
 };
 
 export const ДатаФильтрУзкийЭкран: StoryObj = {

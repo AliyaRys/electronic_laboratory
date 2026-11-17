@@ -7,6 +7,7 @@ transaction so a concurrent selection/disposal is always reflected.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -30,8 +31,19 @@ __all__ = [
 
 PAGE_SIZE = 20
 
+logger = logging.getLogger(__name__)
+
 # DR45 §4: the frozen product name of a collection snapshot.
 _PRODUCT_NAME = SampleCollection.classification_snapshot["product"]["name"].astext
+
+#: The pinned conflict rule (§4): when the active collections of one species
+#: group disagree on the frozen product name, the lexicographic minimum is
+#: the shown display name and the disagreement is logged as a warning.
+_CONFLICT_WARNING = (
+    "samples.balance.product_name_conflict: active collections of species "
+    "%s in laboratory %s disagree on the frozen product name; the lexicographic "
+    "minimum %r is shown (rule: min)."
+)
 
 
 def _plain(value: Decimal | None) -> str:
@@ -123,6 +135,7 @@ async def balance_list(db: AsyncSession, laboratory_id: UUID) -> list[BalanceVie
                 # DR45 §4: one normalized display name of the active group —
                 # the lexicographic minimum never depends on the row order.
                 func.min(_PRODUCT_NAME).label("product_name"),
+                func.count(func.distinct(_PRODUCT_NAME)).label("name_variants"),
             )
             .outerjoin(
                 SampleBasket,
@@ -134,15 +147,23 @@ async def balance_list(db: AsyncSession, laboratory_id: UUID) -> list[BalanceVie
             .order_by(SampleCollection.product_species_id)
         )
     ).all()
-    return [
-        BalanceView(
-            product_species_id=str(row.product_species_id),
-            mass_kg=_plain(row.mass),
-            revision=int(row.revision),
-            product_name=row.product_name,
+    balances: list[BalanceView] = []
+    for row in rows:
+        name = row.product_name
+        if row.name_variants is not None and int(row.name_variants) > 1:
+            # §4: a contradictory frozen snapshot is never silently resolved —
+            # the lexicographic minimum stays the display rule and the
+            # diagnostic event records the disagreement.
+            logger.warning(_CONFLICT_WARNING, str(row.product_species_id), str(laboratory_id), name)
+        balances.append(
+            BalanceView(
+                product_species_id=str(row.product_species_id),
+                mass_kg=_plain(row.mass),
+                revision=int(row.revision),
+                product_name=name,
+            )
         )
-        for row in rows
-    ]
+    return balances
 
 
 async def collection_page(db: AsyncSession, laboratory_id: UUID, page: int) -> tuple[list[CollectionView], int]:

@@ -256,8 +256,55 @@ async def complete_waiting(
     return view
 
 
+@router.get("/authors", response_model=list[journal_model.JournalAuthor])
+async def list_journal_authors(
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+    laboratory_id: uuid.UUID,
+) -> list[journal_model.JournalAuthor]:
+    """The scoped author options of the journal filter (§2): ONE query over
+    the laboratory's own journal cards — never the full user list."""
+    identity, _actor = principal
+    await authorizer.authorize(
+        db, identity.actor_id, "examination:read", ScopeTarget(laboratory_id=laboratory_id), hide_foreign=True
+    )
+    return await journal_model.journal_authors(db, laboratory_id)
+
+
+_JOURNAL_ALLOWED_PARAMS = frozenset(
+    {"laboratory_id", "status", "q", "outcome", "specialist_id", "occurred_from", "occurred_to", "sort", "page"}
+)
+
+
+def _validate_journal_params(request: Request, status: str) -> None:
+    """§2: an unknown or incompatible journal query is an honest 422, never a
+    silently ignored filter (a lying `total` is a worse answer than an
+    explicit problem)."""
+    unknown = sorted(set(request.query_params.keys()) - _JOURNAL_ALLOWED_PARAMS)
+    if unknown:
+        raise ProblemError(
+            status=422,
+            code="VALIDATION_ERROR",
+            title="Validation error",
+            detail=f"Неизвестные параметры журнала: {', '.join(unknown)}.",
+        )
+    if status == "WAITING" and any(
+        key in request.query_params for key in ("outcome", "occurred_from", "occurred_to")
+    ):
+        # The completion period and the outcome filter are meaningful for
+        # COMPLETED cards only; a WAITING query cannot combine them.
+        raise ProblemError(
+            status=422,
+            code="VALIDATION_ERROR",
+            title="Validation error",
+            detail="Итог и период завершения доступны только для вкладки завершённых карточек.",
+        )
+
+
 @router.get("", response_model=Page[ExaminationJournalItem])
 async def list_examination_journal(
+    request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(async_session)],
     principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
@@ -278,6 +325,7 @@ async def list_examination_journal(
     COMPLETED cards only; the status filter selects ``Examination.status``.
     """
     identity, _actor = principal
+    _validate_journal_params(request, status)
     await authorizer.authorize(
         db, identity.actor_id, "examination:read", ScopeTarget(laboratory_id=laboratory_id), hide_foreign=True
     )

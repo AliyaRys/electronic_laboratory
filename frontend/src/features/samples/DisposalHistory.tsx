@@ -53,11 +53,11 @@ export function DisposalHistory({
               // is never shown and the name never depends on the current
               // collections page.
               columnId: "product",
-              value: item.product_name ?? "Название не получено",
+              value: item.product_name ?? "Данные не найдены",
             },
             { columnId: "mass", value: item.mass_kg },
             { columnId: "number", value: item.external_vsd_number },
-            { columnId: "actor", value: item.actor_name ?? "Название не получено" },
+            { columnId: "actor", value: item.actor_name ?? "Данные не найдены" },
           ],
         }))}
       />

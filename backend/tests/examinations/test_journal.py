@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.examinations.models import Examination
-from backend.src.modules.identity.models import User
+from backend.src.modules.identity.models import User, UserRole
 from backend.tests.samples.test_collections import actor as actor  # noqa: F401 - fixture re-export
 from backend.tests.samples.test_collections import lab as lab  # noqa: F401 - fixture re-export
 from backend.tests.samples.test_disposal import client_for, dispose_env  # noqa: F401 - fixture re-export
@@ -100,7 +100,7 @@ async def _examination(
     specialist: User | None = None,
     specialist_name: str | None = None,
     created_at: datetime | None = None,
-    first_completed_at: datetime | None = None,
+    first_completed_at: datetime | None = "unset",
 ) -> Examination:
     row = Examination(
         party_id=party.id,
@@ -118,9 +118,11 @@ async def _examination(
         specialist_name=specialist_name,
         created_by=(specialist or env.vet).id,
         created_at=created_at or datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
-        first_completed_at=first_completed_at
-        if status == "COMPLETED"
-        else None,
+        first_completed_at=(
+            datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC)
+            if first_completed_at == "unset" and status == "COMPLETED"
+            else (first_completed_at if status == "COMPLETED" else None)
+        ),
         rev=1,
     )
     db.add(row)
@@ -303,3 +305,110 @@ async def test_full_page_runs_a_bounded_number_of_statements(dispose_env: Simple
     assert len(items) == 20
     assert all(item.specialist_name is not None for item in items)
     assert len(statements) <= 3
+
+
+async def test_specialist_filter_filters_before_count(dispose_env: SimpleNamespace) -> None:
+    """The specialist filter is server-side: page 2 of a filtered query is
+    the page 2 of the WHOLE filtered set, and `total` matches the filter."""
+    env = dispose_env
+    vet = (await env.db.execute(select(User).where(User.id == env.vet.id))).scalar_one()
+    other = User(
+        login="dr45-colleague",
+        full_name="Коллега",
+        email="colleague@example.test",
+        password_hash="x" * 60,
+        role=UserRole.VET,
+        active=True,
+    )
+    env.db.add(other)
+    await env.db.flush()
+    numbers = [f"ВСЭ-f{index:02d}" for index in range(1, 26)]
+    for index, number in enumerate(numbers):
+        party = await _party(env.db, env, consignor=f"Хозяйство {index}")
+        await _examination(
+            env.db,
+            env,
+            party,
+            number=number,
+            specialist=vet if index % 2 == 0 else other,
+            first_completed_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC) + timedelta(hours=index),
+        )
+    await env.db.commit()
+
+    from backend.src.modules.examinations import journal as journal_model
+
+    items, total = await journal_model.journal_page(env.db, env.own.id, status="COMPLETED", specialist_id=vet.id)
+    assert total == 13  # 13 of 25 cards name the vet
+    assert len(items) == 13
+    second, _ = await journal_model.journal_page(
+        env.db, env.own.id, status="COMPLETED", specialist_id=vet.id, page=2
+    )
+    assert all(item.specialist_id == str(vet.id) for item in [*items, *second])
+    assert {item.number for item in second}.isdisjoint({item.number for item in items})
+
+
+async def test_journal_authors_are_the_scoped_options(dispose_env: SimpleNamespace) -> None:
+    """The author options come from the journal rows of the laboratory (ONE
+    query) — the user list is never read and foreign authors never leak."""
+    env = dispose_env
+    other = User(
+        login="dr45-author2",
+        full_name="Вторая врач",
+        email="author2@example.test",
+        password_hash="x" * 60,
+        role=UserRole.VET,
+        active=True,
+    )
+    env.db.add(other)
+    await env.db.flush()
+    mine = await _party(env.db, env, consignor="Хозяйство А")
+    theirs = await _party(env.db, env, consignor="Хозяйство Б")
+    await _examination(env.db, env, mine, number="ВСЭ-a1", specialist=env.vet)
+    await _examination(env.db, env, theirs, number="ВСЭ-b1", specialist=other)
+    await env.db.commit()
+
+    from backend.src.modules.examinations import journal as journal_model
+
+    authors = await journal_model.journal_authors(env.db, env.own.id)
+    ids = {author.id for author in authors}
+    assert str(env.vet.id) in ids
+    assert str(other.id) in ids
+
+
+async def test_unknown_query_parameter_is_422(dispose_env: SimpleNamespace) -> None:
+    """An unknown journal query name is an explicit 422 — never ignored."""
+    env = dispose_env
+    async with client_for(env, env.vet) as (http, _identity):
+        answer = await http.get(  # type: ignore[attr-defined]
+            "/api/v1/examinations", params={"laboratory_id": str(env.own.id), "author": "x"}
+        )
+        assert answer.status_code == 422  # type: ignore[attr-defined]
+        assert "author" in answer.json()["detail"]  # type: ignore[attr-defined]
+
+
+async def test_incompatible_query_combination_is_422(dispose_env: SimpleNamespace) -> None:
+    """The completion period/outcome only combine with COMPLETED cards."""
+    env = dispose_env
+    async with client_for(env, env.vet) as (http, _identity):
+        for params in (
+            {"status": "WAITING", "occurred_from": "2026-01-01T00:00:00+03:00"},
+            {"status": "WAITING", "outcome": "FIT"},
+        ):
+            answer = await http.get(  # type: ignore[attr-defined]
+                "/api/v1/examinations", params={"laboratory_id": str(env.own.id), **params}
+            )
+            assert answer.status_code == 422, (params, answer.text)  # type: ignore[attr-defined]
+
+
+async def test_authors_endpoint_scopes_to_the_laboratory(dispose_env: SimpleNamespace) -> None:
+    env = dispose_env
+    mine = await _party(env.db, env, consignor="Хозяйство авторов")
+    await _examination(env.db, env, mine, number="ВСЭ-aut", specialist=env.vet)
+    await env.db.commit()
+    async with client_for(env, env.vet) as (http, _identity):
+        answer = await http.get(  # type: ignore[attr-defined]
+            "/api/v1/examinations/authors", params={"laboratory_id": str(env.own.id)}
+        )
+        assert answer.status_code == 200, answer.text  # type: ignore[attr-defined]
+        authors = answer.json()  # type: ignore[attr-defined]
+        assert authors == [{"id": str(env.vet.id), "full_name": env.vet.full_name}]

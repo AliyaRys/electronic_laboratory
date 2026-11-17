@@ -25,7 +25,8 @@ const server = setupServer(
       role,
       active: true,
       scopes: [{ laboratory_id: LAB, product_scope_id: null }],
-      capabilities: role === "VET" ? ["sample:read"] : ["sample:read", "report:5vet-list", "report:5vet-read"],
+      capabilities:
+        role === "VET" ? ["sample:read"] : ["sample:read", "report:5vet-list", "report:5vet-read"],
       revision: 1,
     });
   }),
@@ -192,9 +193,7 @@ describe("SampleAccountingPage capability guard (DR37)", () => {
       }),
     );
     renderPage("ADMIN");
-    expect(
-      await screen.findByText("Учёт проб недоступен: у вас нет полномочия чтения проб."),
-    ).toBeVisible();
+    expect(await screen.findByText("Учёт проб недоступен: у вас нет полномочия чтения проб.")).toBeVisible();
     expect(sampleGets).toBe(0);
   });
 });

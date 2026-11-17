@@ -12,7 +12,6 @@ import type { BalanceView, Problem } from "./api";
 const COLUMNS: readonly DataTableColumn[] = [
   { id: "species", header: "Вид продукции" },
   { id: "mass", header: "Остаток, кг" },
-  { id: "revision", header: "Ревизия" },
 ];
 
 export interface BalancesProps {
@@ -44,10 +43,9 @@ export function Balances({
             id: balance.product_species_id,
             cells: [
               // ТЗ DR45 §4: the normalized display name; the raw species id
-              // is never shown to the user (fallback: «Название не получено»).
-              { columnId: "species", value: balance.product_name ?? "Название не получено" },
+              // is never shown to the user (fallback: «Данные не найдены»).
+              { columnId: "species", value: balance.product_name ?? "Данные не найдены" },
               { columnId: "mass", value: balance.mass_kg },
-              { columnId: "revision", value: String(balance.revision) },
             ],
           };
           if (canDispose) {

@@ -62,6 +62,11 @@ function item(
 }
 
 function renderRoute(url = `/labs/${LAB}/examinations`): void {
+  server.use(
+    http.get("*/api/v1/examinations/authors", () =>
+      HttpResponse.json([{ id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f", full_name: "Ветврач" }]),
+    ),
+  );
   const client = new QueryClient();
   render(
     <MemoryRouter initialEntries={[url]}>
@@ -91,6 +96,25 @@ describe("ExaminationJournalPage", () => {
     const link = screen.getByRole("link", { name: /Просмотр карточки ВСЭ/ });
     expect(link.getAttribute("href")).toBe(`/labs/${LAB}/examinations/${EXAM}`);
     expect(screen.getByRole("tab", { name: "Завершённые" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("heading", { level: 1, name: "Журнал ВСЭ мяса и мясопродуктов" })).toBeTruthy();
+    expect(screen.getByPlaceholderText("Хозяйство или UUID ВСД")).toBeTruthy();
+  });
+
+  it("the specialist filter is sent to the server (never filtered post-fetch)", async () => {
+    const queries: string[] = [];
+    server.use(
+      http.get("*/api/v1/examinations", ({ request }) => {
+        queries.push(new URL(request.url).search);
+        return HttpResponse.json({ items: [item(EXAM)], total: 1, page: 1, page_size: 20 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderRoute();
+    await screen.findByRole("link", { name: /Просмотр карточки ВСЭ/ });
+    await user.selectOptions(screen.getByLabelText("Врач"), "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f");
+    await waitFor(() =>
+      expect(queries.at(-1)).toContain("specialist_id=0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f"),
+    );
   });
 
   it("the waiting tab re-queries with status=WAITING and labels the badge", async () => {

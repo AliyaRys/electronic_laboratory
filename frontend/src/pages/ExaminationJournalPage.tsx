@@ -15,7 +15,13 @@ import "../features/examinations/examinations.css";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
-import { fetchJournal, type ExaminationJournalItem, type JournalQuery } from "../features/examinations/api";
+import {
+  fetchJournal,
+  fetchJournalAuthors,
+  type ExaminationJournalItem,
+  type JournalAuthor,
+  type JournalQuery,
+} from "../features/examinations/api";
 import type { Problem } from "../features/arrivals/api";
 import { StatusView } from "../shared/ui/StatusView";
 import { Button } from "../shared/ui/Button";
@@ -92,6 +98,9 @@ function ExaminationJournalContent(): React.ReactElement {
     occurred_from: from === "" ? null : `${from}T00:00:00+03:00`,
     occurred_to: to === "" ? null : nextDay(to),
     sort,
+    // §2: the specialist filter is SERVER-side — the id rides the query, so
+    // the total and every page are computed over the filtered set.
+    specialist_id: specialist === "" ? null : specialist,
     page,
   };
 
@@ -112,6 +121,11 @@ function ExaminationJournalContent(): React.ReactElement {
     queryFn: ({ signal }) => fetchJournal(query, signal),
     enabled: labId !== undefined,
   });
+  const authors = useQuery({
+    queryKey: ["examinations", "journal-authors", labId ?? null],
+    queryFn: ({ signal }) => fetchJournalAuthors(labId ?? "", signal),
+    enabled: labId !== undefined,
+  });
 
   if (labId === undefined) {
     return (
@@ -124,13 +138,13 @@ function ExaminationJournalContent(): React.ReactElement {
   const problem =
     rows.data !== undefined && rows.data !== null && "code" in rows.data ? (rows.data as Problem) : null;
   const data = problem === null && rows.data !== undefined ? (rows.data as JournalPage) : null;
-  const allItems: ExaminationJournalItem[] = data?.items ?? [];
-  const items = specialist === "" ? allItems : allItems.filter((item) => item.specialist_id === specialist);
-  const specialists = new Map(
-    allItems
-      .filter((item) => item.specialist_name !== null)
-      .map((item) => [item.specialist_id, item.specialist_name as string]),
-  );
+  const items: ExaminationJournalItem[] = data?.items ?? [];
+  const authorsProblem =
+    authors.data !== undefined && authors.data !== null && "code" in authors.data
+      ? (authors.data as Problem)
+      : null;
+  const authorOptions: JournalAuthor[] =
+    authorsProblem === null ? ((authors.data as JournalAuthor[]) ?? []) : [];
 
   const setParam = (key: string, value: string): void => {
     const url = new URLSearchParams(params);
@@ -145,14 +159,14 @@ function ExaminationJournalContent(): React.ReactElement {
       <nav className="vse-breadcrumb" aria-label="Навигация">
         <Link to={`/labs/${labId}/arrivals`}>← Поступления</Link>
       </nav>
-      <h1>Журнал ВСЭ по мясопродуктам</h1>
+      <h1>Журнал ВСЭ мяса и мясопродуктов</h1>
       <section className="vse-journal-filters" aria-label="Фильтры журнала">
         <div className="vse-journal-filter-field">
           <label htmlFor="journal-search">Поиск</label>
           <input
             id="journal-search"
             type="search"
-            placeholder="Номер, клеймо или UUID ВСД"
+            placeholder="Хозяйство или UUID ВСД"
             defaultValue={search}
             onChange={(event) => setParam("q", event.target.value.trim())}
           />
@@ -177,9 +191,9 @@ function ExaminationJournalContent(): React.ReactElement {
             onChange={(event) => setParam("specialist_id", event.target.value)}
           >
             <option value="">Все врачи</option>
-            {[...specialists.entries()].map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
+            {authorOptions.map((author) => (
+              <option key={author.id} value={author.id}>
+                {author.full_name}
               </option>
             ))}
           </select>

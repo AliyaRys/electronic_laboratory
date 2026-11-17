@@ -45,11 +45,11 @@ export function Collections({
             // ТЗ DR45 §4: the server-resolved display values — the product
             // name, the party's eVSD UUID and the collector's ФИО; the raw
             // party/user ids are never shown.
-            { columnId: "product", value: item.product_name ?? "Название не получено" },
+            { columnId: "product", value: item.product_name ?? "Данные не найдены" },
             { columnId: "collected_on", value: item.collected_on },
             { columnId: "mass", value: item.mass_kg },
             { columnId: "evsd", value: item.evsd_uuid || "Не указан" },
-            { columnId: "author", value: item.collected_by_name ?? "Название не получено" },
+            { columnId: "author", value: item.collected_by_name ?? "Данные не найдены" },
           ],
         }))}
       />

@@ -404,3 +404,31 @@ async def test_disposal_view_carries_product_and_actor_names(
     view = items[0]
     assert view.product_name == "говядина"
     assert view.actor_name == "Ветеринарный врач"
+
+
+async def test_contradictory_product_names_are_min_and_logged(
+    db_session: AsyncSession, lab, actor: uuid.UUID, party, caplog: pytest.LogCaptureFixture
+) -> None:
+    """§4 conflict rule: when the active collections of one species disagree
+    on the frozen product name, the lexicographic minimum is shown and the
+    diagnostic warning event records the disagreement."""
+    import logging
+
+    from backend.src.modules.samples import queries
+
+    species = species_id(party)
+    first = await apply_sample(db_session, actor, party.id, uuid.uuid4(), new_sample("0.5"))
+    second = await apply_sample(db_session, actor, party.id, uuid.uuid4(), new_sample("0.6"))
+    await db_session.flush()
+    # Two active collections of the SAME species with contradictory frozen
+    # snapshots: the shown name must follow the pinned min rule.
+    first.classification_snapshot = {"product": {"id": str(species), "name": "Говядина"}}
+    second.classification_snapshot = {"product": {"id": str(species), "name": "Баранина"}}
+    await db_session.commit()
+
+    with caplog.at_level(logging.WARNING, logger="backend.src.modules.samples.queries"):
+        balances = await queries.balance_list(db_session, lab.id)
+    line = next(item for item in balances if item.product_species_id == str(species))
+    # Rule: min — "Баранина" < "Говядина" lexicographically.
+    assert line.product_name == "Баранина"
+    assert any("product_name_conflict" in record.message for record in caplog.records)

@@ -191,12 +191,7 @@ describe("WorkArrivalsTable", () => {
   });
 
   it("a null pricing snapshot and null author stay honest «—»", () => {
-    render(
-      <WorkArrivalsTable
-        labId={LAB}
-        items={[withReconciliation(base, null, { author_name: null })]}
-      />,
-    );
+    render(<WorkArrivalsTable labId={LAB} items={[withReconciliation(base, null, { author_name: null })]} />);
     const dashes = screen.getAllByText("—");
     expect(dashes.length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText("0,00 ₽")).toBeNull();
@@ -206,7 +201,9 @@ describe("WorkArrivalsTable", () => {
     render(
       <WorkArrivalsTable
         labId={LAB}
-        items={[withReconciliation(base, "230.00", { author_name: "Иванова Анна Петровна Очень-Очень-Длинная" })]}
+        items={[
+          withReconciliation(base, "230.00", { author_name: "Иванова Анна Петровна Очень-Очень-Длинная" }),
+        ]}
       />,
     );
     expect(screen.getByTitle("Иванова Анна Петровна Очень-Очень-Длинная")).toBeTruthy();
@@ -257,9 +254,7 @@ describe("CompletedArrivalsTable", () => {
     render(
       <CompletedArrivalsTable
         labId={LAB}
-        items={[
-          withReconciliation({ ...base, queue: "ACCEPTED" }, "230.00"),
-        ]}
+        items={[withReconciliation({ ...base, queue: "ACCEPTED" }, "230.00")]}
         hiddenColumns={new Set(["checkAuthor"])}
       />,
     );

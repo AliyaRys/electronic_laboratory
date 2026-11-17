@@ -56,6 +56,8 @@ export const examinationKey = (examinationId: string): readonly unknown[] => ["e
 
 /** DR45 §2: the scoped journal read model item (snake_case wire). */
 export type ExaminationJournalItem = components["schemas"]["ExaminationJournalItem"];
+/** §2: the scoped author options of the journal filter. */
+export type JournalAuthor = components["schemas"]["JournalAuthor"];
 
 export interface JournalQuery {
   laboratory_id: string;
@@ -67,6 +69,8 @@ export interface JournalQuery {
   /** Exclusive upper boundary of the Moscow calendar window. */
   occurred_to?: string | null;
   sort?: "asc" | "desc" | null;
+  /** §2: the server filters the displayed specialist BEFORE count/page. */
+  specialist_id?: string | null;
   page?: number;
 }
 
@@ -99,6 +103,7 @@ export async function fetchJournal(
           occurred_from: query.occurred_from ?? null,
           occurred_to: query.occurred_to ?? null,
           sort: query.sort ?? null,
+          specialist_id: query.specialist_id ?? null,
           page: query.page ?? 1,
         },
       } as never,
@@ -106,6 +111,27 @@ export async function fetchJournal(
     }) as Promise<
       RawResult<{ items: ExaminationJournalItem[]; total: number; page: number; page_size: number }>
     >,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
+/** The scoped author options of the journal filter (§2): ONE query over the
+ * laboratory's journal cards, never the full user list. */
+export const journalAuthorsKey = (laboratoryId: string): readonly unknown[] => [
+  "examinations",
+  "journal-authors",
+  laboratoryId,
+];
+
+export async function fetchJournalAuthors(
+  laboratoryId: string,
+  signal?: AbortSignal | null,
+): Promise<JournalAuthor[] | Problem> {
+  const settled = await settle(
+    apiClient.GET("/api/v1/examinations/authors", {
+      params: { query: { laboratory_id: laboratoryId } },
+      signal: signal ?? null,
+    }) as Promise<RawResult<JournalAuthor[]>>,
   );
   return "problem" in settled ? settled.problem : settled.data;
 }

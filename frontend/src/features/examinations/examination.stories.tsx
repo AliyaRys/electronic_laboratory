@@ -12,6 +12,8 @@ import { OutcomeFields, outcomeText } from "./OutcomeFields";
 import { PartyReadonlyFacts } from "./ExaminationSections";
 import { ResearchFields } from "./ResearchFields";
 import { PricingSection } from "./PricingPreview";
+import { SavedResearchResults } from "./SavedResearchResults";
+import { SavedPricingTable } from "./SavedPricingTable";
 import { Button } from "../../shared/ui/Button";
 import { DeleteDialog } from "./DeleteDialog";
 import { JournalRow } from "../../pages/ExaminationJournalPage";
@@ -26,6 +28,8 @@ const PARTY = "9c1b2d3e-1111-4222-8333-444444444444";
 const ME = "77777777-7777-4777-8777-777777777777";
 const OTHER = "88888888-8888-4888-8888-888888888888";
 const TRICHINELLA_ID = "adf96c8a-a6d6-50c4-9ec9-86f058b329f1";
+const ORGANOLEPTIC_ID = "c8d1e50e-bf49-5475-bb82-860f6fc47e74";
+const TEMPERATURE_ID = "ec2fba68-e4d1-5c82-9591-92ee9da5293e";
 
 const party: IncomingView = {
   id: "3f0e6d2a-1111-4222-8333-444444444444",
@@ -567,6 +571,73 @@ export const ИтогТекст: StoryObj = {
       <dd>{outcomeText("UNFIT", "DESTRUCTION")}</dd>
     </dl>
   ),
+};
+
+// --- ТЗ DR44 Task 5: readonly saved-card components ---------------------------------
+
+const savedSnapshot: PricingSnapshotView = {
+  lines: [
+    {
+      service_code: TEMPERATURE_ID,
+      name: "Температура в толще мышц",
+      quantity: "1",
+      unit_id: "service",
+      unit_price: "5.00",
+      amount: "5.00",
+      method_snapshot: { rule: { type: "interval", lower: "0", upper: "10" } },
+      evaluation: { status: "IN_NORM" },
+    },
+    {
+      service_code: "liver",
+      name: "Исследование на гельминтозы (печень)",
+      quantity: "4.000000",
+      unit_id: "place",
+      unit_price: "100.00",
+      amount: "400.00",
+    },
+  ],
+  total: "405.00",
+  currency: "RUB",
+  fair: false,
+};
+
+const savedResearches = (view: Partial<ExaminationView> = {}): ExaminationView => ({
+  ...savedCard,
+  status: "COMPLETED",
+  outcome: "FIT",
+  direction: "SALE",
+  first_completed_at: "2026-11-07T11:00:00Z",
+  researches: [
+    { indicatorId: ORGANOLEPTIC_ID, kind: "ENUM", value: "MATCH" },
+    { indicatorId: TEMPERATURE_ID, kind: "DECIMAL", value: "4.5" },
+    { indicatorId: "00000000-0000-0000-0000-00000000dead", kind: "DECIMAL", value: "7" },
+  ],
+  ...view,
+});
+
+/** ТЗ DR44 §4.2: the saved researches — known names, frozen evaluation, the
+ * honest legacy fallback for an unknown indicator. */
+export const СохранённыеИсследования: StoryObj = {
+  render: () => <SavedResearchResults view={savedResearches()} />,
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
+export const СохранённыеИсследованияУзкийЭкран: StoryObj = {
+  render: () => <SavedResearchResults view={savedResearches()} />,
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+};
+
+export const СохранённыйРасчёт: StoryObj = {
+  render: () => <SavedPricingTable snapshot={savedSnapshot} />,
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
+export const СохранённыйРасчётЯрмарка: StoryObj = {
+  render: () => <SavedPricingTable snapshot={{ ...savedSnapshot, total: "0.00", fair: true }} />,
+};
+
+export const СохранённыйРасчётОтсутствует: StoryObj = {
+  render: () => <SavedPricingTable snapshot={null} />,
 };
 
 export type FormValuesStory = ExaminationFormValues;

@@ -10,9 +10,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { fetchPricingPreview, type PricingPreviewRequestBody, type PricingSnapshotView } from "./api";
+import { SnapshotPricingTable } from "./PricingSnapshotTable";
 import type { Problem } from "../../shared/api/problem";
-import { moneyLabel, pricingUnitLabel } from "../arrivals/api";
-import { formatDecimalDisplay } from "../../shared/lib/domain";
 import { StatusView } from "../../shared/ui/StatusView";
 
 /**
@@ -65,6 +64,9 @@ function EvaluationBadge({
     </span>
   );
 }
+
+/** Re-exported for the shared snapshot renderer (ТЗ DR44 Task 5). */
+export { EvaluationBadge };
 
 /** The debounce window of the preview (ТЗ §13.4: 250–400 ms). */
 export const PRICING_DEBOUNCE_MS = 300;
@@ -186,48 +188,7 @@ export function PricingSection({
   return (
     <div aria-live="polite">
       {state.status === "recalculating" ? <p className="vse-exam-note">Пересчитываем стоимость…</p> : null}
-      <table className="vse-invoice-table">
-        <thead>
-          <tr>
-            <th scope="col">Исследование</th>
-            <th scope="col">Количество</th>
-            <th scope="col">Единица</th>
-            <th scope="col">Тариф</th>
-            <th scope="col">Сумма</th>
-            <th scope="col">Оценка</th>
-          </tr>
-        </thead>
-        <tbody>
-          {snapshot.lines.map((line) => (
-            <tr key={line.service_code}>
-              <td>{line.name}</td>
-              <td>{formatDecimalDisplay(line.quantity)}</td>
-              <td>{pricingUnitLabel(line.unit_id)}</td>
-              <td>{moneyLabel(line.unit_price)}</td>
-              <td>{moneyLabel(line.amount)}</td>
-              {/* ТЗ DR42 §4.3: the applied norm and the evaluation snapshot
-                  travel with the line; the verdict is never repainted by the
-                  browser and never invents an outcome. */}
-              <td>
-                <EvaluationBadge line={line} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr>
-            <th scope="row" colSpan={5}>
-              Итого к оплате
-            </th>
-            <td>{moneyLabel(snapshot.total)}</td>
-          </tr>
-        </tfoot>
-      </table>
-      {snapshot.fair ? (
-        <p className="vse-exam-note">
-          Ярмарка: строки и итог — 0 ₽; факт выполненных исследований сохраняется.
-        </p>
-      ) : null}
+      <SnapshotPricingTable snapshot={snapshot} />
     </div>
   );
 }

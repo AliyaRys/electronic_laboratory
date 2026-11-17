@@ -95,6 +95,36 @@
   background: linear-gradient(135deg, var(--app-panel), var(--app-mandatory-tint));
 }
 
+/* --- ТЗ DR44 §4.2: readonly saved research card of the view page ------------- */
+.vse-research-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--app-line);
+  border-radius: 13px;
+  background: var(--app-panel);
+  min-width: 0;
+}
+
+/* Обязательные исследования сохраняют согласованный светло-синий тон. */
+.vse-research-view.vse-research-required {
+  border-color: var(--app-mandatory-line);
+  background: linear-gradient(135deg, var(--app-panel), var(--app-mandatory-tint));
+}
+
+.vse-research-unknown {
+  margin: 0;
+  font-size: 12px;
+  color: var(--app-muted-readable);
+}
+
+/* Горизонтальный скролл на 390 px допустим только внутри таблицы стоимости. */
+.vse-invoice-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .vse-research-head {
   display: flex;
   align-items: center;

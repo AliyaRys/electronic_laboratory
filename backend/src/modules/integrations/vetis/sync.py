@@ -26,6 +26,7 @@ The write port is accepted as a seam for W01–W03, but while
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -33,6 +34,7 @@ from typing import Protocol
 import requests
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.src.core.audit import write_structured_audit
@@ -72,6 +74,8 @@ __all__ = [
 SCHEDULE_INTERVAL = timedelta(minutes=15)
 _LEASE_STALE_AFTER = timedelta(hours=1)
 _OUTBOX_EVENT = "vetis.sync"
+
+_LOG = logging.getLogger(__name__)
 
 # ТЗ DR22 §5.2: a transient READ failure is retried INSIDE the same operation.
 # Bounded backoff between the read attempts (2/5/10/30/60 s) and a bounded
@@ -400,6 +404,39 @@ async def _fail_operation(
     )
 
 
+async def _fail_operation_resilient(
+    db: AsyncSession,
+    operation_id: uuid.UUID,
+    problem: ProblemError,
+    *,
+    now: datetime,
+    diagnostics: dict[str, object] | None = None,
+) -> None:
+    """Пометка FAILED гарантированно выполняется, даже если транзакция прервана.
+
+    Живой инцидент 2026-11-16: ошибка внутри импорта страницы прерывает
+    SQL-транзакцию; запись FAILED той же сессией падает с
+    ``InFailedSQLTransaction`` и операция остаётся RUNNING навсегда, блокируя
+    claim/scheduler. Сначала пробуем пометить в текущей транзакции (частично
+    импортированные документы страницы сохраняются); если транзакция реально
+    прервана — откатываем ТОЛЬКО оборванную попытку (семантика checkpoint'ов
+    не меняется, частичные страницы всё равно не были зафиксированы) и пишем
+    FAILED и аудиозапись новой транзакцией.
+    """
+    try:
+        operation = (
+            await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id))
+        ).scalar_one()
+        await _fail_operation(db, operation, problem, now=now, diagnostics=diagnostics)
+        return
+    except DBAPIError:
+        await db.rollback()
+        operation = (
+            await db.execute(select(VetisOperation).where(VetisOperation.id == operation_id))
+        ).scalar_one()
+        await _fail_operation(db, operation, problem, now=now, diagnostics=diagnostics)
+
+
 async def _schedule_retry(
     db: AsyncSession,
     operation: VetisOperation,
@@ -569,15 +606,25 @@ async def run_sync(
                 for item in current_page.items:
                     observed.add(str(item.evsd_uuid))
                     try:
-                        created = await _import_item(db, operation, item, current_page)
-                        if created:
-                            new_documents += 1
-                        else:
-                            updated_documents += 1
+                        # SAVEPOINT: сбой одного документа откатывает только
+                        # его собственные записи — успехи страницы и рабочая
+                        # транзакция остаются валидными, и пометка FAILED
+                        # выполняется без потери уже импортированного.
+                        async with db.begin_nested():
+                            created = await _import_item(db, operation, item, current_page)
                     except Exception as exc:  # noqa: BLE001 - one bad KEPT document is never silently dropped
-                        await _fail_operation(
+                        # Honest diagnostics FIRST: the root cause (which SQL/
+                        # statement failed inside the page) must reach the log
+                        # with its traceback before any rollback hides the
+                        # context.
+                        _LOG.exception(
+                            "Импорт документа ВетИС прерван operation=%s evsd=%s",
+                            operation_id,
+                            str(item.evsd_uuid),
+                        )
+                        await _fail_operation_resilient(
                             db,
-                            operation,
+                            operation_id,
                             _import_problem(exc, evsd_uuid=str(item.evsd_uuid)),
                             now=datetime.now(UTC),
                             diagnostics={
@@ -590,8 +637,20 @@ async def run_sync(
                         )
                         await db.commit()
                         return
+                    if created:
+                        new_documents += 1
+                    else:
+                        updated_documents += 1
             except Exception as exc:  # noqa: BLE001 - a pre-import failure is ALSO an honest FAILED run
-                await _fail_operation(db, operation, _import_problem(exc), now=datetime.now(UTC))
+                # Same honest diagnostics: log the ORIGINAL exception (type,
+                # message, traceback) before the rollback hides the context.
+                _LOG.exception("Импорт страницы ВетИС прерван operation=%s", operation_id)
+                await _fail_operation_resilient(
+                    db,
+                    operation_id,
+                    _import_problem(exc),
+                    now=datetime.now(UTC),
+                )
                 await db.commit()
                 return
             pages_done += 1

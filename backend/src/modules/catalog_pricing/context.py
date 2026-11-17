@@ -25,7 +25,6 @@ from backend.src.modules.catalog_pricing.models import MethodRule, Tariff
 from backend.src.modules.catalog_pricing.queries import method_rule_view, tariff_view
 from backend.src.modules.catalog_pricing.schemas import MethodRuleView, TariffView
 from backend.src.modules.identity.models import Laboratory
-from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
 
 __all__ = [
     "MEAT_AREA_CODE",
@@ -35,7 +34,6 @@ __all__ = [
     "MethodsContext",
     "methods_context",
     "TariffsContext",
-    "SpeciesOption",
     "tariffs_context",
 ]
 
@@ -169,32 +167,18 @@ async def methods_context(
     )
 
 
-class SpeciesOption(BaseModel):
-    """One selectable product species of the tariff scope (ТЗ DR42 §2, Вариант A).
-
-    The user picks the species by its human-readable Mercury name; the GUID is
-    an internal API field only — it is never typed by a user and never shown
-    as a technical value.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: UUID
-    name: str
-
-
 class TariffsContext(BaseModel):
-    """The editor context of «Стоимость исследований ВСЭ» (ТЗ DR42 §3).
+    """The editor context of «Стоимость исследований ВСЭ» (owner decision DR43).
 
     The context is the same DR31 laboratory + meat-area scope as the norm
-    catalog; tariffs stay scoped by the concrete Mercury species (owner
-    decision DR14, Вариант A), so the context additionally carries the species
-    options by name and the legacy mis-scoped rows.
+    catalog; tariffs are scoped by the area ONLY — no species selector and no
+    species options exist any more (one price per «Мясо и мясопродукты»).
 
-    ``legacy_tariffs`` are the historical rows whose ``product_species_id``
-    holds a laboratory UUID — never a species. They are returned for the
-    explicit «требует миграции» diagnostics only: the editor never edits,
-    copies or deletes them silently, and pricing never treats them as valid.
+    ``legacy_tariffs`` are the rows OUTSIDE the area scope
+    (``product_area_code IS NULL`` with a species) left behind by the 0021
+    migration: superseded species-scope price entries kept for audit only —
+    pricing never reads them. They are returned for the honest diagnostics:
+    the editor never edits, copies or deletes them silently.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -202,32 +186,11 @@ class TariffsContext(BaseModel):
     laboratory: _LaboratoryRef
     product_area_code: str
     product_area_name: str
-    species_options: list[SpeciesOption]
     legacy_tariffs: list[TariffView]
 
 
-async def _species_options(db: AsyncSession) -> list[SpeciesOption]:
-    """The meat species by human name from the local Mercury mirror.
-
-    Only productType 1 («Мясо и мясопродукты») rows are options; contours may
-    repeat a GUID, so the first observation wins and the list stays sorted by
-    the Russian name. An empty dictionary is an honest empty list — the
-    catalog never invents options.
-    """
-    rows = (
-        (await db.execute(select(MercuryProductGuidLvl2).where(MercuryProductGuidLvl2.product_type == 1)))
-        .scalars()
-        .all()
-    )
-    by_guid: dict[UUID, str] = {}
-    for row in rows:
-        if row.name and row.name.strip() and row.guid not in by_guid:
-            by_guid[row.guid] = row.name.strip()
-    return [SpeciesOption(id=guid, name=name) for guid, name in sorted(by_guid.items(), key=lambda item: item[1])]
-
-
 async def tariffs_context(db: AsyncSession, laboratory_id: UUID) -> TariffsContext:
-    """Build the tariff editor context for one laboratory (ТЗ DR42 §3)."""
+    """Build the tariff editor context for one laboratory (DR43 area scope)."""
     laboratory = (await db.execute(select(Laboratory).where(Laboratory.id == laboratory_id))).scalar_one_or_none()
     if laboratory is None:
         raise configuration_missing("Лаборатория не найдена в системе.")
@@ -236,7 +199,8 @@ async def tariffs_context(db: AsyncSession, laboratory_id: UUID) -> TariffsConte
             await db.execute(
                 select(Tariff).where(
                     Tariff.laboratory_id == laboratory_id,
-                    Tariff.product_species_id == laboratory_id,
+                    Tariff.product_area_code.is_(None),
+                    Tariff.product_species_id.is_not(None),
                 )
             )
         )
@@ -247,6 +211,5 @@ async def tariffs_context(db: AsyncSession, laboratory_id: UUID) -> TariffsConte
         laboratory=_LaboratoryRef(id=laboratory.id, name=laboratory.name),
         product_area_code=MEAT_AREA_CODE,
         product_area_name=MEAT_AREA_NAME,
-        species_options=await _species_options(db),
         legacy_tariffs=[tariff_view(row) for row in legacy_rows],
     )

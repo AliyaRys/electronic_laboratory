@@ -60,51 +60,35 @@ def _already_exists(detail: str) -> ProblemError:
 
 
 def _tariff_species_problem() -> ProblemError:
-    """Owner decision DR14: VSE tariffs keep the species binding."""
+    """DR43: a VSE tariff is area-scoped; no species input is honoured."""
     return validation_error(
         [
             ProblemItem(
                 path="product_species_id",
                 field_id="VSE",
-                message="Тариф услуги ВСЭ требует вид продукции: выберите вид в контексте справочника.",
-            )
-        ]
-    )
-
-
-def _species_scope_problem() -> ProblemError:
-    """ТЗ DR13: a laboratory UUID is never a product species (tariffs)."""
-    return validation_error(
-        [
-            ProblemItem(
-                path="product_species_id",
-                field_id="CHECK",
                 message=(
-                    "Вид продукции не может совпадать с лабораторией: выберите реальный вид продукции "
-                    "в контексте справочника."
+                    "Тариф услуги ВСЭ настраивается на всю категорию «Мясо и мясопродукты»: "
+                    "вид продукции в тариф не входит и не сохраняется."
                 ),
             )
         ]
     )
 
 
-def _tariff_species(payload: TariffWrite) -> UUID | None:
-    """Code-aware species scope of a tariff write (owner decision DR14).
+def _tariff_scope(payload: TariffWrite) -> tuple[UUID | None, str | None]:
+    """Code-aware scope of a tariff write (owner decision DR43).
 
-    CHECK codes (the two paid reconciliation services) never carry a species:
-    an absent one is accepted and any provided species is NORMALIZED to NULL —
-    a species is never persisted for a CHECK tariff. Every other service code
-    (VSE) requires the species as before, and the DR13 rule stays honest: a
-    laboratory UUID is never a product species, so a VSE write with
-    ``product_species_id == laboratory_id`` is refused.
+    CHECK codes (the two paid reconciliation services) keep the laboratory
+    scope: species NULL, area NULL — any provided species is NORMALIZED to
+    NULL. Every other service code (VSE) is saved in EXACTLY the area scope:
+    ``product_area_code = 'meat'``, species NULL — the party species never
+    enters the pricing key, so a species input is never persisted (and the old
+    DR13 rule «вид продукции не может совпадать с лабораторией» cannot even
+    arise: no species is stored for a VSE tariff).
     """
     if payload.service_code in CHECK_SERVICE_CODES:
-        return None
-    if payload.product_species_id is None:
-        raise _tariff_species_problem()
-    if payload.product_species_id == payload.laboratory_id:
-        raise _species_scope_problem()
-    return payload.product_species_id
+        return None, None
+    return None, MEAT_AREA_CODE
 
 
 def _method_definition(payload: MethodRuleWrite) -> CatalogIndicatorDef:
@@ -272,13 +256,19 @@ def _species_filter(species: UUID | None):  # noqa: ANN201 - column expression
     return Tariff.product_species_id.is_(None) if species is None else (Tariff.product_species_id == species)
 
 
+def _area_filter(area: str | None):  # noqa: ANN201 - column expression
+    """The area term of a tariff scope: NULL for CHECK, the code for VSE."""
+    return Tariff.product_area_code.is_(None) if area is None else (Tariff.product_area_code == area)
+
+
 async def create_tariff(db: AsyncSession, payload: TariffWrite) -> Tariff:
-    species = _tariff_species(payload)
+    species, area = _tariff_scope(payload)
     existing = (
         await db.execute(
             select(Tariff).where(
                 Tariff.laboratory_id == payload.laboratory_id,
                 _species_filter(species),
+                _area_filter(area),
                 Tariff.service_code == payload.service_code,
                 Tariff.unit_id == payload.unit_id,
             )
@@ -289,6 +279,7 @@ async def create_tariff(db: AsyncSession, payload: TariffWrite) -> Tariff:
     row = Tariff(
         laboratory_id=payload.laboratory_id,
         product_species_id=species,
+        product_area_code=area,
         service_code=payload.service_code,
         unit_id=payload.unit_id,
         price=payload.price,
@@ -308,12 +299,13 @@ async def load_tariff(db: AsyncSession, tariff_id: object, *, lock: bool = False
 
 
 async def update_tariff(db: AsyncSession, row: Tariff, payload: TariffWrite) -> Tariff:
-    species = _tariff_species(payload)
+    species, area = _tariff_scope(payload)
     conflict = (
         await db.execute(
             select(Tariff).where(
                 Tariff.laboratory_id == payload.laboratory_id,
                 _species_filter(species),
+                _area_filter(area),
                 Tariff.service_code == payload.service_code,
                 Tariff.unit_id == payload.unit_id,
                 Tariff.id != row.id,
@@ -323,6 +315,7 @@ async def update_tariff(db: AsyncSession, row: Tariff, payload: TariffWrite) -> 
     if conflict is not None:
         raise _already_exists("Тариф для этой области, кода и единицы уже существует.")
     row.product_species_id = species
+    row.product_area_code = area
     row.service_code = payload.service_code
     row.unit_id = payload.unit_id
     row.price = parse_decimal(payload.price)

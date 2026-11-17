@@ -33,7 +33,7 @@ from backend.src.core.problems import ProblemError
 from backend.src.modules.catalog_pricing import mandatory as _mandatory
 from backend.src.modules.catalog_pricing.models import CheckServiceRule, MethodRule, Tariff
 from backend.src.modules.catalog_pricing.schemas import PricingRequest, PricingSnapshot, ResearchValue
-from backend.src.modules.catalog_pricing.service import evaluate_and_price
+from backend.src.modules.catalog_pricing.service import CHECK_SERVICE_CODES, evaluate_and_price
 from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine, get_authorizer
 from backend.src.modules.identity.models import DelegationGrant, Laboratory, Territory, User, UserRole
 from backend.src.modules.identity.passwords import hash_password
@@ -89,9 +89,13 @@ def _rule(
 
 
 def _tariff(lab: uuid.UUID, species: uuid.UUID | None, code: str, price: str, unit: str = "kg") -> Tariff:
+    """A DR43-scope tariff: VSE codes are meat-AREA rows (the species argument
+    is kept for call-site compatibility and never persisted); the two CHECK
+    codes stay laboratory-scoped rows with a NULL area."""
     return Tariff(
         laboratory_id=lab,
-        product_species_id=species,
+        product_species_id=None,
+        product_area_code=None if code in CHECK_SERVICE_CODES else "meat",
         service_code=code,
         unit_id=unit,
         price=price,
@@ -752,8 +756,9 @@ async def test_tariff_and_check_service_and_classification_endpoints(api_env: Si
         listed = (await http.get("/api/v1/catalogs/tariffs", params={"laboratory_id": lab_id})).json()
         assert listed["total"] == 1
 
-        # A VSE code without a species is refused honestly.
-        vse_missing_species = await http.post(
+        # Owner decision DR43: a VSE code WITHOUT a species is the area scope —
+        # the row is created with a NULL species and the meat area.
+        vse_area = await http.post(
             "/api/v1/catalogs/tariffs",
             json={
                 "laboratory_id": lab_id,
@@ -765,8 +770,9 @@ async def test_tariff_and_check_service_and_classification_endpoints(api_env: Si
             },
             headers=_csrf_headers(api_env),
         )
-        assert vse_missing_species.status_code == 422
-        assert vse_missing_species.json()["code"] == "VALIDATION_ERROR"
+        assert vse_area.status_code == 201, vse_area.text
+        assert vse_area.json()["product_species_id"] is None
+        assert vse_area.json()["product_area_code"] == "meat"
 
         check_rule = await http.post(
             "/api/v1/catalogs/check-services",

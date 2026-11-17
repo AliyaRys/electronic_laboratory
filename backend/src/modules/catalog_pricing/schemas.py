@@ -200,9 +200,9 @@ class MethodRuleWrite(BaseModel):
 class TariffWrite(BaseModel):
     """Create/update payload for a tariff (INPUT-03): price is server-side data.
 
-    Owner decision DR14: the two CHECK services are laboratory-scoped only —
-    ``product_species_id`` is NOT sent (and is never persisted for them). VSE
-    service codes require the species.
+    Owner decision DR43: a VSE tariff is saved in EXACTLY the area scope —
+    ``product_species_id`` is never persisted for it (any input is normalized
+    away); the two CHECK services stay laboratory-scoped.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -373,6 +373,7 @@ class TariffView(BaseModel):
     id: UUID
     laboratory_id: UUID
     product_species_id: UUID | None
+    product_area_code: str | None = None
     service_code: str
     unit_id: str
     price: MoneyStringType

@@ -115,13 +115,22 @@ class MethodRule(Base):
 
 
 class Tariff(Base):
-    """A priced service for one laboratory (and, for VSE, product species).
+    """A priced service for one laboratory (DR43 area scope).
 
     Money is ``NUMERIC(20,2)`` (SPEC-05); the price may be explicitly zero but
-    never negative. Owner decision DR14: the two CHECK services are scoped by
-    the laboratory ONLY — their species is NULL, a price applies to every
-    species. VSE tariffs keep the full pricing key (laboratory, species,
-    service code, unit); the two partial unique indexes encode both scopes.
+    never negative. Owner decision DR43 (2026-11-17): ONE VSE tariff per
+    ``laboratory + product area ('meat') + service code + unit`` — the species
+    is NO LONGER part of the pricing key, exactly like the DR31 meat norms.
+
+    The scopes are distinguished by ``product_area_code``:
+
+    - area rows (``product_area_code = 'meat'``, species NULL) — the VSE
+      «Стоимость исследований» scope, one price for the whole category;
+    - CHECK rows (``product_area_code IS NULL``, species NULL) — the two paid
+      reconciliation services, laboratory scope only (DR14);
+    - legacy rows (``product_area_code IS NULL``, species set) — the
+      superseded DR14/DR42 species scope; they are audit-only and never read
+      by pricing (migrated away by 0021 where a group resolution is safe).
     """
 
     __tablename__ = "tariffs"
@@ -143,14 +152,26 @@ class Tariff(Base):
             unique=True,
             postgresql_where=text("product_species_id IS NOT NULL"),
         ),
+        Index(
+            "uq_tariff_lab_area_code_unit",
+            "laboratory_id",
+            "service_code",
+            "unit_id",
+            unique=True,
+            postgresql_where=text("product_area_code IS NOT NULL"),
+        ),
         CheckConstraint("price >= 0", name="price_nonnegative"),
         CheckConstraint("rev >= 1", name="rev_positive"),
         Index("ix_tariffs_lab", "laboratory_id", "product_species_id"),
+        Index("ix_tariffs_area", "laboratory_id", "product_area_code", "service_code"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     laboratory_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    # Legacy/audit-only since DR43: new VSE rows are written with NULL.
     product_species_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # The area scope term ('meat'); NULL = CHECK or legacy species scope.
+    product_area_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     service_code: Mapped[str] = mapped_column(String(128))
     unit_id: Mapped[str] = mapped_column(String(64))
     price: Mapped[Decimal] = mapped_column(Numeric(20, 2))
@@ -221,7 +242,9 @@ class BulkPriceJob(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    product_species_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    # DR43: optional historical echo of the species-scope era; the applied
+    # tariff is always the area-scoped row (species NULL, area 'meat').
+    product_species_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     service_code: Mapped[str] = mapped_column(String(128))
     unit_id: Mapped[str] = mapped_column(String(64))
     price: Mapped[Decimal] = mapped_column(Numeric(20, 2))

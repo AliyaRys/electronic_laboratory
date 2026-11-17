@@ -232,15 +232,17 @@ async def _active_rule(uow: UnitOfWork, laboratory_id: UUID, indicator: UUID) ->
 async def _tariff_for(uow: UnitOfWork, laboratory_id: UUID, species: UUID, code: str) -> Tariff | None:
     """Return the current monetary tariff independently from result units.
 
-    ``MethodRule.unit_id`` describes a measured result (for example °C), while
-    a tariff price is always money.  Older rows may still carry the historical
-    measurement unit; ordering keeps them readable while new UI rows use RUB.
+    Owner decision DR43: the tariff scope is ``laboratory + meat area +
+    service code`` — ONE price for the whole «Мясо и мясопродукты» category;
+    the party species (``species`` argument kept for call-site compatibility)
+    never enters the lookup. ``MethodRule.unit_id`` describes a measured
+    result, while a tariff price is always money.
     """
     statement = (
         select(Tariff)
         .where(
             Tariff.laboratory_id == laboratory_id,
-            Tariff.product_species_id == species,
+            Tariff.product_area_code == MEAT_AREA_CODE,
             Tariff.service_code == code,
         )
         .order_by(Tariff.version.desc(), Tariff.rev.desc(), Tariff.id.desc())
@@ -252,14 +254,16 @@ async def _tariff_for(uow: UnitOfWork, laboratory_id: UUID, species: UUID, code:
 async def _tariff_for_check(uow: UnitOfWork, laboratory_id: UUID, code: str) -> Tariff | None:
     """Owner decision DR14: a CHECK tariff matches laboratory + service code.
 
-    The species is neither required nor consulted; only NULL-species rows (the
-    CHECK scope) are read, so a VSE tariff can never be mistaken for one.
+    The species is neither required nor consulted; only legacy CHECK-scope rows
+    (``product_area_code IS NULL``, species NULL) are read, so a VSE area
+    tariff can never be mistaken for one.
     """
     statement = (
         select(Tariff)
         .where(
             Tariff.laboratory_id == laboratory_id,
             Tariff.product_species_id.is_(None),
+            Tariff.product_area_code.is_(None),
             Tariff.service_code == code,
         )
         .order_by(Tariff.version.desc(), Tariff.rev.desc(), Tariff.id.desc())
@@ -291,28 +295,25 @@ def _evaluate_with_schema(snapshot_rule: MethodRule | None, value: Any) -> dict[
     return evaluate_typed(ResultSchema(snapshot_rule.result_schema), typed_rule, value)
 
 
-def missing_tariff_message(indicator: UUID, species: UUID | None = None) -> str:
-    """The honest, actionable missing-tariff diagnostic (ТЗ DR42 §4.2).
+def missing_tariff_message(indicator: UUID) -> str:
+    """The honest, actionable missing-tariff diagnostic (DR43 area scope).
 
-    The sentence names the concrete research and its stable code; the scope
-    tail keeps the technical trace for the прейскурант owner. A wrong scope
-    (for example a legacy row carrying a laboratory UUID as the species) can
-    never surface as a generic «тариф отсутствует»: the user always sees WHICH
-    indicator, WHICH scope and WHAT action resolves it.
+    The sentence names the concrete research and its stable code and points to
+    the «Стоимость исследований» catalog of the laboratory's meat area: one
+    tariff serves every «Мясо и мясопродукты» position, so no species scope
+    tail exists any more.
     """
     definition = next((item for item in _mandatory.CATALOG_INDICATORS if item.id == indicator), None)
     if definition is not None:
-        base = (
+        return (
             f"Не настроена стоимость исследования «{definition.name}» (код {definition.code}) "
-            "для выбранного вида продукции. Откройте справочник «Стоимость исследований» "
+            "для области «Мясо и мясопродукты». Откройте справочник «Стоимость исследований» "
             "и настройте этот показатель."
         )
-    else:
-        base = (
-            f"Не настроена стоимость исследования с кодом {indicator} для выбранного вида продукции. "
-            "Откройте справочник «Стоимость исследований» и настройте этот показатель."
-        )
-    return base if species is None else f"{base} (scope: вид продукции {species})"
+    return (
+        f"Не настроена стоимость исследования с кодом {indicator} для области «Мясо и мясопродукты». "
+        "Откройте справочник «Стоимость исследований» и настройте этот показатель."
+    )
 
 
 def _price_from_prev_or_tariff(
@@ -321,7 +322,6 @@ def _price_from_prev_or_tariff(
     *,
     fair: bool,
     indicator: UUID,
-    species: UUID | None = None,
 ) -> str:
     if fair:
         return "0.00"  # every saved charge is 0; the ordinary tariff is not present
@@ -329,7 +329,7 @@ def _price_from_prev_or_tariff(
         return previous.unit_price  # ADR-020: an existing result keeps its price
     if tariff is None:
         raise configuration_missing(
-            missing_tariff_message(indicator, species),
+            missing_tariff_message(indicator),
             path=f"results.{indicator}",
             field_id="VSE",
         )
@@ -409,7 +409,7 @@ async def _price_vse(uow: UnitOfWork, request: PricingRequest, previous: Pricing
             if pinned is not None or request.fair
             else await _tariff_for(uow, laboratory_id, species, str(indicator))
         )
-        unit_price = _price_from_prev_or_tariff(pinned, tariff, fair=request.fair, indicator=indicator, species=species)
+        unit_price = _price_from_prev_or_tariff(pinned, tariff, fair=request.fair, indicator=indicator)
         price_decimal = parse_decimal(unit_price) if unit_price != "0.00" else Decimal("0.00")
         amount = _quantize_money(price_decimal * parse_decimal(quantity)) if not request.fair else "0.00"
         definition = registry_definition

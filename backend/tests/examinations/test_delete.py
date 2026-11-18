@@ -147,8 +147,8 @@ async def test_delete_preserves_facts_and_allows_reuse(deletion_env: SimpleNames
         ReportSnapshot(
             report_type="5VET_SECTION_III",
             laboratory_id=env.lab.id,
-            year=2025,
-            half=1,
+            date_from=date(2025, 1, 1),
+            date_to=date(2025, 6, 30),
             payload={"sources": [[examination_id.hex, 1, [[0, 1, "1"]]]]},
             codes={"okud": "001"},
             source_count=1,

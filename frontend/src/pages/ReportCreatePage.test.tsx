@@ -1,9 +1,11 @@
 /**
- * ReportCreatePage tests (R03): the named controller flows on the MSW level —
- * the 422 REPORT_NO_DATA preview error keeps the parameters; changing a
- * parameter clears the preview and the codes with a warning; a network save
+ * ReportCreatePage tests (R03, DR48 §3.4): the named controller flows on the
+ * MSW level — the range is applied through the shared popover; the 422
+ * REPORT_NO_DATA preview error keeps the parameters; changing the applied
+ * range clears the preview and the codes with a warning; a network save
  * failure preserves both the parameters and the codes; the save sends the
- * signed preview and the seven trimmed codes with an Idempotency-Key.
+ * signed preview (v2 dates) and the seven trimmed codes with an
+ * Idempotency-Key; an incomplete/reversed range never sends a request.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -38,12 +40,12 @@ function me(role = "HEAD"): Record<string, unknown> {
 }
 
 const previewPayload = {
-  version: 1,
+  version: 2,
   report_type: "5VET_SECTION_III",
   laboratory_id: LAB,
   laboratory: { name: "Лаборатория №1" },
-  year: 2026,
-  half: 1,
+  date_from: "2026-01-01",
+  date_to: "2026-06-30",
   classification_version: "2026-v1",
   columns: ["PIG"],
   row_codes: ["166"],
@@ -56,8 +58,7 @@ function signedPreview(): Record<string, unknown> {
   return { payload: previewPayload, key_id: "k1", signature: "sig", byte_size: 10 };
 }
 
-function renderPage(): { savedViews: string[] } {
-  const savedViews: string[] = [];
+function renderPage(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -69,8 +70,27 @@ function renderPage(): { savedViews: string[] } {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  void savedViews;
-  return { savedViews };
+}
+
+/** Applies a range through the shared popover: trigger → С/По → Применить. */
+async function applyRange(user: ReturnType<typeof userEvent.setup>, from: string, to: string): Promise<void> {
+  await user.click(screen.getByRole("button", { name: /^Период отчёта/ }));
+  await screen.findByText("Сбросить");
+  if (from !== "") {
+    const input = screen.getByLabelText("С", { selector: "input" });
+    await user.clear(input);
+    await user.type(input, from);
+  }
+  if (to !== "") {
+    const input = screen.getByLabelText("По", { selector: "input" });
+    await user.clear(input);
+    await user.type(input, to);
+  }
+  await user.click(screen.getByRole("button", { name: "Применить" }));
+}
+
+async function runPreview(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole("button", { name: "Сформировать предварительный просмотр" }));
 }
 
 describe("ReportCreatePage", () => {
@@ -84,7 +104,7 @@ describe("ReportCreatePage", () => {
             code: "REPORT_NO_DATA",
             title: "No data",
             status: 422,
-            detail: "За выбранное полугодие нет завершённых источников отчёта.",
+            detail: "За выбранный период нет завершённых источников отчёта.",
           },
           { status: 422 },
         ),
@@ -92,17 +112,17 @@ describe("ReportCreatePage", () => {
     );
     renderPage();
     await screen.findByText("Параметры отчёта");
-    await user.click(screen.getByRole("button", { name: "Сформировать предварительный просмотр" }));
-    const message = await screen.findByText(/За выбранное полугодие нет завершённых источников/, {
+    await applyRange(user, "2026-01-01", "2026-06-30");
+    await runPreview(user);
+    const message = await screen.findByText(/За выбранный период нет завершённых источников/, {
       selector: ".app-status-detail",
     });
     expect(message).toBeVisible();
-    // The parameters stay selected.
-    expect(screen.getByLabelText("Год")).toBeEnabled();
-    expect(screen.getByRole("radio", { name: /I \(январь—июнь\)/ })).toBeChecked();
+    // The applied range stays selected.
+    expect(screen.getByTestId("applied-period").textContent).toContain("01.01.2026 — 30.06.2026");
   });
 
-  it("a parameter change clears the preview and the codes with a warning", async () => {
+  it("an incomplete or reversed range never sends a request", async () => {
     const user = userEvent.setup();
     let previewCounter = 0;
     server.use(
@@ -114,12 +134,48 @@ describe("ReportCreatePage", () => {
     );
     renderPage();
     await screen.findByText("Параметры отчёта");
-    await user.click(screen.getByRole("button", { name: "Сформировать предварительный просмотр" }));
+    // Without any applied range the preview button is disabled.
+    expect(
+      screen.getByRole("button", { name: "Сформировать предварительный просмотр" }),
+    ).toBeDisabled();
+    // An incomplete draft shows the Russian message and closes nothing.
+    await user.click(screen.getByRole("button", { name: /^Период отчёта/ }));
+    await user.type(screen.getByLabelText("С", { selector: "input" }), "2026-01-01");
+    await user.click(screen.getByRole("button", { name: "Применить" }));
+    expect(screen.getByText("Укажите дату начала и дату окончания периода.")).toBeVisible();
+    // A reversed draft shows its own message.
+    await user.type(screen.getByLabelText("По", { selector: "input" }), "2025-12-31");
+    await user.click(screen.getByRole("button", { name: "Применить" }));
+    expect(screen.getByText("Дата начала не может быть позже даты окончания.")).toBeVisible();
+    // A valid pair applies and enables the preview.
+    await user.clear(screen.getByLabelText("По", { selector: "input" }));
+    await user.type(screen.getByLabelText("По", { selector: "input" }), "2026-06-30");
+    await user.click(screen.getByRole("button", { name: "Применить" }));
+    await runPreview(user);
+    await screen.findByText("Предварительный просмотр матрицы");
+    expect(previewCounter).toBe(1);
+    expect(screen.getByTestId("preview-period").textContent).toContain("01.01.2026 — 30.06.2026");
+  });
+
+  it("changing the applied range clears the preview and the codes with a warning", async () => {
+    const user = userEvent.setup();
+    let previewCounter = 0;
+    server.use(
+      http.get("*/api/v1/me", () => HttpResponse.json(me())),
+      http.post("*/api/v1/reports/5vet/preview", () => {
+        previewCounter += 1;
+        return HttpResponse.json(signedPreview());
+      }),
+    );
+    renderPage();
+    await screen.findByText("Параметры отчёта");
+    await applyRange(user, "2026-01-01", "2026-06-30");
+    await runPreview(user);
     await screen.findByText("Предварительный просмотр матрицы");
     await user.type(screen.getByLabelText("ОКУД"), "001");
     expect(screen.getByLabelText("ОКУД")).toHaveValue("001");
-    // Changing the half clears preview + codes and shows the warning.
-    await user.click(screen.getByRole("radio", { name: /II \(июль—декабрь\)/ }));
+    // Changing the applied range clears preview + codes and shows the warning.
+    await applyRange(user, "2026-02-01", "2026-08-31");
     expect(await screen.findByText(/Параметры изменены/)).toBeVisible();
     // The cleared state removes the preview matrix and the code inputs.
     expect(screen.queryByLabelText("ОКУД")).toBeNull();
@@ -136,7 +192,8 @@ describe("ReportCreatePage", () => {
     );
     renderPage();
     await screen.findByText("Параметры отчёта");
-    await user.click(screen.getByRole("button", { name: "Сформировать предварительный просмотр" }));
+    await applyRange(user, "2026-01-01", "2026-06-30");
+    await runPreview(user);
     await screen.findByText("Предварительный просмотр матрицы");
     for (const label of ["ОКУД", "ОКПО", "ОКВЭД", "ОКТМО", "ОКОГУ", "ОКОПФ", "ОКФС"]) {
       await user.type(screen.getByLabelText(label), "001");
@@ -148,7 +205,7 @@ describe("ReportCreatePage", () => {
     expect(screen.getByLabelText("ОКУД")).toHaveValue("001");
     expect(screen.getByLabelText("ОКФС")).toHaveValue("001");
     // The parameters are still on screen and unchanged.
-    expect(screen.getByRole("radio", { name: /I \(январь—июнь\)/ })).toBeChecked();
+    expect(screen.getByTestId("applied-period").textContent).toContain("01.01.2026 — 30.06.2026");
   });
 
   it("a successful save sends the signed preview and the trimmed codes, then navigates", async () => {
@@ -164,8 +221,8 @@ describe("ReportCreatePage", () => {
             id: REPORT,
             report_type: "5VET_SECTION_III",
             laboratory_id: LAB,
-            year: 2026,
-            half: 1,
+            date_from: "2026-01-01",
+            date_to: "2026-06-30",
             payload: previewPayload,
             codes: { okud: "001" },
             source_count: 1,
@@ -179,7 +236,8 @@ describe("ReportCreatePage", () => {
     );
     renderPage();
     await screen.findByText("Параметры отчёта");
-    await user.click(screen.getByRole("button", { name: "Сформировать предварительный просмотр" }));
+    await applyRange(user, "2026-01-01", "2026-06-30");
+    await runPreview(user);
     await screen.findByText("Предварительный просмотр матрицы");
     await user.type(screen.getByLabelText("ОКУД"), " 001 ");
     for (const label of ["ОКПО", "ОКВЭД", "ОКТМО", "ОКОГУ", "ОКОПФ", "ОКФС"]) {
@@ -189,8 +247,13 @@ describe("ReportCreatePage", () => {
     await screen.findByText("Просмотр отчёта");
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]?.headers.get("idempotency-key")).toBeTruthy();
-    const body = posts[0]?.body as { preview: { signature: string }; codes: Record<string, string> };
+    const body = posts[0]?.body as {
+      preview: { signature: string; payload: Record<string, unknown> };
+      codes: Record<string, string>;
+    };
     expect(body.preview.signature).toBe("sig");
+    expect(body.preview.payload["date_from"]).toBe("2026-01-01");
+    expect(body.preview.payload["date_to"]).toBe("2026-06-30");
     expect(body.codes["okud"]).toBe("001"); // trimmed, leading zero kept
   });
 
@@ -207,12 +270,26 @@ describe("ReportCreatePage", () => {
     );
     renderPage();
     await screen.findByText("Параметры отчёта");
-    await user.click(screen.getByRole("button", { name: "Сформировать предварительный просмотр" }));
+    await applyRange(user, "2026-01-01", "2026-06-30");
+    await runPreview(user);
     await screen.findByText("Предварительный просмотр матрицы");
     await user.click(screen.getByRole("button", { name: "Сохранить отчёт" }));
     const codeErrors = await screen.findAllByText("Код обязателен и не может быть пустым.");
     expect(codeErrors.length).toBe(7);
     expect(saveCounter).toBe(0);
+  });
+
+  it("Escape closes the popover and returns the focus to the trigger", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("*/api/v1/me", () => HttpResponse.json(me())));
+    renderPage();
+    await screen.findByText("Параметры отчёта");
+    const trigger = screen.getByRole("button", { name: /^Период отчёта/ });
+    await user.click(trigger);
+    expect(await screen.findByText("Сбросить")).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("Сбросить")).toBeNull();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 });
 

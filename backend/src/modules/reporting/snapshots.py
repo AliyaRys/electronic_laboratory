@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import cast
 
@@ -18,7 +18,7 @@ from backend.src.core.keyring import PreviewKeyring, get_preview_keyring
 from backend.src.core.problems import ProblemError
 from backend.src.modules.catalog_pricing.models import ReportClassification
 from backend.src.modules.identity.models import Laboratory
-from backend.src.modules.reporting.calculator import build_classification_map, calculate_5vet, period_bounds
+from backend.src.modules.reporting.calculator import build_classification_map, calculate_5vet
 from backend.src.modules.reporting.queries import list_report_sources
 from backend.src.modules.reporting.schemas import (
     COLUMNS,
@@ -33,6 +33,8 @@ from backend.src.modules.reporting.schemas import (
 )
 
 MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
+# The signed payload schema version this server builds and verifies.
+SUPPORTED_PAYLOAD_VERSION = 2
 
 
 def canonical_json(value: object) -> bytes:
@@ -57,16 +59,10 @@ def _signature_input(payload: dict[str, object], key_id: str, session_id: str, a
             "actor_id": str(actor_id),
             "laboratory_id": payload.get("laboratory_id"),
             "report_type": payload.get("report_type"),
-            "year": payload.get("year"),
-            "half": payload.get("half"),
+            "date_from": payload.get("date_from"),
+            "date_to": payload.get("date_to"),
         }
     )
-
-
-def _ensure_completed(year: int, half: int, now: datetime) -> None:
-    _start, end = period_bounds(year, half)
-    if now < end.astimezone(UTC):
-        raise _problem("REPORT_PERIOD_UNFINISHED", "Можно сохранить только завершённое полугодие.")
 
 
 async def _load_facts(
@@ -105,9 +101,9 @@ async def _load_facts(
             for row in rows
         ],
     )
-    sources = await list_report_sources(db, params.laboratory_id, params.year, params.half)
+    sources = await list_report_sources(db, params.laboratory_id, params.date_from, params.date_to)
     if not sources:
-        raise _problem("REPORT_NO_DATA", "За выбранное полугодие нет завершённых источников отчёта.")
+        raise _problem("REPORT_NO_DATA", "За выбранный период нет завершённых источников отчёта.")
     return {"name": lab.name, "address": lab.address, "organization": lab.organization}, mapping, sources
 
 
@@ -133,12 +129,12 @@ def _build_payload(
         compact_sources.append([source.id.hex, source.revision, nonzero])
 
     return {
-        "version": 1,
+        "version": 2,
         "report_type": params.report_type,
         "laboratory_id": str(params.laboratory_id),
         "laboratory": laboratory,
-        "year": params.year,
-        "half": params.half,
+        "date_from": params.date_from.isoformat(),
+        "date_to": params.date_to.isoformat(),
         "generated_at": now.isoformat(),
         "actor_id": str(actor_id),
         "classification_version": mapping.version,
@@ -161,9 +157,12 @@ async def preview_report(
     keyring: PreviewKeyring | None = None,
     now: datetime | None = None,
 ) -> SignedPreview:
-    """Calculate a non-persistent preview in its own short consistent snapshot."""
+    """Calculate a non-persistent preview in its own short consistent snapshot.
+
+    DR48 §3.1: any calendar range is allowed — there is no «завершённое
+    полугодие» gate; an empty range answers the honest REPORT_NO_DATA.
+    """
     instant = now or utcnow()
-    _ensure_completed(params.year, params.half, instant)
     bind = db.bind
     if not isinstance(bind, AsyncEngine):
         raise RuntimeError("Preview requires an AsyncEngine-bound session.")
@@ -192,6 +191,12 @@ def verify_preview(
 ) -> dict[str, object]:
     """Verify size, key lifetime and MAC for the current live server session."""
     payload = preview.payload
+    if payload.get("version") != SUPPORTED_PAYLOAD_VERSION:
+        raise _problem(
+            "REPORT_PREVIEW_INVALID",
+            f"Preview неподдерживаемой версии ({payload.get('version')}); "
+            f"поддерживается версия {SUPPORTED_PAYLOAD_VERSION}.",
+        )
     actual_size = len(canonical_json(payload))
     if actual_size > MAX_PAYLOAD_BYTES or preview.byte_size != actual_size:
         raise _problem("REPORT_PREVIEW_INVALID", "Размер preview не совпадает с подписанным содержимым.")

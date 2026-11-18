@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,8 +29,8 @@ def snapshot_view(row: ReportSnapshot) -> ReportSnapshotView:
     return ReportSnapshotView.model_validate(row)
 
 
-def _period_context(report_type: str, laboratory_id: uuid.UUID, year: int, half: int) -> uuid.UUID:
-    return uuid.uuid5(uuid.NAMESPACE_URL, f"report:{report_type}:{laboratory_id}:{year}:{half}")
+def _period_context(report_type: str, laboratory_id: uuid.UUID, date_from: date, date_to: date) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"report:{report_type}:{laboratory_id}:{date_from}:{date_to}")
 
 
 def _period_exists() -> ProblemError:
@@ -38,7 +38,7 @@ def _period_exists() -> ProblemError:
         status=409,
         code="REPORT_PERIOD_EXISTS",
         title="Report period exists",
-        detail="Отчёт этого типа за выбранное полугодие уже сохранён.",
+        detail="Отчёт этого типа за выбранный период уже сохранён.",
     )
 
 
@@ -65,8 +65,8 @@ async def save_report(
     try:
         report_type = str(payload["report_type"])
         laboratory_id = uuid.UUID(str(payload["laboratory_id"]))
-        year = int(str(payload["year"]))
-        half = int(str(payload["half"]))
+        date_from = date.fromisoformat(str(payload["date_from"]))
+        date_to = date.fromisoformat(str(payload["date_to"]))
         source_count = int(str(payload["source_count"]))
         generated_at = datetime.fromisoformat(str(payload["generated_at"]))
     except (KeyError, TypeError, ValueError) as exc:
@@ -77,7 +77,7 @@ async def save_report(
             detail="Подписанный preview не содержит обязательных полей.",
         ) from exc
 
-    context_id = _period_context(report_type, laboratory_id, year, half)
+    context_id = _period_context(report_type, laboratory_id, date_from, date_to)
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": str(context_id)})
     work = UnitOfWork(db)
     recorder = IdempotencyRecorder()
@@ -102,8 +102,8 @@ async def save_report(
             select(ReportSnapshot.id).where(
                 ReportSnapshot.report_type == report_type,
                 ReportSnapshot.laboratory_id == laboratory_id,
-                ReportSnapshot.year == year,
-                ReportSnapshot.half == half,
+                ReportSnapshot.date_from == date_from,
+                ReportSnapshot.date_to == date_to,
             )
         )
     ).scalar_one_or_none()
@@ -113,8 +113,8 @@ async def save_report(
     row = ReportSnapshot(
         report_type=report_type,
         laboratory_id=laboratory_id,
-        year=year,
-        half=half,
+        date_from=date_from,
+        date_to=date_to,
         payload=payload,
         codes=codes.model_dump(),
         source_count=source_count,
@@ -131,7 +131,7 @@ async def save_report(
             actor_id=ctx.actor_id,
             object_uuid=row.id,
             action="report:5vet-save",
-            result=f"{year}-{half}",
+            result=f"{date_from}..{date_to}",
             trace_id=uuid.uuid4().hex,
             revision=1,
         )
@@ -150,8 +150,9 @@ async def list_reports(
 ) -> ReportSummaryPage:
     """The saved-report list of one laboratory (API-08 ``GET /reports``).
 
-    Newest saved period first; the payload never leaves the database here —
-    the list carries only period/source/revision metadata.
+    Newest saved period first (DR48 §3.5: ``date_to DESC, date_from DESC,
+    saved_at DESC`` for determinism); the payload never leaves the database
+    here — the list carries only period/source/revision metadata.
     """
     base = select(ReportSnapshot).where(ReportSnapshot.laboratory_id == laboratory_id)
     total = await db.scalar(
@@ -161,7 +162,11 @@ async def list_reports(
     rows = (
         (
             await db.execute(
-                base.order_by(ReportSnapshot.year.desc(), ReportSnapshot.half.desc(), ReportSnapshot.saved_at.desc())
+                base.order_by(
+                    ReportSnapshot.date_to.desc(),
+                    ReportSnapshot.date_from.desc(),
+                    ReportSnapshot.saved_at.desc(),
+                )
                 .offset(offset)
                 .limit(page_size)
             )

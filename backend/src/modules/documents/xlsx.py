@@ -44,8 +44,8 @@ _CODE_LABELS = {
 
 
 def xlsx_filename(model: ReportDocumentView) -> str:
-    """``5-вет_раздел-III_<лаборатория>_<год>_<полугодие>.xlsx``, path-safe."""
-    unsafe = f"5-вет_раздел-III_{model.laboratory}_{model.year}_{model.half}-полугодие"
+    """``5-вет_раздел-III_<лаборатория>_<период>.xlsx``, path-safe."""
+    unsafe = f"5-вет_раздел-III_{model.laboratory}_{model.period}"
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", unsafe).strip().strip(".")
     return f"{cleaned or '5-вет'}.xlsx"
 

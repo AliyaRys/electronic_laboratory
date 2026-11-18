@@ -7,15 +7,14 @@ official rows 240–242 happens once, after the whole aggregation (FT-RPT-04:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 
 from backend.src.modules.catalog_pricing.schemas import ANIMAL_COLUMNS
-from backend.src.modules.samples.schemas import BalanceView
 
 __all__ = [
     "AnimalColumn",
@@ -136,20 +135,20 @@ class ReportPeriod(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    date_from: datetime
-    date_to: datetime
+    date_from: date
+    date_to: date
 
 
 class OperationalView(BaseModel):
     """API-08 ``GET /reports/operational``: the operational indicators of one
-    laboratory over a period plus the current live sample balances."""
+    laboratory over a period (DR48: «Сохранённых ВСЭ» counts the saved local
+    cards; the current sample balances are NOT part of the endpoint)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    processed_parties: int
+    saved_examinations: int
     product_identifications: int
     transport_inspections: int
-    current_sample_balances: list[BalanceView]
     period: ReportPeriod
 
 
@@ -157,14 +156,26 @@ REPORT_TYPE: Literal["5VET_SECTION_III"] = "5VET_SECTION_III"
 
 
 class ReportPreviewParams(BaseModel):
-    """Server-scoped parameters of an immutable 5-vet preview."""
+    """Server-scoped parameters of an immutable 5-vet preview.
+
+    DR48 §3.1: the period is any valid inclusive calendar range, not a
+    completed half-year; both bounds are required and ``date_from <= date_to``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     report_type: Literal["5VET_SECTION_III"] = REPORT_TYPE
     laboratory_id: UUID
-    year: int = Field(ge=2000, le=9998)
-    half: Literal[1, 2]
+    date_from: date
+    date_to: date
+
+    @field_validator("date_to")
+    @classmethod
+    def ordered_range(cls, value: date, info: ValidationInfo) -> date:
+        start = info.data.get("date_from")
+        if start is not None and value < start:
+            raise ValueError("Дата начала не может быть позже даты окончания.")
+        return value
 
 
 class SignedPreview(BaseModel):
@@ -213,8 +224,8 @@ class ReportSnapshotView(BaseModel):
     id: UUID
     report_type: str
     laboratory_id: UUID
-    year: int
-    half: int
+    date_from: date
+    date_to: date
     payload: dict[str, object]
     codes: dict[str, str]
     source_count: int
@@ -235,8 +246,8 @@ class ReportSummary(BaseModel):
     id: UUID
     report_type: str
     laboratory_id: UUID
-    year: int
-    half: int
+    date_from: date
+    date_to: date
     source_count: int
     saved_at: datetime
     saved_by: UUID

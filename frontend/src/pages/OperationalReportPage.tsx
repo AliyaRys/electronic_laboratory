@@ -1,13 +1,13 @@
 /**
- * OperationalReportPage (R03, API-08, SC-076–079): the operational indicators
- * of one laboratory over a chosen period. The period lives in the URL and
- * drives ONLY the three indicators — the sample balances are the CURRENT
- * live remainders (R01 semantics) and never depend on the period filter.
+ * OperationalReportPage (R03, API-08): the operational indicators of one
+ * laboratory over a chosen period (DR48 §2). The three metrics are
+ * «Сохранённых ВСЭ», идентификаций продукции and оценок транспорта — the
+ * sample balances are NOT part of the endpoint and are never shown here.
  * HEAD/ANALYST only (AT-20); VET/ADMIN get the honest forbidden state.
  */
 import "./../features/reports/reports.css";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearchParams, useParams } from "react-router";
+import { useSearchParams, useParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { useMe } from "../shared/api/me";
 import { StatusView } from "../shared/ui/StatusView";
@@ -74,9 +74,6 @@ function OperationalContent(): React.ReactElement {
 
   return (
     <div className="vse-app vse-page">
-      <nav className="vse-breadcrumb" aria-label="Навигация">
-        <Link to={`/labs/${labId}/reports`}>← Отчёты</Link>
-      </nav>
       <h1>Операционный отчёт</h1>
       <form
         className="vse-report-period"
@@ -114,50 +111,20 @@ function OperationalContent(): React.ReactElement {
       ) : report.isLoading ? (
         <StatusView state="loading" title="Загрузка показателей…" />
       ) : view !== null ? (
-        <>
-          <div className="vse-report-metric-grid">
-            <div className="vse-report-metric">
-              <strong>{view.processed_parties}</strong>
-              Обработанных партий (SC-078: внутренние транзакции исключены)
-            </div>
-            <div className="vse-report-metric">
-              <strong>{view.product_identifications}</strong>
-              Идентификаций продукции (по завершённым услугам, SC-077)
-            </div>
-            <div className="vse-report-metric">
-              <strong>{view.transport_inspections}</strong>
-              Осмотров транспорта (по завершённым услугам, SC-077)
-            </div>
+        <div className="vse-report-metric-grid">
+          <div className="vse-report-metric">
+            <strong>{view.saved_examinations}</strong>
+            Сохранённых ВСЭ
           </div>
-          <section className="vse-report-block" aria-label="Текущие остатки проб">
-            <h2>Текущие остатки проб (SC-079)</h2>
-            <p className="app-field-message">
-              Остатки — текущие живые суммы по видам продукции; фильтр периода на них не влияет (R01).
-            </p>
-            {view.current_sample_balances.length === 0 ? (
-              <StatusView state="empty" title="Положительных остатков нет." />
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table className="vse-report-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Вид продукции (идентификатор)</th>
-                      <th scope="col">Остаток, кг</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {view.current_sample_balances.map((balance) => (
-                      <tr key={balance.product_species_id}>
-                        <th scope="row">{balance.product_species_id}</th>
-                        <td>{balance.mass_kg}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </>
+          <div className="vse-report-metric">
+            <strong>{view.product_identifications}</strong>
+            Идентификаций продукции по наименованию и визуальным осмотром
+          </div>
+          <div className="vse-report-metric">
+            <strong>{view.transport_inspections}</strong>
+            Ветеринарно-санитарных оценок и идентификаций транспорта
+          </div>
+        </div>
       ) : null}
     </div>
   );

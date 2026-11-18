@@ -128,7 +128,7 @@ describe("SampleAccountingPage", () => {
 
     await userEvent.type(screen.getByLabelText("С даты"), "2026-11-01");
     await userEvent.type(screen.getByLabelText("По дату"), "2026-11-06");
-    await userEvent.click(screen.getByRole("button", { name: "Применить период" }));
+    await userEvent.click(screen.getByRole("button", { name: "Применить" }));
 
     await waitFor(() => {
       expect(disposalGets.at(-1)?.searchParams.get("date_from")).toBe("2026-11-01");
@@ -137,6 +137,38 @@ describe("SampleAccountingPage", () => {
     // The balances read model never depends on the period filter.
     expect(balanceGets.length).toBe(1);
     expect((await screen.findAllByText("12.6")).length).toBeGreaterThan(0);
+  });
+
+  it("only balances and disposals are requested; collections are gone", async () => {
+    const collectionsGets: URL[] = [];
+    server.use(
+      http.get("*/api/v1/samples/collections", ({ request }) => {
+        collectionsGets.push(new URL(request.url));
+        return HttpResponse.json({ items: [], total: 0, page: 1, page_size: 20 });
+      }),
+    );
+    renderPage();
+    await screen.findByText("ВСД-001");
+    // DR48 §4.1: the «Доступные отборы» block is not in the DOM, the notes
+    // and the «Период истории» heading are gone, and the page makes no
+    // collections request.
+    expect(screen.queryByText("Доступные отборы")).toBeNull();
+    expect(screen.queryByText(/Остаток показывается только для чтения/)).toBeNull();
+    expect(screen.queryByText(/История утилизаций не изменяется/)).toBeNull();
+    expect(screen.queryByText("Период истории")).toBeNull();
+    expect(screen.queryByRole("link", { name: /← Отчёты/ })).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(collectionsGets).toHaveLength(0);
+  });
+
+  it("a reversed draft period is blocked with an inline message", async () => {
+    const { disposalGets } = renderPage();
+    await screen.findByText("ВСД-001");
+    await userEvent.type(screen.getByLabelText("С даты"), "2026-11-06");
+    await userEvent.type(screen.getByLabelText("По дату"), "2026-11-01");
+    await userEvent.click(screen.getByRole("button", { name: "Применить" }));
+    expect(screen.getByText("Дата начала не может быть позже даты окончания.")).toBeVisible();
+    expect(disposalGets).toHaveLength(1);
   });
 
   it("a VET gets no 5-ВЕТ report link (own scope only)", async () => {
@@ -154,8 +186,8 @@ describe("SampleAccountingPage", () => {
   it("the disposal command carries the If-Match of the basket and an Idempotency-Key", async () => {
     const { posts } = renderPage("VET");
     await screen.findAllByText("12.6");
-    await userEvent.click(screen.getByRole("button", { name: "Действия со строкой" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Утилизировать остаток" }));
+    // DR48 §4.4: ONE direct icon action, no row menu.
+    await userEvent.click(screen.getByRole("button", { name: "Утилизировать остаток" }));
     await userEvent.type(await screen.findByLabelText("Номер исходящей эВСД"), "ВСД-001");
     await userEvent.click(screen.getByRole("button", { name: "Утилизировать" }));
     await waitFor(() => {
@@ -166,6 +198,13 @@ describe("SampleAccountingPage", () => {
       expect(body["externalVsdNumber"]).toBe("ВСД-001");
       expect(body["expectedMassKg"]).toBe("12.6");
     });
+  });
+
+  it("ANALYST sees neither the dispose action nor an empty row menu", async () => {
+    renderPage("ANALYST");
+    await screen.findAllByText("12.6");
+    expect(screen.queryByRole("button", { name: "Утилизировать остаток" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Действия со строкой" })).toBeNull();
   });
 });
 

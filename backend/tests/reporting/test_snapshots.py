@@ -6,7 +6,7 @@ import asyncio
 import base64
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -131,7 +131,7 @@ async def test_preview_save_preserves_deleted_source(db_session: AsyncSession) -
         db_session,
         actor_id,
         "session-a",
-        ReportPreviewParams(laboratory_id=lab_id, year=2026, half=1),
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
         keyring=keyring(),
         now=NOW,
     )
@@ -190,18 +190,38 @@ async def test_tampered_payload_and_other_session_are_rejected(db_session: Async
         db_session,
         actor_id,
         "session-a",
-        ReportPreviewParams(laboratory_id=lab_id, year=2026, half=1),
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
         keyring=keyring(),
         now=NOW,
     )
     tampered = preview.model_copy(deep=True)
-    tampered.payload["year"] = 2025
+    tampered.payload["date_from"] = "2025-01-01"
     with pytest.raises(ProblemError, match="изменён") as changed:
         verify_preview(tampered, actor_id, "session-a", keyring=keyring(), now=NOW)
     assert changed.value.code == "REPORT_PREVIEW_INVALID"
     with pytest.raises(ProblemError) as other_session:
         verify_preview(preview, actor_id, "session-b", keyring=keyring(), now=NOW)
     assert other_session.value.code == "REPORT_PREVIEW_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_foreign_payload_version_is_rejected(db_session: AsyncSession) -> None:
+    """A preview signed for another payload schema version is REPORT_PREVIEW_INVALID."""
+    actor_id, lab_id, _source_id = await seed_source(db_session)
+    preview = await preview_report(
+        db_session,
+        actor_id,
+        "session-a",
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
+        keyring=keyring(),
+        now=NOW,
+    )
+    assert preview.payload["version"] == 2
+    foreign = preview.model_copy(deep=True)
+    foreign.payload["version"] = 1
+    with pytest.raises(ProblemError, match="верси") as wrong:
+        verify_preview(foreign, actor_id, "session-a", keyring=keyring(), now=NOW)
+    assert wrong.value.code == "REPORT_PREVIEW_INVALID"
 
 
 def test_codes_preserve_leading_zeroes_and_reject_blank() -> None:
@@ -211,7 +231,7 @@ def test_codes_preserve_leading_zeroes_and_reject_blank() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_data_and_unfinished_period(db_session: AsyncSession) -> None:
+async def test_no_data_is_honest_for_any_range(db_session: AsyncSession) -> None:
     actor_id, lab_id, source_id = await seed_source(db_session)
     source = await db_session.get(Examination, source_id)
     assert source is not None
@@ -222,21 +242,93 @@ async def test_no_data_and_unfinished_period(db_session: AsyncSession) -> None:
             db_session,
             actor_id,
             "session-a",
-            ReportPreviewParams(laboratory_id=lab_id, year=2026, half=1),
+            ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
             keyring=keyring(),
             now=NOW,
         )
     assert no_data.value.code == "REPORT_NO_DATA"
-    with pytest.raises(ProblemError) as unfinished:
+    # DR48 §3.1: a current (unfinished) calendar range is allowed — the old
+    # REPORT_PERIOD_UNFINISHED gate no longer exists; an empty future range
+    # answers the same honest REPORT_NO_DATA.
+    with pytest.raises(ProblemError) as future_empty:
         await preview_report(
             db_session,
             actor_id,
             "session-a",
-            ReportPreviewParams(laboratory_id=lab_id, year=2027, half=1),
+            ReportPreviewParams(laboratory_id=lab_id, date_from=date(2027, 1, 1), date_to=date(2027, 6, 30)),
             keyring=keyring(),
             now=NOW,
         )
-    assert unfinished.value.code == "REPORT_PERIOD_UNFINISHED"
+    assert future_empty.value.code == "REPORT_NO_DATA"
+
+
+@pytest.mark.asyncio
+async def test_rejected_bounds_and_overlapping_ranges(db_session: AsyncSession) -> None:
+    actor_id, lab_id, _source_id = await seed_source(db_session)
+    with pytest.raises(ValidationError):
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2025, 12, 31))
+    ring = keyring()
+    first = await preview_report(
+        db_session,
+        actor_id,
+        "session-a",
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
+        keyring=ring,
+        now=NOW,
+    )
+    await save_report(
+        CommandContext(actor_id=actor_id, idempotency_key="dup-1"),
+        first,
+        codes(),
+        session_id="session-a",
+        db=db_session,
+        keyring=ring,
+        now=NOW,
+    )
+    await db_session.commit()
+    # An exact duplicate of the range is forbidden...
+    again = await preview_report(
+        db_session,
+        actor_id,
+        "session-a",
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
+        keyring=ring,
+        now=NOW,
+    )
+    with pytest.raises(ProblemError) as duplicate:
+        await save_report(
+            CommandContext(actor_id=actor_id, idempotency_key="dup-2"),
+            again,
+            codes(),
+            session_id="session-a",
+            db=db_session,
+            keyring=ring,
+            now=NOW,
+        )
+    assert duplicate.value.code == "REPORT_PERIOD_EXISTS"
+    # ...while an overlapping but different range is allowed.
+    overlap = await preview_report(
+        db_session,
+        actor_id,
+        "session-a",
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 2, 1), date_to=date(2026, 9, 30)),
+        keyring=ring,
+        now=NOW,
+    )
+    saved = await save_report(
+        CommandContext(actor_id=actor_id, idempotency_key="dup-3"),
+        overlap,
+        codes(),
+        session_id="session-a",
+        db=db_session,
+        keyring=ring,
+        now=NOW,
+    )
+    await db_session.commit()
+    assert (saved.date_from, saved.date_to) == (date(2026, 2, 1), date(2026, 9, 30))
+    assert first.payload["version"] == 2
+    assert first.payload["date_from"] == "2026-01-01" and first.payload["date_to"] == "2026-06-30"
+    assert "year" not in first.payload and "half" not in first.payload
 
 
 @pytest.mark.asyncio
@@ -247,7 +339,7 @@ async def test_concurrent_period_save(db_session: AsyncSession, test_db_engine: 
         db_session,
         actor_id,
         "session-a",
-        ReportPreviewParams(laboratory_id=lab_id, year=2026, half=1),
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
         keyring=ring,
         now=NOW,
     )

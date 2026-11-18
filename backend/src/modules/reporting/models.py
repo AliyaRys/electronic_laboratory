@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,10 +15,10 @@ from backend.src.core.database import Base
 class ReportSnapshot(Base):
     __tablename__ = "report_snapshots"
     __table_args__ = (
-        UniqueConstraint("report_type", "laboratory_id", "year", "half", name="uq_report_snapshot_period"),
-        CheckConstraint("half IN (1, 2)", name="half_valid"),
-        CheckConstraint("source_count >= 0", name="source_count_nonnegative"),
-        CheckConstraint("rev = 1", name="immutable_revision"),
+        UniqueConstraint("report_type", "laboratory_id", "date_from", "date_to", name="uq_report_snapshot_period"),
+        CheckConstraint("date_from <= date_to", name="report_snapshot_period_valid"),
+        CheckConstraint("source_count >= 0", name="report_snapshot_source_count_nonnegative"),
+        CheckConstraint("rev = 1", name="report_snapshot_immutable_revision"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -28,8 +28,8 @@ class ReportSnapshot(Base):
     laboratory_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("laboratories.id", ondelete="RESTRICT")
     )
-    year: Mapped[int] = mapped_column(Integer)
-    half: Mapped[int] = mapped_column(Integer)
+    date_from: Mapped[date] = mapped_column(Date)
+    date_to: Mapped[date] = mapped_column(Date)
     payload: Mapped[dict[str, object]] = mapped_column(JSONB)
     codes: Mapped[dict[str, str]] = mapped_column(JSONB)
     source_count: Mapped[int] = mapped_column(Integer)

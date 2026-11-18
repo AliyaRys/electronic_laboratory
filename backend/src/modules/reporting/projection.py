@@ -21,7 +21,7 @@ from decimal import Decimal, InvalidOperation
 from backend.src.modules.documents.schemas import ReportCodes, ReportDocumentView, ReportMatrixRow
 from backend.src.modules.reporting.schemas import ROW_CODES, ROW_NAMES, ReportSnapshotView
 
-__all__ = ["report_document_view", "report_pdf_filename", "report_xlsx_filename"]
+__all__ = ["period_label", "report_document_view", "report_pdf_filename", "report_xlsx_filename"]
 
 #: Printed labels of the 8 data columns; the two bird columns share one row.
 COLUMN_NAMES: dict[str, str] = {
@@ -46,9 +46,19 @@ MANUAL_ROWS: tuple[tuple[str, str], ...] = (
     ("inspections_of_meat", "Осмотры мяса"),
 )
 
-PERIOD_NAMES: dict[int, str] = {1: "январь—июнь", 2: "июль—декабрь"}
-
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def period_label(date_from: str, date_to: str) -> str:
+    """«ДД.ММ.ГГГГ — ДД.ММ.ГГГГ»; one day prints a single date (DR48 §3.5)."""
+
+    def _ru(value: str) -> str:
+        parts = value.split("-")
+        return f"{parts[2]}.{parts[1]}.{parts[0]}" if len(parts) == 3 else value
+
+    if date_from == date_to:
+        return _ru(date_from)
+    return f"{_ru(date_from)} — {_ru(date_to)}"
 
 
 def _decimal(value: object) -> Decimal | None:
@@ -62,11 +72,11 @@ def _decimal(value: object) -> Decimal | None:
 
 
 def _filename_stem(view: ReportSnapshotView) -> str:
-    """``5-вет_раздел-III_<лаборатория>_<год>_<полугодие>``, path-safe (API-08)."""
+    """``5-вет_раздел-III_<лаборатория>_<date_from>_<date_to>``, path-safe (API-08)."""
     payload = view.payload
     laboratory = payload.get("laboratory")
     name = laboratory.get("name", "") if isinstance(laboratory, dict) else ""
-    unsafe = f"5-вет_раздел-III_{name}_{view.year}_{view.half}-полугодие"
+    unsafe = f"5-вет_раздел-III_{name}_{view.date_from.isoformat()}_{view.date_to.isoformat()}"
     cleaned = _UNSAFE.sub("", unsafe).strip().strip(".")
     return cleaned or "5-вет"
 
@@ -129,9 +139,7 @@ def report_document_view(view: ReportSnapshotView) -> ReportDocumentView:
     return ReportDocumentView(
         form_id="report-5vet",
         laboratory=laboratory_name,
-        year=view.year,
-        half=view.half,
-        period=f"{PERIOD_NAMES.get(view.half, '—')} {view.year}",
+        period=period_label(view.date_from.isoformat(), view.date_to.isoformat()),
         codes=ReportCodes(
             okud=codes.get("okud", ""),
             okpo=codes.get("okpo", ""),

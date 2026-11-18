@@ -92,9 +92,7 @@ VIEW = ConclusionView(
 REPORT = ReportDocumentView(
     form_id="report-5vet",
     laboratory="Лаборатория №1",
-    year=2026,
-    half=2,
-    period="июль—декабрь 2026",
+    period="01.07.2026 — 31.12.2026",
     codes={
         "okud": "001",
         "okpo": "12345678",

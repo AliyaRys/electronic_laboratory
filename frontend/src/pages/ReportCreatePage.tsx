@@ -1,10 +1,11 @@
 /**
  * ReportCreatePage (R03, API-08, SC-080–088): preview → codes → immutable save.
  *
- * The flow keeps the R02 contract strictly:
+ * The flow keeps the R02 contract strictly (DR48 §3.4):
+ * - the period is any valid calendar range, chosen in the shared popover;
  * - the preview is the server's signed calculation shown verbatim (the client
  *   never recomputes);
- * - changing any parameter clears the preview AND the codes and shows the
+ * - changing the applied range clears the preview AND the codes and shows the
  *   warning — the signed payload no longer matches the inputs;
  * - a failed save (network or 4xx) preserves both the parameters and the
  *   entered codes (nothing is cleared on failure);
@@ -13,13 +14,14 @@
  */
 import "./../features/reports/reports.css";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { RequireSession } from "./RequireSession";
 import { useMe } from "../shared/api/me";
 import { useCommand } from "../shared/api/command";
 import { StatusView } from "../shared/ui/StatusView";
 import { Button } from "../shared/ui/Button";
+import { appliedRangeLabel, type AppliedDateRange } from "../shared/ui/DateRangePopover";
 import { ReportParameters } from "../features/reports/ReportParameters";
 import { ReportCodes, CODE_FIELDS } from "../features/reports/ReportCodes";
 import { ReportMatrix } from "../features/reports/ReportMatrix";
@@ -70,8 +72,7 @@ function ReportCreateContent(): React.ReactElement {
   const queryClient = useQueryClient();
   const me = useMe();
 
-  const [year, setYear] = useState<number>(new Date().getFullYear());
-  const [half, setHalf] = useState<1 | 2>(1);
+  const [applied, setApplied] = useState<AppliedDateRange>({ from: "", to: "" });
   const [preview, setPreview] = useState<SignedPreview | null>(null);
   const [codes, setCodes] = useState<Record<string, string>>({ ...EMPTY_CODES });
   const [codeErrors, setCodeErrors] = useState<Record<string, string>>({});
@@ -95,12 +96,13 @@ function ReportCreateContent(): React.ReactElement {
     setParamWarning(true);
   };
 
-  const changeYear = (next: number): void => {
-    setYear(next);
+  const applyRange = (range: AppliedDateRange): void => {
+    setApplied(range);
     if (preview !== null) clearPreview();
   };
-  const changeHalf = (next: 1 | 2): void => {
-    setHalf(next);
+
+  const resetRange = (): void => {
+    setApplied({ from: "", to: "" });
     if (preview !== null) clearPreview();
   };
 
@@ -111,8 +113,8 @@ function ReportCreateContent(): React.ReactElement {
         const params: ReportPreviewParams = {
           report_type: "5VET_SECTION_III",
           laboratory_id: labId ?? "",
-          year,
-          half,
+          date_from: applied.from,
+          date_to: applied.to,
         };
         const result = await previewReport(params)(ctx);
         if (result.response.ok && result.data !== undefined) {
@@ -188,19 +190,15 @@ function ReportCreateContent(): React.ReactElement {
 
   return (
     <div className="vse-app vse-page">
-      <nav className="vse-breadcrumb" aria-label="Навигация">
-        <Link to={`/labs/${labId}/reports`}>← Отчёты</Link>
-      </nav>
       <h1>Создание отчёта 5-вет (раздел III)</h1>
 
       <ReportParameters
-        year={year}
-        half={half}
+        applied={applied}
         busy={previewCommand.status === "pending"}
         disabled={saveCommand.status === "pending"}
         stale={paramWarning}
-        onYear={changeYear}
-        onHalf={changeHalf}
+        onApply={applyRange}
+        onReset={resetRange}
         onPreview={runPreview}
       />
 
@@ -212,12 +210,10 @@ function ReportCreateContent(): React.ReactElement {
           state={previewProblem.code === "ACCESS_DENIED" ? "forbidden" : "network-error"}
           title={
             previewProblem.code === "REPORT_NO_DATA"
-              ? "За выбранное полугодие нет завершённых источников отчёта."
-              : previewProblem.code === "REPORT_PERIOD_UNFINISHED"
-                ? "Полугодие ещё не завершено — отчёт можно строить только за завершённое полугодие."
-                : previewProblem.code === "REPORT_MAPPING_INVALID"
-                  ? "Классификация продукции настроена неверно — отчёт не рассчитан."
-                  : undefined
+              ? "За выбранный период нет завершённых источников отчёта."
+              : previewProblem.code === "REPORT_MAPPING_INVALID"
+                ? "Классификация продукции настроена неверно — отчёт не рассчитан."
+                : undefined
           }
           detail={previewProblem.detail}
           trace={previewProblem.trace_id}
@@ -227,6 +223,9 @@ function ReportCreateContent(): React.ReactElement {
 
       {previewPayload !== null ? (
         <>
+          <p className="app-field-message" data-testid="preview-period">
+            Период: {appliedRangeLabel(applied)}
+          </p>
           <ReportMatrix
             payload={previewPayload}
             sourceCount={sourceCount}

@@ -141,7 +141,19 @@ export function JournalDateFilter({
   const summary = journalDateSummary(value);
 
   return (
-    <div className="vse-journal-date-filter" ref={filterRef}>
+    <div
+      className="vse-journal-date-filter"
+      ref={filterRef}
+      onKeyDown={(event) => {
+        // DR47 review: Escape closes the popover from anywhere inside it —
+        // the trigger, the mode buttons or any input — and the focus
+        // returns to the trigger (the container hears bubbled keys too).
+        if (event.key === "Escape" && open) {
+          event.stopPropagation();
+          close(true);
+        }
+      }}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -150,12 +162,6 @@ export function JournalDateFilter({
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={toggleOpen}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && open) {
-            event.stopPropagation();
-            close(true);
-          }
-        }}
       >
         <span>{summary}</span>
         <Icon name="calendar" />

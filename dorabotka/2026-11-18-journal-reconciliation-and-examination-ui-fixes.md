@@ -723,3 +723,13 @@ export type PricingTableVariant = "live-examination" | "saved-examination";
 - Merge commit in `main`: not performed (Task 8 — контроллер)
 - Remote push: not performed (Task 8 — контроллер)
 - Honest not-run / pre-existing failures: см. UI/E2E и screenshots выше; также не создавались reviewer-субагенты и не менялись backend/OpenAPI/модели/миграции/права/маршруты; `acceptance.local.json` main-репо не тронут; Playwright-прогон `test:ui` перезаписал evidence-скриншоты в worktree — восстановлены через `git checkout -- docs/implementation/evidence`
+
+### 6.1. Fix-loop DR47 (review finds)
+
+- Commit: `fix: journal date URL compatibility and popover escape (DR47 review)` — worktree `C:\electronic_lab_dev-dr47`, ветка `feature/DR47-journal-reconciliation-pricing-ui-fixes`; merge/push не выполнялись.
+- Find 1 (major, URL-совместимость): `journalDateOf` в `ExaminationJournalPage.tsx` — отсутствие `date_mode` при наличии `from`/`to` теперь интерпретируется как режим «Диапазон» (старые ссылки `?from=…&to=…` больше не теряют период); date-only границы обрабатываются `journalDateWindow` (from → `T00:00:00+03:00`, to → следующий день, полуприкрытое окно как у режима «Дата»). Тест: старая ссылка восстанавливает summary «01.11.2026 — 10.11.2026» и серверный запрос.
+- Find 2 (major, popover): Escape в `JournalDateFilter.tsx` обрабатывается на контейнере popover (`onKeyDown` на корневом div) — работает из trigger, кнопок режимов и любого input; после закрытия фокус возвращается на trigger. Тест: Escape при фокусе в input закрывает поповер.
+- Find 3 (minor): debounce-таймер поиска снимается на unmount (`useEffect` cleanup).
+- Find 4 (minor): `searchDraft` синхронизируется из URL при смене параметра `q` (Back/Forward); при pending debounce draft не затирается. Тест: навигация на URL с `q=…` обновляет поле поиска.
+- Gates (все из `frontend`): `npm.cmd test -- --run` — 73 files / 632 tests PASSED; `typecheck` 0; `lint` 0; `build` 0.
+- Not-run: Storybook/браузер/E2E и прочее из §6 — без изменений (нет работающего backend в среде).

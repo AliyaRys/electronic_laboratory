@@ -15,7 +15,7 @@
  */
 import "../features/examinations/examinations.css";
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { JournalDateFilter, type JournalDateValue } from "./JournalDateFilter";
@@ -96,9 +96,15 @@ export function journalDateWindow(value: JournalDateValue): {
     return { occurred_from: `${value.moment}:00+03:00`, occurred_to: nextMinute(value.moment) };
   }
   if (value.mode === "range") {
+    // Legacy links may carry date-only boundaries (DR47 review): a date-only
+    // «from» opens the Moscow day, a date-only «to» closes the NEXT day
+    // (the same half-open [from; to) semantics as the date mode).
+    const hasTime = (moment: string): boolean => moment.includes("T");
     return {
-      occurred_from: value.from === "" ? null : `${value.from}:00+03:00`,
-      occurred_to: value.to === "" ? null : nextMinute(value.to),
+      occurred_from:
+        value.from === "" ? null : hasTime(value.from) ? `${value.from}:00+03:00` : `${value.from}T00:00:00+03:00`,
+      occurred_to:
+        value.to === "" ? null : hasTime(value.to) ? nextMinute(value.to) : nextDay(value.to),
     };
   }
   return { occurred_from: null, occurred_to: null };
@@ -131,14 +137,22 @@ const DATE_KEYS = ["date_mode", "date", "moment", "from", "to"] as const;
 
 function journalDateOf(params: URLSearchParams): JournalDateValue {
   const modeParam = params.get("date_mode");
-  const mode: JournalDateValue["mode"] =
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  let mode: JournalDateValue["mode"] =
     modeParam === "datetime" || modeParam === "range" ? modeParam : "date";
+  // Backward compatibility (DR47 review): legacy journal links carried the
+  // period as plain ``?from=…&to=…`` without ``date_mode``. Without this
+  // fallback such links silently lost the range and showed «Любая дата».
+  if (modeParam === null && (from !== "" || to !== "")) {
+    mode = "range";
+  }
   return {
     mode,
     date: params.get("date") ?? "",
     moment: params.get("moment") ?? "",
-    from: params.get("from") ?? "",
-    to: params.get("to") ?? "",
+    from,
+    to,
   };
 }
 
@@ -161,6 +175,19 @@ function ExaminationJournalContent(): React.ReactElement {
   // The debounce timer is a hook-order invariant: it is created BEFORE the
   // early returns below (React hooks must run in the same order).
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // DR47 review: a pending debounce timer never fires after unmount.
+  useEffect(
+    () => () => {
+      if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    },
+    [],
+  );
+  // DR47 review: Back/Forward (or any external URL change of ``q``) keeps the
+  // visible draft in step with the committed search parameter. While a
+  // debounced commit is pending the draft is user-owned and never clobbered.
+  useEffect(() => {
+    if (debounceRef.current === null) setSearchDraft(search);
+  }, [search]);
 
   const query: JournalQuery = {
     laboratory_id: labId ?? "",
@@ -244,7 +271,10 @@ function ExaminationJournalContent(): React.ReactElement {
   const commitSearch = (value: string): void => {
     setSearchDraft(value);
     if (debounceRef.current !== null) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setParam("q", value.trim()), 300);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      setParam("q", value.trim());
+    }, 300);
   };
   const commitSearchNow = (value: string): void => {
     if (debounceRef.current !== null) clearTimeout(debounceRef.current);

@@ -11,7 +11,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeAll, afterAll, describe, expect, it } from "vitest";
 import { ExaminationJournalPage } from "./ExaminationJournalPage";
 import type { ExaminationJournalItem } from "../features/examinations/api";
@@ -172,6 +172,33 @@ describe("ExaminationJournalPage composition (DR47 §2.3)", () => {
     await user.selectOptions(screen.getByLabelText("Сортировка"), "asc");
     await waitFor(() => expect(queries.at(-1)).toContain("sort=asc"));
   });
+
+  it("the search draft follows the URL on Back/Forward (DR47 review)", async () => {
+    server.use(
+      http.get("*/api/v1/examinations", () =>
+        HttpResponse.json({ items: [item(EXAM)], total: 1 }),
+      ),
+    );
+    const client = new QueryClient();
+    render(
+      <MemoryRouter
+        initialIndex={0}
+        initialEntries={[`/labs/${LAB}/examinations`, `/labs/${LAB}/examinations?q=клеймо`]}
+      >
+        <QueryClientProvider client={client}>
+          <Link to={`/labs/${LAB}/examinations?q=клеймо`}>Перейти</Link>
+          <Routes>
+            <Route path="/labs/:labId/examinations" element={<ExaminationJournalPage />} />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByRole("button", { name: /Период обращения/ });
+    const input = screen.getByLabelText("Поиск") as HTMLInputElement;
+    expect(input.value).toBe("");
+    await userEvent.setup().click(screen.getByText("Перейти"));
+    await waitFor(() => expect((screen.getByLabelText("Поиск") as HTMLInputElement).value).toBe("клеймо"));
+  });
 });
 
 describe("Journal date popover (DR47 §2.3.3)", () => {
@@ -282,6 +309,46 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
         name: /Период обращения: 01.11.2026 09:40 — 10.11.2026 18:00/,
       }),
     ).toBeTruthy();
+  });
+
+  it("a legacy ?from=&to= link without date_mode restores the «Диапазон» mode (DR47 review)", async () => {
+    const queries: string[] = [];
+    server.use(
+      http.get("*/api/v1/examinations", ({ request }) => {
+        queries.push(new URL(request.url).search);
+        return HttpResponse.json({ items: [item(EXAM)], total: 1 });
+      }),
+    );
+    // The old journal links carried date-only boundaries and no date_mode.
+    renderRoute(`/labs/${LAB}/examinations?from=2026-11-01&to=2026-11-10`);
+    expect(
+      await screen.findByRole("button", {
+        name: /Период обращения: 01.11.2026 — 10.11.2026/,
+      }),
+    ).toBeTruthy();
+    // The server query keeps the half-open Moscow day window.
+    await waitFor(() => {
+      expect(queries.at(-1)).toContain("occurred_from=2026-11-01T00%3A00%3A00%2B03%3A00");
+      expect(queries.at(-1)).toContain("occurred_to=2026-11-11T00%3A00%3A00%2B03%3A00");
+    });
+  });
+
+  it("Escape closes the popover from inside an input and returns the focus to the trigger (DR47 review)", async () => {
+    server.use(
+      http.get("*/api/v1/examinations", () =>
+        HttpResponse.json({ items: [item(EXAM)], total: 1 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderRoute();
+    await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
+    const trigger = screen.getByRole("button", { name: /Период обращения/ });
+    await user.click(trigger);
+    expect(screen.getByLabelText("Дата")).toBeTruthy();
+    await user.click(screen.getByLabelText("Дата"));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByLabelText("Дата")).toBeNull());
+    expect(trigger).toHaveFocus();
   });
 });
 

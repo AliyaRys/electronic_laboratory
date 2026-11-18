@@ -156,7 +156,7 @@ async function expectAlertCount(page: Page, text: string): Promise<void> {
 /** Fills the two permanent date inputs and presses the single «Применить». */
 async function applyRange(page: Page, from: string, to: string): Promise<void> {
   await page.getByLabel("С даты").fill(from);
-  await page.getByLabel("По дате").fill(to);
+  await page.getByLabel("По дату").fill(to);
   await page.getByRole("button", { name: "Применить" }).click();
 }
 

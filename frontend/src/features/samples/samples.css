@@ -1,5 +1,47 @@
 /* Sample accounting screen (S03): balances, collections, disposal history. */
 
+/* DR49 §10.1: the heading row — title left, export actions right; ≤720px
+   everything re-stacks into a column and the buttons take the full width. */
+.vse-samples-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.vse-samples-heading h1 {
+  margin: 0;
+}
+
+.vse-samples-export-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.vse-samples-export-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .vse-samples-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vse-samples-export-buttons {
+    flex-direction: column;
+  }
+
+  .vse-samples-export-buttons .app-button {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 .vse-samples-blocks {
   display: flex;
   flex-direction: column;

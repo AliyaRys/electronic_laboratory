@@ -27,6 +27,7 @@ import {
 import { Balances, problemState } from "../features/samples/Balances";
 import { DisposalDialog } from "../features/samples/DisposalDialog";
 import { DisposalHistory } from "../features/samples/DisposalHistory";
+import { SampleExportActions } from "../features/samples/SampleExportActions";
 import { Button } from "../shared/ui/Button";
 import { useMe } from "../shared/api/me";
 import { StatusView } from "../shared/ui/StatusView";
@@ -118,7 +119,12 @@ function SampleAccountingContent(): React.ReactElement {
 
   return (
     <div className="vse-app vse-page">
-      <h1>Учёт проб</h1>
+      {/* DR49 §10.1: the heading row — the title on the left, the two export
+          actions on the right (≤720px: everything stacks into a column). */}
+      <div className="vse-samples-heading">
+        <h1>Учёт проб</h1>
+        <SampleExportActions laboratoryId={labId} dateFrom={historyFrom} dateTo={historyTo} />
+      </div>
       <div className="vse-samples-blocks">
         {balancesProblem !== null ? (
           <StatusView

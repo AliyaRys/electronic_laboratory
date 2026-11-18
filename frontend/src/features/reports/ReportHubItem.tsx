@@ -13,10 +13,10 @@ export interface ReportHubItemProps {
   /** Real metadata: a saved period, a real count, an honest empty/loading state. */
   meta?: string;
   /** Target of the «Открыть» action; omit when the row has no action. */
-  to?: string;
+  to?: string | undefined;
   /** Accessible name of the action link (defaults to the visible «Открыть»). */
-  actionLabel?: string;
-  actionVisibleLabel?: string;
+  actionLabel?: string | undefined;
+  actionVisibleLabel?: string | undefined;
 }
 
 export function ReportHubItem({

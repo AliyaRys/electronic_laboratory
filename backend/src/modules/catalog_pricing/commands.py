@@ -385,16 +385,23 @@ async def delete_check_service_rule(db: AsyncSession, row: CheckServiceRule) -> 
     await db.flush()
 
 
-async def create_classification_version(db: AsyncSession, payload: ClassificationWrite) -> list[ReportClassification]:
-    """Write a whole classification map version atomically (INPUT-05).
+_CLASSIFICATION_LOCK_KEY = 49_2026_11_18
 
-    Existing rows of the version are locked first, so a concurrent rewrite of
-    the same version serializes instead of silently overwriting (SPEC-04).
+
+async def create_classification_version(db: AsyncSession, payload: ClassificationWrite) -> list[ReportClassification]:
+    """Write the whole classification map atomically as the ONLY version.
+
+    DR49 §2.6: under one transaction-scoped advisory lock the whole new set is
+    validated, ALL rows of ALL previous versions are deleted and the new set is
+    inserted — readers never observe an intermediate «0 versions» state, and
+    two concurrent POSTs serialize (after commit exactly one whole version
+    exists, never a mix of rows). The runtime key stays the stable GUID; the
+    Russian name never enters the mapping (only the write DTO validation).
     """
     await db.execute(
-        select(ReportClassification).where(ReportClassification.version == payload.version).with_for_update()
+        select(func.pg_advisory_xact_lock(_CLASSIFICATION_LOCK_KEY))  # type: ignore[attr-defined]
     )
-    await db.execute(delete(ReportClassification).where(ReportClassification.version == payload.version))
+    await db.execute(delete(ReportClassification))
     rows = [
         ReportClassification(
             version=payload.version,
@@ -410,6 +417,24 @@ async def create_classification_version(db: AsyncSession, payload: Classificatio
     db.add_all(rows)
     await db.flush()
     return rows
+
+
+async def load_classification_row(db: AsyncSession, row_id: object) -> ReportClassification | None:
+    statement = select(ReportClassification).where(ReportClassification.id == row_id)
+    return (await db.execute(statement)).scalar_one_or_none()
+
+
+async def classification_rows(db: AsyncSession, version: str) -> list[ReportClassification]:
+    """The ordered rows of one stored version (replay projection)."""
+    return list(
+        (
+            await db.execute(
+                select(ReportClassification)
+                .where(ReportClassification.version == version)
+                .order_by(ReportClassification.mercury_species_id)
+            )
+        ).scalars()
+    )
 
 
 async def delete_classification_version(db: AsyncSession, version: str) -> int:

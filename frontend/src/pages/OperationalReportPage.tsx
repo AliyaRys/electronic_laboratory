@@ -98,7 +98,9 @@ function OperationalContent(): React.ReactElement {
           </div>
           <input id="operational-to" name="to" type="date" defaultValue={to} />
         </div>
-        <Button type="submit">Применить период</Button>
+        <Button type="submit" variant="primary">
+          Применить
+        </Button>
       </form>
       {problem !== null ? (
         <StatusView

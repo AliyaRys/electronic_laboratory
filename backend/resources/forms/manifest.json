@@ -114,6 +114,39 @@
           "license": "DejaVu (Bitstream Vera + public domain); текст лицензии в fonts/LICENSE-DejaVuSans.txt"
         }
       ]
+    },
+    {
+      "form_id": "sample-accounting",
+      "version": "1",
+      "date": "2026-11-18",
+      "template": "sample-accounting.html",
+      "template_sha256": "23B321D83C32503DA46332F0C4ED133E0195929ED2CC09FEECAFDBCF642F2FA5",
+      "official": false,
+      "title": "Учёт проб",
+      "required_fields": [
+        "laboratory",
+        "period",
+        "generated_at",
+        "balances_rows",
+        "disposals_rows"
+      ],
+      "paper": "A4",
+      "margins_mm": {
+        "top": 14,
+        "right": 13,
+        "bottom": 14,
+        "left": 13
+      },
+      "repeat_headers": true,
+      "noncalculated_cells": [],
+      "ton_precision": 6,
+      "fonts": [
+        {
+          "resource": "DejaVuSans.ttf",
+          "sha256": "7DA195A74C55BEF988D0D48F9508BD5D849425C1770DBA5D7BFC6CE9ED848954",
+          "license": "DejaVu (Bitstream Vera + public domain); текст лицензии в fonts/LICENSE-DejaVuSans.txt"
+        }
+      ]
     }
   ]
 }

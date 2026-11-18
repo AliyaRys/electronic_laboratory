@@ -72,13 +72,18 @@ ROW_NAMES: dict[str, str] = {
 
 
 class SpeciesClassification(BaseModel):
-    """One mapping entry of the report classification (INPUT-05/DATA-04)."""
+    """One mapping entry of the report classification (INPUT-05/DATA-04).
+
+    DR49 §2.4: an explicitly unsupported row carries ``animal_column=None``
+    and ``material_kind=None``; ``_resolved`` checks ``supported`` first, so a
+    supported entry always has both values narrowed non-null.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     mercury_species_id: str
-    animal_column: AnimalColumn
-    material_kind: MaterialKind
+    animal_column: AnimalColumn | None
+    material_kind: MaterialKind | None
     supported: bool
 
 

@@ -135,7 +135,7 @@ def _empty_matrix() -> ReportMatrix:
     )
 
 
-def _resolved(map_: ClassificationMap, source: ReportSource) -> SpeciesClassification:
+def _resolved(map_: ClassificationMap, source: ReportSource) -> tuple[SpeciesClassification, str, str]:
     item = map_.items.get(source.classification)
     if item is None:
         raise _mapping_invalid(
@@ -149,7 +149,15 @@ def _resolved(map_: ClassificationMap, source: ReportSource) -> SpeciesClassific
             path=f"sources.{source.id}.classification",
             field_id=source.classification,
         )
-    return item
+    # The supported branch guarantees both values (DB check + write DTO); the
+    # honest guard never casts None into a valid column (DR49 §2.4).
+    if item.animal_column is None or item.material_kind is None:  # pragma: no cover - guarded upstream
+        raise _mapping_invalid(
+            "Поддерживаемая строка классификации повреждена; исправьте конфигурацию.",
+            path=f"sources.{source.id}.classification",
+            field_id=source.classification,
+        )
+    return item, item.animal_column, item.material_kind
 
 
 def calculate_5vet(sources: Sequence[ReportSource], mapping: ClassificationMap) -> ReportMatrix:
@@ -176,8 +184,7 @@ def calculate_5vet(sources: Sequence[ReportSource], mapping: ClassificationMap) 
         key=attrgetter("id"),
     )
     for source in selected:
-        classification = _resolved(mapping, source)
-        column = classification.animal_column
+        _classification, column, material_kind = _resolved(mapping, source)
         matrix.rows["166"][column] += Decimal(1)
         for row, indicator_ids in PERFORMED_ROW_IDS.items():
             performed = len(source.performed_indicator_ids & indicator_ids)
@@ -186,7 +193,9 @@ def calculate_5vet(sources: Sequence[ReportSource], mapping: ClassificationMap) 
             matrix.rows["172"][column] += Decimal(1)
         if source.direction == "DESTRUCTION":
             kg["240"][column] += source.accepted_mass_kg
-            if classification.material_kind == "MEAT":
+            # DR49 §2.2: meat and offal of the same animal share the column
+            # but split between rows 241/242 (240 = 241 + 242 is preserved).
+            if material_kind == "MEAT":
                 kg["241"][column] += source.accepted_mass_kg
             else:
                 kg["242"][column] += source.accepted_mass_kg

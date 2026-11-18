@@ -9,7 +9,13 @@
  */
 import type { components } from "../../shared/api/schema";
 import { apiClient } from "../../shared/api/client";
-import { networkProblem, problemFromParsed, type Problem } from "../../shared/api/problem";
+import {
+  isProblemContentType,
+  networkProblem,
+  parseProblem,
+  problemFromParsed,
+  type Problem,
+} from "../../shared/api/problem";
 
 export type { Problem } from "../../shared/api/problem";
 
@@ -157,4 +163,55 @@ export function snapshotProduct(view: CollectionView): string {
     if (typeof name === "string" && name !== "") return name;
   }
   return view.product_species_id;
+}
+
+export interface ExportFileResult {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * GET ``/samples/accounting/export.<kind>`` (DR49 §10.2): the Blob is created
+ * only AFTER the Problem check — a 403 scope denial or a 503 renderer failure
+ * never downloads a broken file. A retry repeats exactly the same GET with
+ * the applied (not draft) query parameters.
+ */
+export async function fetchAccountingExport(
+  kind: "pdf" | "xlsx",
+  query: { laboratory_id: string; date_from?: string | null; date_to?: string | null },
+  signal?: AbortSignal | null,
+): Promise<ExportFileResult | { problem: Problem }> {
+  const search = new URLSearchParams({ laboratory_id: query.laboratory_id });
+  if (query.date_from) search.set("date_from", query.date_from);
+  if (query.date_to) search.set("date_to", query.date_to);
+  try {
+    const response = await fetch(`/api/v1/samples/accounting/export.${kind}?${search.toString()}`, {
+      signal: signal ?? null,
+    });
+    if (!response.ok || isProblemContentType(response)) {
+      return { problem: await parseProblem(response) };
+    }
+    const expected =
+      kind === "pdf"
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const contentType = (response.headers.get("content-type") ?? "").split(";")[0]?.trim() ?? "";
+    // DR49 review: the bytes are trusted only with the expected media type —
+    // a wrong content type is an honest error, never a broken Blob.
+    if (contentType !== expected) {
+      return {
+        problem: networkProblem(
+          `Сервер вернул файл с неожиданным типом (${contentType || "без типа"}); ожидается ${expected}.`,
+        ),
+      };
+    }
+    const data = await response.arrayBuffer();
+    const type = expected;
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+    const filename = match !== null ? decodeURIComponent(match[1] ?? "") : "";
+    return { blob: new Blob([data], { type }), filename };
+  } catch (thrown) {
+    return { problem: networkProblem(thrown instanceof Error ? thrown.message : "Ошибка сети.") };
+  }
 }

@@ -5,7 +5,7 @@
  * command carries the Idempotency-Key and the basket If-Match.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -177,10 +177,26 @@ describe("SampleAccountingPage", () => {
     expect(screen.queryByRole("link", { name: /5-ВЕТ/ })).toBeNull();
   });
 
-  it("HEAD gets the 5-ВЕТ report link", async () => {
+  it("DR49 §5: no 5-ВЕТ link and no visible history caption for any role", async () => {
     renderPage("HEAD");
     await screen.findByText("ВСД-001");
-    expect(screen.getByRole("link", { name: /5-ВЕТ/ })).toBeTruthy();
+    // The 5-ВЕТ link container is fully removed from the screen.
+    expect(screen.queryByRole("link", { name: /5-ВЕТ/ })).toBeNull();
+    expect(screen.queryByText(/Отчёт 5-ВЕТ/)).toBeNull();
+    // The history heading is «История утилизаций» and it names the table via
+    // aria-labelledby; the table renders no caption.
+    const heading = screen.getByRole("heading", { name: "История утилизаций" });
+    expect(heading).toBeVisible();
+    expect(heading.id).not.toBe("");
+    const table = within(heading.closest("section") ?? document.body).getByRole("table");
+    expect(table.getAttribute("aria-labelledby")).toBe(heading.id);
+    expect(table.querySelector("caption")).toBeNull();
+  });
+
+  it("DR49 §5: HEAD sees no 5-ВЕТ report link either — the link is removed for every role", async () => {
+    renderPage("HEAD");
+    await screen.findByText("ВСД-001");
+    expect(screen.queryByRole("link", { name: /5-ВЕТ/ })).toBeNull();
   });
 
   it("the disposal command carries the If-Match of the basket and an Idempotency-Key", async () => {

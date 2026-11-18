@@ -149,7 +149,7 @@ describe("ReportsPage hub (DR37)", () => {
     );
     renderPage();
     await screen.findByText("Учёт проб");
-    expect(screen.queryByRole("button", { name: /Создать отчёт/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Создать отчёт/ })).toBeNull();
   });
 
   it("a HEAD without 5-вет preview+save has no create affordance, but sees the list", async () => {
@@ -160,7 +160,7 @@ describe("ReportsPage hub (DR37)", () => {
     );
     renderPage();
     expect(await screen.findByText(/01.01.2026 — 30.06.2026/)).toBeVisible();
-    expect(screen.queryByRole("button", { name: /Создать отчёт/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Создать отчёт/ })).toBeNull();
   });
 
   it("a HEAD with preview+save but without list/read sees the honest 5-вет card (DR37 fix-loop)", async () => {
@@ -173,18 +173,29 @@ describe("ReportsPage hub (DR37)", () => {
         "Создание отчёта доступно; список сохранённых отчётов и просмотр не входят в ваши полномочия.",
       ),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: /Создать отчёт/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Создать отчёт 5-вет (раздел III)" })).toBeVisible();
   });
 
-  it("the create affordance navigates to the creation page", async () => {
+  it("the create action inside the 5-вет card navigates to the creation page", async () => {
     const user = userEvent.setup();
     server.use(
       http.get("*/api/v1/me", () => HttpResponse.json(me("ANALYST"))),
       http.get("*/api/v1/reports/5vet", () => HttpResponse.json({ ...savedList, items: [], total: 0 })),
     );
     renderPage();
-    await user.click(await screen.findByRole("button", { name: "Создать отчёт" }));
+    await user.click(await screen.findByRole("link", { name: "Создать отчёт 5-вет (раздел III)" }));
     await waitFor(() => expect(screen.getByText("Создание")).toBeVisible());
+  });
+
+  it("the hub carries no subtitle, no laboratory paragraph and no AT-18 note (DR49 §4.1)", async () => {
+    server.use(
+      http.get("*/api/v1/me", () => HttpResponse.json(me("ANALYST"))),
+      http.get("*/api/v1/reports/5vet", () => HttpResponse.json({ ...savedList, items: [], total: 0 })),
+    );
+    renderPage();
+    await screen.findByText("Форма 5-вет (раздел III)");
+    expect(screen.queryByText(/Формирование регламентированной отчётности/)).toBeNull();
+    expect(screen.queryByText(/AT-18/)).toBeNull();
   });
 
   it("an ADMIN gets the forbidden state and triggers no report/sample request", async () => {
@@ -212,16 +223,17 @@ describe("ReportsPage hub (DR37)", () => {
     expect(screen.queryByText(/Сохранённые отчёты/)).toBeNull();
   });
 
-  it("shows the human-readable laboratory name, not a UUID", async () => {
+  it("shows the human-readable laboratory name in the saved rows, not a UUID", async () => {
     server.use(
       http.get("*/api/v1/me", () => HttpResponse.json(me("ANALYST"))),
-      http.get("*/api/v1/reports/5vet", () => HttpResponse.json({ ...savedList, items: [], total: 0 })),
+      http.get("*/api/v1/reports/5vet", () => HttpResponse.json(savedList)),
       http.get("*/api/v1/contexts/laboratories", () =>
         HttpResponse.json([{ laboratory_id: LAB, name: "ГБУ «Лаборатория №1 г. Казань»" }]),
       ),
     );
     renderPage();
-    expect(await screen.findByText(/Лаборатория №1 г. Казань/)).toBeVisible();
+    const row = await screen.findByText(/Источников: 3/);
+    expect(row.textContent).toContain("Лаборатория №1 г. Казань");
   });
 
   it("without report:5vet-list the 5-вет card never claims «пока нет» (false-empty fix)", async () => {

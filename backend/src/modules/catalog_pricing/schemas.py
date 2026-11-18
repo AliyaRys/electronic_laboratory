@@ -237,7 +237,12 @@ class CheckServiceRuleWrite(BaseModel):
 
 
 class ClassificationItemWrite(BaseModel):
-    """One species mapping row (INPUT-05): agreed IDs, never name guessing."""
+    """One species mapping row (INPUT-05): agreed IDs, never name guessing.
+
+    DR49 §2.4: ``supported=true`` requires BOTH values; ``supported=false``
+    requires BOTH to be ``null`` — an ambiguous species is never given a
+    fabricated column or material kind.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -247,8 +252,16 @@ class ClassificationItemWrite(BaseModel):
     supported: bool
     animal_column: Literal[
         "CATTLE", "PIG", "SHEEP_GOAT", "RABBIT_NUTRIA", "CHICKEN", "OTHER_BIRDS", "FISH", "OTHER_ANIMALS"
-    ]
-    material_kind: Literal["MEAT", "OFFAL"]
+    ] | None = None
+    material_kind: Literal["MEAT", "OFFAL"] | None = None
+
+    @model_validator(mode="after")
+    def _mapping_shape(self) -> ClassificationItemWrite:
+        if self.supported and (self.animal_column is None or self.material_kind is None):
+            raise ValueError("Поддерживаемая строка классификации требует animal_column и material_kind.")
+        if not self.supported and (self.animal_column is not None or self.material_kind is not None):
+            raise ValueError("Неподдерживаемая строка классификации не может иметь animal_column/material_kind.")
+        return self
 
 
 class ClassificationWrite(BaseModel):
@@ -428,6 +441,6 @@ class ClassificationItemView(BaseModel):
     product_type_id: str | None
     product_state_id: str | None
     supported: bool
-    animal_column: str
-    material_kind: str
+    animal_column: str | None
+    material_kind: str | None
     revision: int

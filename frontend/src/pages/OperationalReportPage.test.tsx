@@ -94,7 +94,7 @@ describe("OperationalReportPage", () => {
     renderPage();
     await screen.findByText("12");
     fireEvent.change(screen.getByLabelText("С даты"), { target: { value: "2026-01-01" } });
-    await user.click(screen.getByRole("button", { name: "Применить период" }));
+    await user.click(screen.getByRole("button", { name: "Применить" }));
     expect(gets).toHaveLength(2);
     expect(gets[1]?.searchParams.get("date_from")).toBe("2026-01-01");
   });

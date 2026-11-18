@@ -387,3 +387,77 @@ def test_naive_first_completed_at_is_treated_as_utc_instant() -> None:
     naive = datetime(2026, 2, 1, 12, 0, 0)
     selected = sources_for_period([source(first_completed_at=naive)], date(2026, 2, 1), date(2026, 2, 28))
     assert len(selected) == 1
+
+
+# --- DR49 §2.2/§2.4: the same animal column, MEAT/OFFAL split and honest Nones
+
+
+def test_pig_meat_and_offal_share_the_column_but_split_241_242() -> None:
+    mapping = build_classification_map(
+        "map-pig",
+        [
+            species_classification("sp-pig-meat", "PIG", "MEAT"),
+            species_classification("sp-pig-offal", "PIG", "OFFAL"),
+        ],
+    )
+    matrix = calculate(
+        [
+            source(species="sp-pig-meat", mass_kg="800", direction="DESTRUCTION"),
+            source(
+                species="sp-pig-offal",
+                mass_kg="200",
+                direction="DESTRUCTION",
+                id_="22222222-2222-2222-2222-222222222222",
+            ),
+        ],
+        mapping,
+    )
+    assert cell(matrix, "240", "PIG") == Decimal("1")
+    assert cell(matrix, "241", "PIG") == Decimal("0.8")
+    assert cell(matrix, "242", "PIG") == Decimal("0.2")
+
+
+def test_cattle_and_sheep_goat_meat_offal_splits_match_the_owner_decision() -> None:
+    for column, meat, offal in (("CATTLE", "sp-c-m", "sp-c-o"), ("SHEEP_GOAT", "sp-s-m", "sp-s-o")):
+        mapping = build_classification_map(
+            f"map-{column}",
+            [
+                species_classification(meat, column, "MEAT"),
+                species_classification(offal, column, "OFFAL"),
+            ],
+        )
+        matrix = calculate(
+            [
+                source(species=meat, mass_kg="100", direction="DESTRUCTION"),
+                source(
+                    species=offal,
+                    mass_kg="400",
+                    direction="DESTRUCTION",
+                    id_="22222222-2222-2222-2222-222222222222",
+                ),
+            ],
+            mapping,
+        )
+        assert cell(matrix, "241", column) == Decimal("0.1")
+        assert cell(matrix, "242", column) == Decimal("0.4")
+        assert cell(matrix, "240", column) == Decimal("0.5")
+
+
+def test_supported_false_row_carries_no_column_nor_kind() -> None:
+    entry = species_classification(MEAT_SPECIES, None, None, supported=False)
+    assert entry.animal_column is None and entry.material_kind is None
+
+
+def test_write_dto_requires_values_for_supported_and_none_for_unsupported() -> None:
+    from pydantic import ValidationError
+
+    from backend.src.modules.catalog_pricing.schemas import ClassificationItemWrite
+
+    with pytest.raises(ValidationError):
+        ClassificationItemWrite(mercury_species_id="sp-x", supported=True)
+    with pytest.raises(ValidationError):
+        ClassificationItemWrite(mercury_species_id="sp-x", supported=True, animal_column="PIG")
+    with pytest.raises(ValidationError):
+        ClassificationItemWrite(mercury_species_id="sp-x", supported=False, animal_column="PIG", material_kind="MEAT")
+    ok = ClassificationItemWrite(mercury_species_id="sp-x", supported=False)
+    assert ok.animal_column is None and ok.material_kind is None

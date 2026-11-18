@@ -99,15 +99,22 @@ describe("microscopy (VSE-F24) accepts decimals", () => {
 });
 
 describe("other numeric fields stay decimal", () => {
-  it("pH accepts 7.4 and rejects 14.5", () => {
+  it("pH accepts 7,4 and 14,5 without a blocking error (DR52 §2)", () => {
     const ok = valuesWith({
       [PH.id]: emptyResearch({ performed: true, value: "7,4" }),
     });
     expect(researchErrors(ok)).toEqual([]);
-    const bad = valuesWith({
-      [PH.id]: emptyResearch({ performed: true, value: "14.5" }),
+    const deviation = valuesWith({
+      [PH.id]: emptyResearch({ performed: true, value: "14,5" }),
     });
-    expect(researchErrors(bad).some((message) => message.includes("не больше 14"))).toBe(true);
+    expect(researchErrors(deviation)).toEqual([]);
+  });
+
+  it("pH still rejects a non-decimal shape", () => {
+    const bad = valuesWith({
+      [PH.id]: emptyResearch({ performed: true, value: "abc" }),
+    });
+    expect(researchErrors(bad).some((message) => message.includes("десятичное"))).toBe(true);
   });
 
   it("temperature and dosimetry accept fractional readings", () => {

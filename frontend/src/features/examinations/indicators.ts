@@ -121,8 +121,8 @@ export const INDICATORS: readonly IndicatorDef[] = Object.freeze([
     kind: "DECIMAL",
     mandatory: false,
     addName: "pH",
-    min: 0,
-    max: 14,
+    // DR52 §2: границы нормы pH живут в справочнике методик и участвуют
+    // только в серверной оценке (DEVIATION), никогда в блокирующем reject.
   }),
   Object.freeze({
     id: "4901561b-a838-55e6-aa5c-d43797951455",

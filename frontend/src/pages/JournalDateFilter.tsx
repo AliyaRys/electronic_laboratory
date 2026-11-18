@@ -85,14 +85,17 @@ export function JournalDateFilter({
   const filterRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  // A closed popover always shows the committed value (URL state), never a
-  // half-entered draft.
-  useEffect(() => {
-    if (!open) {
-      setDraft(value);
-      setError("");
+  const toggleOpen = (): void => {
+    if (open) {
+      setOpen(false);
+      return;
     }
-  }, [open, value]);
+    // Opening always drafts the committed value (URL state), never a stale
+    // half-entered edit from the previous session.
+    setDraft(value);
+    setError("");
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (!open) {
@@ -146,7 +149,7 @@ export function JournalDateFilter({
         aria-label={`Период обращения: ${summary}`}
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => (open ? close(false) : setOpen(true))}
+        onClick={toggleOpen}
         onKeyDown={(event) => {
           if (event.key === "Escape" && open) {
             event.stopPropagation();

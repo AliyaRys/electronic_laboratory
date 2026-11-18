@@ -15,10 +15,10 @@
  */
 import "../features/examinations/examinations.css";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
-import { JournalDateFilter, emptyJournalDate, type JournalDateValue } from "./JournalDateFilter";
+import { JournalDateFilter, type JournalDateValue } from "./JournalDateFilter";
 import {
   fetchJournal,
   fetchJournalAuthors,
@@ -158,9 +158,9 @@ function ExaminationJournalContent(): React.ReactElement {
   // immediately. React Query keys every query and a stale response can
   // never overwrite a newer one.
   const [searchDraft, setSearchDraft] = useState(search);
-  useEffect(() => {
-    setSearchDraft(search);
-  }, [search]);
+  // The debounce timer is a hook-order invariant: it is created BEFORE the
+  // early returns below (React hooks must run in the same order).
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const query: JournalQuery = {
     laboratory_id: labId ?? "",
@@ -241,7 +241,6 @@ function ExaminationJournalContent(): React.ReactElement {
   };
 
   // The debounced commit of the search draft (Enter applies immediately).
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commitSearch = (value: string): void => {
     setSearchDraft(value);
     if (debounceRef.current !== null) clearTimeout(debounceRef.current);

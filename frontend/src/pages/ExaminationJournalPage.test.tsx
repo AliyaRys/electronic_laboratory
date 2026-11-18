@@ -346,8 +346,8 @@ describe("Journal rows, badges and pagination (DR47 §2.3.4–2.3.5)", () => {
     );
     renderRoute(`/labs/${LAB}/examinations?page=2`);
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
-    const prev = screen.getByRole("button", { name: "Предыдущая страница" });
-    const next = screen.getByRole("button", { name: "Следующая страница" });
+    const prev = screen.getByRole("button", { name: "Предыдущая страница" }) as HTMLButtonElement;
+    const next = screen.getByRole("button", { name: "Следующая страница" }) as HTMLButtonElement;
     expect(prev.disabled).toBe(false);
     expect(next.disabled).toBe(false);
     expect(screen.getByText("2").getAttribute("aria-current")).toBe("page");

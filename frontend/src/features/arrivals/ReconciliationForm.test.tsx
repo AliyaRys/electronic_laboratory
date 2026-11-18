@@ -635,13 +635,17 @@ describe("ТЗ DR11: расчёт стоимости услуг", () => {
     }
   });
 
-  it("shows the exact Russian names, quantity, unit, tariff and amount", () => {
+  it("shows the exact four columns and no unit column (ТЗ DR47 §2.5)", () => {
     renderForm({ initial: pricingView });
     expect(screen.getByRole("columnheader", { name: "Услуга" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Единица расчёта" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Количество" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Тариф" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Сумма" })).toBeInTheDocument();
+    // ТЗ DR47 §2.5: the unit column has no user value here; unit_id stays in
+    // the snapshot and the payload but is never shown.
+    expect(screen.queryByRole("columnheader", { name: "Единица расчёта" })).toBeNull();
+    expect(screen.queryByText("Единица из ВСД (GUID: aaaaaaaa-1111-4111-8111-111111111111)")).toBeNull();
+    expect(screen.queryByText("1 услуга")).toBeNull();
     // The service name also titles a section, so the table cells are matched
     // inside the invoice table only.
     const invoice = document.querySelector(".vse-rec-invoice-table");
@@ -650,15 +654,14 @@ describe("ТЗ DR11: расчёт стоимости услуг", () => {
     }
     expect(invoice.textContent).toContain("Идентификация продукции по наименованию и визуальным осмотром");
     expect(invoice.textContent).toContain("Ветеринарно-санитарная оценка и идентификация транспорта");
-    // The honest unit labels: the source GUID fallback and the lineage default.
-    expect(
-      screen.getByText("Единица из ВСД (GUID: aaaaaaaa-1111-4111-8111-111111111111)"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("1 услуга")).toBeInTheDocument();
     expect(screen.getAllByText("100,00 ₽").length).toBe(2);
     expect(screen.getAllByText("130,00 ₽").length).toBe(2);
     // The saved server total is displayed, never computed on the client.
     expect(screen.getByText("230,00 ₽")).toBeInTheDocument();
+    // The interactive Ярмарка checkbox of the reconciliation stays.
+    const waiver = document.querySelector("label.vse-rec-invoice-waiver input");
+    expect(waiver).not.toBeNull();
+    expect((waiver as HTMLInputElement).disabled).toBe(false);
   });
 
   it("names the missing service when the server returns CONFIGURATION_MISSING and keeps the input", async () => {

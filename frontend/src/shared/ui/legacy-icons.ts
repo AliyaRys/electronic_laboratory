@@ -9,10 +9,22 @@
  * in ``components/icons/README.md``.
  */
 
+import { PRODUCT_ICON_DATA } from "./product-icons.generated";
+
 export type IconPart = readonly [
   tag: "path" | "rect" | "circle" | "line",
   attributes: Readonly<Record<string, string>>,
 ];
+
+/** ТЗ DR50: generated library icon definition (Font Awesome Free Solid). */
+export interface LibraryIconData {
+  readonly width: number;
+  readonly height: number;
+  readonly solid: boolean;
+  readonly parts: ReadonlyArray<{ readonly d: string }>;
+}
+
+export type IconDefinition = readonly IconPart[] | LibraryIconData;
 
 export interface CheckSection {
   readonly key: string;
@@ -20,7 +32,7 @@ export interface CheckSection {
   readonly label: string;
 }
 
-export const ICON_DEFINITIONS: Readonly<Record<string, readonly IconPart[]>> = Object.freeze({
+export const ICON_DEFINITIONS: Readonly<Record<string, IconDefinition>> = Object.freeze({
   // --- components/icons/VseIcon.js (check sections, actions, admin, directory)
   "check-document": [
     ["path", { d: "M7 3h7l4 4v14H7z" }],
@@ -274,18 +286,11 @@ export const ICON_DEFINITIONS: Readonly<Record<string, readonly IconPart[]>> = O
     ["path", { d: "M9 6h6M7.5 11h9M7.5 16h9" }],
   ],
   caret: [["path", { d: "m7 10 5 5 5-5" }]],
-  // ТЗ DR46 §3.1: продуктовые иконки дорожной карты шапки (набор Lucide):
-  // сначала общий реестр шапки components/shell/AppHeader.js, затем этот адаптер.
-  "product-eggs": [["path", { d: "M12 22c3.5 0 6-4.5 6-10S15.5 2 12 2 6 6.5 6 12s2.5 10 6 10Z" }]],
-  "product-fish": [
-    [
-      "path",
-      { d: "M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.47-3.44 6-7 6s-7.56-2.53-8.5-6Z" },
-    ],
-    ["path", { d: "M18 12v.5" }],
-    ["path", { d: "M16 17.93a9.13 9.13 0 0 1 0-11.86" }],
-    ["path", { d: "M7 19 3 21l1-3-1-3 4 2Z" }],
-  ],
+  // ТЗ DR46 §3.1 / DR50: продуктовые иконки дорожной карты шапки. Lucide-
+  // контуры «eggs/fish/plant» заменены на генерируемые определения Font
+  // Awesome Free Solid (см. product-icons.generated.ts и
+  // scripts/sync-product-icons.mjs); мяса, молока и мёда изменения не касаются.
+  ...PRODUCT_ICON_DATA,
   "product-honey": [
     [
       "path",
@@ -293,14 +298,6 @@ export const ICON_DEFINITIONS: Readonly<Record<string, readonly IconPart[]>> = O
         d: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z",
       },
     ],
-  ],
-  "product-plant": [
-    ["path", { d: "M2 22 20 4" }],
-    ["path", { d: "M11 4 9 6c-1.5 1.5-1.5 4.5 0 6s4.5 1.5 6 0l2-2" }],
-    ["path", { d: "M16 9c2 0 4-2 4-4-2 0-4 2-4 4Z" }],
-    ["path", { d: "M12 11c2 0 4-2 4-4-2 0-4 2-4 4Z" }],
-    ["path", { d: "M13 16c2 0 4-2 4-4-2 0-4 2-4 4Z" }],
-    ["path", { d: "M14 21c2 0 4-2 4-4-2 0-4 2-4 4Z" }],
   ],
   // --- DR30: разделы карточки ВСЭ (electronic-vse-journal.html; новая иконка
   // сначала добавлена в components/icons/VseIcon.js, затем в этот адаптер)

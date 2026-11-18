@@ -34,8 +34,10 @@ describe("DR50 product icons", () => {
       expect(definition.solid).toBe(true);
       expect(definition.parts.map((part) => part.d)).toEqual(paths);
       // The React adapter registry carries the same definitions.
-      const registry = ICON_DEFINITIONS[key] as unknown as Record<string, unknown>;
-      expect(registry.parts.map((part: { d: string }) => part.d)).toEqual(paths);
+      const registry = ICON_DEFINITIONS[key] as unknown as {
+        parts: ReadonlyArray<{ d: string }>;
+      };
+      expect(registry.parts.map((part) => part.d)).toEqual(paths);
     }
   });
 

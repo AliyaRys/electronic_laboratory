@@ -263,7 +263,7 @@ describe("AppHeader user identity (ТЗ DR41 §3.1)", () => {
 describe("DR50 circular active profile state", () => {
   it("marks only the profile link active/aria-current on /profile", () => {
     render(<AppHeader mode="work" user={user} profileActive onLogout={() => undefined} />);
-    const active = document.querySelectorAll(".topbar .active");
+    const active = document.querySelectorAll(".topbar .topnav > .active, .topbar .user-area .active");
     expect(Array.from(active).map((node) => node.className)).toEqual(["user-link active"]);
     expect(document.querySelector('[aria-current="page"]')).toHaveClass("user-link");
   });

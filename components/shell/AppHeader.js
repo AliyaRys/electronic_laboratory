@@ -43,28 +43,15 @@
       ['path', { d: 'M9 6h6M7.5 11h9M7.5 16h9' }],
     ],
     caret: [['path', { d: 'm7 10 5 5 5-5' }]],
-    // ТЗ DR46 §3.1: продуктовые иконки дорожной карты шапки (набор Lucide).
-    'product-eggs': [
-      ['path', { d: 'M12 22c3.5 0 6-4.5 6-10S15.5 2 12 2 6 6.5 6 12s2.5 10 6 10Z' }],
-    ],
-    'product-fish': [
-      ['path', { d: 'M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.47-3.44 6-7 6s-7.56-2.53-8.5-6Z' }],
-      ['path', { d: 'M18 12v.5' }],
-      ['path', { d: 'M16 17.93a9.13 9.13 0 0 1 0-11.86' }],
-      ['path', { d: 'M7 19 3 21l1-3-1-3 4 2Z' }],
-    ],
-    'product-honey': [
-      ['path', { d: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }],
-    ],
-    'product-plant': [
-      ['path', { d: 'M2 22 20 4' }],
-      ['path', { d: 'M11 4 9 6c-1.5 1.5-1.5 4.5 0 6s4.5 1.5 6 0l2-2' }],
-      ['path', { d: 'M16 9c2 0 4-2 4-4-2 0-4 2-4 4Z' }],
-      ['path', { d: 'M12 11c2 0 4-2 4-4-2 0-4 2-4 4Z' }],
-      ['path', { d: 'M13 16c2 0 4-2 4-4-2 0-4 2-4 4Z' }],
-      ['path', { d: 'M14 21c2 0 4-2 4-4-2 0-4 2-4 4Z' }],
-    ],
   };
+
+  // ==== GENERATED: product icons (scripts/sync-product-icons.mjs) — do not edit ====
+  const productIcons = {
+    "product-eggs": { width: 384, height: 512, solid: true, parts: [{"d":"M192 496C86 496 0 394 0 288 0 176 64 16 192 16S384 176 384 288c0 106-86 208-192 208zM154.8 134c6.5-6 7-16.1 1-22.6s-16.1-7-22.6-1c-23.9 21.8-41.1 52.7-52.3 84.2-11.2 31.6-16.9 65.1-16.9 93.5 0 8.8 7.2 16 16 16s16-7.2 16-16c0-24.5 5-54.4 15.1-82.8 10.1-28.5 25-54.1 43.7-71.2z"}] },
+    "product-fish": { width: 576, height: 512, solid: true, parts: [{"d":"M180.5 141.5C219.7 108.5 272.6 80 336 80s116.3 28.5 155.5 61.5c39.1 33 66.9 72.4 81 99.8 4.7 9.2 4.7 20.1 0 29.3-14.1 27.4-41.9 66.8-81 99.8-39.2 33.1-92 61.5-155.5 61.5s-116.3-28.5-155.5-61.5c-16.2-13.7-30.5-28.5-42.7-43.1L48.1 379.6c-12.5 7.3-28.4 5.3-38.7-4.9s-12.4-26-5.3-38.6L50 256 4.2 175.9c-7.2-12.6-5-28.4 5.3-38.6s26.1-12.2 38.7-4.9l89.7 52.3c12.2-14.6 26.5-29.4 42.7-43.1zM448 256a32 32 0 1 0 -64 0 32 32 0 1 0 64 0z"}] },
+    "product-plant": { width: 576, height: 512, solid: true, parts: [{"d":"M79.7 234.6c6.2-4.1 14.7-3.4 20.1 2.1l46.1 46.1 6.1 6.7c19.7 23.8 26.3 55 19.2 83.9 31.7-7.7 66.2 1 90.6 25.3l46.1 46.1c6.2 6.2 6.2 16.4 0 22.6l-7.4 7.4c-37.5 37.5-98.3 37.5-135.8 0L134.1 444.3 49.4 529c-9.4 9.4-24.5 9.4-33.9 0-9.4-9.4-9.4-24.6 0-33.9l84.7-84.7-30.5-30.5c-37.5-37.5-37.5-98.3 0-135.7l7.4-7.4 2.5-2.1zm104-104c6.2-4.1 14.7-3.4 20.1 2.1l46.1 46.1 6.1 6.7c19.7 23.8 26.3 55 19.2 83.9 31.7-7.7 66.2 1 90.6 25.3l46.1 46.1c6.2 6.2 6.2 16.4 0 22.6l-7.4 7.4c-37.5 37.5-98.3 37.5-135.8 0l-94.9-94.9c-37.5-37.5-37.5-98.3 0-135.7l7.4-7.4 2.5-2.1zM495.2 15c9.4-9.4 24.6-9.4 34 0 8.8 8.8 9.3 22.7 1.6 32.2L529.2 49 414.7 163.4c7.7 1 15.2 3 22.5 5.9L495.5 111c9.4-9.4 24.6-9.4 34 0 8.8 8.8 9.3 22.7 1.6 32.1l-1.7 1.8-52.7 52.7 39 39c6.2 6.2 6.2 16.4 0 22.6l-7.4 7.4c-37.5 37.5-98.3 37.5-135.8 0l-94.9-94.9c-37.5-37.5-37.5-98.3 0-135.7l7.4-7.4 2.5-2.1c6.2-4.1 14.7-3.4 20.1 2.1l39 39 52.7-52.7c9.4-9.4 24.6-9.4 34 0 8.8 8.8 9.3 22.7 1.6 32.1l-1.7 1.8-58.3 58.3c2.8 7.1 4.7 14.5 5.7 22.1L495.2 15z"}] },
+  };
+  // ==== END GENERATED product icons ====
 
   const counterpartRoutes = [
     { meat: 'journal.html', milk: 'journal-milk.html' },
@@ -89,15 +76,26 @@
     if ((name === 'admin-users' || name === 'admin-reports') && globalThis.VseIcons) {
       return globalThis.VseIcons.create(name, { className });
     }
-    if (!icons[name]) throw new Error(`Неизвестная иконка шапки: ${name}`);
+    const generated = productIcons[name];
+    const definition = generated || icons[name];
+    if (!definition) throw new Error(`Неизвестная иконка шапки: ${name}`);
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
+    /* ТЗ DR50: generated library icons carry their own viewBox and solid fill. */
+    svg.setAttribute(
+      'viewBox',
+      generated ? `0 0 ${generated.width} ${generated.height}` : '0 0 24 24',
+    );
     svg.setAttribute('aria-hidden', 'true');
     svg.dataset.appHeaderIcon = name;
     if (className) svg.setAttribute('class', className);
-    icons[name].forEach(([tag, attributes]) => {
+    (generated ? generated.parts : definition).forEach(part => {
+      const [tag, attributes] = Array.isArray(part) ? part : ['path', part];
       const child = document.createElementNS('http://www.w3.org/2000/svg', tag);
       Object.entries(attributes).forEach(([key, value]) => child.setAttribute(key, value));
+      if (generated) {
+        child.setAttribute('fill', 'currentColor');
+        child.setAttribute('stroke', 'none');
+      }
       svg.append(child);
     });
     return svg;

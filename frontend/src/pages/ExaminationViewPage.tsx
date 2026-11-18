@@ -228,8 +228,10 @@ function ExaminationViewContent(): React.ReactElement {
             </Tooltip>
           ) : null}
           {canAct && !sameDay ? (
+            /* ТЗ DR47 §2.2: the honest day rule — no internal codes, in the
+               same subject condition as the hidden same-day actions. */
             <span className="vse-arrival-hint">
-              После дня создания доступны только действия над итогом ожидающей карточки (AT-07).
+              Редактировать или удалить карточку можно только в день её создания.
             </span>
           ) : null}
         </div>

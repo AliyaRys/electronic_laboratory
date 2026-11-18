@@ -30,3 +30,11 @@ Storybook: `UI/DateRangePopover` (закрытый, открытый, приме
 ошибки показывается только при применении неполного/обратного диапазона.
 Используется экраном создания 5-вет
 (`features/reports/ReportParameters`).
+
+## Button: вариант dangerSoft (DR52 §9)
+
+Общий `Button` получил семантический вариант `dangerSoft` (CSS-класс `danger-soft`) для спокойной icon-only разрушительной кнопки (например «Удалить ВСЭ» рядом с edit-кнопкой). Токены: `--app-danger-soft-bg: #fbf3f4`, `--app-danger-soft-border: #c97985`, `--app-danger-soft-ink: #9b3440` — те же значения, что у подсветки DEVIATION карточки исследования; hover `#f7e8ea`. Подтверждающие destructive-кнопки в confirm-диалогах продолжают использовать solid `danger`. Stories: `F02/Button` → DangerSoft, DangerSoftIconOnly.
+
+## Прайс-футер: .vse-rec-invoice-footer (DR52 §3.5)
+
+Живой контрол «Ярмарка» формы ВСЭ — контролируемый RHF-checkbox, передаётся в `PricingSection` через prop `waiver` и попадает в общий футер `.vse-rec-invoice-footer` (checkbox слева, итог справа; ≤700px — колонка). Сохранённая карточка (`variant="saved-examination"`) галочку не рендерит.

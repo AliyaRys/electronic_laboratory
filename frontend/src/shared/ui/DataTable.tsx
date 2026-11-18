@@ -72,7 +72,14 @@ export interface DataTableRow {
 }
 
 export interface DataTableProps {
-  caption: string;
+  /** Not rendered when ``labelledBy`` names an external heading (DR49 §5.2). */
+  caption?: string | undefined;
+  /**
+   * Named variant (DR49 §5.2): the accessible name comes from an EXTERNAL
+   * heading id via ``aria-labelledby`` and no ``<caption>`` is rendered.
+   * Other tables keep their current captions unchanged.
+   */
+  labelledBy?: string | undefined;
   columns: readonly DataTableColumn[];
   rows: readonly DataTableRow[];
   /** Shared loading state instead of an empty table shell. */
@@ -156,6 +163,7 @@ function RowMenu({
 
 export function DataTable({
   caption,
+  labelledBy,
   columns,
   rows,
   loading = false,
@@ -174,12 +182,16 @@ export function DataTable({
   }
   return (
     <div className={`app-table-scroll${variant !== "default" ? ` app-table-${variant}` : ""}`}>
-      <table className={`app-table${variant !== "default" ? ` app-table-${variant}` : ""}`}>
-        {visuallyHiddenCaption ? (
-          <caption className="visually-hidden">{caption}</caption>
-        ) : (
-          <caption>{caption}</caption>
-        )}
+      <table
+        className={`app-table${variant !== "default" ? ` app-table-${variant}` : ""}`}
+        aria-labelledby={labelledBy}
+      >
+        {labelledBy === undefined &&
+          (visuallyHiddenCaption ? (
+            <caption className="visually-hidden">{caption}</caption>
+          ) : (
+            <caption>{caption}</caption>
+          ))}
         <thead>
           <tr>
             {columns.map((column) => (

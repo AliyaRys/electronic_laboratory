@@ -13,7 +13,7 @@
 import "./../features/samples/samples.css";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import {
   balancesKey,
@@ -56,7 +56,6 @@ function SampleAccountingContent(): React.ReactElement {
   const role = me.user?.role ?? null;
   const access = reportAccess(me.user?.capabilities);
   const canDispose = role !== null && DISPOSAL_ROLES.has(role);
-  const canReadReports = access.list5vet || access.read5vet;
 
   const balances = useQuery({
     queryKey: balancesKey(labId ?? ""),
@@ -120,9 +119,6 @@ function SampleAccountingContent(): React.ReactElement {
   return (
     <div className="vse-app vse-page">
       <h1>Учёт проб</h1>
-      <div className="vse-samples-links">
-        {canReadReports ? <Link to={`/labs/${labId}/reports`}>Отчёт 5-ВЕТ (раздел III)</Link> : null}
-      </div>
       <div className="vse-samples-blocks">
         {balancesProblem !== null ? (
           <StatusView

@@ -39,12 +39,15 @@ export function DisposalHistory({
 }: DisposalHistoryProps): React.ReactElement {
   const pageSize = 20;
   const pages = Math.max(1, Math.ceil(total / pageSize));
+  const headingId = "disposal-history-heading";
   return (
-    <section className="vse-samples-block" aria-label="История утилизации">
-      <h2>История утилизации</h2>
+    <section className="vse-samples-block">
+      <h2 id={headingId}>История утилизаций</h2>
       {filter}
       <DataTable
-        caption="Утилизации за выбранный период (неизменяемые факты)"
+        // DR49 §5.2: the visible caption is gone; the table's accessible name
+        // is the section heading via aria-labelledby — not a hidden caption.
+        labelledBy={headingId}
         columns={COLUMNS}
         loading={loading}
         emptyMessage="За выбранный период утилизаций нет."

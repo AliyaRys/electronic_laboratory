@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<!--
+  «Учёт проб» (sample-accounting, version 1, DR49 §8).
+  Значения подставляет рендерер documents/sample_accounting_pdf.py и
+  экранирует их; никаких внешних ссылок, скриптов и сетевых стилей нет.
+  Табличная шапка повторяется на каждой странице (thead), строка таблицы
+  не разрывается (-pdf-keep-in-frame); нижний колонтитул каждой страницы:
+  слева «Сформировано … (МСК)», справа «Страница N из M».
+-->
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Учёт проб</title>
+    <style>
+      @font-face {
+        font-family: "DejaVuSans";
+        src: url("DejaVuSans.ttf");
+      }
+      @page {
+        size: a4 portrait;
+        margin: 14mm 13mm 18mm 13mm;
+        @frame footer_frame {
+          -pdf-frame-content: footer_content;
+          left: 13mm;
+          width: 184mm;
+          top: 278mm;
+          height: 8mm;
+        }
+      }
+      body {
+        font-family: "DejaVuSans";
+        font-size: 9pt;
+        color: #17323a;
+      }
+      h1 {
+        font-size: 18pt;
+        font-weight: bold;
+        text-align: left;
+        margin: 0 0 2mm 0;
+        color: #17323a;
+      }
+      .lab {
+        font-size: 11pt;
+        margin: 0 0 1.5mm 0;
+        color: #17323a;
+      }
+      .period {
+        font-size: 9pt;
+        color: #566e75;
+        margin: 0 0 2.5mm 0;
+      }
+      .accent {
+        border-bottom: 1.2pt solid #146c73;
+        margin-bottom: 4mm;
+      }
+      h2 {
+        font-size: 12pt;
+        color: #146c73;
+        margin: 0 0 2mm 0;
+      }
+      table {
+        width: 100%;
+        table-layout: fixed;
+        -pdf-word-wrap: CJK;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border: 0.5pt solid #dfe9e9;
+        padding: 1.2mm 1.5mm;
+        text-align: left;
+        vertical-align: top;
+        font-weight: normal;
+        color: #17323a;
+      }
+      thead th {
+        background-color: #eaf6f4;
+        font-weight: bold;
+        -pdf-keep-with-next: true;
+      }
+      tr {
+        -pdf-keep-in-frame-mode: shrink;
+      }
+      .num {
+        text-align: right;
+      }
+      .empty td {
+        color: #566e75;
+      }
+      .history {
+        margin-top: 8mm;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Учёт проб</h1>
+    <p class="lab">{{laboratory}}</p>
+    <p class="period">История утилизаций: {{period}}</p>
+    <div class="accent">&#160;</div>
+
+    <h2>Остатки проб</h2>
+    <table>
+      <colgroup>
+        <col style="width: 75%" />
+        <col style="width: 25%" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Вид продукции</th>
+          <th class="num">Остаток, кг</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{balances_rows}}
+      </tbody>
+    </table>
+
+    <div class="history">
+      <h2>История утилизаций</h2>
+      <table>
+        <colgroup>
+          <col style="width: 14%" />
+          <col style="width: 23%" />
+          <col style="width: 11%" />
+          <col style="width: 27%" />
+          <col style="width: 25%" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Дата утилизации</th>
+            <th>Вид продукции</th>
+            <th class="num">Вес, кг</th>
+            <th>Номер исходящей эВСД</th>
+            <th>Провёл</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{disposals_rows}}
+        </tbody>
+      </table>
+    </div>
+
+    <div id="footer_content">
+      <table style="border: none; margin-top: 2mm">
+        <tr>
+          <td style="border: none; font-size: 8pt; color: #566e75; text-align: left; width: 70%">
+            Сформировано: {{generated_at}}
+          </td>
+          <td style="border: none; font-size: 8pt; color: #566e75; text-align: right; width: 30%">
+            Страница <pdf:pagenumber> из <pdf:pagecount>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </body>
+</html>

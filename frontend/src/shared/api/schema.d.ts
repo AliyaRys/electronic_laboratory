@@ -849,6 +849,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/samples/accounting/export.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Accounting Pdf
+         * @description The PDF of the «Учёт проб» document from one consistent snapshot.
+         *
+         *     DR49 §7: a read-only GET with an existing ``sample:read`` scope — no CSRF,
+         *     no Idempotency-Key. The file is never cached and a broken renderer answers
+         *     503 without a partial file. Screen pagination never limits the file.
+         */
+        get: operations["export_accounting_pdf_api_v1_samples_accounting_export_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/samples/accounting/export.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Accounting Xlsx
+         * @description The XLSX of the «Учёт проб» document (two sheets, DR49 §9).
+         */
+        get: operations["export_accounting_xlsx_api_v1_samples_accounting_export_xlsx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/examinations/parties/{party_id}/form": {
         parameters: {
             query?: never;
@@ -1455,15 +1499,19 @@ export interface components {
             /** Supported */
             supported: boolean;
             /** Animal Column */
-            animal_column: string;
+            animal_column: string | null;
             /** Material Kind */
-            material_kind: string;
+            material_kind: string | null;
             /** Revision */
             revision: number;
         };
         /**
          * ClassificationItemWrite
          * @description One species mapping row (INPUT-05): agreed IDs, never name guessing.
+         *
+         *     DR49 §2.4: ``supported=true`` requires BOTH values; ``supported=false``
+         *     requires BOTH to be ``null`` — an ambiguous species is never given a
+         *     fabricated column or material kind.
          */
         ClassificationItemWrite: {
             /** Mercury Species Id */
@@ -1474,16 +1522,10 @@ export interface components {
             product_state_id?: string | null;
             /** Supported */
             supported: boolean;
-            /**
-             * Animal Column
-             * @enum {string}
-             */
-            animal_column: "CATTLE" | "PIG" | "SHEEP_GOAT" | "RABBIT_NUTRIA" | "CHICKEN" | "OTHER_BIRDS" | "FISH" | "OTHER_ANIMALS";
-            /**
-             * Material Kind
-             * @enum {string}
-             */
-            material_kind: "MEAT" | "OFFAL";
+            /** Animal Column */
+            animal_column?: ("CATTLE" | "PIG" | "SHEEP_GOAT" | "RABBIT_NUTRIA" | "CHICKEN" | "OTHER_BIRDS" | "FISH" | "OTHER_ANIMALS") | null;
+            /** Material Kind */
+            material_kind?: ("MEAT" | "OFFAL") | null;
         };
         /** ClassificationView */
         ClassificationView: {
@@ -5337,6 +5379,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DisposalView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_accounting_pdf_api_v1_samples_accounting_export_pdf_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_accounting_xlsx_api_v1_samples_accounting_export_xlsx_get: {
+        parameters: {
+            query: {
+                laboratory_id: string;
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -1,15 +1,14 @@
 /**
- * SampleAccountingPage (S03, API-06, SC-071–079): the «Учёт проб» screen of
- * one laboratory under «Отчёты».
+ * SampleAccountingPage (S03, API-06): the «Учёт проб» screen of one
+ * laboratory under «Отчёты» (DR48 §4).
  *
- * Composition: the live balances (readonly shown weight), the available
- * collection facts and the immutable disposal history with its period
- * filter. The period lives in the URL and changes the history only — the
- * balances read model never depends on it (API-06: «фильтр не влияет на
- * balance»). VET/HEAD may start a disposal from a balance row; ANALYST is
- * read-only and sees no disposal affordance. The 5-ВЕТ report link exists
- * only for roles allowed to read saved reports (HEAD/ANALYST) — a VET works
- * strictly within the own scope and gets no link.
+ * Composition: the live balances and the immutable disposal history with its
+ * period filter — nothing else. The «Доступные отборы» block is gone: the
+ * page never requests ``/samples/collections``. The period lives in the URL
+ * and changes the history only — the balances read model never depends on it.
+ * VET/HEAD start a disposal by ONE direct icon action in the balance row;
+ * ANALYST is read-only and sees no disposal affordance. The 5-ВЕТ report link
+ * exists only for roles allowed to read saved reports (HEAD/ANALYST).
  */
 import "./../features/samples/samples.css";
 import { useQuery } from "@tanstack/react-query";
@@ -18,20 +17,17 @@ import { Link, useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import {
   balancesKey,
-  collectionsKey,
   disposalsKey,
   fetchBalances,
-  fetchCollections,
   fetchDisposals,
   type BalanceView,
-  type CollectionView,
   type DisposalView,
   type Problem,
 } from "../features/samples/api";
 import { Balances, problemState } from "../features/samples/Balances";
-import { Collections } from "../features/samples/Collections";
 import { DisposalDialog } from "../features/samples/DisposalDialog";
 import { DisposalHistory } from "../features/samples/DisposalHistory";
+import { Button } from "../shared/ui/Button";
 import { useMe } from "../shared/api/me";
 import { StatusView } from "../shared/ui/StatusView";
 import { reportAccess } from "../features/reports/reportCapabilities";
@@ -56,7 +52,6 @@ function SampleAccountingContent(): React.ReactElement {
   const historyFrom = params.get("from") ?? "";
   const historyTo = params.get("to") ?? "";
   const historyPage = Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1);
-  const collectionPage = Math.max(1, Number.parseInt(params.get("collections") ?? "1", 10) || 1);
 
   const role = me.user?.role ?? null;
   const access = reportAccess(me.user?.capabilities);
@@ -66,11 +61,6 @@ function SampleAccountingContent(): React.ReactElement {
   const balances = useQuery({
     queryKey: balancesKey(labId ?? ""),
     queryFn: ({ signal }) => fetchBalances(labId ?? "", signal),
-    enabled: labId !== undefined && me.user !== null && access.samples,
-  });
-  const collections = useQuery({
-    queryKey: collectionsKey(labId ?? "", collectionPage),
-    queryFn: ({ signal }) => fetchCollections({ laboratory_id: labId ?? "", page: collectionPage }, signal),
     enabled: labId !== undefined && me.user !== null && access.samples,
   });
   const disposals = useQuery({
@@ -111,15 +101,10 @@ function SampleAccountingContent(): React.ReactElement {
       : null;
 
   const balancesProblem = asProblem(balances);
-  const collectionsProblem = asProblem(collections);
   const disposalsProblem = asProblem(disposals);
 
   const balanceItems: BalanceView[] | null =
     balancesProblem === null ? ((balances.data ?? null) as BalanceView[] | null) : null;
-  const collectionPageData: { items: CollectionView[]; total: number } | null =
-    collectionsProblem === null
-      ? ((collections.data ?? null) as { items: CollectionView[]; total: number } | null)
-      : null;
   const disposalsPageData: { items: DisposalView[]; total: number } | null =
     disposalsProblem === null
       ? ((disposals.data ?? null) as { items: DisposalView[]; total: number } | null)
@@ -134,9 +119,6 @@ function SampleAccountingContent(): React.ReactElement {
 
   return (
     <div className="vse-app vse-page">
-      <nav className="vse-breadcrumb" aria-label="Навигация">
-        <Link to={`/labs/${labId}/reports`}>← Отчёты</Link>
-      </nav>
       <h1>Учёт проб</h1>
       <div className="vse-samples-links">
         {canReadReports ? <Link to={`/labs/${labId}/reports`}>Отчёт 5-ВЕТ (раздел III)</Link> : null}
@@ -167,50 +149,29 @@ function SampleAccountingContent(): React.ReactElement {
             }}
           />
         )}
-        {collectionsProblem !== null ? (
+        {disposalsProblem !== null ? (
           <StatusView
-            state={problemState(collectionsProblem)}
-            title={collectionsProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить отборы."}
-            detail={collectionsProblem.detail}
-            onRetry={() => void collections.refetch()}
+            state={problemState(disposalsProblem)}
+            title={disposalsProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить историю."}
+            detail={disposalsProblem.detail}
+            onRetry={() => void disposals.refetch()}
           />
         ) : (
-          <Collections
-            items={collectionPageData?.items ?? null}
-            total={collectionPageData?.total ?? 0}
-            loading={collections.isLoading}
-            page={collectionPage}
+          <DisposalHistory
+            items={disposalsPageData?.items ?? null}
+            total={disposalsPageData?.total ?? 0}
+            page={historyPage}
+            loading={disposals.isLoading}
+            filter={
+              <HistoryPeriodControls from={historyFrom} to={historyTo} onApply={applyPeriod} />
+            }
             onPageChange={(next) => {
               const nextParams = new URLSearchParams(params);
-              nextParams.set("collections", String(next));
+              nextParams.set("page", String(next));
               setParams(nextParams);
             }}
           />
         )}
-        <section className="vse-samples-block">
-          <h2>Период истории</h2>
-          <PeriodControls from={historyFrom} to={historyTo} onApply={applyPeriod} />
-          {disposalsProblem !== null ? (
-            <StatusView
-              state={problemState(disposalsProblem)}
-              title={disposalsProblem.code === "ACCESS_DENIED" ? undefined : "Не удалось загрузить историю."}
-              detail={disposalsProblem.detail}
-              onRetry={() => void disposals.refetch()}
-            />
-          ) : (
-            <DisposalHistory
-              items={disposalsPageData?.items ?? null}
-              total={disposalsPageData?.total ?? 0}
-              page={historyPage}
-              loading={disposals.isLoading}
-              onPageChange={(next) => {
-                const nextParams = new URLSearchParams(params);
-                nextParams.set("page", String(next));
-                setParams(nextParams);
-              }}
-            />
-          )}
-        </section>
       </div>
       {/* The dialog's balance is the LIVE row of the opened species: after a
           conflict the refreshed query data flows straight into the readonly
@@ -239,8 +200,8 @@ function SampleAccountingContent(): React.ReactElement {
   );
 }
 
-/** The history period controls (from/to in the URL, applied explicitly). */
-function PeriodControls({
+/** The history period filter: explicit application, no request before it. */
+function HistoryPeriodControls({
   from,
   to,
   onApply,
@@ -251,11 +212,13 @@ function PeriodControls({
 }): React.ReactElement {
   const [draftFrom, setDraftFrom] = useState(from);
   const [draftTo, setDraftTo] = useState(to);
+  const reversed = draftFrom !== "" && draftTo !== "" && draftFrom > draftTo;
   return (
     <form
       className="vse-samples-history-controls"
       onSubmit={(event) => {
         event.preventDefault();
+        if (reversed) return;
         onApply(draftFrom, draftTo);
       }}
     >
@@ -282,8 +245,15 @@ function PeriodControls({
         />
       </div>
       <div>
-        <button type="submit">Применить период</button>
+        <Button type="submit" variant="primary" disabled={reversed}>
+          Применить
+        </Button>
       </div>
+      {reversed ? (
+        <p className="app-field-message" role="alert">
+          Дата начала не может быть позже даты окончания.
+        </p>
+      ) : null}
     </form>
   );
 }

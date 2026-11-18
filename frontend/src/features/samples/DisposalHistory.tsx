@@ -8,9 +8,9 @@
  * link at all (an honest inert value), and even a present-but-deleted
  * examination id renders a disabled, non-navigating link label.
  */
+import type { ReactNode } from "react";
 import { DataTable, type DataTableColumn } from "../../shared/ui/DataTable";
 import type { DisposalView } from "./api";
-
 const COLUMNS: readonly DataTableColumn[] = [
   { id: "disposed_on", header: "Дата утилизации" },
   { id: "product", header: "Вид продукции" },
@@ -25,6 +25,8 @@ export interface DisposalHistoryProps {
   page: number;
   loading: boolean;
   onPageChange: (page: number) => void;
+  /** The period filter rendered right under the heading (DR48 §4.3). */
+  filter?: ReactNode;
 }
 
 export function DisposalHistory({
@@ -33,12 +35,14 @@ export function DisposalHistory({
   page,
   loading,
   onPageChange,
+  filter,
 }: DisposalHistoryProps): React.ReactElement {
   const pageSize = 20;
   const pages = Math.max(1, Math.ceil(total / pageSize));
   return (
     <section className="vse-samples-block" aria-label="История утилизации">
       <h2>История утилизации</h2>
+      {filter}
       <DataTable
         caption="Утилизации за выбранный период (неизменяемые факты)"
         columns={COLUMNS}
@@ -61,8 +65,7 @@ export function DisposalHistory({
           ],
         }))}
       />
-      {pages > 1 ? (
-        <nav className="vse-pagination" aria-label="Страницы истории утилизации">
+      {pages > 1 ? (        <nav className="vse-pagination" aria-label="Страницы истории утилизации">
           <button
             type="button"
             onClick={() => onPageChange(page - 1)}
@@ -84,10 +87,6 @@ export function DisposalHistory({
           </button>
         </nav>
       ) : null}
-      <p className="vse-samples-note app-field-message">
-        История утилизаций не изменяется и не содержит правок. Ссылка на ВСЭ появляется только когда она
-        доступна; ссылка на удалённую ВСЭ никогда не открывает протокол.
-      </p>
     </section>
   );
 }

@@ -52,8 +52,8 @@ export interface ReportSummary {
   id: string;
   report_type: string;
   laboratory_id: string;
-  year: number;
-  half: number;
+  date_from: string;
+  date_to: string;
   source_count: number;
   saved_at: string;
   saved_by: string;

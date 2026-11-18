@@ -55,8 +55,8 @@ const savedList = {
       id: REPORT,
       report_type: "5VET_SECTION_III",
       laboratory_id: LAB,
-      year: 2026,
-      half: 1,
+      date_from: "2026-01-01",
+      date_to: "2026-06-30",
       source_count: 3,
       saved_at: "2027-01-02T10:00:00Z",
       saved_by: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
@@ -113,7 +113,7 @@ describe("ReportsPage hub (DR37)", () => {
     expect(await screen.findByText("Форма 5-вет (раздел III)")).toBeVisible();
     expect(screen.getByText("Операционные показатели")).toBeVisible();
     expect(screen.getByText("Учёт проб")).toBeVisible();
-    const link = await screen.findByRole("link", { name: "Открыть: 2026, I полугодие" });
+    const link = await screen.findByRole("link", { name: "Открыть: период 01.01.2026 — 30.06.2026" });
     expect(link.getAttribute("href")).toContain(`/labs/${LAB}/reports/${REPORT}`);
   });
 
@@ -159,7 +159,7 @@ describe("ReportsPage hub (DR37)", () => {
       http.get("*/api/v1/reports/5vet", () => HttpResponse.json(savedList)),
     );
     renderPage();
-    expect(await screen.findByText(/2026, I полугодие/)).toBeVisible();
+    expect(await screen.findByText(/01.01.2026 — 30.06.2026/)).toBeVisible();
     expect(screen.queryByRole("button", { name: /Создать отчёт/ })).toBeNull();
   });
 
@@ -253,8 +253,8 @@ describe("ReportsPage hub (DR37)", () => {
           id: `report-${index}`,
           report_type: "5VET_SECTION_III",
           laboratory_id: LAB,
-          year: 2026,
-          half: index % 2 === 0 ? 1 : 2,
+          date_from: index % 2 === 0 ? "2026-01-01" : "2026-07-01",
+          date_to: index % 2 === 0 ? "2026-06-30" : "2026-12-31",
           source_count: 3,
           saved_at: "2027-01-02T10:00:00Z",
           saved_by: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",

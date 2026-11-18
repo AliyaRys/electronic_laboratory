@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { StatusView } from "../shared/ui/StatusView";
+import { appliedRangeLabel } from "../shared/ui/DateRangePopover";
 import { ReportMatrix } from "../features/reports/ReportMatrix";
 import { ReportActions } from "../features/reports/ReportActions";
 import { fetchReport, reportKey, type ReportSnapshotView } from "../features/reports/api";
@@ -110,9 +111,7 @@ function ReportViewContent(): React.ReactElement {
             </div>
             <div>
               <dt>Период</dt>
-              <dd>
-                {view.year}, {view.half === 1 ? "I полугодие (январь—июнь)" : "II полугодие (июль—декабрь)"}
-              </dd>
+              <dd>Период: {appliedRangeLabel({ from: view.date_from, to: view.date_to })}</dd>
             </div>
             <div>
               <dt>Лаборатория</dt>

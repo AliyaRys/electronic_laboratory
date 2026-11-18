@@ -36,11 +36,10 @@ function me(role = "HEAD"): Record<string, unknown> {
 }
 
 const operational = {
-  processed_parties: 7,
+  saved_examinations: 9,
   product_identifications: 12,
   transport_inspections: 3,
-  current_sample_balances: [{ product_species_id: "говядина", mass_kg: "12.6", revision: 2 }],
-  period: { date_from: "2026-10-01T00:00:00Z", date_to: "2026-11-01T00:00:00Z" },
+  period: { date_from: "2026-10-01", date_to: "2026-11-01" },
 };
 
 function renderPage(initial = `/labs/${LAB}/reports/operational`): void {
@@ -57,7 +56,7 @@ function renderPage(initial = `/labs/${LAB}/reports/operational`): void {
 }
 
 describe("OperationalReportPage", () => {
-  it("shows the three indicators and the CURRENT balances of a period", async () => {
+  it("shows the three DR48 metrics and never the sample balances", async () => {
     const gets: URL[] = [];
     server.use(
       http.get("*/api/v1/me", () => HttpResponse.json(me())),
@@ -68,11 +67,17 @@ describe("OperationalReportPage", () => {
     );
     renderPage();
     expect(await screen.findByText("12")).toBeVisible();
-    expect(screen.getByText("7")).toBeVisible();
+    expect(screen.getByText("9")).toBeVisible();
     expect(screen.getByText("3")).toBeVisible();
-    expect(screen.getByText("говядина")).toBeVisible();
-    expect(screen.getByText("12.6")).toBeVisible();
-    // The balances GET carries the same query but the semantics are current-only.
+    expect(screen.getByText("Сохранённых ВСЭ")).toBeVisible();
+    expect(
+      screen.getByText("Идентификаций продукции по наименованию и визуальным осмотром"),
+    ).toBeVisible();
+    expect(screen.getByText("Ветеринарно-санитарных оценок и идентификаций транспорта")).toBeVisible();
+    // DR48 §2: the balances block is gone from the DOM and the network.
+    expect(screen.queryByText("Текущие остатки проб")).toBeNull();
+    expect(screen.queryByText("говядина")).toBeNull();
+    expect(screen.queryByText("12.6")).toBeNull();
     expect(gets[0]?.searchParams.get("laboratory_id")).toBe(LAB);
   });
 

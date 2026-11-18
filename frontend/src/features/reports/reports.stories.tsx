@@ -85,13 +85,12 @@ export const МатрицаNarrowView: StoryObj<typeof ReportMatrix> = {
 export const ПараметрыСПредупреждением: StoryObj<typeof ReportParameters> = {
   render: (args) => <ReportParameters {...args} />,
   args: {
-    year: 2026,
-    half: 1,
+    applied: { from: "2026-01-01", to: "2026-06-30" },
     busy: false,
     disabled: false,
     stale: true,
-    onYear: () => undefined,
-    onHalf: () => undefined,
+    onApply: () => undefined,
+    onReset: () => undefined,
     onPreview: () => undefined,
   },
 };

@@ -19,6 +19,7 @@ import { useMe } from "../shared/api/me";
 import { fetchLaboratoryOptions, type LaboratoryOption } from "../features/identity/api";
 import { StatusView } from "../shared/ui/StatusView";
 import { Button } from "../shared/ui/Button";
+import { appliedRangeLabel } from "../shared/ui/DateRangePopover";
 import {
   fetchReports,
   reportsKey,
@@ -40,8 +41,8 @@ function isProblem(data: unknown): data is { code: string; detail: string; trace
   return typeof data === "object" && data !== null && "code" in data && "detail" in data;
 }
 
-function halfLabel(half: number): string {
-  return half === 1 ? "I полугодие" : "II полугодие";
+function periodLabel(item: ReportSummary): string {
+  return appliedRangeLabel({ from: item.date_from, to: item.date_to });
 }
 
 function ReportsContent(): React.ReactElement {
@@ -201,7 +202,7 @@ function ReportsContent(): React.ReactElement {
                 {items.map((item) => (
                   <li key={item.id} className="vse-report-row">
                     <Link to={`/labs/${labId}/reports/${item.id}`}>
-                      {item.year}, {halfLabel(item.half)}
+                      Период: {periodLabel(item)}
                     </Link>
                     <span>
                       Источников: {item.source_count}; сохранён{" "}
@@ -211,7 +212,7 @@ function ReportsContent(): React.ReactElement {
                     <Link
                       className="app-button secondary"
                       to={`/labs/${labId}/reports/${item.id}`}
-                      aria-label={`Открыть: ${item.year}, ${halfLabel(item.half)}`}
+                      aria-label={`Открыть: период ${periodLabel(item)}`}
                     >
                       Открыть
                     </Link>

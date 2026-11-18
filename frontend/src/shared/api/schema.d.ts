@@ -2377,17 +2377,16 @@ export interface components {
         /**
          * OperationalView
          * @description API-08 ``GET /reports/operational``: the operational indicators of one
-         *     laboratory over a period plus the current live sample balances.
+         *     laboratory over a period (DR48: «Сохранённых ВСЭ» counts the saved local
+         *     cards; the current sample balances are NOT part of the endpoint).
          */
         OperationalView: {
-            /** Processed Parties */
-            processed_parties: number;
+            /** Saved Examinations */
+            saved_examinations: number;
             /** Product Identifications */
             product_identifications: number;
             /** Transport Inspections */
             transport_inspections: number;
-            /** Current Sample Balances */
-            current_sample_balances: components["schemas"]["BalanceView"][];
             period: components["schemas"]["ReportPeriod"];
         };
         /**
@@ -3035,18 +3034,21 @@ export interface components {
         ReportPeriod: {
             /**
              * Date From
-             * Format: date-time
+             * Format: date
              */
             date_from: string;
             /**
              * Date To
-             * Format: date-time
+             * Format: date
              */
             date_to: string;
         };
         /**
          * ReportPreviewParams
          * @description Server-scoped parameters of an immutable 5-vet preview.
+         *
+         *     DR48 §3.1: the period is any valid inclusive calendar range, not a
+         *     completed half-year; both bounds are required and ``date_from <= date_to``.
          */
         ReportPreviewParams: {
             /**
@@ -3060,13 +3062,16 @@ export interface components {
              * Format: uuid
              */
             laboratory_id: string;
-            /** Year */
-            year: number;
             /**
-             * Half
-             * @enum {integer}
+             * Date From
+             * Format: date
              */
-            half: 1 | 2;
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
         };
         /** ReportSnapshotView */
         ReportSnapshotView: {
@@ -3082,10 +3087,16 @@ export interface components {
              * Format: uuid
              */
             laboratory_id: string;
-            /** Year */
-            year: number;
-            /** Half */
-            half: number;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
             /** Payload */
             payload: {
                 [key: string]: unknown;
@@ -3129,10 +3140,16 @@ export interface components {
              * Format: uuid
              */
             laboratory_id: string;
-            /** Year */
-            year: number;
-            /** Half */
-            half: number;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
             /** Source Count */
             source_count: number;
             /**

@@ -13,7 +13,7 @@ const SPECIES = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const balances = [{ product_species_id: SPECIES, mass_kg: "12.6", revision: 3, product_name: "Говядина" }];
 
 describe("Balances", () => {
-  it("a VET sees the disposal row action and the readonly weight note", async () => {
+  it("a VET sees the ONE direct dispose icon action (no row menu)", async () => {
     const onDispose = vi.fn();
     render(
       <Balances
@@ -26,8 +26,13 @@ describe("Balances", () => {
     );
     expect(await screen.findByText("12.6")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Действия со строкой" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Утилизировать остаток" }));
+    // DR48 §4.4: a direct icon action, no ⋯ menu anywhere.
+    expect(screen.queryByRole("button", { name: "Действия со строкой" })).toBeNull();
+    const action = screen.getByRole("button", { name: "Утилизировать остаток" });
+    expect(action.getAttribute("data-vse-icon") ?? action.querySelector("[data-vse-icon]")?.getAttribute("data-vse-icon")).toBe(
+      "admin-dispose",
+    );
+    await userEvent.click(action);
     expect(onDispose).toHaveBeenCalledWith(balances[0]);
   });
 

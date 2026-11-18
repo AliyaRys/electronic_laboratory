@@ -11,6 +11,7 @@ import { useCommand } from "../../shared/api/command";
 import { problemFromParsed, type Problem } from "../../shared/api/problem";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Button } from "../../shared/ui/Button";
+import { appliedRangeLabel } from "../../shared/ui/DateRangePopover";
 import { deleteReport, fetchReportFile, type ReportSnapshotView } from "./api";
 
 type ActionsState = { kind: "idle" } | { kind: "busy"; target: string } | { kind: "error"; problem: Problem };
@@ -68,7 +69,7 @@ export function ReportActions({
       return;
     }
     setState({ kind: "idle" });
-    openBlob(result.blob, mode, result.filename || `5-вет_${view.year}_${view.half}.${kind}`);
+    openBlob(result.blob, mode, result.filename || `5-вет_${view.date_from}_${view.date_to}.${kind}`);
   };
 
   const confirmDelete = (): void => {
@@ -152,8 +153,8 @@ export function ReportActions({
         onConfirm={confirmDelete}
       >
         <p className="vse-report-note">
-          Отчёт «{view.year}, {view.half === 1 ? "I" : "II"} полугодие» будет удалён без возможности
-          восстановления. Период освободится — отчёт можно будет сохранить заново.
+          Отчёт за период «{appliedRangeLabel({ from: view.date_from, to: view.date_to })}» будет удалён без
+          возможности восстановления. Период освободится — отчёт можно будет сохранить заново.
         </p>
         <p className="vse-report-note">
           Исходные ВСЭ, пробы и партии не затрагиваются; удаление касается только снимка отчёта.

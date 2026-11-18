@@ -3,10 +3,13 @@
  *
  * The shown weight is readonly — it comes from the server read model and the
  * user never edits it (there is no weight input on the balance). The disposal
- * of one basket is started from the row menu and only for roles allowed to
- * dispose (ANALYST is read-only and sees no disposal affordance at all).
+ * of one basket is started by ONE direct icon action («Утилизировать остаток»,
+ * DR48 §4.4) rendered through ``DataTableRow.actions`` — no row menu and no
+ * empty ⋯ affordance. ANALYST is read-only: no disposal action is rendered at
+ * all.
  */
 import { DataTable, type DataTableColumn, type DataTableRow } from "../../shared/ui/DataTable";
+import { Button } from "../../shared/ui/Button";
 import type { BalanceView, Problem } from "./api";
 
 const COLUMNS: readonly DataTableColumn[] = [
@@ -49,19 +52,20 @@ export function Balances({
             ],
           };
           if (canDispose) {
-            row.menu = [{ id: "dispose", label: "Утилизировать остаток" }];
+            row.actions = (
+              <Button
+                type="button"
+                variant="secondary"
+                iconOnly
+                icon="admin-dispose"
+                label="Утилизировать остаток"
+                onClick={() => onDispose(balance)}
+              />
+            );
           }
           return row;
         })}
-        onMenuAction={(_event, rowId, actionId) => {
-          if (actionId !== "dispose") return;
-          const target = balances.find((item) => item.product_species_id === rowId);
-          if (target !== undefined) onDispose(target);
-        }}
       />
-      <p className="vse-samples-note app-field-message">
-        Остаток показывается только для чтения; его изменяют отбор пробы и полная утилизация.
-      </p>
     </section>
   );
 }

@@ -20,10 +20,10 @@ const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const REPORT = "11111111-2222-4333-8444-555555555555";
 
 const payload = {
-  version: 1,
+  version: 2,
   laboratory: { name: "Лаборатория №1" },
-  year: 2026,
-  half: 1,
+  date_from: "2026-01-01",
+  date_to: "2026-06-30",
   classification_version: "2026-v1",
   columns: ["PIG"],
   matrix: [["2"]],
@@ -50,8 +50,8 @@ function snapshotView(): Record<string, unknown> {
     id: REPORT,
     report_type: "5VET_SECTION_III",
     laboratory_id: LAB,
-    year: 2026,
-    half: 1,
+    date_from: "2026-01-01",
+    date_to: "2026-06-30",
     payload,
     codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
     source_count: 1,
@@ -83,7 +83,7 @@ describe("ReportViewPage", () => {
     renderView();
     expect(await screen.findByText("Матрица сохранённого отчёта")).toBeVisible();
     expect(screen.getByText(/Лаборатория №1/)).toBeVisible();
-    expect(screen.getByText(/2026, I полугодие/)).toBeVisible();
+    expect(screen.getByText(/Период: 01.01.2026 — 30.06.2026/)).toBeVisible();
     expect(screen.getByText("Предварительная форма")).toBeVisible();
     expect(screen.getByText(/Источников в снимке: 1/)).toBeVisible();
   });

@@ -50,11 +50,24 @@ describe("SavedPricingTable", () => {
     expect(total?.closest("table")).toBeNull();
   });
 
-  it("a zero frozen total stays data, never «—»", () => {
+  it("a zero frozen total stays data, never «—» (DR47 Task 1)", () => {
     render(<SavedPricingTable snapshot={{ ...snapshot, total: "0.00", fair: true }} />);
     expect(screen.getByText("0,00 ₽")).toBeTruthy();
-    // The saved fair flag keeps the honest Ярмарка explanation.
-    expect(document.querySelector('[data-testid="pricing-waiver"]')).not.toBeNull();
+  });
+
+  // ТЗ DR47 §2.1: the saved card NEVER renders the Ярмарка element — not at
+  // fair=false and not at fair=true. Not a CSS hide: absent from the DOM.
+  it("saved card never renders pricing waiver for fair false", () => {
+    render(<SavedPricingTable snapshot={snapshot} />);
+    expect(screen.queryByTestId("pricing-waiver")).toBeNull();
+    expect(document.querySelector(".vse-rec-invoice-waiver")).toBeNull();
+  });
+
+  it("saved fair zero keeps total but omits waiver", () => {
+    render(<SavedPricingTable snapshot={{ ...snapshot, total: "0.00", fair: true }} />);
+    expect(screen.getByText("0,00 ₽")).toBeTruthy();
+    expect(screen.queryByTestId("pricing-waiver")).toBeNull();
+    expect(document.querySelector(".vse-rec-invoice-waiver")).toBeNull();
   });
 
   it("a missing snapshot renders an honest absence, never a fabricated table", () => {

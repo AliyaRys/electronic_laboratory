@@ -274,4 +274,48 @@ describe("ExaminationViewPage", () => {
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Завершить ожидание" })).toBeTruthy();
   });
+
+  // --- ТЗ DR47 §2.2: the honest day limitation -----------------------------------
+
+  it("an old card shows the exact day-limitation text without internal codes", async () => {
+    server.use(
+      http.get(`*/api/v1/examinations/${EXAM}`, () =>
+        HttpResponse.json(card({ created_at: "2020-01-01T09:00:00Z", first_completed_at: "2020-01-01T12:00:00Z" })),
+      ),
+    );
+    renderRoute();
+    expect(
+      await screen.findByText("Редактировать или удалить карточку можно только в день её создания."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/AT-07/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Редактировать ВСЭ" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Удалить ВСЭ" })).toBeNull();
+  });
+
+  it("a role without card rights never sees the day-limitation hint", async () => {
+    server.use(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "2f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+          full_name: "Аналитик",
+          login: "analyst",
+          email: "analyst@lab.test",
+          position: null,
+          role: "ANALYST",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: [],
+          revision: 1,
+          source_presence: "CURRENT_CONFIRMED",
+        }),
+      ),
+      http.get(`*/api/v1/examinations/${EXAM}`, () =>
+        HttpResponse.json(card({ created_at: "2020-01-01T09:00:00Z", first_completed_at: "2020-01-01T12:00:00Z" })),
+      ),
+    );
+    renderRoute();
+    await screen.findByRole("heading", { name: /ВСЭ № 12/ });
+    expect(screen.queryByText("Редактировать или удалить карточку можно только в день её создания.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Редактировать ВСЭ" })).toBeNull();
+  });
 });

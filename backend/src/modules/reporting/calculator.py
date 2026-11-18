@@ -26,7 +26,7 @@ sample disposal is a sample-ledger fact and never reaches a source.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from operator import attrgetter
 from uuid import UUID
@@ -74,7 +74,7 @@ __all__ = [
     "MAPPING_INVALID_CODE",
     "build_classification_map",
     "calculate_5vet",
-    "period_bounds",
+    "range_bounds",
     "sources_for_period",
 ]
 
@@ -208,22 +208,20 @@ def _verify_decomposition(matrix: ReportMatrix) -> None:
             raise RuntimeError(f"Строки 240–242 разошлись в колонке {column}: {total} != {parts}")
 
 
-def period_bounds(year: int, half: int) -> tuple[datetime, datetime]:
-    """The half-open half-year window [start; end) in Europe/Moscow (ФТ 09).
+def range_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
+    """The half-open window of a chosen inclusive calendar range in Europe/Moscow.
 
-    I полугодие: [1 января 00:00; 1 июля 00:00); II: [1 июля 00:00;
-    1 января следующего года 00:00). Exactly 01.07 00:00 belongs to II.
+    ``[date_from 00:00; date_to + 1 день 00:00)``: the ending day itself is
+    included, the instant after its last second is not (DR48 §3.1). There is
+    no artificial length limit and no requirement of a completed half-year.
     """
-    if half not in (1, 2):
-        raise ValueError("Полугодие может быть только 1 или 2.")
+    from datetime import timedelta
+
     from backend.src.core.clock import MOSCOW
 
-    start_month = 1 if half == 1 else 7
-    end_month = 7 if half == 1 else 1
-    end_year = year if half == 1 else year + 1
     return (
-        datetime(year, start_month, 1, 0, 0, 0, tzinfo=MOSCOW),
-        datetime(end_year, end_month, 1, 0, 0, 0, tzinfo=MOSCOW),
+        datetime(date_from.year, date_from.month, date_from.day, 0, 0, 0, tzinfo=MOSCOW),
+        datetime(date_to.year, date_to.month, date_to.day, 0, 0, 0, tzinfo=MOSCOW) + timedelta(days=1),
     )
 
 
@@ -232,9 +230,9 @@ def _as_instant(moment: datetime) -> datetime:
     return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
 
 
-def sources_for_period(sources: Sequence[ReportSource], year: int, half: int) -> list[ReportSource]:
-    """The completed sources whose first completion falls in the half-year."""
-    start, end = period_bounds(year, half)
+def sources_for_period(sources: Sequence[ReportSource], date_from: date, date_to: date) -> list[ReportSource]:
+    """The completed sources whose first completion falls in the chosen range."""
+    start, end = range_bounds(date_from, date_to)
     return [
         source
         for source in sources

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import io
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -199,19 +199,23 @@ async def seed_lab(
 
 
 async def save_period(
-    db: AsyncSession, lab_id: uuid.UUID, actor_id: uuid.UUID, year: int, half: int
+    db: AsyncSession,
+    lab_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    date_from: date,
+    date_to: date,
 ) -> ReportSnapshotView:
     """Save one snapshot for the period on the already-seeded laboratory."""
     preview = await preview_report(
         db,
         actor_id,
         "session-r03",
-        ReportPreviewParams(laboratory_id=lab_id, year=year, half=half),
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date_from, date_to=date_to),
         keyring=keyring(),
         now=NOW,
     )
     saved = await save_report(
-        CommandContext(actor_id=actor_id, idempotency_key=f"save-{year}-{half}"),
+        CommandContext(actor_id=actor_id, idempotency_key=f"save-{date_from}-{date_to}"),
         preview,
         codes(),
         session_id="session-r03",
@@ -226,7 +230,7 @@ async def save_period(
 @pytest.mark.asyncio
 async def test_projection_merges_birds_and_marks_manual_rows(db_session: AsyncSession) -> None:
     lab_id, actor_id = await seed_lab(db_session)
-    view = await save_period(db_session, lab_id, actor_id, 2026, 1)
+    view = await save_period(db_session, lab_id, actor_id, date(2026, 1, 1), date(2026, 6, 30))
     model = report_document_view(view)
 
     # 8 data columns → 7 printed columns (the bird pair merged once).
@@ -257,7 +261,7 @@ async def test_projection_merges_birds_and_marks_manual_rows(db_session: AsyncSe
     # The snapshot-only provenance and the preliminary marking.
     assert model.official is False and "Предварительная форма" in model.warnings
     assert model.laboratory == "Лаборатория <экспорт>"
-    assert model.period == "январь—июнь 2026"
+    assert model.period == "01.01.2026 — 30.06.2026"
 
 
 def test_report_filenames_are_api08_safe() -> None:
@@ -265,15 +269,16 @@ def test_report_filenames_are_api08_safe() -> None:
         "laboratory": {"name": 'Лаборатория "1" <2> /:?*\n'},
         "classification_version": "2026-v1",
     }
-    view = SimpleNamespace(payload=payload, year=2026, half=2)  # type: ignore[arg-type]
-    assert report_pdf_filename(view) == "5-вет_раздел-III_Лаборатория 1 2 _2026_2-полугодие.pdf"  # type: ignore[arg-type]
-    assert report_xlsx_filename(view) == "5-вет_раздел-III_Лаборатория 1 2 _2026_2-полугодие.xlsx"  # type: ignore[arg-type]
+    view = SimpleNamespace(payload=payload, date_from=date(2026, 7, 1), date_to=date(2026, 12, 31))  # type: ignore[arg-type]
+    stem = "5-вет_раздел-III_Лаборатория 1 2 _2026-07-01_2026-12-31"
+    assert report_pdf_filename(view) == f"{stem}.pdf"  # type: ignore[arg-type]
+    assert report_xlsx_filename(view) == f"{stem}.xlsx"  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
 async def test_exports_render_the_saved_snapshot(db_session: AsyncSession) -> None:
     lab_id, actor_id = await seed_lab(db_session)
-    view = await save_period(db_session, lab_id, actor_id, 2026, 1)
+    view = await save_period(db_session, lab_id, actor_id, date(2026, 1, 1), date(2026, 6, 30))
     model = report_document_view(view)
     form = resources.load_manifest("report-5vet")
     from backend.src.modules.documents import pdf, xlsx
@@ -301,11 +306,14 @@ async def test_list_reports_is_paged_and_newest_first(db_session: AsyncSession) 
     lab_id, actor_id = await seed_lab(db_session)
     from backend.src.modules.reporting import commands
 
-    await save_period(db_session, lab_id, actor_id, 2025, 1)
-    await save_period(db_session, lab_id, actor_id, 2026, 1)
+    await save_period(db_session, lab_id, actor_id, date(2025, 1, 1), date(2025, 6, 30))
+    await save_period(db_session, lab_id, actor_id, date(2026, 1, 1), date(2026, 6, 30))
     page = await commands.list_reports(db_session, lab_id, page=1)
     assert page.total == 2 and page.page_size == 20
-    assert [(item.year, item.half) for item in page.items] == [(2026, 1), (2025, 1)]
+    assert [(item.date_from, item.date_to) for item in page.items] == [
+        (date(2026, 1, 1), date(2026, 6, 30)),
+        (date(2025, 1, 1), date(2025, 6, 30)),
+    ]
     empty = await commands.list_reports(db_session, lab_id, page=2)
     assert empty.items == []
     # The list never carries the payload.
@@ -360,7 +368,7 @@ async def test_list_and_export_api(db_session: AsyncSession, head_env: SimpleNam
     from backend.tests.arrivals.test_api import _client_for
 
     lab_id, actor_id = await seed_lab(db_session, head_env.own, head_env.vet)
-    view = await save_period(db_session, lab_id, actor_id, 2026, 1)
+    view = await save_period(db_session, lab_id, actor_id, date(2026, 1, 1), date(2026, 6, 30))
 
     async with _client_for(head_env) as (http, _identity):
         listed = await http.get("/api/v1/reports/5vet", params={"laboratory_id": str(lab_id)})
@@ -407,7 +415,7 @@ async def test_foreign_export_is_hidden(db_session: AsyncSession, head_env: Simp
     from backend.tests.arrivals.test_api import _client_for
 
     lab_id, actor_id = await seed_lab(db_session)
-    view = await save_period(db_session, lab_id, actor_id, 2026, 1)
+    view = await save_period(db_session, lab_id, actor_id, date(2026, 1, 1), date(2026, 6, 30))
     vet = User(
         login="rephead2",
         full_name="Заведующий второй",
@@ -432,7 +440,7 @@ async def test_deleted_snapshot_export_is_404(db_session: AsyncSession, head_env
     from backend.tests.arrivals.test_api import _client_for
 
     lab_id, actor_id = await seed_lab(db_session, head_env.own, head_env.vet)
-    view = await save_period(db_session, lab_id, actor_id, 2026, 1)
+    view = await save_period(db_session, lab_id, actor_id, date(2026, 1, 1), date(2026, 6, 30))
     await delete_report(
         CommandContext(actor_id=actor_id, idempotency_key="del-1", expected_revision=1), view.id, db=db_session
     )

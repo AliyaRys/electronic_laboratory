@@ -1,17 +1,18 @@
 """R01 tests: operational indicators (API-08, FT-RPT-02, AT-14, SC-013/014).
 
-Named controller assertions:
+Named controller assertions (DR48 semantics):
 
-- an internal reconciliation with two performed services → processed 0,
-  product identification +1, transport inspection +1 (internal is excluded
-  from «обработанные партии» only); a fair party is counted;
+- ``saved_examinations`` counts the really existing saved local ВСЭ cards of
+  one laboratory created in the chosen period — WAITING and COMPLETED both
+  count, tombstones/other laboratories/out-of-period never count, a plain
+  count never doubles a card, and an internal/fair party never excludes one;
 - each really performed service gives exactly one unit of its indicator,
   regardless of any tariff multiplier; a full return without the service adds
-  nothing to it;
+  nothing to it; the internal flag never excludes a performed service;
 - counts use the completion time of the fact (``completed_at``), never the
-  card creation date; period boundaries are half-open [from; to);
-- sample balances are the current live sums, independent of the history
-  period filter.
+  card creation date; the card metric uses ``created_at`` in the Moscow
+  calendar window ``[from 00:00, to + 1 день 00:00)``;
+- the operational endpoint never touches the sample-balance read model.
 
 NOTE: this file contains Cyrillic literals; never rewrite it through
 PowerShell Get-Content/Set-Content (encoding hazard) — use the edit tool.
@@ -20,7 +21,7 @@ PowerShell Get-Content/Set-Content (encoding hazard) — use the edit tool.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -29,20 +30,18 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.core.clock import moscow_date, utcnow
+from backend.src.core.clock import utcnow
 from backend.src.modules.arrivals import commands as arrivals_commands
 from backend.src.modules.arrivals.models import Party, Reconciliation
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole
 from backend.src.modules.reporting.queries import list_report_sources, operational_query
-from backend.src.modules.samples.schemas import NewSample
-from backend.src.modules.samples.service import apply_sample
 from backend.tests.arrivals.test_import_and_queues import document
 
-PERIOD_START = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
-PERIOD_END = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+PERIOD_FROM = date(2025, 1, 1)
+PERIOD_TO = date(2025, 12, 31)
 IN_PERIOD = datetime(2025, 6, 15, 10, 0, 0, tzinfo=UTC)
 AFTER_PERIOD = datetime(2026, 2, 1, 10, 0, 0, tzinfo=UTC)
-BEFORE_PERIOD = datetime(2024, 12, 31, 23, 59, 59, tzinfo=UTC)
+BEFORE_PERIOD = datetime(2024, 12, 31, 20, 59, 59, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -133,8 +132,8 @@ async def query(db_session: AsyncSession, lab: Laboratory, **overrides: Any) -> 
     return await operational_query(
         db_session,
         lab.id,
-        overrides.get("date_from", PERIOD_START),
-        overrides.get("date_to", PERIOD_END),
+        overrides.get("date_from", PERIOD_FROM),
+        overrides.get("date_to", PERIOD_TO),
     )
 
 
@@ -148,21 +147,20 @@ async def test_internal_with_two_services(
         db_session, party, actor, internal=True, services=_services("PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION")
     )
     view = await query(db_session, lab)
-    assert view.processed_parties == 0
+    assert view.saved_examinations == 0
     assert view.product_identifications == 1
     assert view.transport_inspections == 1
-    assert view.period.date_from == PERIOD_START
-    assert view.period.date_to == PERIOD_END
+    assert view.period.date_from == PERIOD_FROM
+    assert view.period.date_to == PERIOD_TO
 
 
-async def test_external_confirmed_counts_processed(
+async def test_external_confirmed_counts_services(
     db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID, party: Party
 ) -> None:
     await make_reconciliation(
         db_session, party, actor, services=_services("PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION")
     )
     view = await query(db_session, lab)
-    assert view.processed_parties == 1
     assert view.product_identifications == 1
     assert view.transport_inspections == 1
 
@@ -177,7 +175,6 @@ async def test_unperformed_service_adds_zero(
         services=[{"code": "PRODUCT_IDENTIFICATION", "performed": False}],
     )
     view = await query(db_session, lab)
-    assert view.processed_parties == 1
     assert view.product_identifications == 0
     assert view.transport_inspections == 0
 
@@ -199,14 +196,13 @@ async def test_full_return_without_service_adds_nothing_to_services(
     view = await query(db_session, lab)
     assert view.product_identifications == 0
     assert view.transport_inspections == 0
-    # A confirmed-completed reconciliation is one processed party.
-    assert view.processed_parties == 1
 
 
-async def test_fair_party_is_counted(db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID, party: Party) -> None:
+async def test_fair_party_services_are_counted(
+    db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID, party: Party
+) -> None:
     await make_reconciliation(db_session, party, actor, fair=True, services=_services("PRODUCT_IDENTIFICATION"))
     view = await query(db_session, lab)
-    assert view.processed_parties == 1
     assert view.product_identifications == 1
 
 
@@ -214,11 +210,13 @@ async def test_completion_time_period_boundaries(db_session: AsyncSession, lab: 
     at_start = await new_party(db_session, lab)
     before = await new_party(db_session, lab)
     after = await new_party(db_session, lab)
-    await make_reconciliation(db_session, at_start, actor, completed_at=PERIOD_START)
+    await make_reconciliation(
+        db_session, at_start, actor, completed_at=datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC), services=_services("PRODUCT_IDENTIFICATION")
+    )
     await make_reconciliation(db_session, before, actor, completed_at=BEFORE_PERIOD)
     await make_reconciliation(db_session, after, actor, completed_at=AFTER_PERIOD)
     view = await query(db_session, lab)
-    assert view.processed_parties == 1
+    assert view.product_identifications == 1
 
 
 async def test_open_reconciliation_never_counts(
@@ -226,7 +224,6 @@ async def test_open_reconciliation_never_counts(
 ) -> None:
     await make_reconciliation(db_session, party, actor, state="OPEN", completed_at=None)
     view = await query(db_session, lab)
-    assert view.processed_parties == 0
     assert view.product_identifications == 0
 
 
@@ -235,33 +232,147 @@ async def test_other_laboratory_scope_is_isolated(
 ) -> None:
     await make_reconciliation(db_session, party, actor, services=_services("TRANSPORT_INSPECTION"))
     foreign = await query(db_session, second_lab)
-    assert foreign.processed_parties == 0
+    assert foreign.saved_examinations == 0
     assert foreign.transport_inspections == 0
-    assert foreign.current_sample_balances == []
     own = await query(db_session, lab)
     assert own.transport_inspections == 1
 
 
-# --- sample balances: current, independent of the history period ---------------------
+# --- DR48 §2.2: saved_examinations = really saved local ВСЭ cards --------------------
 
 
-async def test_sample_balances_are_current_regardless_of_history_period(
+async def _seed_card(
+    db_session: AsyncSession,
+    lab: Laboratory,
+    actor: uuid.UUID,
+    party: Party,
+    *,
+    created_at: datetime,
+    status: str = "COMPLETED",
+    first_completed_at: datetime | None = None,
+) -> uuid.UUID:
+    from backend.src.modules.examinations.models import Examination
+
+    row = Examination(
+        party_id=party.id,
+        laboratory_id=lab.id,
+        number=f"ВСЭ-{uuid.uuid4().hex[:8]}",
+        stamp="25",
+        status=status,
+        sent_to_lab=False,
+        research_snapshot=[],
+        findings_snapshot={"invasive": [], "noncontagious": []},
+        pricing_snapshot={"lines": [], "total": "0.00", "currency": "RUB", "fair": False},
+        outcome=None,
+        direction=None,
+        created_by=actor,
+        created_at=created_at,
+        first_completed_at=first_completed_at if first_completed_at is not None else (created_at if status == "COMPLETED" else None),
+        rev=1,
+    )
+    db_session.add(row)
+    await db_session.commit()
+    return row.id
+
+
+async def test_waiting_and_completed_cards_both_count(
     db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID, party: Party
 ) -> None:
-    species = str(party.classification_snapshot["product"]["id"])
-    await apply_sample(
+    waiting_id = await _seed_card(db_session, lab, actor, party, created_at=IN_PERIOD, status="WAITING")
+    second_party = await new_party(db_session, lab)
+    completed_id = await _seed_card(
         db_session,
+        lab,
         actor,
-        party.id,
-        uuid.uuid4(),
-        NewSample(mode="NEW", collectedOn=moscow_date(utcnow()), massKg="0.8"),
+        second_party,
+        created_at=IN_PERIOD,
+        status="COMPLETED",
+        first_completed_at=IN_PERIOD,
+    )
+    view = await query(db_session, lab)
+    assert view.saved_examinations == 2
+    assert {waiting_id, completed_id}
+
+
+async def test_cards_outside_period_and_other_lab_never_count(
+    db_session: AsyncSession, lab: Laboratory, second_lab: Laboratory, actor: uuid.UUID, party: Party
+) -> None:
+    before_party = await new_party(db_session, lab)
+    after_party = await new_party(db_session, lab)
+    foreign_party = await new_party(db_session, second_lab)
+    await _seed_card(db_session, lab, actor, before_party, created_at=BEFORE_PERIOD)
+    await _seed_card(db_session, lab, actor, after_party, created_at=AFTER_PERIOD)
+    await _seed_card(db_session, second_lab, actor, foreign_party, created_at=IN_PERIOD)
+    view = await query(db_session, lab)
+    assert view.saved_examinations == 0
+
+
+async def test_tombstoned_card_never_counts(
+    db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID, party: Party
+) -> None:
+    from backend.src.modules.examinations.models import ExaminationTombstone
+
+    card_id = await _seed_card(db_session, lab, actor, party, created_at=IN_PERIOD)
+    db_session.add(
+        ExaminationTombstone(
+            examination_id=card_id,
+            laboratory_id=lab.id,
+            deleted_at=utcnow(),
+            actor_id=actor,
+            command_id=uuid.uuid4(),
+        )
     )
     await db_session.commit()
-    # The collection is created «today» while the history window is a whole
-    # year long past — the balance is still the current live sum.
     view = await query(db_session, lab)
-    balances = {balance.product_species_id: balance.mass_kg for balance in view.current_sample_balances}
-    assert balances[species] == "0.8"
+    assert view.saved_examinations == 0
+
+
+async def test_moscow_day_boundaries_of_created_at(db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID) -> None:
+    from zoneinfo import ZoneInfo
+
+    moscow = ZoneInfo("Europe/Moscow")
+    first_party = await new_party(db_session, lab)
+    last_party = await new_party(db_session, lab)
+    early_party = await new_party(db_session, lab)
+    late_party = await new_party(db_session, lab)
+    # The first Moscow instant of the FIRST day and the last of the LAST day
+    # count; the second before 00:00 and the first after the range do not.
+    await _seed_card(db_session, lab, actor, first_party, created_at=datetime(2025, 1, 1, 0, 0, 0, tzinfo=moscow))
+    await _seed_card(db_session, lab, actor, last_party, created_at=datetime(2025, 12, 31, 23, 59, 59, tzinfo=moscow))
+    await _seed_card(db_session, lab, actor, early_party, created_at=datetime(2024, 12, 31, 23, 59, 59, tzinfo=moscow))
+    await _seed_card(db_session, lab, actor, late_party, created_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=moscow))
+    view = await query(db_session, lab)
+    assert view.saved_examinations == 2
+
+
+async def test_internal_party_card_still_counts(
+    db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID, party: Party
+) -> None:
+    # The saved-cards metric never excludes a card because of the party's
+    # internal-transaction flag (the flag belongs to the old party metric).
+    await _seed_card(db_session, lab, actor, party, created_at=IN_PERIOD)
+    view = await query(db_session, lab)
+    assert view.saved_examinations == 1
+
+
+async def test_card_count_is_a_plain_count_without_joins(
+    db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID, party: Party
+) -> None:
+    # A card with rich research data contributes exactly one unit: the count
+    # never multiplies through joins with studies or samples.
+    await _seed_card(db_session, lab, actor, party, created_at=IN_PERIOD)
+    view = await query(db_session, lab)
+    assert view.saved_examinations == 1
+
+
+async def test_operational_query_never_touches_sample_balances() -> None:
+    import inspect
+
+    from backend.src.modules.reporting import queries
+
+    source = inspect.getsource(queries)
+    assert "balance_list" not in source
+    assert "current_sample_balances" not in source
 
 
 # --- report source collection (queries.py) -------------------------------------------
@@ -336,7 +447,7 @@ async def test_list_report_sources_maps_completed_cards(
         outcome="UNFIT",
         direction="DESTRUCTION",
     )
-    sources = await list_report_sources(db_session, lab.id, 2026, 1)
+    sources = await list_report_sources(db_session, lab.id, date(2026, 1, 1), date(2026, 6, 30))
     assert len(sources) == 1
     resolved = sources[0]
     assert resolved.classification == species
@@ -349,7 +460,7 @@ async def test_list_report_sources_maps_completed_cards(
     assert resolved.revision == 1
 
 
-async def test_list_report_sources_applies_half_year_boundaries(
+async def test_list_report_sources_applies_range_boundaries(
     db_session: AsyncSession, lab: Laboratory, actor: uuid.UUID
 ) -> None:
     from zoneinfo import ZoneInfo
@@ -361,21 +472,19 @@ async def test_list_report_sources_applies_half_year_boundaries(
         lab,
         actor,
         at_july,
-        first_completed_at=datetime(2026, 7, 1, 0, 0, 0, tzinfo=moscow),  # AT-17
+        first_completed_at=datetime(2026, 7, 1, 0, 0, 0, tzinfo=moscow),
         researches=[],
     )
-    half1 = await list_report_sources(db_session, lab.id, 2026, 1)
-    half2 = await list_report_sources(db_session, lab.id, 2026, 2)
-    assert half1 == []
-    assert len(half2) == 1
+    before = await list_report_sources(db_session, lab.id, date(2026, 1, 1), date(2026, 6, 30))
+    inside = await list_report_sources(db_session, lab.id, date(2026, 7, 1), date(2026, 7, 1))
+    assert before == []
+    assert len(inside) == 1
 
 
 # --- DR45 §6: the server owns the service facts --------------------------------------
 
 
-async def test_confirmed_receipt_persists_service_facts(
-    db_session: AsyncSession, lab, actor, party: Party
-) -> None:
+async def test_confirmed_receipt_persists_service_facts(db_session: AsyncSession, lab, actor, party: Party) -> None:
     """The real flow: a saved reconciliation (the client sends NO services) is
     confirmed externally; the confirmation itself freezes the two performed
     service facts atomically, and the operational report counts +1/+1."""
@@ -476,9 +585,7 @@ async def test_backfill_0022_enriches_confirmed_rows_idempotently(
 
     confirmed = await make_reconciliation(db_session, party, actor, services=[])
     returned_party = await new_party(db_session, lab)
-    returned = await make_reconciliation(
-        db_session, returned_party, actor, state="RETURNED", services=[]
-    )
+    returned = await make_reconciliation(db_session, returned_party, actor, state="RETURNED", services=[])
     await db_session.commit()
 
     engine = db_session.bind
@@ -487,23 +594,16 @@ async def test_backfill_0022_enriches_confirmed_rows_idempotently(
             await conn.run_sync(lambda sync_conn: migration.backfill_service_facts(sync_conn))  # type: ignore[arg-type]
 
     stored = (
-        await db_session.execute(
-            text("SELECT services FROM reconciliations WHERE id = :id"), {"id": confirmed.id}
-        )
+        await db_session.execute(text("SELECT services FROM reconciliations WHERE id = :id"), {"id": confirmed.id})
     ).scalar_one()
     performed = {item["code"] for item in stored if item.get("performed") is True}
     assert performed == {"PRODUCT_IDENTIFICATION", "TRANSPORT_INSPECTION"}
 
     returned_services = (
-        await db_session.execute(
-            text("SELECT services FROM reconciliations WHERE id = :id"), {"id": returned.id}
-        )
+        await db_session.execute(text("SELECT services FROM reconciliations WHERE id = :id"), {"id": returned.id})
     ).scalar_one()
     assert returned_services == []
 
-    view = await operational_query(
-        db_session, lab.id, datetime(2020, 1, 1, tzinfo=UTC), datetime(2030, 1, 1, tzinfo=UTC)
-    )
-    assert view.processed_parties == 2
+    view = await operational_query(db_session, lab.id, date(2020, 1, 1), date(2029, 12, 31))
     assert view.product_identifications == 1
     assert view.transport_inspections == 1

@@ -24,7 +24,7 @@ PowerShell Get-Content/Set-Content (encoding hazard) — use the edit tool.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -49,13 +49,12 @@ from backend.src.modules.reporting.calculator import (
     TRICHINELLA_INDICATOR_ID,
     build_classification_map,
     calculate_5vet,
-    period_bounds,
+    range_bounds,
     sources_for_period,
 )
 from backend.src.modules.reporting.schemas import ReportSource, SpeciesClassification
 
 MOSCOW = ZoneInfo("Europe/Moscow")
-IN_HALF1 = datetime(2026, 2, 1, 12, 0, 0, tzinfo=MOSCOW)
 MEAT_SPECIES = "sp-meat"
 OFFAL_SPECIES = "sp-offal"
 UNMAPPED_SPECIES = "sp-unknown"
@@ -87,7 +86,7 @@ def source(
     mass_kg: str = "0",
     direction: str | None = None,
     sent_to_lab: bool = False,
-    first_completed_at: datetime | None = IN_HALF1,
+    first_completed_at: datetime | None = datetime(2026, 2, 1, 12, 0, 0, tzinfo=MOSCOW),
     id_: str = "11111111-1111-1111-1111-111111111111",
     revision: int = 1,
     outcome: str | None = None,
@@ -268,7 +267,11 @@ def test_corrected_card_is_counted_once() -> None:
     # A correction of a completed card keeps its first completion time and is
     # one source of the period: the newest revision is counted exactly once.
     base = source(revision=1)
-    corrected = source(revision=2, performed=(BACTERIOSCOPY_INDICATOR_ID,), first_completed_at=IN_HALF1)
+    corrected = source(
+        revision=2,
+        performed=(BACTERIOSCOPY_INDICATOR_ID,),
+        first_completed_at=datetime(2026, 2, 1, 12, 0, 0, tzinfo=MOSCOW),
+    )
     matrix = calculate([base, corrected])
     assert cell(matrix, "166", "CATTLE") == Decimal(1)
     assert cell(matrix, "167", "CATTLE") == Decimal(1)
@@ -324,36 +327,63 @@ def test_duplicate_material_kind_is_ambiguous_too() -> None:
     assert error.value.code == "REPORT_MAPPING_INVALID"
 
 
-# --- half-year boundaries (AT-17) -----------------------------------------------------
+# --- arbitrary range boundaries (DR48 §3.1) -------------------------------------------
 
 
-def test_half_year_bounds_are_half_open_moscow() -> None:
-    start1, end1 = period_bounds(2026, 1)
-    start2, end2 = period_bounds(2026, 2)
-    assert (start1.isoformat(), end1.isoformat()) == ("2026-01-01T00:00:00+03:00", "2026-07-01T00:00:00+03:00")
-    assert (start2.isoformat(), end2.isoformat()) == ("2026-07-01T00:00:00+03:00", "2027-01-01T00:00:00+03:00")
-    with pytest.raises(ValueError):
-        period_bounds(2026, 3)
+def test_range_bounds_are_half_open_moscow() -> None:
+    start, end = range_bounds(date(2026, 11, 1), date(2026, 11, 18))
+    assert (start.isoformat(), end.isoformat()) == (
+        "2026-11-01T00:00:00+03:00",
+        "2026-11-19T00:00:00+03:00",
+    )
 
 
 @pytest.mark.parametrize(
-    ("moment", "year", "half", "included"),
+    ("moment", "date_from", "date_to", "included"),
     [
-        pytest.param(datetime(2025, 12, 31, 23, 59, 59, tzinfo=MOSCOW), 2026, 1, False, id="before-half1"),
-        pytest.param(datetime(2026, 1, 1, 0, 0, 0, tzinfo=MOSCOW), 2026, 1, True, id="half1-start-inclusive"),
-        pytest.param(datetime(2026, 6, 30, 23, 59, 59, tzinfo=MOSCOW), 2026, 1, True, id="half1-last-second"),
-        pytest.param(datetime(2026, 7, 1, 0, 0, 0, tzinfo=MOSCOW), 2026, 1, False, id="at-17-exact-july-not-half1"),
-        pytest.param(datetime(2026, 7, 1, 0, 0, 0, tzinfo=MOSCOW), 2026, 2, True, id="at-17-exact-july-in-half2"),
-        pytest.param(datetime(2026, 12, 31, 23, 59, 59, tzinfo=MOSCOW), 2026, 2, True, id="half2-last-second"),
-        pytest.param(datetime(2027, 1, 1, 0, 0, 0, tzinfo=MOSCOW), 2026, 2, False, id="after-half2"),
+        pytest.param(
+            datetime(2026, 10, 31, 23, 59, 59, tzinfo=MOSCOW),
+            date(2026, 11, 1),
+            date(2026, 11, 30),
+            False,
+            id="before-start",
+        ),
+        pytest.param(
+            datetime(2026, 11, 1, 0, 0, 0, tzinfo=MOSCOW),
+            date(2026, 11, 1),
+            date(2026, 11, 30),
+            True,
+            id="start-inclusive",
+        ),
+        pytest.param(
+            datetime(2026, 11, 30, 23, 59, 59, tzinfo=MOSCOW),
+            date(2026, 11, 1),
+            date(2026, 11, 30),
+            True,
+            id="last-second-of-end-inclusive",
+        ),
+        pytest.param(
+            datetime(2026, 12, 1, 0, 0, 0, tzinfo=MOSCOW),
+            date(2026, 11, 1),
+            date(2026, 11, 30),
+            False,
+            id="after-end-exclusive",
+        ),
+        pytest.param(
+            datetime(2026, 11, 15, 12, 0, 0, tzinfo=UTC),
+            date(2026, 11, 1),
+            date(2026, 11, 30),
+            True,
+            id="utc-instant-inside",
+        ),
     ],
 )
-def test_period_selection_boundaries(moment: datetime, year: int, half: int, included: bool) -> None:
-    selected = sources_for_period([source(first_completed_at=moment)], year, half)
+def test_period_selection_boundaries(moment: datetime, date_from: date, date_to: date, included: bool) -> None:
+    selected = sources_for_period([source(first_completed_at=moment)], date_from, date_to)
     assert bool(selected) is included
 
 
 def test_naive_first_completed_at_is_treated_as_utc_instant() -> None:
     naive = datetime(2026, 2, 1, 12, 0, 0)
-    selected = sources_for_period([source(first_completed_at=naive)], 2026, 1)
+    selected = sources_for_period([source(first_completed_at=naive)], date(2026, 2, 1), date(2026, 2, 28))
     assert len(selected) == 1

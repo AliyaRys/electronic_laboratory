@@ -62,8 +62,6 @@ class ReportDocumentView(BaseModel):
 
     form_id: Literal["report-5vet"]
     laboratory: str
-    year: int
-    half: int
     period: str
     codes: ReportCodes
     columns: list[str]

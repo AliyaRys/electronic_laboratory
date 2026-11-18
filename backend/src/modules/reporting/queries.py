@@ -1,17 +1,18 @@
 """Reporting read queries (API-08): operational indicators and sources.
 
 ``operational_query`` counts completed facts, never card creation dates
-(FT-RPT-02, R-09): «Обработанная партия — одна подтверждённо завершённая
-сверка, кроме отмеченных внутренних транзакций», and each really performed
+(FT-RPT-02, R-09) for the service indicators; DR48 adds the honest
+``saved_examinations`` metric — the number of really existing saved local
+ВСЭ cards created in the chosen period (both WAITING and COMPLETED, no
+tombstones, no joins-distinct double counting). Each really performed
 CHECK service gives exactly one unit of its indicator regardless of the
 tariff multiplier (the stored fact is the boolean ``performed`` flag; a full
 return without the service adds nothing). The internal flag is excluded from
-«обработанные партии» only — its performed services are still counted.
-Sample balances are the current live sums (samples.queries), independent of
-the history window.
+the old «обработанные партии» metric only — its performed services are still
+counted; the saved-cards metric never excludes internal transactions.
 
-``list_report_sources`` projects the completed local ВСЭ cards of one
-half-year into ``ReportSource`` facts: the classification comes from the
+``list_report_sources`` projects the completed local ВСЭ cards of one chosen
+calendar range into ``ReportSource`` facts: the classification comes from the
 party snapshot (the Mercury species guid the examination validation also
 resolves), the accepted mass from the immutable receipt confirmation, the
 performed indicator ids from the research snapshot.
@@ -20,17 +21,16 @@ performed indicator ids from the research snapshot.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.arrivals.models import Party, ReceiptConfirmation, Reconciliation
-from backend.src.modules.examinations.models import Examination
-from backend.src.modules.reporting.calculator import period_bounds
+from backend.src.modules.examinations.models import Examination, ExaminationTombstone
+from backend.src.modules.reporting.calculator import range_bounds
 from backend.src.modules.reporting.schemas import OperationalView, ReportPeriod, ReportSource
-from backend.src.modules.samples.queries import balance_list
 
 __all__ = ["operational_query", "list_report_sources"]
 
@@ -57,13 +57,19 @@ def _species_of(classification_snapshot: object) -> str:
     return str(identifier) if identifier is not None else ""
 
 
+def _saved_cards_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
+    """The Moscow wall-clock window of the chosen card-creation days."""
+    return range_bounds(date_from, date_to)
+
+
 async def operational_query(
     db: AsyncSession,
     laboratory_id: uuid.UUID,
-    date_from: datetime,
-    date_to: datetime,
+    date_from: date,
+    date_to: date,
 ) -> OperationalView:
-    """API-08 operational indicators of one laboratory over [from; to)."""
+    """API-08 operational indicators of one laboratory over the chosen range."""
+    start, end = _saved_cards_bounds(date_from, date_to)
     rows = (
         await db.execute(
             select(Reconciliation.transaction_type, Reconciliation.services)
@@ -71,30 +77,40 @@ async def operational_query(
             .where(
                 Party.laboratory_id == laboratory_id,
                 Reconciliation.state.in_(_COMPLETED_STATES),
-                Reconciliation.completed_at >= date_from,
-                Reconciliation.completed_at < date_to,
+                Reconciliation.completed_at >= start,
+                Reconciliation.completed_at < end,
             )
             .order_by(Reconciliation.party_id)
         )
     ).all()
-    processed = 0
     product = 0
     transport = 0
-    for transaction_type, services in rows:
-        # A reconciliation is unique per party (DATA-02), so one row is one
-        # processed party; the internal flag is excluded from it only.
-        if transaction_type != "INTERNAL":
-            processed += 1
+    for _transaction_type, services in rows:
         if _performed(services, PRODUCT_IDENTIFICATION):
             product += 1
         if _performed(services, TRANSPORT_INSPECTION):
             transport += 1
-    balances = await balance_list(db, laboratory_id)
+    # DR48 §2.2: saved_examinations is a plain count of existing Examination
+    # cards of the laboratory created in the period — WAITING and COMPLETED
+    # both are saved cards; tombstones and other laboratories never count;
+    # internal/fair parties never exclude a card; no joins-distinct.
+    saved = await db.scalar(
+        select(func.count())
+        .select_from(Examination)
+        .where(
+            Examination.laboratory_id == laboratory_id,
+            Examination.status.in_(("WAITING", "COMPLETED")),
+            Examination.created_at >= start,
+            Examination.created_at < end,
+            ~select(ExaminationTombstone.examination_id)
+            .where(ExaminationTombstone.examination_id == Examination.id)
+            .exists(),
+        )
+    )
     return OperationalView(
-        processed_parties=processed,
+        saved_examinations=int(saved or 0),
         product_identifications=product,
         transport_inspections=transport,
-        current_sample_balances=balances,
         period=ReportPeriod(date_from=date_from, date_to=date_to),
     )
 
@@ -102,11 +118,11 @@ async def operational_query(
 async def list_report_sources(
     db: AsyncSession,
     laboratory_id: uuid.UUID,
-    year: int,
-    half: int,
+    date_from: date,
+    date_to: date,
 ) -> list[ReportSource]:
-    """The completed local ВСЭ facts of one half-year as calculator sources."""
-    start, end = period_bounds(year, half)
+    """The completed local ВСЭ facts of the chosen range as calculator sources."""
+    start, end = range_bounds(date_from, date_to)
     rows = (
         await db.execute(
             select(Examination, Party.classification_snapshot, ReceiptConfirmation.accepted_mass_kg)

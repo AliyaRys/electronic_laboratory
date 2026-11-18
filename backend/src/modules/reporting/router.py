@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date
 from typing import Annotated
 from urllib.parse import quote
 
@@ -38,8 +38,8 @@ async def operational(
     principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
     authorizer: Annotated[Authorizer, Depends(get_authorizer)],
     laboratory_id: uuid.UUID,
-    date_from: datetime,
-    date_to: datetime,
+    date_from: date,
+    date_to: date,
 ) -> OperationalView:
     identity, _actor = principal
     await authorizer.authorize(db, identity.actor_id, "report:operational", ScopeTarget(laboratory_id=laboratory_id))

@@ -180,7 +180,13 @@ function ProductSwitcher({
     options[next]?.focus();
   };
 
-  const current = PRODUCTS[product] ?? PRODUCTS.meat;
+  // Fix-loop 2 (DR46 browser check): the dropdown always shows ALL six
+  // roadmap entries; a current product outside the roadmap (e.g. a legacy
+  // «milk» context from stories/storage) is normalized to the available
+  // «meat» when rendering the trigger and the selection — a disabled
+  // roadmap entry is never marked selected, never becomes the trigger label.
+  const current =
+    ROADMAP_PRODUCTS.find((item) => item.key === product && item.available) ?? ROADMAP_PRODUCTS[0];
   return (
     <div
       className={`nav-item product-switcher${open ? " open" : ""}`}
@@ -221,7 +227,7 @@ function ProductSwitcher({
           }
         }}
       >
-        <span className="product-icon" aria-hidden="true" data-product-icon={product}>
+        <span className="product-icon" aria-hidden="true" data-product-icon={current.key}>
           <Icon name={current.icon} />
         </span>
         <span className="navtext" data-product-label="">
@@ -233,7 +239,7 @@ function ProductSwitcher({
       </button>
       <div className="journal-menu product-menu" role="listbox" aria-label="Тип продукции">
         {ROADMAP_PRODUCTS.map((item) => {
-          const selected = item.key === product;
+          const selected = item.key === current.key;
           const enabled = item.available;
           return (
             <button

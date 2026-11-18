@@ -103,6 +103,26 @@ describe("AppHeader", () => {
     expect(onProductChange).not.toHaveBeenCalled();
   });
 
+  it("normalizes an out-of-roadmap current product (milk) to meat: six options, meat selected (DR46 fix-loop 2)", async () => {
+    const act = userEvent.setup();
+    const { container } = render(
+      <AppHeader mode="work" user={user} product="milk" active="arrivals" onLogout={() => undefined} />,
+    );
+    // The trigger carries the normalized meat context, never a milk label.
+    expect(screen.getByRole("button", { name: "Тип продукции: Мясо и мясопродукты" })).toBeTruthy();
+    await act.click(screen.getByRole("button", { name: /Тип продукции/ }));
+    // The dropdown invariant: ALL six roadmap entries are rendered, no matter
+    // the current product; the disabled milk entry is never marked selected.
+    expect(document.querySelectorAll('[role="option"]').length).toBe(6);
+    const meat = screen.getByRole("option", { name: "Мясо и мясопродукты" });
+    expect(meat).toHaveAttribute("aria-selected", "true");
+    expect(meat).toBeEnabled();
+    const milk = screen.getByRole("option", { name: /Молоко и молочные продукты/ });
+    expect(milk).toHaveAttribute("aria-selected", "false");
+    expect(milk).toBeDisabled();
+    expect(container.querySelector('[data-product-icon="milk"]')).toBeNull();
+  });
+
   it("re-selecting meat closes the menu and returns focus to the trigger", async () => {
     const act = userEvent.setup();
     render(<AppHeader mode="work" user={user} product="meat" onLogout={() => undefined} />);

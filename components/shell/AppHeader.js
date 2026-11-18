@@ -186,6 +186,9 @@
     userName = 'Анна Кузнецова',
     userInitials = 'АК',
     menuOpen = false,
+    /* ТЗ DR50 §4: /profile is the current page — the profile link gets the
+       circular active ring and aria-current (same contract as AppHeader.tsx). */
+    profileActive = false,
     // ТЗ DR45 §5: the single-product static variant of the production work
     // header (no button, no caret, no milk option) — see README.
     productStatic = false,
@@ -289,8 +292,9 @@
     if (mode === 'no-products' && !nav.childElementCount) nav.hidden = true;
 
     const userArea = create('div', 'user-area');
-    const userLink = create('a', 'user-link');
+    const userLink = create('a', `user-link${profileActive ? ' active' : ''}`);
     userLink.id = 'profile';
+    if (profileActive) userLink.setAttribute('aria-current', 'page');
     userLink.href = links.profile || (mode === 'admin' ? 'admin-profile.html' : mode === 'analyst' ? 'analyst-profile.html' : 'profile.html');
     userLink.append(create('span', 'avatar', userInitials), create('span', 'user-name', userName));
     const logout = create('button', 'logout', 'Выйти');

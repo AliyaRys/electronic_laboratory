@@ -98,10 +98,28 @@
 }
 
 .topbar .navlink:hover,
-.topbar .user-link:hover,
 .topbar .navlink.active {
   background: var(--tint, #eaf6f4);
   color: var(--teal-dark, #0d5358);
+}
+
+/* ТЗ DR50 §4: the profile link is the one circular header control — the
+   rectangular navlink background never applies to it. Hover and active change
+   only the circle of the avatar; the green ring (active) composes with hover. */
+.topbar .user-link {
+  border-radius: 50%;
+}
+
+.topbar .user-link:hover {
+  color: var(--teal-dark, #0d5358);
+}
+
+.topbar .user-link:hover .avatar {
+  background: #c5e6e2;
+}
+
+.topbar .user-link.active .avatar {
+  box-shadow: 0 0 0 2px var(--teal, var(--app-teal, #146c73));
 }
 
 .topbar .navlink:focus-visible,
@@ -110,6 +128,12 @@
 .topbar .product-menu button:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--teal, #146c73) 28%, transparent);
   outline-offset: 2px;
+}
+
+/* ТЗ DR50 §4: circular keyboard focus indicator, distinguishable from the
+   2px solid active ring. */
+.topbar .user-link:focus-visible {
+  border-radius: 50%;
 }
 
 .topbar .navlink.active {

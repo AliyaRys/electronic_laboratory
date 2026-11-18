@@ -45,10 +45,10 @@
 .vse-profile-document .brand { display: flex; align-items: center; gap: 12px; color: var(--app-ink); text-decoration: none; }
 .vse-profile-document .brand span { display: block; margin-top: 1px; color: var(--app-muted-readable); font-size: 12px; }
 .vse-profile-document .topnav { display: flex; align-items: center; gap: 6px; flex: 1; }
-.vse-profile-document .navlink,.vse-profile-document .user-link { min-height: 42px; border: 0; border-radius: 10px; padding: 0 12px; display: inline-flex; align-items: center; gap: 9px; background: transparent; color: #4c6870; font-weight: 600; text-decoration: none; }
-.vse-profile-document .navlink { border: 1px solid var(--app-line); background: #fff; }
-.vse-profile-document .navlink:hover,.vse-profile-document .user-link:hover,.vse-profile-document .user-link.active { background: var(--app-tint); color: var(--app-teal-dark); }
-.vse-profile-document .user-link.active { box-shadow: inset 0 0 0 1px #c9e6e2; }
+.vse-profile-document .navlink { min-height: 42px; border: 1px solid var(--app-line); border-radius: 10px; padding: 0 12px; display: inline-flex; align-items: center; gap: 9px; background: #fff; color: #4c6870; font-weight: 600; text-decoration: none; }
+/* ТЗ DR50 §4: прямоугольные переопределения user-link удалены — шапка
+   наследует круглую геометрию из components/shell/app-header.css. */
+.vse-profile-document .navlink:hover,.vse-profile-document .navlink.active { background: var(--app-tint); color: var(--app-teal-dark); }
 .vse-profile-document .user-area { display: flex; align-items: center; gap: 5px; }
 .vse-profile-document .avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #d7efec; color: var(--app-teal-dark); font-size: 12px; font-weight: 750; }
 .vse-profile-document .logout { min-height: 38px; border: 1px solid var(--app-line); border-radius: 9px; padding: 0 12px; background: #fff; color: #587077; font-weight: 650; }

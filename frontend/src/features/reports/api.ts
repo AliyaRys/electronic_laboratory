@@ -154,22 +154,15 @@ export function previewReport(
 /**
  * Raw POST executor of the immutable save: the signed preview is verified and
  * stored exactly as received — the client never recomputes it (R02 contract).
+ * DR51 §6.2: the request carries only the signed preview; the seven
+ * organizational codes no longer exist anywhere in the save flow.
  */
 export function saveReport(
   preview: SignedPreview,
-  codes: {
-    okud: string;
-    okpo: string;
-    okved: string;
-    oktmo: string;
-    okogu: string;
-    okopf: string;
-    okfs: string;
-  },
 ): (ctx: { idempotencyKey: string; signal: AbortSignal }) => Promise<RawResult<ReportSnapshotView>> {
   return ({ idempotencyKey, signal }) =>
     apiClient.POST("/api/v1/reports/5vet", {
-      body: { preview, codes },
+      body: { preview },
       headers: { "idempotency-key": idempotencyKey },
       signal,
     }) as Promise<RawResult<ReportSnapshotView>>;

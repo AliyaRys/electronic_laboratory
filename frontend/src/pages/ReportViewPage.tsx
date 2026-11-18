@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { StatusView } from "../shared/ui/StatusView";
-import { appliedRangeLabel } from "../shared/ui/DateRangePopover";
+import { ReportHeader } from "../features/reports/ReportHeader";
 import { ReportMatrix } from "../features/reports/ReportMatrix";
 import { ReportActions } from "../features/reports/ReportActions";
 import { fetchReport, reportKey, type ReportSnapshotView } from "../features/reports/api";
@@ -74,7 +74,6 @@ function ReportViewContent(): React.ReactElement {
       : "";
   // The marking follows the SAVED payload's official flag, never live state.
   const official = payload["official"] === true;
-  const savedAt = view !== null ? new Date(view.saved_at).toLocaleString("ru-RU") : "";
 
   return (
     <div className="vse-app vse-page">
@@ -104,42 +103,14 @@ function ReportViewContent(): React.ReactElement {
         <StatusView state="loading" title="Загрузка отчёта…" />
       ) : view !== null ? (
         <>
-          <dl className="vse-report-summary">
-            <div>
-              <dt>Отчёт</dt>
-              <dd>5-вет, раздел III</dd>
-            </div>
-            <div>
-              <dt>Период</dt>
-              <dd>{appliedRangeLabel({ from: view.date_from, to: view.date_to })}</dd>
-            </div>
-            <div>
-              <dt>Лаборатория</dt>
-              <dd>{laboratory !== "" ? laboratory : view.laboratory_id}</dd>
-            </div>
-            <div>
-              <dt>Источников в снимке</dt>
-              <dd>{view.source_count}</dd>
-            </div>
-            <div>
-              <dt>Сохранён</dt>
-              <dd>{savedAt}</dd>
-            </div>
-            <div>
-              <dt>Коды шапки</dt>
-              <dd>
-                {Object.entries(view.codes)
-                  .map(([key, value]) => `${key.toUpperCase()} ${value}`)
-                  .join("; ")}
-              </dd>
-            </div>
-          </dl>
-          <ReportMatrix
-            payload={payload}
-            sourceCount={view.source_count}
-            official={official}
-            caption="Матрица сохранённого отчёта"
+          <ReportHeader
+            createdLabel="Дата создания"
+            createdAt={view.saved_at}
+            dateFrom={view.date_from}
+            dateTo={view.date_to}
+            laboratory={laboratory !== "" ? laboratory : view.laboratory_id}
           />
+          <ReportMatrix payload={payload} official={official} />
           <ReportActions
             view={view}
             canExport={access.export5vet}

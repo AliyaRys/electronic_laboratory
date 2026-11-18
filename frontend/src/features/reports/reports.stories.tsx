@@ -1,13 +1,14 @@
 /**
- * R03 component stories: significant states of the reporting pieces — the
- * saved matrix (ordinary, long data, narrow), the parameters with the stale
- * warning, and the codes with validation errors. The preview payload here is
- * a frozen fixture, exactly what the screen shows for a saved snapshot.
+ * R03 component stories (DR51): significant states of the reporting pieces —
+ * the full section III matrix (ordinary, long data, narrow), the permanent
+ * date parameters with the stale warning, and the compact report header.
+ * The preview payload here is a frozen fixture, exactly what the screen
+ * shows for a saved snapshot.
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ReportMatrix } from "./ReportMatrix";
+import { ReportHeader } from "./ReportHeader";
 import { ReportParameters } from "./ReportParameters";
-import { ReportCodes } from "./ReportCodes";
 import { ReportHubItem } from "./ReportHubItem";
 import { StatusView } from "../../shared/ui/StatusView";
 import "./reports.css";
@@ -17,19 +18,42 @@ const meta: Meta = {
 };
 export default meta;
 
+const COLUMNS = [
+  "CATTLE",
+  "PIG",
+  "SHEEP_GOAT",
+  "RABBIT_NUTRIA",
+  "CHICKEN",
+  "OTHER_BIRDS",
+  "FISH",
+  "OTHER_ANIMALS",
+];
+
+const rows = [
+  { code: "166", name: "1. Осмотрено (проведено ветеринарно-санитарных экспертиз), всего, единиц", mode: "AUTO" },
+  { code: "167", name: "в том числе: микроскопических", mode: "AUTO" },
+  { code: "168", name: "трихинеллоскопий", mode: "AUTO" },
+  { code: "169", name: "физико-химических", mode: "AUTO" },
+  { code: "170", name: "радиометрических", mode: "AUTO" },
+  { code: "171", name: "других лабораторных исследований", mode: "AUTO" },
+  { code: "172", name: "2. Проведено специальных лабораторных исследований всего, единиц", mode: "AUTO" },
+  { code: "210", name: "Незаразные болезни", mode: "AUTO" },
+  { code: "240", name: "7. Направлено на уничтожение, тонн", mode: "AUTO" },
+  { code: "241", name: "из них: мяса", mode: "AUTO" },
+  { code: "242", name: "субпродуктов", mode: "AUTO" },
+  { code: "173", name: "3. Выявлено случаев болезни при ВСЭ, единиц", mode: "BLANK" },
+  { code: "174", name: "Ящур", mode: "BLANK" },
+  { code: "175", name: "Сибирская язва", mode: "BLANK" },
+  { code: "176", name: "Туберкулез", mode: "BLANK" },
+  { code: "209", name: "Другие инвазионные болезни", mode: "BLANK" },
+];
+
 const payload = {
-  version: 1,
+  version: 2,
+  form_version: "2",
   classification_version: "2026-v1",
-  columns: [
-    "CATTLE",
-    "PIG",
-    "SHEEP_GOAT",
-    "RABBIT_NUTRIA",
-    "CHICKEN",
-    "OTHER_BIRDS",
-    "FISH",
-    "OTHER_ANIMALS",
-  ],
+  columns: COLUMNS,
+  rows,
   matrix: [
     ["12", "34", "2", "0", "5", "7", "0", "1"],
     ["8", "20", "1", "0", "3", "4", "0", "0"],
@@ -38,9 +62,15 @@ const payload = {
     ["2", "4", "0", "0", "0", "1", "0", "0"],
     ["3", "11", "0", "0", "1", "2", "0", "0"],
     ["0", "2", "0", "0", "0", "0", "0", "0"],
+    ["0", "0", "0", "0", "0", "0", "0", "0"],
     ["0.3", "0.25", "0.05", "0", "0", "0", "0", "0"],
     ["0.3", "0.25", "0.05", "0", "0", "0", "0", "0"],
     ["0", "0", "0", "0", "0", "0", "0", "0"],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
   ],
   source_count: 34,
   official: false,
@@ -48,29 +78,17 @@ const payload = {
 
 const longPayload = {
   ...payload,
-  columns: ["OTHER_ANIMALS"],
-  matrix: [
-    ["0.1234567890123456789"],
-    ["0"],
-    ["0"],
-    ["0"],
-    ["0"],
-    ["0"],
-    ["0"],
-    ["0.000000001"],
-    ["0"],
-    ["0"],
-  ],
+  matrix: payload["matrix"].map((row, index) => (index === 0 ? ["0.1234567890123456789", ...row.slice(1)] : row)),
 };
 
 export const МатрицаСохранённогоОтчёта: StoryObj<typeof ReportMatrix> = {
   render: (args) => <ReportMatrix {...args} />,
-  args: { payload, sourceCount: 34, official: false, caption: "Матрица сохранённого отчёта" },
+  args: { payload, official: false },
 };
 
 export const МатрицаСДлиннымиДанными: StoryObj<typeof ReportMatrix> = {
   render: (args) => <ReportMatrix {...args} />,
-  args: { payload: longPayload, sourceCount: 3, official: false, caption: "Матрица сохранённого отчёта" },
+  args: { payload: longPayload, official: false },
 };
 
 export const МатрицаNarrowView: StoryObj<typeof ReportMatrix> = {
@@ -79,7 +97,18 @@ export const МатрицаNarrowView: StoryObj<typeof ReportMatrix> = {
       <ReportMatrix {...args} />
     </div>
   ),
-  args: { payload, sourceCount: 34, official: false, caption: "Матрица сохранённого отчёта" },
+  args: { payload, official: false },
+};
+
+export const ШапкаОтчёта: StoryObj<typeof ReportHeader> = {
+  render: (args) => <ReportHeader {...args} />,
+  args: {
+    createdLabel: "Дата создания",
+    createdAt: "2026-11-18T15:51:00+03:00",
+    dateFrom: "2026-01-01",
+    dateTo: "2026-06-30",
+    laboratory: "Агропромышленный парк",
+  },
 };
 
 export const ПараметрыСПредупреждением: StoryObj<typeof ReportParameters> = {
@@ -89,21 +118,26 @@ export const ПараметрыСПредупреждением: StoryObj<typeof
     busy: false,
     disabled: false,
     stale: true,
+    error: "",
+    onChange: () => undefined,
     onApply: () => undefined,
-    onReset: () => undefined,
-    onPreview: () => undefined,
   },
 };
 
-export const КодыСОшибками: StoryObj<typeof ReportCodes> = {
-  render: (args) => <ReportCodes {...args} />,
+export const ПараметрыNarrowView: StoryObj<typeof ReportParameters> = {
+  render: (args) => (
+    <div style={{ width: 390 }}>
+      <ReportParameters {...args} />
+    </div>
+  ),
   args: {
-    values: { okud: "001", okpo: "", okved: "", oktmo: "", okogu: "", okopf: "", okfs: "" },
-    errors: {
-      okpo: "Код обязателен и не может быть пустым.",
-      okved: "Код обязателен и не может быть пустым.",
-    },
+    applied: { from: "2026-01-01", to: "" },
+    busy: false,
     disabled: false,
+    stale: false,
+    error: "",
+    onChange: () => undefined,
+    onApply: () => undefined,
   },
 };
 

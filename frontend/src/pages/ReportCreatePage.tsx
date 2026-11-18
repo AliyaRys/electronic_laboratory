@@ -1,16 +1,16 @@
 /**
- * ReportCreatePage (R03, API-08, SC-080–088): preview → codes → immutable save.
+ * ReportCreatePage (R03, API-08, DR51 §5/§6): parameters → preview → save.
  *
  * The flow keeps the R02 contract strictly (DR48 §3.4):
- * - the period is any valid calendar range, chosen in the shared popover;
- * - the preview is the server's signed calculation shown verbatim (the client
- *   never recomputes);
- * - changing the applied range clears the preview AND the codes and shows the
- *   warning — the signed payload no longer matches the inputs;
- * - a failed save (network or 4xx) preserves both the parameters and the
- *   entered codes (nothing is cleared on failure);
- * - the save sends exactly the signed preview + the seven trimmed codes and
- *   navigates to the saved report.
+ * - the two date inputs and the primary «Применить» apply the range AND
+ *   request the preview in one action;
+ * - the preview is the server's signed calculation shown verbatim (the
+ *   client never recomputes);
+ * - changing an input marks the shown preview stale and blocks the save
+ *   until a new «Применить»; a failed command never clears the inputs;
+ * - the save sends exactly the signed preview (DR51 §6.2: the seven
+ *   organizational codes are cancelled and never requested) and navigates
+ *   to the saved report.
  */
 import "./../features/reports/reports.css";
 import { useState } from "react";
@@ -21,9 +21,8 @@ import { useMe } from "../shared/api/me";
 import { useCommand } from "../shared/api/command";
 import { StatusView } from "../shared/ui/StatusView";
 import { Button } from "../shared/ui/Button";
-import { type AppliedDateRange } from "../shared/ui/DateRangePopover";
-import { ReportParameters } from "../features/reports/ReportParameters";
-import { ReportCodes, CODE_FIELDS } from "../features/reports/ReportCodes";
+import { ReportParameters, type AppliedDateRange } from "../features/reports/ReportParameters";
+import { ReportHeader } from "../features/reports/ReportHeader";
 import { ReportMatrix } from "../features/reports/ReportMatrix";
 import {
   previewReport,
@@ -36,34 +35,12 @@ import { useDirtyStore } from "../entities/session/context";
 import { useDirtyGuard } from "../features/context/SwitchContext";
 import { reportAccess } from "../features/reports/reportCapabilities";
 
-const CODE_KEYS = CODE_FIELDS.map((field) => field.key);
-
-const EMPTY_CODES: Record<string, string> = {
-  okud: "",
-  okpo: "",
-  okved: "",
-  oktmo: "",
-  okogu: "",
-  okopf: "",
-  okfs: "",
-};
-
 export function ReportCreatePage(): React.ReactElement {
   return (
     <RequireSession>
       <ReportCreateContent />
     </RequireSession>
   );
-}
-
-/** The seven codes are trimmed and must be non-blank (API-08 trim nonblank). */
-function validateCodes(values: Record<string, string>): Record<string, string> {
-  const errors: Record<string, string> = {};
-  for (const key of CODE_KEYS) {
-    const trimmed = (values[key] ?? "").trim();
-    if (trimmed === "") errors[key] = "Код обязателен и не может быть пустым.";
-  }
-  return errors;
 }
 
 function ReportCreateContent(): React.ReactElement {
@@ -74,52 +51,35 @@ function ReportCreateContent(): React.ReactElement {
 
   const [applied, setApplied] = useState<AppliedDateRange>({ from: "", to: "" });
   const [preview, setPreview] = useState<SignedPreview | null>(null);
-  const [codes, setCodes] = useState<Record<string, string>>({ ...EMPTY_CODES });
-  const [codeErrors, setCodeErrors] = useState<Record<string, string>>({});
-  const [paramWarning, setParamWarning] = useState(false);
+  const [stale, setStale] = useState(false);
+  const [rangeError, setRangeError] = useState("");
 
   const previewCommand = useCommand<SignedPreview>();
   const saveCommand = useCommand<unknown>();
 
-  const dirty = CODE_KEYS.some((key) => (codes[key] ?? "").trim() !== "");
-  useDirtyGuard(dirty, "Создание отчёта");
+  useDirtyGuard(false, "Создание отчёта");
 
   const previewPayload: Record<string, unknown> | null = (preview?.payload ?? null) as Record<
     string,
     unknown
   > | null;
 
-  const clearPreview = (): void => {
-    setPreview(null);
-    setCodes({ ...EMPTY_CODES });
-    setCodeErrors({});
-    setParamWarning(true);
-  };
-
-  const applyRange = (range: AppliedDateRange): void => {
-    setApplied(range);
-    if (preview !== null) clearPreview();
-  };
-
-  const resetRange = (): void => {
-    setApplied({ from: "", to: "" });
-    if (preview !== null) clearPreview();
-  };
-
-  const runPreview = (): void => {
-    setParamWarning(false);
+  /** One «Применить»: apply the range and request the preview together. */
+  const applyAndPreview = (range: AppliedDateRange): void => {
+    setRangeError("");
+    setStale(false);
     void previewCommand.submit(
       async (ctx) => {
         const params: ReportPreviewParams = {
           report_type: "5VET_SECTION_III",
           laboratory_id: labId ?? "",
-          date_from: applied.from,
-          date_to: applied.to,
+          date_from: range.from,
+          date_to: range.to,
         };
         const result = await previewReport(params)(ctx);
         if (result.response.ok && result.data !== undefined) {
           setPreview(result.data);
-          setCodeErrors({});
+          setApplied(range);
         }
         return result;
       },
@@ -131,24 +91,10 @@ function ReportCreateContent(): React.ReactElement {
   const saveProblem = saveCommand.status === "error" ? saveCommand.error : null;
 
   const runSave = (): void => {
-    if (preview === null) return;
-    const errors = validateCodes(codes);
-    setCodeErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-    const trimmed: Record<string, string> = {};
-    for (const key of CODE_KEYS) trimmed[key] = (codes[key] ?? "").trim();
-    const body = {
-      okud: trimmed["okud"] ?? "",
-      okpo: trimmed["okpo"] ?? "",
-      okved: trimmed["okved"] ?? "",
-      oktmo: trimmed["oktmo"] ?? "",
-      okogu: trimmed["okogu"] ?? "",
-      okopf: trimmed["okopf"] ?? "",
-      okfs: trimmed["okfs"] ?? "",
-    };
+    if (preview === null || stale) return;
     void saveCommand.submit(
       async (ctx) => {
-        const result = await saveReport(preview, body)(ctx);
+        const result = await saveReport(preview)(ctx);
         if (result.response.ok && result.data !== undefined) {
           const saved = result.data as { id?: string };
           if (typeof saved.id === "string") {
@@ -183,10 +129,10 @@ function ReportCreateContent(): React.ReactElement {
     );
   }
 
-  const sourceCount =
-    previewPayload !== null && typeof previewPayload["source_count"] === "number"
-      ? (previewPayload["source_count"] as number)
-      : 0;
+  const laboratoryName =
+    previewPayload !== null && typeof previewPayload["laboratory"] === "object" && previewPayload["laboratory"] !== null
+      ? String((previewPayload["laboratory"] as Record<string, unknown>)["name"] ?? "")
+      : "";
 
   return (
     <div className="vse-app vse-page">
@@ -196,14 +142,17 @@ function ReportCreateContent(): React.ReactElement {
         applied={applied}
         busy={previewCommand.status === "pending"}
         disabled={saveCommand.status === "pending"}
-        stale={paramWarning}
-        onApply={applyRange}
-        onReset={resetRange}
-        onPreview={runPreview}
+        stale={stale}
+        error={rangeError}
+        onChange={(range) => {
+          setApplied(range);
+          if (preview !== null) setStale(true);
+        }}
+        onApply={applyAndPreview}
       />
 
       {previewCommand.status === "pending" ? (
-        <StatusView state="loading" title="Считаем предварительный просмотр…" />
+        <StatusView state="loading" title="Формируем предварительный просмотр…" />
       ) : null}
       {previewProblem !== null ? (
         <StatusView
@@ -223,23 +172,19 @@ function ReportCreateContent(): React.ReactElement {
 
       {previewPayload !== null ? (
         <>
-          <ReportMatrix
-            payload={previewPayload}
-            sourceCount={sourceCount}
-            official={false}
-            caption="Предварительный просмотр матрицы"
+          <ReportHeader
+            createdLabel="Дата формирования"
+            createdAt={String(previewPayload["generated_at"] ?? "")}
+            dateFrom={String(previewPayload["date_from"] ?? "")}
+            dateTo={String(previewPayload["date_to"] ?? "")}
+            laboratory={laboratoryName}
           />
-          <ReportCodes
-            values={codes}
-            onChange={(key, value) => setCodes((previous) => ({ ...previous, [key]: value }))}
-            errors={codeErrors}
-            disabled={saveCommand.status === "pending"}
-          />
+          <ReportMatrix payload={previewPayload} official={false} />
           <div className="vse-report-actions">
             <Button
               type="button"
               variant="primary"
-              disabled={saveCommand.status === "pending"}
+              disabled={saveCommand.status === "pending" || stale}
               busy={saveCommand.status === "pending"}
               busyLabel="Сохраняем…"
               onClick={runSave}
@@ -255,7 +200,7 @@ function ReportCreateContent(): React.ReactElement {
                   ? "Отчёт этого периода уже сохранён."
                   : saveProblem.code === "REPORT_PREVIEW_INVALID"
                     ? "Подписанный просмотр больше не действителен — сформируйте его заново."
-                    : "Не удалось сохранить отчёт. Введённые параметры и коды сохранены."
+                    : "Не удалось сохранить отчёт. Введённые параметры сохранены."
               }
               detail={saveProblem.detail}
               trace={saveProblem.trace_id}

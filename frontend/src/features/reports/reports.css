@@ -142,12 +142,6 @@
   color: var(--app-text-muted, #555555);
 }
 
-.vse-report-codes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 4px 16px;
-}
-
 .vse-report-warning {
   margin-top: 8px;
   padding: 8px 12px;
@@ -167,28 +161,117 @@
   color: #444444;
 }
 
+.vse-report-period {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: end;
+}
+
+/* DR51 §6.1: the compact report header — one title and three metadata rows,
+   no decorative card grid. */
+.vse-report-header {
+  margin-block: 16px;
+}
+
+.vse-report-header-title {
+  margin: 0 0 6px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.vse-report-header-meta {
+  margin: 0;
+  display: grid;
+  gap: 2px 20px;
+}
+
+.vse-report-header-meta dt {
+  display: inline;
+  font-size: 13px;
+  color: var(--app-text-muted, #555555);
+}
+
+.vse-report-header-meta dd {
+  display: inline;
+  margin: 0;
+  font-size: 14px;
+}
+
+.vse-report-header-meta div + div::before {
+  content: "";
+}
+
+.vse-report-section-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* DR51 §7: one full-width printed table; horizontal scroll only when needed.
+   The row code column never wraps (tabular digits, no word breaking). */
+.vse-report-matrix {
+  border: 1px solid var(--app-line, #d0d0d0);
+  border-radius: 6px;
+}
+
 .vse-report-table {
+  min-width: 1260px;
   width: 100%;
   border-collapse: collapse;
-  table-layout: auto;
+  table-layout: fixed;
+  font-size: 11.5px;
+  line-height: 1.3;
 }
 
 .vse-report-table th,
 .vse-report-table td {
   border: 1px solid #d0d0d0;
-  padding: 4px 8px;
+  padding: 3px 6px;
   text-align: left;
   vertical-align: top;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .vse-report-table thead th {
   background: #f2f2f2;
+  text-align: center;
+  font-weight: 600;
 }
 
 .vse-report-table tbody th {
   font-weight: normal;
-  width: 32%;
+  min-width: 330px;
+}
+
+.vse-report-table tbody th.vse-report-row-auto {
+  font-weight: 650;
+}
+
+.vse-report-row-code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  width: 68px;
+}
+
+.vse-report-col-code {
+  width: 68px;
+}
+
+.vse-report-col-name {
+  min-width: 330px;
+}
+
+.vse-report-col-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.vse-report-cell-blank {
+  background: transparent;
 }
 
 .vse-report-actions {
@@ -233,23 +316,6 @@
 
 .vse-report-row .app-button {
   margin-left: auto;
-}
-
-.vse-report-summary {
-  display: grid;
-  gap: 4px 20px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  margin-block: 12px;
-}
-
-.vse-report-summary dt {
-  font-size: 0.85rem;
-  color: var(--app-text-muted, #555555);
-}
-
-.vse-report-summary dd {
-  margin: 0 0 8px;
-  overflow-wrap: anywhere;
 }
 
 .vse-report-metric-grid {

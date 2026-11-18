@@ -1,41 +1,72 @@
 /**
- * ReportMatrix (SC-081–088, API-08): the READ-ONLY matrix of a preview or a
- * saved snapshot. The client never recomputes — the cells show the payload's
- * own values; the two manual rows are marked «Не рассчитывается», empty
- * automatic cells show «—». The preliminary marking follows the snapshot's
- * ``official`` flag (INPUT-04), never the live state.
+ * ReportMatrix (DR51 §2/§7): the READ-ONLY full section III table of a
+ * preview or a saved snapshot. One printed table of 47 rows × 10 physical
+ * columns; the client never recomputes — the cells show the payload's own
+ * values, BLANK rows render empty cells and a calculated zero renders «0».
+ * The two-level thead repeats the form exactly (the «Птица» group over the
+ * two bird subcolumns and the printed column numbers 1–10); the preliminary
+ * marking follows the snapshot's ``official`` flag, never the live state.
  */
 import "./reports.css";
 import { buildMatrix, displayCell, type MatrixModel } from "./matrix";
 
 export interface ReportMatrixProps {
   payload: Record<string, unknown>;
-  sourceCount: number;
   official: boolean;
-  caption: string;
 }
 
-/** One table per printed column keeps a narrow screen readable without clipping. */
-export function ReportMatrix({
-  payload,
-  sourceCount,
-  official,
-  caption,
-}: ReportMatrixProps): React.ReactElement {
-  const model: MatrixModel = buildMatrix(payload, sourceCount);
+const COLUMN_NUMBERS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+
+function cellLabel(rowCode: string, column: string): string {
+  return `Строка ${rowCode}, ${column}: значение системой не заполняется`;
+}
+
+export function ReportMatrix({ payload, official }: ReportMatrixProps): React.ReactElement {
+  const model: MatrixModel = buildMatrix(payload);
+  const columnCount = model.columns.length + 2;
   return (
     <section className="vse-report-block" aria-label="Матрица отчёта">
-      <h2>{caption}</h2>
       {!official ? <p className="vse-report-preliminary">Предварительная форма</p> : null}
+      <h2 className="vse-report-section-title">Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках</h2>
       <div className="vse-report-matrix" style={{ overflowX: "auto" }}>
         <table className="vse-report-table">
           <thead>
             <tr>
-              <th scope="col">Наименование показателя</th>
-              <th scope="col">Код</th>
-              {model.columns.map((column) => (
-                <th scope="col" key={column}>
-                  {column}
+              <th scope="col" rowSpan={2} className="vse-report-col-name">
+                Наименование показателей
+              </th>
+              <th scope="col" rowSpan={2} className="vse-report-col-code">
+                № строки
+              </th>
+              {model.columns.map((column) =>
+                column === "Птица: куры" ? (
+                  <th key="birds" scope="colgroup" colSpan={2}>
+                    Птица
+                  </th>
+                ) : column === "Птица: другие виды" ? null : (
+                  <th key={column} scope="col" rowSpan={2}>
+                    {column}
+                  </th>
+                ),
+              )}
+            </tr>
+            <tr>
+              {model.columns.map((column) =>
+                column === "Птица: куры" ? (
+                  <th key={column} scope="col" aria-label="Птица: куры">
+                    куры
+                  </th>
+                ) : column === "Птица: другие виды" ? (
+                  <th key={column} scope="col" aria-label="Птица: другие виды">
+                    другие виды
+                  </th>
+                ) : null,
+              )}
+            </tr>
+            <tr>
+              {COLUMN_NUMBERS.slice(0, columnCount).map((number) => (
+                <th key={number} scope="col" className="vse-report-col-number">
+                  {number}
                 </th>
               ))}
             </tr>
@@ -43,21 +74,23 @@ export function ReportMatrix({
           <tbody>
             {model.rows.map((row) => (
               <tr key={row.code}>
-                <th scope="row">{row.name}</th>
-                <td>{row.automatic ? row.code : "—"}</td>
-                {row.values.map((_, index) => (
-                  <td key={index}>{displayCell(row, index)}</td>
-                ))}
+                <th scope="row" className={row.automatic ? "vse-report-row-auto" : undefined}>
+                  {row.name}
+                </th>
+                <td className="vse-report-row-code">{row.code}</td>
+                {model.columns.map((column, index) => {
+                  const value = displayCell(row, index);
+                  return value === null ? (
+                    <td key={index} className="vse-report-cell-blank" aria-label={cellLabel(row.code, column)} />
+                  ) : (
+                    <td key={index}>{value}</td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="app-field-message">
-        Источников в снимке: {sourceCount}. Матрица показана строго по сохранённому снимку и не
-        пересчитывается при изменении или удалении исходных ВСЭ (SC-084, AT-18).
-      </p>
-      {model.versions.length > 0 ? <p className="app-field-message">{model.versions.join("; ")}.</p> : null}
     </section>
   );
 }

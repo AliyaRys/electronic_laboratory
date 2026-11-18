@@ -708,18 +708,18 @@ export type PricingTableVariant = "live-examination" | "saved-examination";
 
 Заполняет исполнитель до merge:
 
-- Feature branch:
-- Commit ТЗ:
-- Implementation commits:
-- Review/fix commits:
-- Whole-branch review:
-- Unit tests:
-- Typecheck/lint/build:
-- Storybook:
-- UI/E2E:
-- Browser screenshots 1440/1180/980/800/390 and 200%:
-- Docker Compose rebuild/health:
-- Smoke result:
-- Merge commit in `main`:
-- Remote push:
-- Honest not-run / pre-existing failures:
+- Feature branch: `feature/DR47-journal-reconciliation-pricing-ui-fixes` (worktree `C:\electronic_lab_dev-dr47`, base main 2975d25)
+- Commit ТЗ: `e0f1fc6` docs: DR47 journal, reconciliation and pricing UI spec
+- Implementation commits: `d846e19` (task 1 red), `efa4301` (task 2), `7c98843` (task 3), `251c71d`+`0e7adb5` (task 4), `f760064`+`614756e` (task 5), `6b7b55a`+`9bf6e34` (task 6), `ebafa18` (gates cleanups)
+- Review/fix commits: не выполнялись отдельными reviewer-субагентами (по брифу контроллера reviewer-агентов не создавать); самопроверка правил ТЗ выполнена по ходу
+- Whole-branch review: не проводился (Task 8 — контроллер)
+- Unit tests: `npm.cmd test -- --run` из `frontend` — 73 files / 629 tests PASSED (vitest; css:false, jsdom)
+- Typecheck/lint/build: `typecheck` 0, `lint` 0, `build` 0 (все из `frontend`)
+- Storybook: `npm.cmd run build-storybook` из `frontend` — 0; из корня — 0 (после `npm.cmd ci`)
+- UI/E2E: `npm.cmd run test:e2e` — 78 passed / 20 failed: все падения — таймаут логина/сценариев без работающего backend (`identity-seed.local.json` скопирован из main-репо; backend в этой среде не запущен); затронутые DR47 спеки (examinations 9–11) падают тем же способом. `npm.cmd run test:ui` (корень) — 229 passed / 67 failed, из них 34 — pre-existing (на main тоже 34 failed); дополнительные 33 — Storybook-истории корневого каталога свежей сборки с axe `color-contrast` и т. п. — корневые `components/` макеты веткой не менялись (git diff main без frontend пуст, кроме evidence-скриншотов из коммита ТЗ)
+- Browser screenshots 1440/1180/980/800/390 and 200%: not-run — в этой среде нет работающего backend/контейнеров для живых страниц; контроллер повторит (макетная геометрия перенесена из `journal.html`/CSS-значений §2.3)
+- Docker Compose rebuild/health: not-run (Task 8 — контроллер)
+- Smoke result: not-run (Task 8 — контроллер)
+- Merge commit in `main`: not performed (Task 8 — контроллер)
+- Remote push: not performed (Task 8 — контроллер)
+- Honest not-run / pre-existing failures: см. UI/E2E и screenshots выше; также не создавались reviewer-субагенты и не менялись backend/OpenAPI/модели/миграции/права/маршруты; `acceptance.local.json` main-репо не тронут; Playwright-прогон `test:ui` перезаписал evidence-скриншоты в worktree — восстановлены через `git checkout -- docs/implementation/evidence`

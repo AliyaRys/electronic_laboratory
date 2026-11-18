@@ -392,7 +392,7 @@ export function FindingsEditor({
   useEffect(() => {
     if (items.length > previousCount.current) {
       const rows = rootRef.current?.querySelectorAll(".vse-finding-row");
-      rows?.[rows.length - 1]?.querySelector(".app-select-trigger")?.focus();
+      rows?.[rows.length - 1]?.querySelector<HTMLElement>(".app-select-trigger")?.focus();
     }
     previousCount.current = items.length;
   }, [items.length]);
@@ -410,7 +410,7 @@ export function FindingsEditor({
           {/* DR52 §7: every dropdown of the form uses the canonical shared
               SelectDropdown — the same arrow, keyboard handling and ARIA. */}
           <SelectDropdown
-            id={`finding-${index}-${title}`}
+            id={`finding-${index}-disease`}
             label={`${title}: наименование болезни`}
             hideLabel
             value={item.disease}

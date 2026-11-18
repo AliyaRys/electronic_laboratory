@@ -259,7 +259,6 @@ function ExaminationViewContent(): React.ReactElement {
           {/* ТЗ DR52 §8: the readonly business sections share ONE
               section-stack container — the same 18px rhythm as
               ``.vse-exam-form``; no per-section margins. */}
-          <div className="vse-exam-view-sections">
           {partyView === null ? (            party.isLoading ? null : (
               <StatusView
                 state="network-error"
@@ -269,6 +268,7 @@ function ExaminationViewContent(): React.ReactElement {
             )
           ) : (
             <>
+              <div className="vse-exam-view-sections">
               {/* 1 «Сведения об экспертизе»: the card facts + the document. */}
               <ExaminationFactsSection party={partyView}>
                 <div className="vse-span6">
@@ -401,7 +401,7 @@ function ExaminationViewContent(): React.ReactElement {
 
               {/* 6 «Расчёт стоимости услуг»: the frozen snapshot, no preview. */}
               <SavedPricingTable snapshot={savedSnapshot(view)} />
-          </div>
+              </div>
             </>
           )}
         </>

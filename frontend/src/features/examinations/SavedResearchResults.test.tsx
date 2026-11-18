@@ -57,6 +57,9 @@ function cardWith(
     stamp: "Клеймо-1",
     status: "COMPLETED",
     sent_to_lab: false,
+    vse_fair: false,
+    reconciliation_fair: false,
+    fair_source: "NONE",
     researches: Object.entries(researches).map(([indicatorId, item]) => ({
       indicatorId,
       kind: item.kind,

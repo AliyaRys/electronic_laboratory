@@ -4,6 +4,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { PricingSection, type PricingPreviewState } from "./PricingPreview";
+import { SnapshotPricingTable } from "./PricingSnapshotTable";
 import type { PricingSnapshotView } from "./api";
 
 const snapshot: PricingSnapshotView = {
@@ -50,8 +51,8 @@ const state: PricingPreviewState = { status: "success", snapshot };
 
 // --- ТЗ DR47 §2.6: the live-examination variant of the shared renderer ---------
 
-describe("PricingSection live table (DR47)", () => {
-  it("renders exactly the four named columns with the external total and the waiver", () => {
+describe("PricingSection live table (DR47/DR52)", () => {
+  it("renders exactly the four named columns with the external total", () => {
     render(<PricingSection state={state} disabled={false} onRetry={() => {}} />);
     expect(screen.getByRole("columnheader", { name: "Исследование" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Количество" })).toBeTruthy();
@@ -65,8 +66,27 @@ describe("PricingSection live table (DR47)", () => {
     expect(total).not.toBeNull();
     expect(total?.querySelector("strong")?.textContent).toContain("120,00 ₽");
     expect(total?.closest("table")).toBeNull();
-    // The live form keeps the readonly Ярмарка indicator.
-    expect(document.querySelector('[data-testid="pricing-waiver"]')).not.toBeNull();
+  });
+
+  it("the CONTROLLED waiver node sits in the shared footer with the total (DR52 §3.5)", () => {
+    render(
+      <PricingSection
+        state={state}
+        disabled={false}
+        onRetry={() => {}}
+        waiver={
+          <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
+            <input type="checkbox" checked={false} onChange={() => {}} />
+            <span>Ярмарка</span>
+          </label>
+        }
+      />,
+    );
+    const waiver = document.querySelector('[data-testid="pricing-waiver"]');
+    expect(waiver).not.toBeNull();
+    const footer = waiver?.closest(".vse-rec-invoice-footer");
+    expect(footer).not.toBeNull();
+    expect(footer?.querySelector("p.vse-rec-invoice-total")).not.toBeNull();
   });
 
   it("fair pricing keeps the honest zero total with the live waiver", () => {
@@ -75,9 +95,26 @@ describe("PricingSection live table (DR47)", () => {
         state={{ status: "success", snapshot: { ...snapshot, total: "0.00", fair: true } }}
         disabled={false}
         onRetry={() => {}}
+        waiver={
+          <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
+            <input type="checkbox" checked onChange={() => {}} />
+            <span>Ярмарка</span>
+          </label>
+        }
       />,
     );
     expect(screen.getAllByText("0,00 ₽").length).toBeGreaterThanOrEqual(2);
     expect(document.querySelector('[data-testid="pricing-waiver"]')).not.toBeNull();
+  });
+
+  it("the saved variant never renders the waiver (DR47 §2.1)", () => {
+    render(
+      <SnapshotPricingTable
+        snapshot={{ ...snapshot, fair: true, total: "0.00" }}
+        variant="saved-examination"
+        waiver={<label data-testid="pricing-waiver">Ярмарка</label>}
+      />,
+    );
+    expect(document.querySelector('[data-testid="pricing-waiver"]')).toBeNull();
   });
 });

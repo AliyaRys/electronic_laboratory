@@ -228,6 +228,8 @@ export function formSchemaFor(mode: "WAITING" | "COMPLETED"): z.ZodType {
     number: z.string().trim().min(1, "Введите номер ВСЭ."),
     stamp: z.string().trim().min(1, "Введите ветеринарное клеймо."),
     sentToLab: z.boolean(),
+    // DR52 §3: the card's own VSE-only fair mark.
+    vseFair: z.boolean(),
     sample: sampleSchema,
     // DR35 §12.3: the specialist is a server-validated UUID; the readable
     // mirror only checks the non-empty selection (the options are scoped).

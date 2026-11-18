@@ -404,7 +404,6 @@ export function ExaminationForm({
             Пробы отправлены на специальные лабораторные исследования
           </label>
         </div>
-          </div>
           {view === null || view.status === "COMPLETED" ? (
             <OutcomeFields
               value={values.outcome}

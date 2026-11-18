@@ -19,6 +19,7 @@ function baseValues(): ExaminationFormValues {
     number: "",
     stamp: "",
     sentToLab: false,
+    vseFair: false,
     sample: { mode: "NEW", collectedOn: "", massKg: "", collectionId: "", expectedRevision: "" },
     researches: {
       [F18]: emptyResearch({ performed: true, value: "MATCH" }),
@@ -77,7 +78,7 @@ describe("ResearchFields addzone and disease editors (ТЗ DR46 §3.5)", () => {
     // DOM order: the active editor goes BEFORE the common addzone.
     const position = editor !== null ? editor.compareDocumentPosition(addzone as Node) : 0;
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const select = editor?.querySelector(".vse-finding-row select") ?? null;
+    const select = editor?.querySelector<HTMLElement>(".vse-finding-row .app-select-trigger") ?? null;
     expect(document.activeElement).toBe(select);
   });
 
@@ -87,7 +88,7 @@ describe("ResearchFields addzone and disease editors (ТЗ DR46 §3.5)", () => {
     await act.click(screen.getByRole("button", { name: "Добавить инвазионные болезни" }));
     await act.click(screen.getByRole("button", { name: "Добавить инвазионные болезни" }));
     expect(document.querySelectorAll(".vse-findings .vse-finding-row").length).toBe(2);
-    const selects = document.querySelectorAll(".vse-findings .vse-finding-row select");
+    const selects = document.querySelectorAll(".vse-findings .vse-finding-row .app-select-trigger");
     expect(selects.length).toBe(2);
     // Removing rows: the last remove button deletes only its own row.
     await act.click(screen.getByRole("button", { name: "Удалить инвазионную болезнь 2" }));

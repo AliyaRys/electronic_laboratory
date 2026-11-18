@@ -39,6 +39,7 @@ function valuesWith(researches: ExaminationFormValues["researches"]): Examinatio
     number: "1",
     stamp: "клеймо",
     sentToLab: false,
+    vseFair: false,
     sample: {
       mode: "NEW",
       collectedOn: "2026-11-17",

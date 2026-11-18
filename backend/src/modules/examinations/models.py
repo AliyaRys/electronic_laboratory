@@ -51,6 +51,9 @@ class Examination(Base):
     stamp: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     sent_to_lab: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
+    # DR52 §3: собственный признак бесплатности ВСЭ (ярмарка карточки);
+    # никогда не мутирует reconciliation.fair.
+    vse_fair: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
     research_snapshot: Mapped[list[object]] = mapped_column(JSONB, nullable=False)
     findings_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     pricing_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)

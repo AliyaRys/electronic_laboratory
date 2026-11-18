@@ -115,6 +115,9 @@ class ExaminationWrite(StrictModel):
     invasive_findings: list[InvasiveFinding] = Field(default_factory=list)
     noncontagious_findings: list[NoncontagiousFinding] = Field(default_factory=list, max_length=10)
     sent_to_lab: bool = False
+    # DR52 §3: the card's own VSE-only fair mark; reconciliation.fair is never
+    # written from here.
+    vse_fair: bool = False
     sample: SampleSelection
     # DR35 §12.3: the chosen Госветслужбы specialist — a distinct audited
     # entity from created_by/updated_by. A new card requires an explicit
@@ -211,6 +214,11 @@ class ExaminationView(BaseModel):
     outcome: str | None
     direction: str | None
     reason: str | None
+    # DR52 §3.3: the honest fair state — the saved card flag, the frozen
+    # reconciliation flag and the typed source of the effective free rule.
+    vse_fair: bool
+    reconciliation_fair: bool
+    fair_source: str
     created_by: str
     # DR35 §12.3: the displayed specialist (specialist_id, falling back to the
     # audit actor for pre-DR35 rows) and the ФИО frozen at save time.
@@ -281,6 +289,8 @@ class ExaminationFormView(BaseModel):
     # it — the frontend never guesses by name.
     required_research_ids: list[str]
     eligible_specialists: list[EligibleSpecialist]
+    # DR52 §3.4: the frozen reconciliation flag drives the checkbox state.
+    reconciliation_fair: bool
     source_revision: str
     reconciliation_revision: int | None
     revision: int
@@ -291,6 +301,9 @@ class PricingPreviewRequest(StrictModel):
     performed. No money, no quantity, no totals are ever accepted."""
 
     researches: list[ResearchWrite] = Field(default_factory=list)
+    # DR52 §3.3: the preview honours the same VSE-only waiver as the save,
+    # so the confirmed amount always matches the final one.
+    vse_fair: bool = False
 
 
 class PricingPreviewResponse(StrictModel):
@@ -301,4 +314,7 @@ class PricingPreviewResponse(StrictModel):
     accepted_quantity: str
     accepted_unit_id: str
     fair: bool
+    # DR52 §3.3: WHY the preview is free — RECONCILIATION (inherited from the
+    # confirmed reconciliation), EXAMINATION (the card's own waiver) or NONE.
+    fair_source: str
     revision: int

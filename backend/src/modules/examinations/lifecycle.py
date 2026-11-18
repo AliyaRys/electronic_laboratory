@@ -36,7 +36,13 @@ from backend.src.modules.arrivals.confirmation import downstream_route
 from backend.src.modules.arrivals.models import Party
 from backend.src.modules.catalog_pricing.schemas import PricingSnapshot, ResearchValue, parse_decimal
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
-from backend.src.modules.examinations.commands import _price_conflict, _resolve_specialist, pricing_request_for
+from backend.src.modules.examinations.commands import (
+    _price_conflict,
+    _reconciliation_for,
+    _resolve_specialist,
+    fair_source,
+    pricing_request_for,
+)
 from backend.src.modules.examinations.models import Examination, ExaminationSample
 from backend.src.modules.examinations.queries import build_view, get_examination, get_view
 from backend.src.modules.examinations.schemas import ExaminationView, ExaminationWrite, OutcomeWrite
@@ -153,6 +159,7 @@ async def update_examination(
             ResearchValue(indicator_id=result.indicator_id, performed=True, value=result.value)
             for result in payload.researches
         ],
+        vse_fair=payload.vse_fair,
     )
     previous_pricing = row.pricing_snapshot
     pricing = await evaluate_and_price(work, pricing_request, PricingSnapshot.model_validate(previous_pricing))
@@ -205,6 +212,10 @@ async def update_examination(
     row.number = payload.number
     row.stamp = payload.stamp
     row.sent_to_lab = payload.sent_to_lab
+    # DR52 §3.2: the card's own VSE-only waiver is editable same-day and never
+    # touches the reconciliation fair flag.
+    previous_vse_fair = bool(row.vse_fair)
+    row.vse_fair = payload.vse_fair
     row.specialist_id = specialist_id
     row.specialist_name = specialist_name
     row.research_snapshot = [
@@ -220,6 +231,22 @@ async def update_examination(
         row.direction = payload.direction
         row.reason = payload.reason.strip() if payload.reason is not None else None
     row.rev = int(row.rev) + 1
+    if previous_vse_fair != payload.vse_fair:
+        # DR52 §3.2: the change of the card's waiver is audited with the old
+        # and the new value and the source of the effective free rule.
+        db.add(
+            TechnicalEvent(
+                actor_id=ctx.actor_id,
+                object_uuid=row.id,
+                action="examination:vse_fair",
+                result=(
+                    f"vse_fair={str(previous_vse_fair).lower()}->{str(payload.vse_fair).lower()}:"
+                    f"{fair_source(await _reconciliation_for(db, row.party_id), payload.vse_fair)}"
+                ),
+                trace_id=uuid.uuid4().hex,
+                revision=row.rev,
+            )
+        )
     db.add(
         TechnicalEvent(
             actor_id=ctx.actor_id,

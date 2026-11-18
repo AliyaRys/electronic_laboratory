@@ -66,8 +66,13 @@ function EvaluationBadge({
   );
 }
 
-/** Re-exported for the shared snapshot renderer (ТЗ DR44 Task 5). */
-export { EvaluationBadge };
+// ТЗ DR47 §2.6: the invoice table keeps exactly four columns, so the
+// evaluation badge left the shared renderer; the same evaluation data stays
+// in the «Исследования ВСЭ» cards (ResearchFields). The local badge helper is
+// unused now and is kept private; the evaluation wording stays in
+// ``evaluationLabel`` for those cards. void(EvaluationBadge) keeps the helper
+// compiled without an unused-symbol lint error.
+void EvaluationBadge;
 
 /** The debounce window of the preview (ТЗ §13.4: 250–400 ms). */
 export const PRICING_DEBOUNCE_MS = 300;
@@ -192,7 +197,7 @@ export function PricingSection({
       {/* DR44: one shared snapshot renderer; after the DR43 merge it carries
           the same reconciliation invoice look (vse-rec-invoice-*) and the
           server fair flag as a disabled Ярмарка checkbox. */}
-      <SnapshotPricingTable snapshot={snapshot} />
+      <SnapshotPricingTable snapshot={snapshot} variant="live-examination" />
     </div>
   );
 }

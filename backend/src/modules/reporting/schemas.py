@@ -12,12 +12,13 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from backend.src.modules.catalog_pricing.schemas import ANIMAL_COLUMNS
 
 __all__ = [
     "AnimalColumn",
+    "FormRow",
     "MaterialKind",
     "SpeciesClassification",
     "ClassificationMap",
@@ -25,13 +26,15 @@ __all__ = [
     "ReportMatrix",
     "OperationalView",
     "ReportPeriod",
-    "ROW_CODES",
+    "SECTION_III_ROWS",
+    "SECTION_III_ROW_CODES",
     "ROW_NAMES",
+    "AUTOMATIC_ROW_CODES",
+    "ROW_CODES",
     "COUNT_ROWS",
     "MASS_ROWS",
     "ReportPreviewParams",
     "SignedPreview",
-    "ReportCodesWrite",
     "SaveReportWrite",
     "ReportSnapshotView",
     "ReportSummary",
@@ -44,31 +47,98 @@ AnimalColumn = Literal[
 MaterialKind = Literal["MEAT", "OFFAL"]
 
 #: The animal columns of the calculator: exactly the classification map
-#: columns of INPUT-05/DATA-04. The printed form merges «птица — куры/другие»
-#: at projection time (R02/R03); the data layer never invents a column.
+#: columns of INPUT-05/DATA-04. The printed form keeps CHICKEN and
+#: OTHER_BIRDS as two separate columns under the «Птица» group (DR51 §2.1);
+#: the data layer never invents or merges a column.
 COLUMNS: tuple[str, ...] = ANIMAL_COLUMNS
 
-#: The only automatically calculated rows of the official form (INPUT-04):
-#: every other printed row is «Не рассчитывается», never guessed.
-ROW_CODES: tuple[str, ...] = ("166", "167", "168", "169", "170", "171", "172", "240", "241", "242")
-COUNT_ROWS: frozenset[str] = frozenset({"166", "167", "168", "169", "170", "171", "172"})
-MASS_ROWS: frozenset[str] = frozenset({"240", "241", "242"})
 
-# Provisional display names of the automatic rows (ФТ 09 table). The official
-# form is not approved yet (INPUT-04, official=false); R02/R03 projections may
-# relabel without changing the arithmetic.
-ROW_NAMES: dict[str, str] = {
-    "166": "Проведено ВСЭ",
-    "167": "Бактериоскопия и микроскопия",
-    "168": "Трихинеллоскопия",
-    "169": "pH, пероксидаза, реакция с сернокислой медью",
-    "170": "Дозометрическое исследование",
-    "171": "Проба варки, люминесцентный анализ, температура",
-    "172": "Отправка проб в аккредитованную лабораторию",
-    "240": "На уничтожение, тонн",
-    "241": "в том числе мясо",
-    "242": "в том числе субпродукты",
-}
+class FormRow(BaseModel):
+    """One canonical printed row of the 5-вет section III form (DR51 §2.2).
+
+    ``mode`` is the honest display contract: ``AUTO`` rows are always filled
+    by the server (a real calculated zero is the number ``0``), ``BLANK``
+    rows are never computed — every cell stays ``null`` and is rendered as
+    an empty cell in UI, PDF and XLSX (never «Не рассчитывается», «—» or 0).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    code: str
+    name: str
+    mode: Literal["AUTO", "BLANK"]
+
+
+#: The exact canonical catalogue of the printed form (DR51 §2.2, owner
+#: sample `отчет 5 вет раздел 3.xlsx`, лист «отчет», A3:J55). Order, codes and
+#: texts are an exact contract; the only tolerated normalisation is the
+#: ё/е spelling of this very table. The XLSX sample is not a runtime
+#: dependency — this catalogue IS the single source of truth.
+SECTION_III_ROWS: tuple[FormRow, ...] = (
+    FormRow(code="166", name="1. Осмотрено (проведено ветеринарно-санитарных экспертиз), всего, единиц", mode="AUTO"),
+    FormRow(code="167", name="в том числе: микроскопических", mode="AUTO"),
+    FormRow(code="168", name="трихинеллоскопий", mode="AUTO"),
+    FormRow(code="169", name="физико-химических", mode="AUTO"),
+    FormRow(code="170", name="радиометрических", mode="AUTO"),
+    FormRow(code="171", name="других лабораторных исследований", mode="AUTO"),
+    FormRow(code="172", name="2. Проведено специальных лабораторных исследований всего, единиц", mode="AUTO"),
+    FormRow(code="173", name="3. Выявлено случаев болезни при ВСЭ, единиц", mode="BLANK"),
+    FormRow(code="174", name="Ящур", mode="BLANK"),
+    FormRow(code="175", name="Сибирская язва", mode="BLANK"),
+    FormRow(code="176", name="Туберкулез", mode="BLANK"),
+    FormRow(code="177", name="Бруцеллез", mode="BLANK"),
+    FormRow(code="178", name="Лейкоз", mode="BLANK"),
+    FormRow(code="179", name="Сап", mode="BLANK"),
+    FormRow(code="189", name="Оспа", mode="BLANK"),
+    FormRow(code="190", name="Болезнь Ауески", mode="BLANK"),
+    FormRow(code="191", name="Классическая чума свиней", mode="BLANK"),
+    FormRow(code="192", name="Болезнь Марека", mode="BLANK"),
+    FormRow(code="193", name="Цистицеркоз (финноз)", mode="BLANK"),
+    FormRow(code="195", name="Трихинеллез", mode="BLANK"),
+    FormRow(code="200", name="Миксоматоз", mode="BLANK"),
+    FormRow(code="205", name="Аэромоноз карповых и лососевых (краснуха)", mode="BLANK"),
+    FormRow(code="206", name="Весенняя виремия карпов", mode="BLANK"),
+    FormRow(code="207", name="Псевдомоноз", mode="BLANK"),
+    FormRow(code="208", name="Другие инфекционные болезни", mode="BLANK"),
+    FormRow(code="209", name="Другие инвазионные болезни", mode="BLANK"),
+    FormRow(code="210", name="Незаразные болезни", mode="AUTO"),
+    FormRow(code="211", name="4. Направлено на обезвреживание мяса, тонн", mode="BLANK"),
+    FormRow(code="212", name="из них по туберкулезу", mode="BLANK"),
+    FormRow(code="213", name="лейкозу", mode="BLANK"),
+    FormRow(code="214", name="болезни Марека", mode="BLANK"),
+    FormRow(code="215", name="цистицеркозу (финнозу)", mode="BLANK"),
+    FormRow(code="216", name="сальмонеллезу", mode="BLANK"),
+    FormRow(code="221", name="5. Направлено на обезвреживание субпродуктов, тонн", mode="BLANK"),
+    FormRow(code="222", name="из них по: туберкулезу", mode="BLANK"),
+    FormRow(code="223", name="лейкозу", mode="BLANK"),
+    FormRow(code="224", name="болезни Марека", mode="BLANK"),
+    FormRow(code="225", name="цистицеркозу (финнозу)", mode="BLANK"),
+    FormRow(code="226", name="сальмонеллезу", mode="BLANK"),
+    FormRow(code="231", name="6. Направлено на утилизацию мяса, тонн", mode="BLANK"),
+    FormRow(code="232", name="из них по: туберкулезу", mode="BLANK"),
+    FormRow(code="233", name="лейкозу", mode="BLANK"),
+    FormRow(code="234", name="болезни Марека", mode="BLANK"),
+    FormRow(code="235", name="цистицеркозу (финнозу)", mode="BLANK"),
+    FormRow(code="240", name="7. Направлено на уничтожение, тонн", mode="AUTO"),
+    FormRow(code="241", name="из них: мяса", mode="AUTO"),
+    FormRow(code="242", name="субпродуктов", mode="AUTO"),
+)
+
+#: The 47 printed row codes in the exact form order (DR51 §2.2).
+SECTION_III_ROW_CODES: tuple[str, ...] = tuple(row.code for row in SECTION_III_ROWS)
+
+#: The names of every printed row, keyed by code (display/export projection).
+ROW_NAMES: dict[str, str] = {row.code: row.name for row in SECTION_III_ROWS}
+
+#: The only automatically calculated rows of the printed form (DR51 §4):
+#: 166–172, 210 and 240–242. Every other row is BLANK — ``null`` forever.
+AUTOMATIC_ROW_CODES: tuple[str, ...] = tuple(row.code for row in SECTION_III_ROWS if row.mode == "AUTO")
+
+#: The rows the calculator fills (DR51 §2.2): counts (166–172, 210) and
+#: masses 240–242. Kept under the historical names for the audit tests.
+ROW_CODES: tuple[str, ...] = AUTOMATIC_ROW_CODES
+COUNT_ROWS: frozenset[str] = frozenset({"166", "167", "168", "169", "170", "171", "172", "210"})
+MASS_ROWS: frozenset[str] = frozenset({"240", "241", "242"})
 
 
 class SpeciesClassification(BaseModel):
@@ -120,14 +190,20 @@ class ReportSource(BaseModel):
     direction: Literal["SALE", "DISPOSAL", "DESTRUCTION"] | None
     fair: bool = False
     internal: bool = False
+    #: DR51 §3: the number of saved «незаразные» finding lines of the card's
+    #: newest revision (row 210 counts every saved line as one case; a card
+    #: without such findings contributes the honest calculated zero).
+    noncontagious_findings_count: int = Field(default=0, ge=0)
 
 
 class ReportMatrix(BaseModel):
-    """The automatic 166–172/240–242 contributions per animal column.
+    """The automatic row contributions per animal column (166–172, 210, 240–242).
 
     ``rows`` is zero-initialized for every automatic row and column; count
     rows carry whole numbers, mass rows 240–242 carry tonnes as exact
-    ``Decimal`` values after the single final kg→t conversion.
+    ``Decimal`` values after the single final kg→t conversion. BLANK rows of
+    the printed form never enter this matrix — they are ``null`` in the
+    payload by construction (DR51 §2.3).
     """
 
     columns: tuple[str, ...]
@@ -194,33 +270,13 @@ class SignedPreview(BaseModel):
     byte_size: int
 
 
-class ReportCodesWrite(BaseModel):
-    """Seven required textual codes; leading zeroes are meaningful."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    okud: str
-    okpo: str
-    okved: str
-    oktmo: str
-    okogu: str
-    okopf: str
-    okfs: str
-
-    @field_validator("*")
-    @classmethod
-    def trim_required(cls, value: str) -> str:
-        result = value.strip()
-        if not result:
-            raise ValueError("Код обязателен и не может быть пустым.")
-        return result
-
-
 class SaveReportWrite(BaseModel):
+    """DR51 §6.2: the save request carries only the signed preview — the seven
+    organizational codes are cancelled and never accepted again."""
+
     model_config = ConfigDict(extra="forbid")
 
     preview: SignedPreview
-    codes: ReportCodesWrite
 
 
 class ReportSnapshotView(BaseModel):
@@ -232,7 +288,6 @@ class ReportSnapshotView(BaseModel):
     date_from: date
     date_to: date
     payload: dict[str, object]
-    codes: dict[str, str]
     source_count: int
     saved_at: datetime
     saved_by: UUID

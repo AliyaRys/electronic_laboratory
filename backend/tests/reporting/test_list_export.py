@@ -24,17 +24,8 @@ from backend.src.core.problems import ProblemError
 from backend.src.modules.documents import resources
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole
 from backend.src.modules.reporting.commands import save_report
-from backend.src.modules.reporting.projection import (
-    BIRD_COLUMN,
-    report_document_view,
-    report_pdf_filename,
-    report_xlsx_filename,
-)
-from backend.src.modules.reporting.schemas import (
-    ReportCodesWrite,
-    ReportPreviewParams,
-    ReportSnapshotView,
-)
+from backend.src.modules.reporting.projection import report_document_view, report_pdf_filename, report_xlsx_filename
+from backend.src.modules.reporting.schemas import ReportPreviewParams, ReportSnapshotView
 from backend.src.modules.reporting.snapshots import preview_report
 
 NOW = datetime(2027, 1, 2, tzinfo=UTC)
@@ -42,12 +33,6 @@ NOW = datetime(2027, 1, 2, tzinfo=UTC)
 
 def keyring() -> PreviewKeyring:
     return PreviewKeyring(SigningKey("r03", b"r" * 32, NOW - timedelta(days=1)))
-
-
-def codes() -> ReportCodesWrite:
-    return ReportCodesWrite(
-        okud="001", okpo="12345678", okved="01.46", oktmo="92701001", okogu="-", okopf="75404", okfs="42"
-    )
 
 
 async def seed_lab(
@@ -217,7 +202,6 @@ async def save_period(
     saved = await save_report(
         CommandContext(actor_id=actor_id, idempotency_key=f"save-{date_from}-{date_to}"),
         preview,
-        codes(),
         session_id="session-r03",
         db=db,
         keyring=keyring(),
@@ -228,40 +212,33 @@ async def save_period(
 
 
 @pytest.mark.asyncio
-async def test_projection_merges_birds_and_marks_manual_rows(db_session: AsyncSession) -> None:
+async def test_projection_prints_the_full_form(db_session: AsyncSession) -> None:
     lab_id, actor_id = await seed_lab(db_session)
     view = await save_period(db_session, lab_id, actor_id, date(2026, 1, 1), date(2026, 6, 30))
     model = report_document_view(view)
 
-    # 8 data columns → 7 printed columns (the bird pair merged once).
-    assert len(model.columns) == 7
-    assert BIRD_COLUMN in model.columns
-    assert "Птица — куры" not in model.columns and "Птица — другие" not in model.columns
-    # 10 automatic rows + 2 manual rows, in the form order.
-    assert [row.code for row in model.matrix][-2:] == ["sickness_of_animals", "inspections_of_meat"]
-    automatic = [row for row in model.matrix if row.automatic]
-    assert [row.code for row in automatic] == [
-        "166",
-        "167",
-        "168",
-        "169",
-        "170",
-        "171",
-        "172",
-        "240",
-        "241",
-        "242",
-    ]
+    # 8 separate data columns: CHICKEN and OTHER_BIRDS stay two columns.
+    assert len(model.columns) == 8
+    assert "Птица: куры" in model.columns and "Птица: другие виды" in model.columns
+    # 47 rows in the exact form order; row 210 sits between 209 and 211.
+    assert [row.code for row in model.matrix][0] == "166"
+    assert [row.code for row in model.matrix][26] == "210"
+    assert [row.code for row in model.matrix][-1] == "242"
+    assert len(model.matrix) == 47
     # Rows 240–242 are tonnes of the seeded 250 кг meat destruction.
     row240 = next(row for row in model.matrix if row.code == "240")
     assert row240.values["Свиньи"] == 0.25
-    # The projection never invents a manual number.
-    manual = model.matrix[-1]
-    assert manual.automatic is False and set(manual.values.values()) == {None}
-    # The snapshot-only provenance and the preliminary marking.
+    # A BLANK row prints empty; a calculated zero stays the number 0.
+    row174 = next(row for row in model.matrix if row.code == "174")
+    assert row174.automatic is False and set(row174.values.values()) == {None}
+    row210 = next(row for row in model.matrix if row.code == "210")
+    assert row210.values["Свиньи"] == 0.0
+    # The simplified header: no codes, no versions, the preliminary marking.
     assert model.official is False and "Предварительная форма" in model.warnings
     assert model.laboratory == "Лаборатория <экспорт>"
     assert model.period == "01.01.2026 — 30.06.2026"
+    assert model.created_label == "Дата создания" and model.created_at != ""
+    assert not hasattr(model, "codes")
 
 
 def test_report_filenames_are_api08_safe() -> None:
@@ -286,17 +263,22 @@ async def test_exports_render_the_saved_snapshot(db_session: AsyncSession) -> No
     pdf_data = pdf.render_pdf(model, form)
     reader = PdfReader(io.BytesIO(pdf_data))
     text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    assert "ФОРМА 5-ВЕТ, РАЗДЕЛ III" in text
+    assert "5-вет, раздел III" in text
     assert "Предварительная форма" in text
-    assert "001" in text and "Не рассчитывается" in text
+    assert "Незаразные болезни" in text and "Ящур" in text
+    assert "Не рассчитывается" not in text and "ОКУД" not in text
 
     sheet = load_workbook(io.BytesIO(xlsx.render_xlsx(model, form))).active
     assert sheet is not None
-    # ОКУД «001» stays a text cell; numbers stay numeric.
-    assert sheet.cell(row=2, column=2).value == "001"
-    row240_row_number = 4 + 8  # header + the 240 row offset
+    # The exact 47×8 working table on one sheet; numbers stay numeric.
+    assert sheet.title == "Раздел III"
+    row240_row_number = 10 + 44  # header block + the 240 row offset
     value = sheet.cell(row=row240_row_number, column=4).value
     assert isinstance(value, float) and value == 0.25
+    row210_cell = sheet.cell(row=10 + 26, column=4).value
+    assert row210_cell == 0
+    row174_cell = sheet.cell(row=10 + 8, column=4).value
+    assert row174_cell is None
 
     assert report_xlsx_filename(view).endswith(".xlsx")
 

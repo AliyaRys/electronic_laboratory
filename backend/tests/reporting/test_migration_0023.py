@@ -118,9 +118,9 @@ def test_0023_backfills_half_years_and_drops_legacy_columns(test_db_url: str) ->
             # An arbitrary range (November 2026) is storable at head.
             cursor.execute(
                 "INSERT INTO report_snapshots (id, report_type, laboratory_id, date_from, date_to,"
-                " payload, codes, source_count, preview_generated_at, saved_at, saved_by, key_id,"
+                " payload, source_count, preview_generated_at, saved_at, saved_by, key_id,"
                 " signature, rev)"
-                " VALUES (%s, '5VET_SECTION_III', %s, DATE '2026-11-01', DATE '2026-11-18', '{}', '{}',"
+                " VALUES (%s, '5VET_SECTION_III', %s, DATE '2026-11-01', DATE '2026-11-18', '{}',"
                 " 0, now(), now(), %s, 'k', 's', 1)",
                 (str(uuid.uuid4()), str(laboratory), str(actor)),
             )

@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <!--
-  Предварительная форма 5-вет, раздел III (report-5vet, version 1).
-  Официального утверждённого образца пока нет: manifest.json держит
-  official=false, рендерер выводит метку «Предварительная форма». Значения
-  подставляет рендерер и экранирует; шапка таблицы повторяется на каждой
-  странице (thead), неавтоматические ячейки выводятся как
-  «Не рассчитывается». Внешние ссылки, скрипты и сетевые стили запрещены.
+  Предварительная форма 5-вет, раздел III (report-5vet, version 2, DR51 §8).
+  Шапка — только название отчёта, дата создания, период и лаборатория:
+  формальная полугодовая шапка и семь организационных кодов отменены
+  (решение владельца 2026-11-18). A4 landscape; шапка таблицы повторяется
+  на каждой странице (thead); BLANK-ячейки пустые, «Не рассчитывается» не
+  выводится. Внешние ссылки, скрипты и сетевые стили запрещены.
 -->
 <html lang="ru">
   <head>
@@ -17,45 +17,30 @@
         src: url("DejaVuSans.ttf");
       }
       @page {
-        size: a4 portrait;
-        margin: 18mm 12mm 18mm 12mm;
+        size: a4 landscape;
+        margin: 10mm 10mm 10mm 10mm;
       }
       body {
         font-family: "DejaVuSans";
-        font-size: 9pt;
+        font-size: 7.2pt;
         color: #000000;
       }
       .watermark {
         text-align: right;
-        font-size: 10pt;
+        font-size: 9pt;
         color: #555555;
         border: 1px solid #555555;
-        padding: 2mm 3mm;
-        margin-bottom: 5mm;
+        padding: 1.5mm 3mm;
+        margin-bottom: 3mm;
       }
       h1 {
-        font-size: 13pt;
+        font-size: 12pt;
         text-align: center;
+        margin: 0 0 2.5mm 0;
+      }
+      .meta {
+        font-size: 8.5pt;
         margin: 0 0 3mm 0;
-      }
-      .codes {
-        width: 100%;
-        table-layout: fixed;
-        -pdf-word-wrap: CJK;
-        border-collapse: collapse;
-        margin-bottom: 5mm;
-      }
-      .codes th,
-      .codes td {
-        border: 0.5pt solid #000000;
-        padding: 1.2mm 1.5mm;
-        text-align: left;
-        vertical-align: top;
-        font-weight: normal;
-      }
-      .codes th {
-        width: 30%;
-        background-color: #f2f2f2;
       }
       table.matrix {
         width: 100%;
@@ -66,53 +51,72 @@
       table.matrix th,
       table.matrix td {
         border: 0.5pt solid #000000;
-        padding: 1.2mm 1.5mm;
+        padding: 0.8mm 1.2mm;
         text-align: left;
         vertical-align: top;
         font-weight: normal;
       }
-      table.matrix th {
-        background-color: #f2f2f2;
-      }
       table.matrix thead th {
+        background-color: #f2f2f2;
+        text-align: center;
         -pdf-keep-with-next: true;
       }
-      .row-name {
-        width: 34%;
+      table.matrix td.code,
+      table.matrix thead td.code {
+        text-align: center;
       }
-      .footer {
-        margin-top: 6mm;
-        font-size: 8pt;
-        color: #444444;
+      .row-name {
+        width: 30%;
+      }
+      .col-code {
+        width: 6%;
+      }
+      .animal {
+        width: 8%;
       }
     </style>
   </head>
   <body>
     <div class="watermark">{{preliminary}}</div>
-    <h1>ФОРМА 5-ВЕТ, РАЗДЕЛ III</h1>
-    <p class="footer" style="margin-top: 0; margin-bottom: 4mm">
-      {{laboratory}} — {{period}}
+    <h1>{{title}}</h1>
+    <p class="meta">
+      {{created_label}}: {{created_at}}<br />
+      Период: {{period}}<br />
+      Лаборатория: {{laboratory}}
     </p>
-    <table class="codes">
-      <tbody>
-        {{codes}}
-      </tbody>
-    </table>
     <table class="matrix">
       <thead>
         <tr>
-          <th class="row-name">Наименование показателя</th>
-          {{columns}}
+          <th class="row-name" rowspan="2" scope="col">Наименование показателей</th>
+          <th class="col-code" rowspan="2" scope="col">№ строки</th>
+          <th class="animal" rowspan="2" scope="col">Крупный рогатый скот, яки, буйволы</th>
+          <th class="animal" rowspan="2" scope="col">Свиньи</th>
+          <th class="animal" rowspan="2" scope="col">Овцы, козы</th>
+          <th class="animal" rowspan="2" scope="col">Кролики, нутрии</th>
+          <th class="animal" colspan="2" scope="colgroup">Птица</th>
+          <th class="animal" rowspan="2" scope="col">Рыба</th>
+          <th class="animal" rowspan="2" scope="col">Другие виды животных</th>
+        </tr>
+        <tr>
+          <th class="animal" scope="col">куры</th>
+          <th class="animal" scope="col">другие виды</th>
+        </tr>
+        <tr>
+          <td class="code">1</td>
+          <td class="code">2</td>
+          <td class="code">3</td>
+          <td class="code">4</td>
+          <td class="code">5</td>
+          <td class="code">6</td>
+          <td class="code">7</td>
+          <td class="code">8</td>
+          <td class="code">9</td>
+          <td class="code">10</td>
         </tr>
       </thead>
       <tbody>
         {{rows}}
       </tbody>
     </table>
-    <p class="footer">
-      Версия формы {{form_version}}; версии источников: {{versions}}.
-      Неавтоматические ячейки заполняются вручную и выведены как
-      «Не рассчитывается».
-    </p>
   </body>
 </html>

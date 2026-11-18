@@ -27,12 +27,13 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.core.problems import ProblemError
 from backend.src.modules.arrivals.models import Party, ReceiptConfirmation, Reconciliation
 from backend.src.modules.examinations.models import Examination, ExaminationTombstone
 from backend.src.modules.reporting.calculator import range_bounds
 from backend.src.modules.reporting.schemas import OperationalView, ReportPeriod, ReportSource
 
-__all__ = ["operational_query", "list_report_sources"]
+__all__ = ["operational_query", "list_report_sources", "noncontagious_findings_count"]
 
 #: The two CHECK services that own operational indicators (DATA-04).
 PRODUCT_IDENTIFICATION = "PRODUCT_IDENTIFICATION"
@@ -60,6 +61,30 @@ def _species_of(classification_snapshot: object) -> str:
 def _saved_cards_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
     """The Moscow wall-clock window of the chosen card-creation days."""
     return range_bounds(date_from, date_to)
+
+
+def noncontagious_findings_count(findings_snapshot: object) -> int:
+    """DR51 §3: the number of saved «незаразные» finding lines of one card.
+
+    The count is exactly ``len(findings_snapshot["noncontagious"])`` of the
+    saved revision: every saved line is one case of row 210 (duplicates are
+    separate cases, invasive findings never count here). A legacy card
+    without the field contributes 0 without failing; a corrupted non-list
+    payload fails loud with a diagnostic problem instead of counting a guess.
+    """
+    if not isinstance(findings_snapshot, dict):
+        return 0
+    value = findings_snapshot.get("noncontagious")
+    if value is None:
+        return 0
+    if not isinstance(value, list):
+        raise ProblemError(
+            status=500,
+            code="REPORT_FINDINGS_INVALID",
+            title="Report findings invalid",
+            detail="Снимок находок ВСЭ повреждён: список незаразных болезней не является списком.",
+        )
+    return len(value)
 
 
 async def operational_query(
@@ -155,6 +180,7 @@ async def list_report_sources(
                 sent_to_lab=bool(examination.sent_to_lab),
                 outcome=examination.outcome,
                 direction=examination.direction,
+                noncontagious_findings_count=noncontagious_findings_count(examination.findings_snapshot),
             )
         )
     return sources

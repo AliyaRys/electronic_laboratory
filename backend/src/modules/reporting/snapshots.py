@@ -21,8 +21,10 @@ from backend.src.modules.reporting.calculator import build_classification_map, c
 from backend.src.modules.reporting.queries import list_report_sources
 from backend.src.modules.reporting.schemas import (
     COLUMNS,
-    ROW_CODES,
+    SECTION_III_ROW_CODES,
+    SECTION_III_ROWS,
     ClassificationMap,
+    ReportMatrix,
     ReportPreviewParams,
     ReportSource,
     SignedPreview,
@@ -32,6 +34,9 @@ from backend.src.modules.reporting.schemas import (
 MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
 # The signed payload schema version this server builds and verifies.
 SUPPORTED_PAYLOAD_VERSION = 2
+# The printed-form catalogue version carried by every v2 payload (DR51 §4):
+# the full 47-row/8-column section III matrix lives inside the payload.
+SUPPORTED_FORM_VERSION = "2"
 
 
 def canonical_json(value: object) -> bytes:
@@ -45,6 +50,23 @@ def _problem(code: str, detail: str, *, status: int = 422) -> ProblemError:
 def _plain(value: Decimal) -> str:
     result = format(value, "f")
     return result.rstrip("0").rstrip(".") if "." in result else result
+
+
+def _full_matrix(matrix: ReportMatrix) -> list[list[object]]:
+    """The 47×8 payload matrix: AUTO numbers (incl. ``0``), BLANK ``null``.
+
+    The calculator fills only the automatic rows (166–172, 210, 240–242);
+    every BLANK row of the canonical catalogue stays ``null`` — an honest
+    empty cell, never «Не рассчитывается», «—» or a forged zero (DR51 §2.3).
+    """
+    result: list[list[object]] = []
+    for row in SECTION_III_ROWS:
+        if row.mode == "AUTO":
+            values = matrix.rows[row.code]
+            result.append([_plain(values[column]) for column in matrix.columns])
+        else:
+            result.append([None] * len(matrix.columns))
+    return result
 
 
 def _signature_input(payload: dict[str, object], key_id: str, session_id: str, actor_id: uuid.UUID) -> bytes:
@@ -124,7 +146,9 @@ def _build_payload(
     for source in sources:
         contribution = calculate_5vet([source], mapping)
         nonzero: list[list[object]] = []
-        for row_index, row_code in enumerate(ROW_CODES):
+        for row_index, row_code in enumerate(SECTION_III_ROW_CODES):
+            if row_code not in contribution.rows:  # pragma: no cover - catalogue guard
+                continue
             for column_index, column in enumerate(COLUMNS):
                 value = contribution.rows[row_code][column]
                 if value:
@@ -133,6 +157,7 @@ def _build_payload(
 
     return {
         "version": 2,
+        "form_version": SUPPORTED_FORM_VERSION,
         "report_type": params.report_type,
         "laboratory_id": str(params.laboratory_id),
         "laboratory": laboratory,
@@ -142,13 +167,85 @@ def _build_payload(
         "actor_id": str(actor_id),
         "classification_version": mapping.version,
         "columns": list(COLUMNS),
-        "row_codes": list(ROW_CODES),
-        "matrix": [[_plain(matrix.rows[row][column]) for column in COLUMNS] for row in ROW_CODES],
+        "rows": [{"code": row.code, "name": row.name, "mode": row.mode} for row in SECTION_III_ROWS],
+        "row_codes": list(SECTION_III_ROW_CODES),
+        "matrix": _full_matrix(matrix),
         "sources": compact_sources,
         "source_count": len(sources),
         "ton_precision": 6,
         "official": False,
     }
+
+
+def _corrupt(detail: str) -> ProblemError:
+    return ProblemError(
+        status=422,
+        code="REPORT_SNAPSHOT_INVALID",
+        title="Report snapshot invalid",
+        detail=detail,
+    )
+
+
+def adapt_payload(payload: dict[str, object]) -> dict[str, object]:
+    """Read-only full-form adapter of any stored snapshot payload (DR51 §4).
+
+    A v2 full-form payload (``form_version == "2"`` with the 47-row
+    catalogue) is validated and returned as stored. A legacy compact payload
+    (ten ``row_codes``, no ``rows``) is mapped onto the full printed form by
+    the SAVED ``row_codes`` — never by position, never recomputed from live
+    ВСЭ: missing rows stay ``null`` (row 210 of a legacy report is empty and
+    the two bird columns are kept separate exactly as they were saved).
+    """
+    columns_raw = payload.get("columns")
+    if not isinstance(columns_raw, list) or len(columns_raw) != len(COLUMNS) or list(columns_raw) != list(COLUMNS):
+        raise _corrupt("Снимок отчёта повреждён: неверный набор колонок животных.")
+    matrix_raw = payload.get("matrix")
+    if not isinstance(matrix_raw, list):
+        raise _corrupt("Снимок отчёта повреждён: матрица отсутствует.")
+    if payload.get("form_version") == SUPPORTED_FORM_VERSION and isinstance(payload.get("rows"), list):
+        rows = payload["rows"]
+        codes = payload.get("row_codes")
+        if not isinstance(codes, list) or len(codes) != len(SECTION_III_ROW_CODES) or list(codes) != list(
+            SECTION_III_ROW_CODES
+        ):
+            raise _corrupt("Снимок отчёта повреждён: каталог строк не совпадает с формой.")
+        if len(rows) != len(SECTION_III_ROWS) or len(matrix_raw) != len(SECTION_III_ROWS):
+            raise _corrupt("Снимок отчёта повреждён: неполный каталог строк.")
+        for row, values in zip(SECTION_III_ROWS, matrix_raw, strict=True):
+            if not isinstance(values, list) or len(values) != len(COLUMNS):
+                raise _corrupt("Снимок отчёта повреждён: неверная длина строки матрицы.")
+            for value in values:
+                if row.mode == "BLANK":
+                    if value is not None:
+                        raise _corrupt("Снимок отчёта повреждён: пустая строка содержит значение.")
+                elif value is not None and not isinstance(value, str):
+                    raise _corrupt("Снимок отчёта повреждён: автоматическая ячейка не число.")
+        return payload
+
+    row_codes = payload.get("row_codes")
+    if not isinstance(row_codes, list):
+        raise _corrupt("Снимок отчёта повреждён: каталог строк отсутствует.")
+    if len(matrix_raw) != len(row_codes):
+        raise _corrupt("Снимок отчёта повреждён: матрица не совпадает с каталогом строк.")
+    saved: dict[str, list[object]] = {}
+    for code, values in zip(row_codes, matrix_raw, strict=True):
+        if not isinstance(values, list) or len(values) != len(COLUMNS):
+            raise _corrupt("Снимок отчёта повреждён: неверная длина строки матрицы.")
+        saved[str(code)] = values
+    full_matrix: list[list[object]] = []
+    for row in SECTION_III_ROWS:
+        old = saved.get(row.code)
+        # A legacy AUTO row keeps its exact saved numbers; a legacy BLANK row
+        # (and any row the compact payload did not carry, incl. 210) is null.
+        full_matrix.append(list(old) if row.mode == "AUTO" and old is not None else [None] * len(COLUMNS))
+    adapted = dict(payload)
+    adapted.update(
+        form_version=SUPPORTED_FORM_VERSION,
+        rows=[{"code": row.code, "name": row.name, "mode": row.mode} for row in SECTION_III_ROWS],
+        row_codes=list(SECTION_III_ROW_CODES),
+        matrix=full_matrix,
+    )
+    return adapted
 
 
 async def preview_report(

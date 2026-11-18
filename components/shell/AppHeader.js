@@ -43,6 +43,11 @@
       ['path', { d: 'M9 6h6M7.5 11h9M7.5 16h9' }],
     ],
     caret: [['path', { d: 'm7 10 5 5 5-5' }]],
+    // ТЗ DR50: honey stays the original outline definition (only eggs/fish/plant
+    // are generated Font Awesome icons).
+    'product-honey': [
+      ['path', { d: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }],
+    ],
   };
 
   // ==== GENERATED: product icons (scripts/sync-product-icons.mjs) — do not edit ====
@@ -112,6 +117,9 @@
     const link = create('a', `navlink${active ? ' active' : ''}`);
     link.id = id;
     link.href = href;
+    /* ТЗ DR50: на узких экранах navtext скрывается — доступное имя не должно
+       пропадать вместе с видимым текстом. */
+    link.setAttribute('aria-label', label);
     if (active) link.setAttribute('aria-current', 'page');
     link.append(iconSlot(icon), create('span', 'navtext', label));
     return link;
@@ -281,9 +289,9 @@
         option.setAttribute('aria-disabled', 'true');
         const status = create('span', 'product-option-status', ROADMAP_STATUS_LABEL);
         status.dataset.productStatus = '';
-        option.append(iconSlot(key, 'product-icon'), create('span', 'product-option-label', config.label), status);
+        option.append(iconSlot(config.icon, 'product-icon'), create('span', 'product-option-label', config.label), status);
       } else {
-        option.append(iconSlot(key, 'product-icon'), create('span', 'product-option-label', config.label));
+        option.append(iconSlot(config.icon, 'product-icon'), create('span', 'product-option-label', config.label));
       }
       menu.append(option);
     });

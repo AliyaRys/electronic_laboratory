@@ -39,14 +39,18 @@
 | Молоко и молочная продукция | `milk` |
 | Раскрытие списка продукции | `caret` |
 | Молоко (дорожная карта) | `milk` |
-| Яйца (дорожная карта) | `product-eggs` (Lucide Egg) |
-| Рыба (дорожная карта) | `product-fish` (Lucide Fish) |
+| Яйца (дорожная карта) | `product-eggs` (Font Awesome `egg`, solid) |
+| Рыба (дорожная карта) | `product-fish` (Font Awesome `fish`, solid) |
 | Мёд (дорожная карта) | `product-honey` (Lucide Hexagon) |
-| Растительная продукция (дорожная карта) | `product-plant` (Lucide Wheat) |
+| Растительная продукция (дорожная карта) | `product-plant` (Font Awesome `wheat-awn`, solid) |
 | Управление пользователями | `admin-users` из общего `VseIcons` |
 | Отчёты | `admin-reports` из общего `VseIcons` |
 
-Иконка выбирается по назначению пункта и не меняется между страницами или типами продукции. Все SVG создаются функцией `VseAppHeader.createIcon(name)`. Продуктовые иконки дорожной карты (DR46 §3.1) берутся из готового набора Lucide и сначала добавляются в этот реестр и Storybook, затем в React-адаптер `legacy-icons.ts`; собственные SVG в страницах, stories и `AppHeader.tsx` запрещены.
+Иконка выбирается по назначению пункта и не меняется между страницами или типами продукции. Все SVG создаются функцией `VseAppHeader.createIcon(name)`. ТЗ DR50 §2: `product-eggs`, `product-fish` и `product-plant` — точные определения из закреплённого пакета `@fortawesome/free-solid-svg-icons` (точная версия 7.3.1); данные генерируются скриптом `scripts/sync-product-icons.mjs` в блок с маркерами `GENERATED: product icons` в этом файле и в `frontend/src/shared/ui/product-icons.generated.ts`; расхождение проверяет `--check`. Ручное редактирование этих путей и собственные SVG в страницах, stories и `AppHeader.tsx` запрещены. Иконки мёда, мяса и молока остались прежними outline-определениями.
+
+### Активный профиль (ТЗ DR50 §4)
+
+На `/profile` ссылка `#profile.user-link` получает класс `active` и `aria-current="page"`. Прямоугольный фон `.navlink.active` на неё не действует: активное состояние — круглое кольцо `box-shadow: 0 0 0 2px var(--teal, #146c73)` вокруг аватара, `:focus-visible` — отдельное круглое кольцо `outline`. Кликабельная область не меньше 42 × 42 px; прямоугольных подложек/теней нет. Переопределения `.user-link` в `components/profile/profile.css` и CSS рабочих экранов удалены — наследуйте общий `app-header.css`.
 
 ## API
 

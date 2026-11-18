@@ -433,7 +433,8 @@ export const EXAM_SECTION_ICON_NAMES: readonly IconName[] = Object.freeze([
 /** ТЗ DR44 §3: help icons of accessible tooltips (VseIcon.js + this adapter). */
 export const HELP_ICON_NAMES: readonly IconName[] = Object.freeze(["question-circle"]);
 
-/** �� DR46 �3.1: roadmap product icons of the header (AppHeader.js registry + Lucide). */
+/** ТЗ DR46 §3.1 / DR50: roadmap product icons of the header (AppHeader.js
+ * registry; eggs/fish/plant — generated Font Awesome Free Solid). */
 export const PRODUCT_ICON_NAMES: readonly IconName[] = Object.freeze([
   "meat",
   "milk",

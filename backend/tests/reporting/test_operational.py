@@ -211,7 +211,11 @@ async def test_completion_time_period_boundaries(db_session: AsyncSession, lab: 
     before = await new_party(db_session, lab)
     after = await new_party(db_session, lab)
     await make_reconciliation(
-        db_session, at_start, actor, completed_at=datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC), services=_services("PRODUCT_IDENTIFICATION")
+        db_session,
+        at_start,
+        actor,
+        completed_at=datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC),
+        services=_services("PRODUCT_IDENTIFICATION"),
     )
     await make_reconciliation(db_session, before, actor, completed_at=BEFORE_PERIOD)
     await make_reconciliation(db_session, after, actor, completed_at=AFTER_PERIOD)
@@ -267,7 +271,9 @@ async def _seed_card(
         direction=None,
         created_by=actor,
         created_at=created_at,
-        first_completed_at=first_completed_at if first_completed_at is not None else (created_at if status == "COMPLETED" else None),
+        first_completed_at=first_completed_at
+        if first_completed_at is not None
+        else (created_at if status == "COMPLETED" else None),
         rev=1,
     )
     db_session.add(row)

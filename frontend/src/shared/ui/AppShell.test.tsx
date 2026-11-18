@@ -162,16 +162,18 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "Выйти" })).toBeInTheDocument();
   });
 
-  it("the production work header shows the static single-product meat context (ТЗ DR45 §5)", async () => {
+  it("the production work header shows the meat roadmap context even with a stored milk (ТЗ DR46 §3.1)", async () => {
     // A legacy stored 'milk' context is normalized to 'meat', never restored.
     useContextStore.getState().setProductType("milk");
     renderShell();
     await waitForUser();
     expect(useContextStore.getState().productType as ProductType).toBe("meat");
-    // No interactive switcher: not a button, no listbox, no milk option.
-    expect(screen.queryByRole("button", { name: /Тип продукции/ })).toBeNull();
-    expect(screen.queryByRole("listbox", { name: "Тип продукции" })).toBeNull();
-    expect(screen.getByText("Мясо и мясопродукты")).toBeInTheDocument();
+    // The common roadmap switcher: «Мясо и мясопродукты» is the selected and
+    // only available direction; milk never becomes active from storage.
+    const trigger = screen.getByRole("button", { name: /Тип продукции/ });
+    expect(trigger).toHaveClass("product-trigger");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getAllByText("Мясо и мясопродукты").length).toBeGreaterThanOrEqual(1);
   });
 });
 

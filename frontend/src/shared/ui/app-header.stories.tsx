@@ -46,7 +46,12 @@ export const WorkMeat: Story = {
     onLogout: () => undefined,
   },
 };
+/** Fix-loop 2 (DR46): the legacy «milk» fixture renders the NORMALIZED meat
+ * context — an out-of-roadmap product never produces an empty/invalid
+ * header; the trigger shows «Мясо и мясопродукты» and the dropdown still
+ * lists all six roadmap entries. */
 export const WorkMilk: Story = {
+  name: "Молоко → нормализовано в мясо",
   args: {
     mode: "work",
     user,
@@ -57,14 +62,13 @@ export const WorkMilk: Story = {
     onLogout: () => undefined,
   },
 };
-/** ТЗ DR45 §5: the production work header carries the STATIC single-product
- * context — no button, no caret, no milk option. */
-export const WorkStaticMeat: Story = {
+/** ТЗ DR46 §3.1: the production work header shows the common roadmap menu —
+ * «Мясо и мясопродукты» selected, the other directions «Пока недоступно». */
+export const WorkRoadmapMenu: Story = {
   args: {
     mode: "work",
     user,
     product: "meat",
-    productStatic: true,
     active: "arrivals",
     institution: "Лаборатория ВСЭ №1 г. Казань",
     links: selectedLabLinks,

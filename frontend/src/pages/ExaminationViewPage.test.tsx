@@ -5,6 +5,7 @@
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -155,8 +156,11 @@ describe("ExaminationViewPage", () => {
     expect(screen.getByDisplayValue("100")).toBeTruthy();
     // The late completion is its own single action.
     expect(screen.getByRole("button", { name: "Завершить ожидание" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Исправить карточку" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Удалить" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Редактировать ВСЭ" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Удалить ВСЭ" })).toBeTruthy();
+    // ТЗ DR46 §3.2: no «← Журнал ВСЭ» breadcrumb and no title badge.
+    expect(screen.queryByRole("link", { name: /Журнал ВСЭ/ })).toBeNull();
+    expect(document.querySelectorAll(".vse-status-badge").length).toBe(0);
   });
 
   it("a COMPLETED card shows the saved outcome without the late action", async () => {
@@ -237,13 +241,26 @@ describe("ExaminationViewPage", () => {
     expect(screen.getAllByText("5,00 ₽").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("the title is «Просмотр записи» + «ВСЭ №…» with the compact actions", async () => {
+  it("the title is «Просмотр записи» + «ВСЭ №…» with the icon-only actions (ТЗ DR46 §3.2)", async () => {
     server.use(http.get(`*/api/v1/examinations/${EXAM}`, () => HttpResponse.json(card({}))));
     renderRoute();
     expect(await screen.findByText("Просмотр записи")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "ВСЭ № 12" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Исправить карточку" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Удалить" })).toBeTruthy();
+    const edit = screen.getByRole("button", { name: "Редактировать ВСЭ" });
+    expect(edit).toHaveClass("icon-only");
+    expect(edit.querySelector("svg")).not.toBeNull();
+    const remove = screen.getByRole("button", { name: "Удалить ВСЭ" });
+    expect(remove).toHaveClass("icon-only");
+    // Both actions share the title row, 43 × 43 px, side by side.
+    expect(edit.closest(".vse-page-actions")).toBe(remove.closest(".vse-page-actions"));
+  });
+
+  it("clicking the icon actions opens the edit form and the delete dialog", async () => {
+    const act = userEvent.setup();
+    server.use(http.get(`*/api/v1/examinations/${EXAM}`, () => HttpResponse.json(card({}))));
+    renderRoute();
+    await act.click(await screen.findByRole("button", { name: "Удалить ВСЭ" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
   it("a WAITING card still fabricates no outcome but keeps the late action", async () => {

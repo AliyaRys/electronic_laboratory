@@ -7,8 +7,64 @@
  * is absolutely positioned. The trigger is a real button with the given
  * accessible name, so the tooltip content stays reachable without a mouse.
  */
-import { useId, useRef, useState } from "react";
+import { cloneElement, isValidElement, useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./Icon";
+
+/** ТЗ DR46 §3.2: a shared accessible tooltip wrapper for an arbitrary
+ * trigger (e.g. an icon-only Button): opens on hover AND keyboard focus,
+ * closes on blur/hover-leave/Escape, links the popup via
+ * ``aria-describedby`` — never a bare ``title``. The child's own mouse and
+ * focus handlers are preserved and chained, never overwritten. */
+export interface TooltipProps {
+  text: string;
+  children: ReactNode;
+}
+
+type Handler = (() => void) | undefined;
+
+function chain(child: Handler, tooltip: () => void): () => void {
+  return () => {
+    child?.();
+    tooltip();
+  };
+}
+
+export function Tooltip({ text, children }: TooltipProps): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const popupId = useId();
+  const child = isValidElement(children) ? (children as React.ReactElement<Record<string, unknown>>) : null;
+  const describedBy = open ? popupId : undefined;
+  return (
+    <span
+      className="app-help-tooltip"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          setOpen(false);
+        }
+      }}
+    >
+      {child !== null
+        ? cloneElement(child, {
+            // The canonical Button owns its own props (ariaDescribedBy);
+            // ordinary DOM elements use the direct attribute. The child's
+            // own handlers stay wired — the tooltip adds to them.
+            "aria-describedby": describedBy,
+            ariaDescribedBy: describedBy,
+            onMouseEnter: chain(child.props.onMouseEnter as Handler, () => setOpen(true)),
+            onMouseLeave: chain(child.props.onMouseLeave as Handler, () => setOpen(false)),
+            onFocus: chain(child.props.onFocus as Handler, () => setOpen(true)),
+            onBlur: chain(child.props.onBlur as Handler, () => setOpen(false)),
+          })
+        : children}
+      {open ? (
+        <span role="tooltip" id={popupId} className="app-help-tooltip-popup">
+          {text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 export interface HelpTooltipProps {
   /** The tooltip text (exact wording owned by the caller). */

@@ -164,11 +164,7 @@ describe("ReportsPage hub (DR37)", () => {
   });
 
   it("a HEAD with preview+save but without list/read sees the honest 5-вет card (DR37 fix-loop)", async () => {
-    const caps = [
-      "arrivals:read",
-      "report:5vet-preview",
-      "report:5vet-save",
-    ];
+    const caps = ["arrivals:read", "report:5vet-preview", "report:5vet-save"];
     server.use(http.get("*/api/v1/me", () => HttpResponse.json(me("HEAD", caps))));
     renderPage();
     expect(await screen.findByText("Форма 5-вет (раздел III)")).toBeVisible();

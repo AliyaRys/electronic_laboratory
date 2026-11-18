@@ -233,9 +233,6 @@ export function AppShell({
         links={headerLinks}
         onProductChange={changeProduct}
         onLogout={() => onLogout?.()}
-        // ТЗ DR45 §5: the production work header carries the static
-        // single-product context; the interactive switcher is not rendered.
-        productStatic={mode === "work"}
       />
       <main className="app-main">
         {legacy !== null && legacy.outcome === "not-specified" ? (

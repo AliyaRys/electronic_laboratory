@@ -3,12 +3,21 @@
   const STORAGE_KEY = 'vse-product-type';
 
   const products = {
-    meat: { label: 'Мясо и продукты убоя', shortLabel: 'Мясо' },
-    milk: { label: 'Молоко и молочная продукция', shortLabel: 'Молоко' },
+    meat: { label: 'Мясо и мясопродукты', shortLabel: 'Мясо', icon: 'meat', available: true },
+    milk: { label: 'Молоко и молочные продукты', shortLabel: 'Молоко', icon: 'milk', available: false },
+    eggs: { label: 'Яйца и яйцепродукция', shortLabel: 'Яйца', icon: 'product-eggs', available: false },
+    fish: { label: 'Рыба и рыбная продукция', shortLabel: 'Рыба', icon: 'product-fish', available: false },
+    honey: { label: 'Мёд и медовая продукция', shortLabel: 'Мёд', icon: 'product-honey', available: false },
+    plant: { label: 'Растительная пищевая продукция', shortLabel: 'Продукция', icon: 'product-plant', available: false },
   };
 
-  /* ТЗ DR45 §5: the static single-product context of the production header. */
-  const STATIC_PRODUCT_LABEL = 'Мясо и мясопродукты';
+  /* ТЗ DR46 §3.1: the roadmap order of the product menu (meat only available). */
+  const roadmapOrder = ['meat', 'milk', 'eggs', 'fish', 'honey', 'plant'];
+  const ROADMAP_STATUS_LABEL = 'Пока недоступно';
+
+  /* ТЗ DR45 §5 (история): прежний статичный однострочный контекст шапки
+     заменён общим roadmap-переключателем DR46 (productStatic больше не
+     создаёт отдельный владельца разметки). */
 
   /* Canonical shell icons. Change a path here, never inside an individual page. */
   const icons = {
@@ -34,6 +43,27 @@
       ['path', { d: 'M9 6h6M7.5 11h9M7.5 16h9' }],
     ],
     caret: [['path', { d: 'm7 10 5 5 5-5' }]],
+    // ТЗ DR46 §3.1: продуктовые иконки дорожной карты шапки (набор Lucide).
+    'product-eggs': [
+      ['path', { d: 'M12 22c3.5 0 6-4.5 6-10S15.5 2 12 2 6 6.5 6 12s2.5 10 6 10Z' }],
+    ],
+    'product-fish': [
+      ['path', { d: 'M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.47-3.44 6-7 6s-7.56-2.53-8.5-6Z' }],
+      ['path', { d: 'M18 12v.5' }],
+      ['path', { d: 'M16 17.93a9.13 9.13 0 0 1 0-11.86' }],
+      ['path', { d: 'M7 19 3 21l1-3-1-3 4 2Z' }],
+    ],
+    'product-honey': [
+      ['path', { d: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z' }],
+    ],
+    'product-plant': [
+      ['path', { d: 'M2 22 20 4' }],
+      ['path', { d: 'M11 4 9 6c-1.5 1.5-1.5 4.5 0 6s4.5 1.5 6 0l2-2' }],
+      ['path', { d: 'M16 9c2 0 4-2 4-4-2 0-4 2-4 4Z' }],
+      ['path', { d: 'M12 11c2 0 4-2 4-4-2 0-4 2-4 4Z' }],
+      ['path', { d: 'M13 16c2 0 4-2 4-4-2 0-4 2-4 4Z' }],
+      ['path', { d: 'M14 21c2 0 4-2 4-4-2 0-4 2-4 4Z' }],
+    ],
   };
 
   const counterpartRoutes = [
@@ -166,9 +196,7 @@
     onLogout,
   } = {}) => {
     if (!['work', 'admin', 'analyst', 'no-products'].includes(mode)) throw new TypeError('Неизвестный режим шапки');
-    if (!products[product]) product = 'meat';
-    // ТЗ DR45 §5: the static variant is the meat-only production context.
-    if (productStatic && mode === 'work') product = 'meat';
+    if (!products[product] || products[product].available !== true) product = 'meat';
     const header = create('header', 'topbar');
     header.dataset.appHeader = '';
     header.dataset.appHeaderMode = mode;
@@ -223,44 +251,43 @@
     const switcher = create('div', `nav-item product-switcher${menuOpen ? ' open' : ''}`);
     let trigger = null;
     let menu = null;
-    const productIcon = iconSlot('meat', 'product-icon');
-    productIcon.dataset.productIcon = 'meat';
-    const productLabel = create('span', 'navtext', '');
+    const productIcon = iconSlot(products[product].icon, 'product-icon');
+    productIcon.dataset.productIcon = product;
+    const productLabel = create('span', 'navtext', products[product].label);
     productLabel.dataset.productLabel = '';
-    // ТЗ DR45 §5: the production work header shows the STATIC single-product
-    // context «Мясо и мясопродукты» — no button, no listbox, no caret and no
-    // milk option. The interactive switcher stays only for the documented
-    // stories/legacy mockups (productStatic: false, the previous contract).
-    if (productStatic) {
-      switcher.dataset.productStatic = 'meat';
-      productLabel.textContent = STATIC_PRODUCT_LABEL;
-      switcher.append(productIcon, productLabel);
-      nav.append(switcher);
-    } else {
-      trigger = create('button', 'navlink product-trigger');
-      trigger.id = 'product-switcher';
-      trigger.type = 'button';
-      trigger.setAttribute('aria-haspopup', 'listbox');
-      trigger.setAttribute('aria-expanded', String(menuOpen));
-      productIcon.replaceChildren(api.createIcon(product));
-      productIcon.dataset.productIcon = product;
-      productLabel.textContent = products[product].label;
-      trigger.append(productIcon, productLabel, api.createIcon('caret', 'nav-caret'));
-      menu = create('div', 'journal-menu product-menu');
-      menu.setAttribute('role', 'listbox');
-      menu.setAttribute('aria-label', 'Тип продукции');
-      Object.entries(products).forEach(([key, config]) => {
-        const option = create('button', key === product ? 'active' : '', config.label);
-        option.type = 'button';
-        option.setAttribute('role', 'option');
-        option.setAttribute('aria-selected', String(key === product));
-        option.dataset.productOption = key;
-        option.prepend(iconSlot(key, 'product-icon'));
-        menu.append(option);
-      });
-      switcher.append(trigger, menu);
-      if (mode === 'work') nav.append(switcher);
-    }
+    // ТЗ DR46 §3.1: the single canonical roadmap-menu variant (the former
+    // productStatic path no longer creates a parallel owner of the markup).
+    trigger = create('button', 'navlink product-trigger');
+    trigger.id = 'product-switcher';
+    trigger.type = 'button';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', String(menuOpen));
+    trigger.setAttribute('aria-label', `Тип продукции: ${products[product].label}`);
+    trigger.dataset.shortLabel = products[product].shortLabel;
+    trigger.append(productIcon, productLabel, api.createIcon('caret', 'nav-caret'));
+    menu = create('div', 'journal-menu product-menu');
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', 'Тип продукции');
+    roadmapOrder.forEach(key => {
+      const config = products[key];
+      const option = create('button', key === product ? 'active' : '', '');
+      option.type = 'button';
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(key === product));
+      option.dataset.productOption = key;
+      if (!config.available) {
+        option.disabled = true;
+        option.setAttribute('aria-disabled', 'true');
+        const status = create('span', 'product-option-status', ROADMAP_STATUS_LABEL);
+        status.dataset.productStatus = '';
+        option.append(iconSlot(key, 'product-icon'), create('span', 'product-option-label', config.label), status);
+      } else {
+        option.append(iconSlot(key, 'product-icon'), create('span', 'product-option-label', config.label));
+      }
+      menu.append(option);
+    });
+    switcher.append(trigger, menu);
+    if (mode === 'work') nav.append(switcher);
     if (mode === 'no-products' && !nav.childElementCount) nav.hidden = true;
 
     const userArea = create('div', 'user-area');
@@ -282,12 +309,12 @@
     };
 
     const setProduct = nextProduct => {
-      // ТЗ DR45 §5: a stored/requested 'milk' context never restores milk —
-      // it is normalized to the single production product 'meat'.
-      const normalized = nextProduct === 'milk' ? 'meat' : nextProduct;
+      // ТЗ DR45 §5 / DR46 §3.1: a stored/requested unavailable roadmap key
+      // never becomes active — it is normalized to 'meat'.
+      const normalized = products[nextProduct] && products[nextProduct].available === true ? nextProduct : 'meat';
       if (!products[normalized]) return;
       header.dataset.product = normalized;
-      productLabel.textContent = productStatic ? STATIC_PRODUCT_LABEL : products[normalized].label;
+      productLabel.textContent = products[normalized].label;
       productIcon.replaceChildren(api.createIcon(normalized));
       productIcon.dataset.productIcon = normalized;
       if (!trigger) return;
@@ -306,11 +333,12 @@
         if (event.key !== 'ArrowDown') return;
         event.preventDefault();
         setOpen(true);
-        menu.querySelector('[aria-selected="true"]')?.focus();
+        (menu.querySelector('[data-product-option]:not([disabled])') || menu.querySelector('[aria-selected="true"]'))?.focus();
       });
       [...menu.querySelectorAll('[data-product-option]')].forEach((option, index, optionsList) => {
         option.addEventListener('click', () => {
           const nextProduct = option.dataset.productOption;
+          if (!products[nextProduct] || products[nextProduct].available !== true) return;
           if (onProductChange) onProductChange(nextProduct, header);
           else setProduct(nextProduct);
           setOpen(false, true);
@@ -323,7 +351,10 @@
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
             const direction = event.key === 'ArrowDown' ? 1 : -1;
-            optionsList[(index + direction + optionsList.length) % optionsList.length].focus();
+            const enabled = optionsList.filter(candidate => !candidate.disabled);
+            if (!enabled.length) return;
+            const current = enabled.indexOf(option);
+            enabled[(current + direction + enabled.length) % enabled.length].focus();
           }
         });
       });

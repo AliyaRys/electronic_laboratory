@@ -125,6 +125,36 @@
   overflow-x: auto;
 }
 
+/* --- ТЗ DR46 §3.2: the title-row actions of the saved card view -------------- */
+.vse-page-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+/* The compact icon-only actions stay in the title row (43 × 43 px each). */
+.vse-page-actions .app-button.icon-only {
+  width: 43px;
+  height: 43px;
+  min-height: 43px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* --- ТЗ DR46 §3.3: the readonly «Проба» block is a single-column stack ------- */
+.vse-sample-view-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.vse-sample-view-stack > * {
+  width: 100%;
+  min-width: 0;
+}
+
 .vse-research-head {
   display: flex;
   align-items: center;
@@ -182,13 +212,18 @@
 
 .vse-research-add {
   justify-self: start;
+  width: auto;
+  flex: 0 0 auto;
+  align-self: flex-start;
   min-height: 39px;
+  max-width: 100%;
   padding: 0 12px;
   border: 1px dashed #9cc4c2;
   border-radius: 9px;
   background: #fbfefe;
   color: var(--app-teal-dark);
   font-weight: 650;
+  white-space: normal;
 }
 
 .vse-research-add:hover:not(:disabled) {

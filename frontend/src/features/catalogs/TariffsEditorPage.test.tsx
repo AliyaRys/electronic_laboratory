@@ -152,7 +152,9 @@ describe("TariffsEditorPage", () => {
     renderEditor();
     await screen.findByRole("heading", { name: "Стоимость исследований ВСЭ" });
     expect(screen.queryByRole("button", { name: /Вид продукции/ })).toBeNull();
-    expect(await screen.findByText(/Мясо и мясопродукты/)).toBeInTheDocument();
+    // ТЗ DR46: the header roadmap now also shows «Мясо и мясопродукты»,
+    // so the area context may appear twice on the page.
+    expect((await screen.findAllByText(/Мясо и мясопродукты/)).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/стоимость одна на всю категорию/)).toBeInTheDocument();
     // The internal GUID never appears.
     expect(screen.queryByText(new RegExp(SPECIES.slice(0, 8)))).toBeNull();

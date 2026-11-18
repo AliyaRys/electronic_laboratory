@@ -14,7 +14,7 @@
 import "../features/examinations/examinations.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { fetchArrival, formatRuDate, type IncomingView, type Problem } from "../features/arrivals/api";
 import type { CollectionView } from "../features/samples/api";
@@ -37,6 +37,7 @@ import { DeleteDialog } from "../features/examinations/DeleteDialog";
 import { emptyOutcome, type OutcomeEntry } from "../features/examinations/formValues";
 import { useCommand } from "../shared/api/command";
 import { Button } from "../shared/ui/Button";
+import { Tooltip } from "../shared/ui/HelpTooltip";
 import { FormSection } from "../shared/ui/FormSection";
 import { ReadonlyField } from "../shared/ui/ReadonlyField";
 import { StatusView } from "../shared/ui/StatusView";
@@ -136,9 +137,6 @@ function ExaminationViewContent(): React.ReactElement {
   if (cardProblem !== null) {
     return (
       <div className="vse-app vse-page">
-        <nav className="vse-breadcrumb" aria-label="Навигация">
-          <Link to={`/labs/${labId}/examinations`}>← Журнал ВСЭ</Link>
-        </nav>
         <h1>Просмотр записи</h1>
         <StatusView
           state={cardProblem.status === 404 ? "not-found" : "network-error"}
@@ -198,28 +196,36 @@ function ExaminationViewContent(): React.ReactElement {
 
   return (
     <div className="vse-app vse-page vse-exam-page">
-      <nav className="vse-breadcrumb" aria-label="Навигация">
-        <Link to={`/labs/${labId}/examinations`}>← Журнал ВСЭ</Link>
-      </nav>
-      {/* ТЗ DR44 §4.1: the mockup title row — eyebrow, h1 and the actions. */}
+      {/* ТЗ DR46 §3.2: no «← Журнал ВСЭ» breadcrumb and no title badge — the
+          journal navigation stays in the shell header and the status lives in
+          the «Сведения об экспертизе» block. */}
       <div className="vse-page-head">
         <div>
           <p className="vse-eyebrow">Просмотр записи</p>
           <h1>{examinationTitle(view.number)}</h1>
         </div>
         <div className="vse-page-actions">
-          <span className={`vse-status-badge ${waiting ? "waiting" : "completed"}`}>
-            {waiting ? "Ожидание результатов" : "Завершено"}
-          </span>
           {canAct && sameDay && !editing ? (
-            <Button variant="primary" onClick={() => setEditing(true)}>
-              Исправить карточку
-            </Button>
+            <Tooltip text="Редактировать ВСЭ">
+              <Button
+                variant="secondary"
+                icon="admin-edit"
+                iconOnly
+                label="Редактировать ВСЭ"
+                onClick={() => setEditing(true)}
+              />
+            </Tooltip>
           ) : null}
           {canAct && sameDay && !editing ? (
-            <Button variant="danger" onClick={() => setDeleting(true)}>
-              Удалить
-            </Button>
+            <Tooltip text="Удалить ВСЭ">
+              <Button
+                variant="danger"
+                icon="admin-delete"
+                iconOnly
+                label="Удалить ВСЭ"
+                onClick={() => setDeleting(true)}
+              />
+            </Tooltip>
           ) : null}
           {canAct && !sameDay ? (
             <span className="vse-arrival-hint">
@@ -293,22 +299,15 @@ function ExaminationViewContent(): React.ReactElement {
                 title="Проба"
                 description="Данные физической пробы, отобранной для этой партии."
               >
-                <div className="vse-exam-grid">
-                  <div className="vse-span3">
-                    <ReadonlyField label="Дата отбора пробы" value={formatRuDate(view.sample.collected_on)} />
-                  </div>
-                  <div className="vse-span3">
-                    <ReadonlyField
-                      label="Масса пробы, кг"
-                      value={formatDecimalDisplay(view.sample.mass_kg)}
-                    />
-                  </div>
-                  <div className="vse-span6">
-                    <ReadonlyField
-                      label="Пробы отправлены в специальную лабораторию"
-                      value={view.sent_to_lab ? "Да" : "Нет"}
-                    />
-                  </div>
+                {/* ТЗ DR46 §3.3: the readonly view-only sample block is a
+                    single-column stack — never the 3/3/6 form grid. */}
+                <div className="vse-sample-view-stack">
+                  <ReadonlyField label="Дата отбора пробы" value={formatRuDate(view.sample.collected_on)} />
+                  <ReadonlyField label="Масса пробы, кг" value={formatDecimalDisplay(view.sample.mass_kg)} />
+                  <ReadonlyField
+                    label="Пробы отправлены в специальную лабораторию"
+                    value={view.sent_to_lab ? "Да" : "Нет"}
+                  />
                 </div>
               </FormSection>
 

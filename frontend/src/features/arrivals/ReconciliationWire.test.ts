@@ -41,9 +41,13 @@ describe("reconciliation wire helpers (DR39 fix-loop)", () => {
   });
 
   it("the summary and the validation degrade honestly, never with a thrown error", () => {
-    expect(reconciliationSummaryLabel({ on: "", from: "2026-11-05T10:00:00+03:00", to: "2026-11-06T18:00:00+03:00" })).toBe(
-      "с 05.11.2026, 10:00 по 06.11.2026, 18:00",
-    );
+    expect(
+      reconciliationSummaryLabel({
+        on: "",
+        from: "2026-11-05T10:00:00+03:00",
+        to: "2026-11-06T18:00:00+03:00",
+      }),
+    ).toBe("с 05.11.2026, 10:00 по 06.11.2026, 18:00");
     expect(reconciliationSummaryLabel({ on: "", from: "мусор", to: "2026-11-06T18:00" })).toBe("");
     expect(reconciliationSummaryLabel({ on: "2026-13-40", from: "", to: "" })).toBe("");
     expect(reconciliationRangeError("мусор", "2026-11-05T10:00")).toBe(

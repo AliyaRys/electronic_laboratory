@@ -3,7 +3,9 @@
  * server evaluation of the preview; the text always travels with the colour
  * and UNKNOWN is never repainted as a norm.
  */
+import { useState } from "react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { emptyResearch, type ExaminationFormValues } from "./formValues";
 import { ResearchFields, type ResearchEvaluation } from "./ResearchFields";
@@ -31,17 +33,72 @@ function baseValues(): ExaminationFormValues {
 }
 
 function renderCards(evaluations: ReadonlyMap<string, ResearchEvaluation>): void {
-  render(
+  render(<StatefulCards evaluations={evaluations} />);
+}
+
+/** Stateful harness: the add/remove actions go through the real onChange. */
+function StatefulCards({
+  evaluations,
+}: {
+  evaluations: ReadonlyMap<string, ResearchEvaluation>;
+}): React.ReactElement {
+  const [values, setValues] = useState<ExaminationFormValues>(baseValues);
+  return (
     <ResearchFields
-      values={baseValues()}
+      values={values}
       view={null}
       disabled={false}
       requiredResearchIds={new Set()}
       evaluations={evaluations}
-      onChange={() => {}}
-    />,
+      onChange={setValues}
+    />
   );
 }
+
+describe("ResearchFields addzone and disease editors (ТЗ DR46 §3.5)", () => {
+  it("keeps both disease add buttons in the common addzone with the dashed style", () => {
+    renderCards(new Map());
+    const addzone = document.querySelector('.vse-research-addzone[aria-label="Дополнительные исследования"]');
+    expect(addzone).not.toBeNull();
+    const buttons = Array.from(addzone?.querySelectorAll("button.vse-research-add") ?? []);
+    const labels = buttons.map((button) => button.textContent);
+    expect(labels.some((text) => text?.includes("Добавить инвазионные болезни"))).toBe(true);
+    expect(labels.some((text) => text?.includes("Добавить незаразное заболевание"))).toBe(true);
+    expect(buttons[0]?.className).toContain("vse-research-add");
+  });
+
+  it("opens the invasive editor above the addzone and focuses the new select", async () => {
+    const act = userEvent.setup();
+    renderCards(new Map());
+    await act.click(screen.getByRole("button", { name: "Добавить инвазионные болезни" }));
+    const editor = document.querySelector(".vse-findings");
+    const addzone = document.querySelector(".vse-research-addzone");
+    expect(editor).not.toBeNull();
+    // DOM order: the active editor goes BEFORE the common addzone.
+    const position = editor !== null ? editor.compareDocumentPosition(addzone as Node) : 0;
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const select = editor?.querySelector(".vse-finding-row select") ?? null;
+    expect(document.activeElement).toBe(select);
+  });
+
+  it("supports several rows and removes the last one without resetting the others", async () => {
+    const act = userEvent.setup();
+    renderCards(new Map());
+    await act.click(screen.getByRole("button", { name: "Добавить инвазионные болезни" }));
+    await act.click(screen.getByRole("button", { name: "Добавить инвазионные болезни" }));
+    expect(document.querySelectorAll(".vse-findings .vse-finding-row").length).toBe(2);
+    const selects = document.querySelectorAll(".vse-findings .vse-finding-row select");
+    expect(selects.length).toBe(2);
+    // Removing rows: the last remove button deletes only its own row.
+    await act.click(screen.getByRole("button", { name: "Удалить инвазионную болезнь 2" }));
+    expect(document.querySelectorAll(".vse-findings .vse-finding-row").length).toBe(1);
+    expect(screen.getByRole("button", { name: "Добавить инвазионные болезни" })).toBeTruthy();
+    // Deleting the last row hides the editor but keeps the add action.
+    await act.click(screen.getByRole("button", { name: "Удалить инвазионную болезнь 1" }));
+    expect(document.querySelector(".vse-findings")).toBeNull();
+    expect(screen.getByRole("button", { name: "Добавить инвазионные болезни" })).toBeTruthy();
+  });
+});
 
 describe("ResearchFields evaluation highlight", () => {
   it("shows the green norm verdict with its text", () => {

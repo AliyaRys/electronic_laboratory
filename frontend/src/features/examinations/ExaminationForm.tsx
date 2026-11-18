@@ -371,39 +371,39 @@ export function ExaminationForm({
         description="Заключение, стоимость и специалист, проводивший ВСЭ."
       >
         {/* ТЗ DR42 §6: the mockup grid — дата и отметка занимают широкую
-            строку, result/direction/specialist идут колонками по 4. */}
+            строку, result/direction/specialist идут колонками по 4.
+            ТЗ DR52 §5: дата и отметка живут в одном layout-контейнере. */}
         <div className="vse-exam-grid">
-          <div className="vse-span6">
-            <label className="app-field">
-              <span className="app-field-heading">
-                <span>Дата отбора проб *</span>
-              </span>
-              <input
-                type="date"
-                max={today}
-                value={values.sample.collectedOn}
-                disabled={busy}
-                aria-label="Дата отбора проб"
-                onChange={(event) =>
-                  form.setValue(
-                    "sample",
-                    { ...values.sample, collectedOn: event.target.value },
-                    { shouldDirty: true },
-                  )
-                }
-              />
-            </label>
-          </div>
-          <div className="vse-span6 vse-lab-sample-field">
-            <label className="vse-sent-flag">
-              <input
-                type="checkbox"
-                checked={values.sentToLab}
-                disabled={busy || (isEdit && view.sent_to_lab)}
-                onChange={(event) => form.setValue("sentToLab", event.target.checked, { shouldDirty: true })}
-              />
-              Пробы отправлены на специальные лабораторные исследования
-            </label>
+          <div className="vse-sample-row vse-span12">
+          <label className="app-field vse-sample-row-date">
+            <span className="app-field-heading">
+              <span>Дата отбора проб *</span>
+            </span>
+            <input
+              type="date"
+              max={today}
+              value={values.sample.collectedOn}
+              disabled={busy}
+              aria-label="Дата отбора проб"
+              onChange={(event) =>
+                form.setValue(
+                  "sample",
+                  { ...values.sample, collectedOn: event.target.value },
+                  { shouldDirty: true },
+                )
+              }
+            />
+          </label>
+          <label className="vse-sent-flag">
+            <input
+              type="checkbox"
+              checked={values.sentToLab}
+              disabled={busy || (isEdit && view.sent_to_lab)}
+              onChange={(event) => form.setValue("sentToLab", event.target.checked, { shouldDirty: true })}
+            />
+            Пробы отправлены на специальные лабораторные исследования
+          </label>
+        </div>
           </div>
           {view === null || view.status === "COMPLETED" ? (
             <OutcomeFields

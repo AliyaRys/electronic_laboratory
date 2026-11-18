@@ -14,6 +14,7 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import type { ExaminationView } from "./api";
 import { FormSection } from "../../shared/ui/FormSection";
+import { SelectDropdown } from "../../shared/ui/SelectDropdown";
 import { INDICATORS, INVASIVE_DISEASES, NONCONTAGIOUS_DISEASES, indicator } from "./indicators";
 import { evaluationLabel } from "./PricingPreview";
 import {
@@ -252,18 +253,19 @@ function ResearchCard({
       {heading}
       {kind === "BOOLEAN" ? (
         required ? (
-          <select
+          <SelectDropdown
+            id={`research-${id}-value`}
+            label={label}
+            hideLabel
             value={entry.value}
+            options={[
+              { value: "true", label: "Соответствует" },
+              { value: "false", label: "Не соответствует" },
+            ]}
+            placeholder="Выберите результат"
             disabled={disabled}
-            aria-label={label}
-            onChange={(event) => onChange({ ...entry, value: event.target.value })}
-          >
-            <option value="" disabled>
-              Выберите результат
-            </option>
-            <option value="true">Соответствует</option>
-            <option value="false">Не соответствует</option>
-          </select>
+            onChange={(next) => onChange({ ...entry, value: next })}
+          />
         ) : (
           <div className="vse-research-marks" role="radiogroup" aria-label={label}>
             <label className="vse-comparison-mark">
@@ -306,21 +308,16 @@ function ResearchCard({
       ) : null}
       {kind === "ENUM" && options !== undefined ? (
         <>
-          <select
+          <SelectDropdown
+            id={`research-${id}-value`}
+            label={label}
+            hideLabel
             value={entry.value}
+            options={options.map((option) => ({ value: option.value, label: option.label }))}
+            placeholder="Выберите результат"
             disabled={disabled}
-            aria-label={label}
-            onChange={(event) => onChange({ ...entry, value: event.target.value })}
-          >
-            <option value="" disabled>
-              Выберите результат
-            </option>
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => onChange({ ...entry, value: next })}
+          />
           {options.some((option) => option.other && option.value === entry.value) ? (
             <input
               type="text"
@@ -395,7 +392,7 @@ export function FindingsEditor({
   useEffect(() => {
     if (items.length > previousCount.current) {
       const rows = rootRef.current?.querySelectorAll(".vse-finding-row");
-      rows?.[rows.length - 1]?.querySelector("select")?.focus();
+      rows?.[rows.length - 1]?.querySelector(".app-select-trigger")?.focus();
     }
     previousCount.current = items.length;
   }, [items.length]);
@@ -410,21 +407,18 @@ export function FindingsEditor({
       {hint !== undefined ? <p className="vse-findings-hint">{hint}</p> : null}
       {items.map((item, index) => (
         <div className={withLocation ? "vse-finding-row" : "vse-finding-row single"} key={index}>
-          <select
+          {/* DR52 §7: every dropdown of the form uses the canonical shared
+              SelectDropdown — the same arrow, keyboard handling and ARIA. */}
+          <SelectDropdown
+            id={`finding-${index}-${title}`}
+            label={`${title}: наименование болезни`}
+            hideLabel
             value={item.disease}
+            options={diseases.map((disease) => ({ value: disease, label: disease }))}
+            placeholder="Выберите болезнь"
             disabled={disabled}
-            aria-label={`${title}: наименование болезни`}
-            onChange={(event) => set(index, { ...item, disease: event.target.value })}
-          >
-            <option value="" disabled>
-              Выберите болезнь
-            </option>
-            {diseases.map((disease) => (
-              <option key={disease} value={disease}>
-                {disease}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => set(index, { ...item, disease: next })}
+          />
           {withLocation ? (
             <input
               type="text"

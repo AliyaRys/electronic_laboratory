@@ -623,6 +623,69 @@ export const ПредварительныйРасчётЯрмарка: StoryObj 
   },
 };
 
+/** ТЗ DR52 §3.4/§3.5: the live CONTROLLED waiver checkbox of the card — the
+ * footer row (checkbox left, total right) of the pricing block. */
+export const ЯрмаркаЖивойОтметки: StoryObj = {
+  render: () => (
+    <div className="vse-app" style={{ maxWidth: 640 }}>
+      <CheckSectionCard
+        sectionKey="invoice"
+        title="Расчёт стоимости услуг"
+        description="Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма."
+      >
+        <PricingSection
+          state={{ status: "success", snapshot: pricingSnapshot }}
+          disabled={false}
+          waiver={
+            <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
+              <input type="checkbox" checked={false} onChange={() => undefined} />
+              <span>
+                <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
+                <span className="vse-rec-invoice-waiver-note">
+                  ВСЭ по этой карточке проводится без оплаты. Стоимость сверки данных не изменится.
+                </span>
+              </span>
+            </label>
+          }
+          onRetry={() => undefined}
+        />
+      </CheckSectionCard>
+    </div>
+  ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
+/** ТЗ DR52 §3.4: the inherited free rule — checked and not removable here. */
+export const ЯрмаркаУнаследованная: StoryObj = {
+  render: () => (
+    <div className="vse-app" style={{ maxWidth: 640 }}>
+      <CheckSectionCard
+        sectionKey="invoice"
+        title="Расчёт стоимости услуг"
+        description="Услуги по сверке партии и транспорта, их количество, тарифы и итоговая сумма."
+      >
+        <PricingSection
+          state={{ status: "success", snapshot: { ...pricingSnapshot, fair: true, total: "0.00" } }}
+          disabled={false}
+          waiver={
+            <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
+              <input type="checkbox" checked disabled readOnly />
+              <span>
+                <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
+                <span className="vse-rec-invoice-waiver-note">
+                  Бесплатность установлена при сверке данных и распространяется на ВСЭ.
+                </span>
+              </span>
+            </label>
+          }
+          onRetry={() => undefined}
+        />
+      </CheckSectionCard>
+    </div>
+  ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
 /** DR43: the network error of the live preview with an explicit retry. */
 export const ПредварительныйРасчётОшибкаСети: StoryObj = {
   render: () => (

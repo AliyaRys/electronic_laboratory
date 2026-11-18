@@ -219,7 +219,7 @@ function ExaminationViewContent(): React.ReactElement {
           {canAct && sameDay && !editing ? (
             <Tooltip text="Удалить ВСЭ">
               <Button
-                variant="danger"
+                variant="dangerSoft"
                 icon="admin-delete"
                 iconOnly
                 label="Удалить ВСЭ"
@@ -256,8 +256,11 @@ function ExaminationViewContent(): React.ReactElement {
         />
       ) : (
         <>
-          {partyView === null ? (
-            party.isLoading ? null : (
+          {/* ТЗ DR52 §8: the readonly business sections share ONE
+              section-stack container — the same 18px rhythm as
+              ``.vse-exam-form``; no per-section margins. */}
+          <div className="vse-exam-view-sections">
+          {partyView === null ? (            party.isLoading ? null : (
               <StatusView
                 state="network-error"
                 title="Не удалось загрузить партию."
@@ -398,6 +401,7 @@ function ExaminationViewContent(): React.ReactElement {
 
               {/* 6 «Расчёт стоимости услуг»: the frozen snapshot, no preview. */}
               <SavedPricingTable snapshot={savedSnapshot(view)} />
+          </div>
             </>
           )}
         </>

@@ -1,8 +1,8 @@
 /**
  * DR48 §3.4: stories of the shared date-range popover primitive — closed,
  * open, disabled, and the long applied label. The open state shows the
- * «С»/«По» fields with the shared actions; the error story renders the
- * apply-time validation text.
+ * «С»/«По» fields with the shared actions; there is no dedicated error
+ * story: the apply-time validation text appears on an invalid draft only.
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { DateRangePopover } from "./DateRangePopover";

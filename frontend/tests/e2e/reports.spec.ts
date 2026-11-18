@@ -10,24 +10,27 @@
  * - delete a source after preview/save → screen/PDF/XLSX/print matrix all
  *   EQUAL (the saved snapshot is rendered, never recomputed) and the
  *   count/source identities are unchanged;
- * - the menu never opens the row; export links are keyboard-accessible.
+ * - the period is an honest calendar range (date_from/date_to) chosen in the
+ *   shared date-range popover — there are no year/half controls.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const REPORT = "11111111-2222-4333-8444-555555555555";
+const RANGE_A = { from: "2026-01-01", to: "2026-06-30" };
+const RANGE_B = { from: "2026-07-01", to: "2026-12-31" };
 
 function shot(page: Page, name: string): Promise<void> {
   return page.screenshot({ path: `test-results/r03-${name}.png`, fullPage: true }).then(() => undefined);
 }
 
 const payload = {
-  version: 1,
+  version: 2,
   report_type: "5VET_SECTION_III",
   laboratory_id: LAB,
   laboratory: { name: "Лаборатория №1", address: "Адрес" },
-  year: 2026,
-  half: 1,
+  date_from: "2026-01-01",
+  date_to: "2026-06-30",
   generated_at: "2027-01-02T10:00:00Z",
   classification_version: "2026-v1",
   columns: [
@@ -120,13 +123,13 @@ async function mockOperational(page: Page): Promise<void> {
   );
 }
 
-function summary(id: string, year: number, half: number): Record<string, unknown> {
+function summary(id: string, from: string, to: string): Record<string, unknown> {
   return {
     id,
     report_type: "5VET_SECTION_III",
     laboratory_id: LAB,
-    year,
-    half,
+    date_from: from,
+    date_to: to,
     source_count: 34,
     saved_at: "2027-01-02T10:00:00Z",
     saved_by: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
@@ -139,6 +142,14 @@ async function expectAlertCount(page: Page, text: string): Promise<void> {
 }
 
 const PREVIEW_BUTTON = "Сформировать предварительный просмотр";
+
+/** Applies a calendar range through the shared popover (trigger → С/По → Применить). */
+async function applyRange(page: Page, from: string, to: string): Promise<void> {
+  await page.getByRole("button", { name: /^Период отчёта/ }).click();
+  await page.getByLabel("С", { exact: true }).fill(from);
+  await page.getByLabel("По", { exact: true }).fill(to);
+  await page.getByRole("button", { name: "Применить" }).click();
+}
 
 test.describe("report creation", () => {
   test("change params → warning → preview and codes are cleared", async ({ page }) => {
@@ -154,10 +165,15 @@ test.describe("report creation", () => {
     });
     await page.goto(`/labs/${LAB}/reports/new`);
     await expect(page.getByRole("heading", { name: "Создание отчёта 5-вет (раздел III)" })).toBeVisible();
+    // The honest range: no year/half controls, only the popover С/По pair.
+    await expect(page.getByRole("radio")).toHaveCount(0);
+    await applyRange(page, RANGE_A.from, RANGE_A.to);
+    await expect(page.getByTestId("applied-period")).toHaveText(/01\.01\.2026 — 30\.06\.2026/);
     await page.getByRole("button", { name: PREVIEW_BUTTON }).click();
     await expect(page.getByText("Предварительный просмотр матрицы")).toBeVisible();
     await page.getByLabel("ОКУД").fill("001");
-    await page.getByRole("radio", { name: /II \(июль—декабрь\)/ }).check();
+    // Changing the applied range clears the preview and the codes with the warning.
+    await applyRange(page, RANGE_B.from, RANGE_B.to);
     await expectAlertCount(page, "Параметры изменены");
     await expect(page.getByLabel("ОКУД")).toHaveCount(0);
     await expect(page.getByText("Предварительный просмотр матрицы")).toHaveCount(0);
@@ -176,6 +192,7 @@ test.describe("report creation", () => {
     );
     await page.route("**/api/v1/reports/5vet", (route: Route) => route.abort());
     await page.goto(`/labs/${LAB}/reports/new`);
+    await applyRange(page, RANGE_A.from, RANGE_A.to);
     await page.getByRole("button", { name: PREVIEW_BUTTON }).click();
     await expect(page.getByText("Предварительный просмотр матрицы")).toBeVisible();
     for (const label of ["ОКУД", "ОКПО", "ОКВЭД", "ОКТМО", "ОКОГУ", "ОКОПФ", "ОКФС"]) {
@@ -185,7 +202,8 @@ test.describe("report creation", () => {
     await expect(page.getByText(/Не удалось сохранить отчёт/)).toBeVisible();
     await expect(page.getByLabel("ОКУД")).toHaveValue("001");
     await expect(page.getByLabel("ОКФС")).toHaveValue("001");
-    await expect(page.getByRole("radio", { name: /I \(январь—июнь\)/ })).toBeChecked();
+    // The applied parameters survive the failed save too.
+    await expect(page.getByTestId("applied-period")).toHaveText(/01\.01\.2026 — 30\.06\.2026/);
     await shot(page, "create-save-failure");
   });
 
@@ -206,7 +224,7 @@ test.describe("report creation", () => {
         contentType: "application/json",
         headers: { etag: '"1"' },
         body: JSON.stringify({
-          ...summary(REPORT, 2026, 1),
+          ...summary(REPORT, RANGE_A.from, RANGE_A.to),
           payload,
           codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
@@ -217,13 +235,14 @@ test.describe("report creation", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          ...summary(REPORT, 2026, 1),
+          ...summary(REPORT, RANGE_A.from, RANGE_A.to),
           payload,
           codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
       }),
     );
     await page.goto(`/labs/${LAB}/reports/new`);
+    await applyRange(page, RANGE_A.from, RANGE_A.to);
     await page.getByRole("button", { name: PREVIEW_BUTTON }).click();
     await expect(page.getByText("Предварительный просмотр матрицы")).toBeVisible();
     await page.getByLabel("ОКУД").fill(" 001 ");
@@ -233,8 +252,13 @@ test.describe("report creation", () => {
     await page.getByRole("button", { name: "Сохранить отчёт" }).click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/reports/${REPORT}`));
     expect(posts).toHaveLength(1);
-    const body = posts[0] as { preview: { signature: string }; codes: Record<string, string> };
+    const body = posts[0] as {
+      preview: { signature: string; payload: Record<string, unknown> };
+      codes: Record<string, string>;
+    };
     expect(body.preview.signature).toBe("sig");
+    expect(body.preview.payload["date_from"]).toBe("2026-01-01");
+    expect(body.preview.payload["date_to"]).toBe("2026-06-30");
     expect(body.codes["okud"]).toBe("001");
     await shot(page, "create-saved-view");
   });
@@ -245,7 +269,11 @@ test.describe("report list", () => {
     await mockMe(page);
     await mockOperational(page);
     const items = Array.from({ length: 25 }, (_value, index) =>
-      summary(`${REPORT}-${index}`, 2026, index % 2 === 0 ? 1 : 2),
+      summary(
+        `${REPORT}-${index}`,
+        index % 2 === 0 ? RANGE_A.from : RANGE_B.from,
+        index % 2 === 0 ? RANGE_A.to : RANGE_B.to,
+      ),
     );
     const servedPages: number[] = [];
     await page.route("**/api/v1/reports/5vet*", (route: Route) => {
@@ -263,7 +291,9 @@ test.describe("report list", () => {
     await expect(page.getByRole("heading", { name: "Отчёты", exact: true })).toBeVisible();
     await expect(page.getByText(/Страница 1 из 2/)).toBeVisible();
     // The row itself is NOT a clickable container: the link is the entry point.
-    const firstLink = page.getByRole("link", { name: /2026, I полугодие/ }).first();
+    const firstLink = page
+      .getByRole("link", { name: "Период: 01.01.2026 — 30.06.2026", exact: true })
+      .first();
     await expect(firstLink).toBeVisible();
     await shot(page, "list-page1");
 
@@ -287,11 +317,16 @@ test.describe("report list", () => {
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ items: [summary(REPORT, 2026, 1)], total: 1, page: 1, page_size: 20 }),
+        body: JSON.stringify({
+          items: [summary(REPORT, RANGE_A.from, RANGE_A.to)],
+          total: 1,
+          page: 1,
+          page_size: 20,
+        }),
       }),
     );
     await page.goto(`/labs/${LAB}/reports`);
-    const link = page.getByRole("link", { name: "Открыть: 2026, I полугодие" });
+    const link = page.getByRole("link", { name: "Открыть: период 01.01.2026 — 30.06.2026" });
     await link.focus();
     await expect(link).toBeFocused();
     await expect(page.getByRole("link", { name: "Открыть: Операционные показатели" })).toBeVisible();
@@ -338,7 +373,7 @@ test.describe("saved report view and exports", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          ...summary(REPORT, 2026, 1),
+          ...summary(REPORT, RANGE_A.from, RANGE_A.to),
           payload,
           codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
@@ -420,7 +455,7 @@ test.describe("saved report view and exports", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          ...summary(REPORT, 2026, 1),
+          ...summary(REPORT, RANGE_A.from, RANGE_A.to),
           payload,
           codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
@@ -441,23 +476,55 @@ test.describe("saved report view and exports", () => {
 });
 
 test.describe("operational report", () => {
-  test("period drives the indicators; balances stay current; VET is forbidden", async ({ page }) => {
+  // DR48 §2: three honest metrics, no balances block anywhere, and the
+  // period drives only the operational query.
+  const operational = {
+    saved_examinations: 9,
+    product_identifications: 12,
+    transport_inspections: 3,
+    period: { date_from: "2026-10-01", date_to: "2026-11-01" },
+  };
+
+  test("period drives the indicators; the balances block is gone; VET is forbidden", async ({
+    page,
+  }) => {
     await mockMe(page);
-    const operational = {
-      processed_parties: 7,
-      product_identifications: 12,
-      transport_inspections: 3,
-      current_sample_balances: [{ product_species_id: "говядина", mass_kg: "12.6", revision: 2 }],
-      period: { date_from: "2026-10-01T00:00:00Z", date_to: "2026-11-01T00:00:00Z" },
-    };
-    await page.route("**/api/v1/reports/operational*", (route: Route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(operational) }),
-    );
+    const operationalGets: URL[] = [];
+    await page.route("**/api/v1/reports/operational*", (route: Route) => {
+      operationalGets.push(new URL(route.request().url()));
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(operational),
+      });
+    });
     await page.goto(`/labs/${LAB}/reports/operational`);
     await expect(page.getByText("12", { exact: true })).toBeVisible();
-    await expect(page.getByText("говядина")).toBeVisible();
-    await expect(page.getByText("12.6")).toBeVisible();
+    await expect(page.getByText("9", { exact: true })).toBeVisible();
+    await expect(page.getByText("3", { exact: true })).toBeVisible();
+    await expect(operationalGets[0]?.searchParams.get("laboratory_id")).toBe(LAB);
+    // Applying a new period re-queries only the operational view.
+    await page.getByLabel("С даты").fill("2026-01-01");
+    await page.getByRole("button", { name: "Применить период" }).click();
+    await expect.poll(() => operationalGets.length).toBe(2);
+    await expect(operationalGets[1]?.searchParams.get("date_from")).toBe("2026-01-01");
     await shot(page, "operational");
+
+    // AT-20: a VET gets the honest forbidden state and no metrics request.
+    await page.route("**/api/v1/me", (route: Route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(me("VET", ["sample:read"])),
+      }),
+    );
+    await page.goto(`/labs/${LAB}/reports/operational`);
+    await expect(
+      page.getByText("Операционные показатели недоступны: у вас нет соответствующего полномочия."),
+    ).toBeVisible();
+    const count = operationalGets.length;
+    await page.waitForTimeout(100);
+    expect(operationalGets.length).toBe(count);
   });
 });
 

@@ -204,6 +204,26 @@ async def test_tampered_payload_and_other_session_are_rejected(db_session: Async
     assert other_session.value.code == "REPORT_PREVIEW_INVALID"
 
 
+@pytest.mark.asyncio
+async def test_foreign_payload_version_is_rejected(db_session: AsyncSession) -> None:
+    """A preview signed for another payload schema version is REPORT_PREVIEW_INVALID."""
+    actor_id, lab_id, _source_id = await seed_source(db_session)
+    preview = await preview_report(
+        db_session,
+        actor_id,
+        "session-a",
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
+        keyring=keyring(),
+        now=NOW,
+    )
+    assert preview.payload["version"] == 2
+    foreign = preview.model_copy(deep=True)
+    foreign.payload["version"] = 1
+    with pytest.raises(ProblemError, match="верси") as wrong:
+        verify_preview(foreign, actor_id, "session-a", keyring=keyring(), now=NOW)
+    assert wrong.value.code == "REPORT_PREVIEW_INVALID"
+
+
 def test_codes_preserve_leading_zeroes_and_reject_blank() -> None:
     assert codes(okud=" 001 ").okud == "001"
     with pytest.raises(ValidationError):

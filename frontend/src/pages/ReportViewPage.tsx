@@ -111,7 +111,7 @@ function ReportViewContent(): React.ReactElement {
             </div>
             <div>
               <dt>Период</dt>
-              <dd>Период: {appliedRangeLabel({ from: view.date_from, to: view.date_to })}</dd>
+              <dd>{appliedRangeLabel({ from: view.date_from, to: view.date_to })}</dd>
             </div>
             <div>
               <dt>Лаборатория</dt>

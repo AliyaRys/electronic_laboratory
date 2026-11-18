@@ -9,6 +9,13 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import "./DateRangePopover.css";
 
+/** Focusable elements of the open popover, in DOM order. */
+function popoverFocusables(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>('button, input, [href], [tabindex]:not([tabindex="-1"])'),
+  ).filter((element) => !element.hasAttribute("disabled"));
+}
+
 export interface AppliedDateRange {
   /** Inclusive start date (YYYY-MM-DD) or "" when not chosen. */
   from: string;
@@ -66,6 +73,7 @@ export function DateRangePopover({
   const [error, setError] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   const close = (): void => {
     setOpen(false);
@@ -133,6 +141,28 @@ export function DateRangePopover({
           event.preventDefault();
           event.stopPropagation();
           close();
+          return;
+        }
+        // Minimal focus trap: while the popover is open, Tab cycles inside it
+        // (the date inputs and the two actions) and never leaves it; Escape
+        // or «Применить»/«Сбросить» close and return the focus to the trigger.
+        if (event.key === "Tab" && open) {
+          const container: HTMLElement | null = popoverRef.current ?? rootRef.current;
+          if (container === null) return;
+          const items = popoverFocusables(container);
+          if (items.length === 0) return;
+          const first = items[0];
+          const last = items[items.length - 1];
+          const current = document.activeElement;
+          if (event.shiftKey) {
+            if (current === first || !items.includes(current as HTMLElement)) {
+              event.preventDefault();
+              last.focus();
+            }
+          } else if (current === last || !items.includes(current as HTMLElement)) {
+            event.preventDefault();
+            first.focus();
+          }
         }
       }}
     >
@@ -151,7 +181,7 @@ export function DateRangePopover({
         <span>{summary !== "" ? summary : emptyLabel}</span>
       </button>
       {open ? (
-        <div className="vse-date-range-popover" role="group" aria-label={caption}>
+        <div ref={popoverRef} className="vse-date-range-popover" role="group" aria-label={caption}>
           <div className="vse-date-range-title">{caption}</div>
           <div className="vse-date-range-inputs">
             <label htmlFor={fromId}>С</label>

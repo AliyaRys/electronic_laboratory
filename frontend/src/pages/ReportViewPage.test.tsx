@@ -83,7 +83,7 @@ describe("ReportViewPage", () => {
     renderView();
     expect(await screen.findByText("Матрица сохранённого отчёта")).toBeVisible();
     expect(screen.getByText(/Лаборатория №1/)).toBeVisible();
-    expect(screen.getByText(/Период: 01.01.2026 — 30.06.2026/)).toBeVisible();
+    expect(screen.getByText("01.01.2026 — 30.06.2026")).toBeVisible();
     expect(screen.getByText("Предварительная форма")).toBeVisible();
     expect(screen.getByText(/Источников в снимке: 1/)).toBeVisible();
   });

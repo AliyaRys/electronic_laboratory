@@ -33,6 +33,8 @@ from backend.src.modules.reporting.schemas import (
 )
 
 MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
+# The signed payload schema version this server builds and verifies.
+SUPPORTED_PAYLOAD_VERSION = 2
 
 
 def canonical_json(value: object) -> bytes:
@@ -189,6 +191,12 @@ def verify_preview(
 ) -> dict[str, object]:
     """Verify size, key lifetime and MAC for the current live server session."""
     payload = preview.payload
+    if payload.get("version") != SUPPORTED_PAYLOAD_VERSION:
+        raise _problem(
+            "REPORT_PREVIEW_INVALID",
+            f"Preview неподдерживаемой версии ({payload.get('version')}); "
+            f"поддерживается версия {SUPPORTED_PAYLOAD_VERSION}.",
+        )
     actual_size = len(canonical_json(payload))
     if actual_size > MAX_PAYLOAD_BYTES or preview.byte_size != actual_size:
         raise _problem("REPORT_PREVIEW_INVALID", "Размер preview не совпадает с подписанным содержимым.")

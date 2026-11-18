@@ -2,8 +2,8 @@
  * Sample accounting e2e (S03, MSW-style route mocks — the same honest pattern
  * as arrivals.spec.ts; the real-API leg is not available in this task's
  * environment and is documented as such in the evidence file): the screen
- * under «Отчёты», the readonly shown weight, the ANALYST read-only view and
- * the narrow screen.
+ * under «Отчёты», the readonly shown weight, the ONE direct disposal action
+ * (no row menu — DR48 §4.4), the ANALYST read-only view and the narrow screen.
  */
 import { expect, test, type Page } from "@playwright/test";
 
@@ -46,35 +46,12 @@ async function mockSamples(page: Page, seed: Seed): Promise<void> {
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([{ product_species_id: SPECIES, mass_kg: "12.6", revision: 3 }]),
+      body: JSON.stringify([{ product_species_id: SPECIES, product_name: "говядина", mass_kg: "12.6", revision: 3 }]),
     }),
   );
-  await page.route("**/api/v1/samples/collections*", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        items: [
-          {
-            id: "44444444-4444-4444-8444-444444444444",
-            party_id: "9c1b2d3e-1111-4222-8333-444444444444",
-            laboratory_id: LAB,
-            product_species_id: SPECIES,
-            classification_snapshot: { product: { id: SPECIES, name: "говядина" } },
-            collected_on: "2026-11-05",
-            mass_kg: "12.6",
-            collected_by: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
-            created_at: "2026-11-05T10:00:00Z",
-            disposal_id: null,
-            revision: 1,
-          },
-        ],
-        total: 1,
-        page: 1,
-        page_size: 20,
-      }),
-    }),
-  );
+  // DR48 §4.1: the page never requests collections — the route is
+  // deliberately NOT mocked here; the first test asserts the «Доступные
+  // отборы» block is absent from the DOM.
   await page.route("**/api/v1/samples/disposals*", (route) =>
     route.fulfill({
       status: 200,
@@ -85,6 +62,7 @@ async function mockSamples(page: Page, seed: Seed): Promise<void> {
             id: "55555555-5555-4555-8555-555555555555",
             laboratory_id: LAB,
             product_species_id: SPECIES,
+            product_name: "говядина",
             disposed_on: "2026-11-06",
             mass_kg: "12.6",
             external_vsd_number: "ВСД-001",
@@ -105,18 +83,24 @@ test.describe("samples accounting", () => {
     await mockSamples(page, { role: "VET" });
     await page.goto(`/labs/${LAB}/reports/samples`);
     await expect(page.getByRole("heading", { name: "Учёт проб" })).toBeVisible();
+    await expect(page.getByText("говядина").first()).toBeVisible();
     await expect(page.getByText("12.6").first()).toBeVisible();
+    // DR48 §4.1: the «Доступные отборы» block is gone and no collections
+    // request is ever made.
+    await expect(page.getByText("Доступные отборы")).toHaveCount(0);
     // No disposal action exists before the dialog, and the balance weight is
     // not editable anywhere on the screen.
     await expect(page.getByLabel(/Остаток/)).toHaveCount(0);
     await shot(page, "vet-1440");
   });
 
-  test("the disposal dialog shows the kind/weight/date/number before confirm", async ({ page }) => {
+  test("the disposal dialog opens from ONE direct row action, not a row menu", async ({ page }) => {
     await mockSamples(page, { role: "VET" });
     await page.goto(`/labs/${LAB}/reports/samples`);
-    await page.getByRole("button", { name: "Действия со строкой" }).click();
-    await page.getByRole("menuitem", { name: "Утилизировать остаток" }).click();
+    // DR48 §4.4: one direct icon button in the balance row; no «Действия со
+    // строкой» menu exists.
+    await expect(page.getByRole("button", { name: "Действия со строкой" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Утилизировать остаток" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(dialog.getByTestId("disposal-shown-mass")).toHaveText("12.6 кг");
@@ -131,6 +115,7 @@ test.describe("samples accounting", () => {
     await mockSamples(page, { role: "ANALYST" });
     await page.goto(`/labs/${LAB}/reports/samples`);
     await expect(page.getByText("12.6").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Утилизировать остаток" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Действия со строкой" })).toHaveCount(0);
     await shot(page, "analyst-1440");
   });

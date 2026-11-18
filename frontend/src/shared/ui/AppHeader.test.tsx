@@ -257,3 +257,29 @@ describe("AppHeader user identity (ТЗ DR41 §3.1)", () => {
     expect(screen.getByText("ГБУ «Лаборатория №1 г. Казань»")).toBeInTheDocument();
   });
 });
+
+// ТЗ DR50 §4: the profile link is the only circular item — active is expressed
+// by the avatar ring (CSS), and aria-current stays exclusive to /profile.
+describe("DR50 circular active profile state", () => {
+  it("marks only the profile link active/aria-current on /profile", () => {
+    render(<AppHeader mode="work" user={user} profileActive onLogout={() => undefined} />);
+    const active = document.querySelectorAll(".topbar .active");
+    expect(Array.from(active).map((node) => node.className)).toEqual(["user-link active"]);
+    expect(document.querySelector('[aria-current="page"]')).toHaveClass("user-link");
+  });
+
+  it("leaves the profile link inactive on other routes", () => {
+    render(
+      <AppHeader mode="work" user={user} product="meat" active="arrivals" onLogout={() => undefined} />,
+    );
+    const profile = screen.getByRole("link", { name: "Анна Кузнецова" });
+    expect(profile).not.toHaveClass("active");
+    expect(profile).not.toHaveAttribute("aria-current");
+  });
+
+  it("keeps the avatar inside the link (ring target, ТЗ DR50 §4.1)", () => {
+    render(<AppHeader mode="work" user={user} profileActive onLogout={() => undefined} />);
+    const link = screen.getByRole("link", { name: "Анна Кузнецова" });
+    expect(link.querySelector(".avatar")).not.toBeNull();
+  });
+});

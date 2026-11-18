@@ -207,3 +207,12 @@ describe("ProfilePage", () => {
     expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
 });
+
+describe("DR50: the login is displayed exactly once", () => {
+  it("renders the login only inside the field labelled «Логин»", async () => {
+    renderProfile();
+    await waitFor(() => expect(screen.getByLabelText("Логин")).toHaveTextContent("vet.longname"));
+    const occurrences = (document.body.textContent ?? "").split("vet.longname").length - 1;
+    expect(occurrences).toBe(1);
+  });
+});

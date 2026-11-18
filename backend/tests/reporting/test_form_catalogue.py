@@ -180,7 +180,14 @@ def test_projection_prints_blanks_empty_and_zeroes_visible() -> None:
         "official": False,
         "laboratory": {"name": "Лаборатория"},
     }
-    view = _view(payload, date_from=__import__("datetime").date(2026, 11, 1), date_to=__import__("datetime").date(2026, 11, 18), saved_at=__import__("datetime").datetime(2026, 11, 18, 15, 51))  # type: ignore[arg-type]
+    import datetime as _dt
+
+    view = _view(
+        payload,
+        date_from=_dt.date(2026, 11, 1),
+        date_to=_dt.date(2026, 11, 18),
+        saved_at=_dt.datetime(2026, 11, 18, 15, 51),
+    )  # type: ignore[arg-type]
     model = report_document_view(view)  # type: ignore[arg-type]
     assert len(model.matrix) == 47
     row240 = model.matrix[44]

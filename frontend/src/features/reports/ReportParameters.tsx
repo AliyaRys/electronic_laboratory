@@ -11,7 +11,6 @@ import "./reports.css";
 import { Button } from "../../shared/ui/Button";
 import {
   DateRangePopover,
-  appliedRangeLabel,
   dateRangeError,
   type AppliedDateRange,
 } from "../../shared/ui/DateRangePopover";
@@ -69,11 +68,6 @@ export function ReportParameters({
         <p className="vse-report-warning" role="alert">
           Параметры изменены — предварительный просмотр и коды больше не соответствуют выбранным. Сформируйте
           просмотр заново.
-        </p>
-      ) : null}
-      {applied.from !== "" && applied.to !== "" ? (
-        <p className="app-field-message" data-testid="applied-period">
-          Период: {appliedRangeLabel(applied)}
         </p>
       ) : null}
     </section>

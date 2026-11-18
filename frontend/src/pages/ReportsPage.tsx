@@ -13,7 +13,7 @@
  */
 import "./../features/reports/reports.css";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { useMe } from "../shared/api/me";
 import { fetchLaboratoryOptions, type LaboratoryOption } from "../features/identity/api";
@@ -47,7 +47,6 @@ function periodLabel(item: ReportSummary): string {
 
 function ReportsContent(): React.ReactElement {
   const { labId } = useParams<{ labId: string }>();
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const me = useMe();
   const access = reportAccess(me.user?.capabilities);
@@ -134,18 +133,7 @@ function ReportsContent(): React.ReactElement {
       {/* ТЗ DR41 §4: the hub carries no «← Поступления» breadcrumb; the header
           navigation and nested report routes stay unchanged. */}
       <div className="vse-reports-title-row">
-        <div>
-          <h1>Отчёты</h1>
-          <p className="vse-reports-subtitle">
-            Формирование регламентированной отчётности по доступным лабораториям.
-          </p>
-          {laboratoryName !== null ? <p className="vse-reports-lab">{laboratoryName}</p> : null}
-        </div>
-        {access.create5vet ? (
-          <Button type="button" variant="primary" onClick={() => navigate(`/labs/${labId}/reports/new`)}>
-            Создать отчёт
-          </Button>
-        ) : null}
+        <h1>Отчёты</h1>
       </div>
       <section className="vse-reports-card" aria-label="Направления отчётов">
         <div className="vse-reports-hub-list">
@@ -161,6 +149,12 @@ function ReportsContent(): React.ReactElement {
                   ? "Создание отчёта доступно; список сохранённых отчётов и просмотр не входят в ваши полномочия."
                   : "Список сохранённых отчётов недоступен.")
               }
+              // DR49 §4.2: «Создать отчёт» lives INSIDE the 5-вет card, the
+              // same secondary action style as the neighbors' «Открыть», and
+              // only when the capability exists — view rights never widen.
+              to={access.create5vet ? `/labs/${labId}/reports/new` : undefined}
+              actionVisibleLabel={access.create5vet ? "Создать отчёт" : undefined}
+              actionLabel={access.create5vet ? "Создать отчёт 5-вет (раздел III)" : undefined}
             />
           ) : null}
           {access.operational ? (
@@ -243,12 +237,6 @@ function ReportsContent(): React.ReactElement {
             </>
           )}
         </section>
-      ) : null}
-      {access.list5vet ? (
-        <p className="app-field-message">
-          Экспорт PDF/XLSX и печать доступны в карточке сохранённого отчёта; файлы строятся строго из снимка и
-          не пересчитываются (AT-18).
-        </p>
       ) : null}
     </div>
   );

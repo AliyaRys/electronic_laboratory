@@ -21,7 +21,7 @@ import { useMe } from "../shared/api/me";
 import { useCommand } from "../shared/api/command";
 import { StatusView } from "../shared/ui/StatusView";
 import { Button } from "../shared/ui/Button";
-import { appliedRangeLabel, type AppliedDateRange } from "../shared/ui/DateRangePopover";
+import { type AppliedDateRange } from "../shared/ui/DateRangePopover";
 import { ReportParameters } from "../features/reports/ReportParameters";
 import { ReportCodes, CODE_FIELDS } from "../features/reports/ReportCodes";
 import { ReportMatrix } from "../features/reports/ReportMatrix";
@@ -223,9 +223,6 @@ function ReportCreateContent(): React.ReactElement {
 
       {previewPayload !== null ? (
         <>
-          <p className="app-field-message" data-testid="preview-period">
-            Период: {appliedRangeLabel(applied)}
-          </p>
           <ReportMatrix
             payload={previewPayload}
             sourceCount={sourceCount}

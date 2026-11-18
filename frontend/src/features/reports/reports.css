@@ -25,18 +25,6 @@
   letter-spacing: -0.035em;
 }
 
-.vse-reports-subtitle {
-  margin: 7px 0 0;
-  max-width: 720px;
-  color: var(--app-muted);
-}
-
-.vse-reports-lab {
-  margin: 4px 0 0;
-  font-weight: 640;
-  color: var(--app-muted-readable);
-}
-
 .vse-reports-card {
   overflow-x: auto;
   border: 1px solid var(--app-line);

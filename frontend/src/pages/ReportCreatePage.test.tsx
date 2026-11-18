@@ -118,8 +118,9 @@ describe("ReportCreatePage", () => {
       selector: ".app-status-detail",
     });
     expect(message).toBeVisible();
-    // The applied range stays selected.
-    expect(screen.getByTestId("applied-period").textContent).toContain("01.01.2026 — 30.06.2026");
+    // The applied range stays selected in the trigger filter (DR49 §3: the
+    // visible echo paragraphs are gone).
+    expect(screen.getByText(/Период отчёта/)).toBeVisible();
   });
 
   it("an incomplete or reversed range never sends a request", async () => {
@@ -154,7 +155,8 @@ describe("ReportCreatePage", () => {
     await runPreview(user);
     await screen.findByText("Предварительный просмотр матрицы");
     expect(previewCounter).toBe(1);
-    expect(screen.getByTestId("preview-period").textContent).toContain("01.01.2026 — 30.06.2026");
+    // DR49 §3: no second standalone period echo after a successful preview.
+    expect(screen.queryByTestId("preview-period")).toBeNull();
   });
 
   it("changing the applied range clears the preview and the codes with a warning", async () => {
@@ -205,7 +207,7 @@ describe("ReportCreatePage", () => {
     expect(screen.getByLabelText("ОКУД")).toHaveValue("001");
     expect(screen.getByLabelText("ОКФС")).toHaveValue("001");
     // The parameters are still on screen and unchanged.
-    expect(screen.getByTestId("applied-period").textContent).toContain("01.01.2026 — 30.06.2026");
+    expect(screen.getByText("Сформировать предварительный просмотр")).toBeVisible();
   });
 
   it("a successful save sends the signed preview and the trimmed codes, then navigates", async () => {

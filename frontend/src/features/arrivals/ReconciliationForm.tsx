@@ -33,7 +33,6 @@ import {
   normalizeDecimalInput,
   formatDecimalDisplay,
   partyUnit,
-  pricingUnitLabel,
   previousVse,
   reconciliationEtag,
   saveReconciliation,
@@ -848,7 +847,6 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
               <thead>
                 <tr>
                   <th scope="col">Услуга</th>
-                  <th scope="col">Единица расчёта</th>
                   <th scope="col">Количество</th>
                   <th scope="col">Тариф</th>
                   <th scope="col">Сумма</th>
@@ -858,7 +856,6 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
                 {initial.pricing.lines.map((line) => (
                   <tr key={line.service_code}>
                     <td>{line.name}</td>
-                    <td>{pricingUnitLabel(line.unit_id)}</td>
                     <td>{line.quantity}</td>
                     <td>{moneyLabel(line.unit_price)}</td>
                     <td>{moneyLabel(line.amount)}</td>

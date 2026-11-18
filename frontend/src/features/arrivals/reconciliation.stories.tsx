@@ -178,6 +178,31 @@ const partyWithDocuments: IncomingView = {
 
 export const СопроводительныеДокументы = formStory(emptyView, partyWithDocuments);
 
+/** ТЗ DR47 §2.4: a very long document name must keep the ✓/× pair as ONE
+ * group on the right of the document head (never inside the text lines). */
+const partyWithLongDocument: IncomingView = {
+  ...party,
+  external: {
+    ...party.external,
+    accompanyingDocuments: [
+      {
+        key: "long-doc",
+        sourceOrder: 0,
+        typeCode: "1",
+        typeLabel:
+          "Ветеринарный сопроводительный документ на партию продукции, оформленный при отправке с предприятия-изготовителя по системе «Меркурий» в пределах региона",
+        series: "0006",
+        number: "5555",
+        seriesAndNumber: "0006 5555",
+        createdOn: "2026-11-16",
+        relationshipType: "1",
+      },
+    ],
+  },
+};
+
+export const СопроводительныйДокументДлинноеИмя = formStory(emptyView, partyWithLongDocument);
+
 /** ТЗ DR40 §7.3: честное пустое состояние без фиктивной отметки. */
 const partyWithoutDocuments: IncomingView = {
   ...party,

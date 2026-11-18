@@ -43,61 +43,41 @@ const snapshot: PricingSnapshotView = {
 
 const state: PricingPreviewState = { status: "success", snapshot };
 
-describe("PricingSection evaluation display", () => {
-  it("shows the norm criterion next to the evaluation", () => {
+// ТЗ DR42 §4.3: the per-line evaluation snapshot travelled in the invoice
+// table until DR47. Per ТЗ DR47 §2.6 the live table keeps exactly four
+// columns («Единица» and «Оценка» are gone from the invoice view), while the
+// evaluation stays in the «Исследования ВСЭ» cards (ResearchFields tests).
+
+// --- ТЗ DR47 §2.6: the live-examination variant of the shared renderer ---------
+
+describe("PricingSection live table (DR47)", () => {
+  it("renders exactly the four named columns with the external total and the waiver", () => {
     render(<PricingSection state={state} disabled={false} onRetry={() => {}} />);
-    const inNorm = screen.getAllByText("Норма");
-    expect(inNorm.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/от 0 до 5/)).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Исследование" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Количество" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Тариф" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Сумма" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "Единица" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Оценка" })).toBeNull();
+    // No tfoot: the total is the reconciliation-style row below the table.
+    expect(screen.queryByText("Итого к оплате")).toBeNull();
+    const total = document.querySelector("p.vse-rec-invoice-total");
+    expect(total).not.toBeNull();
+    expect(total?.querySelector("strong")?.textContent).toContain("120,00 ₽");
+    expect(total?.closest("table")).toBeNull();
+    // The live form keeps the readonly Ярмарка indicator.
+    expect(document.querySelector('[data-testid="pricing-waiver"]')).not.toBeNull();
   });
 
-  it("UNKNOWN with no norm is never shown as an in-norm verdict", () => {
-    render(<PricingSection state={state} disabled={false} onRetry={() => {}} />);
-    expect(screen.getByText("Оценка не определена")).toBeTruthy();
-  });
-
-  it("NOT_APPLICABLE carries its neutral wording (ТЗ DR41-B §7.2)", () => {
-    const snapshotNotApplicable: PricingSnapshotView = {
-      ...snapshot,
-      lines: [
-        {
-          ...snapshot.lines[0],
-          evaluation: { status: "NOT_APPLICABLE", evaluation_mode: "NONE" },
-        },
-      ],
-    };
+  it("fair pricing keeps the honest zero total with the live waiver", () => {
     render(
       <PricingSection
-        state={{ status: "success", snapshot: snapshotNotApplicable }}
+        state={{ status: "success", snapshot: { ...snapshot, total: "0.00", fair: true } }}
         disabled={false}
         onRetry={() => {}}
       />,
     );
-    expect(screen.getByText("Оценка по норме не применяется")).toBeTruthy();
-  });
-
-  it("a legacy INTEGER norm with a fractional value shows the honest re-save hint (ТЗ DR41-B §7.2)", () => {
-    const snapshotLegacy: PricingSnapshotView = {
-      ...snapshot,
-      lines: [
-        {
-          ...snapshot.lines[0],
-          evaluation: {
-            status: "UNKNOWN",
-            rule_type: "interval",
-            evaluation_mode: "CONFIGURABLE",
-            hint: "Норма сохранена в устаревшем целочисленном формате: пересохраните норму показателя в справочнике.",
-          },
-        },
-      ],
-    };
-    render(
-      <PricingSection
-        state={{ status: "success", snapshot: snapshotLegacy }}
-        disabled={false}
-        onRetry={() => {}}
-      />,
-    );
-    expect(screen.getByText(/пересохраните норму/i)).toBeTruthy();
+    expect(screen.getAllByText("0,00 ₽").length).toBeGreaterThanOrEqual(2);
+    expect(document.querySelector('[data-testid="pricing-waiver"]')).not.toBeNull();
   });
 });

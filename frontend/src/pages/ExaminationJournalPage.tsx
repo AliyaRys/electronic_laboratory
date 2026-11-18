@@ -1,20 +1,24 @@
 /**
- * ExaminationJournalPage (E04, FT-VSE, ТЗ DR45 §1): the journal of one
- * laboratory at /labs/:labId/examinations.
+ * ExaminationJournalPage (E04, FT-VSE, ТЗ DR45 §1, ТЗ DR47 §2.3): the journal
+ * of one laboratory at /labs/:labId/examinations, rebuilt in the composition
+ * of ``journal.html`` — the two-row filter panel (3 + 2) with the «Автор»
+ * label, the three-mode date popover with Moscow half-open boundaries, the
+ * ``.vse-card`` rows with outcome badges, the icon-only eye action and the
+ * centred pagination.
  *
- * The journal is its OWN scoped server read model (GET /api/v1/examinations,
+ * The read model stays the scoped server query (GET /api/v1/examinations,
  * never the arrivals list): a plain URL answers the COMPLETED cards only and
  * the «Ожидание результатов» tab issues the explicit ?status=WAITING query.
- * Every row shows the already-resolved display values of the API — the ФИО
- * of the specialist (frozen at save time, never the raw created_by), the
- * eVSD UUID of the party, the outcome badge — and links to the real card.
- * The status, filters, sort and page live in the URL: a reload restores the
- * view, changing a filter resets the page to 1.
+ * Status, filters, the date mode and page live in the URL; changing a filter
+ * resets the page to 1. Money never travels through this page; the journal
+ * shows no prices at all.
  */
 import "../features/examinations/examinations.css";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { RequireSession } from "./RequireSession";
+import { JournalDateFilter, type JournalDateValue } from "./JournalDateFilter";
 import {
   fetchJournal,
   fetchJournalAuthors,
@@ -25,6 +29,8 @@ import {
 import type { Problem } from "../features/arrivals/api";
 import { StatusView } from "../shared/ui/StatusView";
 import { Button } from "../shared/ui/Button";
+import { Tooltip } from "../shared/ui/HelpTooltip";
+import { Icon } from "../shared/ui/Icon";
 
 export function ExaminationJournalPage(): React.ReactElement {
   return (
@@ -40,11 +46,6 @@ type JournalStatus = (typeof STATUSES)[number];
 const STATUS_HEADINGS: Readonly<Record<JournalStatus, string>> = Object.freeze({
   COMPLETED: "Завершённые",
   WAITING: "Ожидание результатов",
-});
-
-const OUTCOME_LABELS: Readonly<Record<"FIT" | "UNFIT", string>> = Object.freeze({
-  FIT: "Пригодно",
-  UNFIT: "Непригодно",
 });
 
 const PAGE_SIZE = 20;
@@ -74,8 +75,85 @@ export function formatJournalMoment(value: string): string {
   return `${pick("day")}.${pick("month")}.${pick("year")} ${pick("hour")}:${pick("minute")}`;
 }
 
-function badgeClass(status: string): string {
-  return status === "COMPLETED" ? "completed" : "waiting";
+/** A datetime-local minute + one minute (the exclusive upper boundary). */
+function nextMinute(datetimeLocal: string): string {
+  const [day, minute = ""] = datetimeLocal.split("T");
+  const [year, month, date] = day.split("-").map(Number);
+  const [hours = 0, minutes = 0] = minute.split(":").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, date, hours, minutes + 1));
+  return `${shifted.toISOString().slice(0, 16)}:00+03:00`;
+}
+
+/** The Moscow half-open window of the committed date filter (§2.3.3). */
+export function journalDateWindow(value: JournalDateValue): {
+  occurred_from: string | null;
+  occurred_to: string | null;
+} {
+  if (value.mode === "date" && value.date !== "") {
+    return { occurred_from: `${value.date}T00:00:00+03:00`, occurred_to: nextDay(value.date) };
+  }
+  if (value.mode === "datetime" && value.moment !== "") {
+    return { occurred_from: `${value.moment}:00+03:00`, occurred_to: nextMinute(value.moment) };
+  }
+  if (value.mode === "range") {
+    // Legacy links may carry date-only boundaries (DR47 review): a date-only
+    // «from» opens the Moscow day, a date-only «to» closes the NEXT day
+    // (the same half-open [from; to) semantics as the date mode).
+    const hasTime = (moment: string): boolean => moment.includes("T");
+    return {
+      occurred_from:
+        value.from === "" ? null : hasTime(value.from) ? `${value.from}:00+03:00` : `${value.from}T00:00:00+03:00`,
+      occurred_to:
+        value.to === "" ? null : hasTime(value.to) ? nextMinute(value.to) : nextDay(value.to),
+    };
+  }
+  return { occurred_from: null, occurred_to: null };
+}
+
+/** The badge of one row: computed from the ROW's status and outcome (never
+ * the tab alone), so an unknown completed outcome stays neutral. */
+export function journalBadgeOf(view: ExaminationJournalItem): {
+  label: string;
+  className: string;
+} {
+  if (view.status === "WAITING") {
+    return { label: "Ожидание результатов", className: "vse-status-badge waiting" };
+  }
+  if (view.outcome === "FIT") {
+    return { label: "Пригодно", className: "vse-status-badge completed-fit" };
+  }
+  if (view.outcome === "UNFIT") {
+    return { label: "Непригодно", className: "vse-status-badge completed-unfit" };
+  }
+  return { label: "Итог не указан", className: "vse-status-badge completed" };
+}
+
+interface JournalPage {
+  items: ExaminationJournalItem[];
+  total: number;
+}
+
+const DATE_KEYS = ["date_mode", "date", "moment", "from", "to"] as const;
+
+function journalDateOf(params: URLSearchParams): JournalDateValue {
+  const modeParam = params.get("date_mode");
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  let mode: JournalDateValue["mode"] =
+    modeParam === "datetime" || modeParam === "range" ? modeParam : "date";
+  // Backward compatibility (DR47 review): legacy journal links carried the
+  // period as plain ``?from=…&to=…`` without ``date_mode``. Without this
+  // fallback such links silently lost the range and showed «Любая дата».
+  if (modeParam === null && (from !== "" || to !== "")) {
+    mode = "range";
+  }
+  return {
+    mode,
+    date: params.get("date") ?? "",
+    moment: params.get("moment") ?? "",
+    from,
+    to,
+  };
 }
 
 function ExaminationJournalContent(): React.ReactElement {
@@ -86,17 +164,37 @@ function ExaminationJournalContent(): React.ReactElement {
   const search = params.get("q") ?? "";
   const outcome = params.get("outcome") ?? "";
   const specialist = params.get("specialist_id") ?? "";
-  const from = params.get("from") ?? "";
-  const to = params.get("to") ?? "";
   const sort = params.get("sort") === "asc" ? "asc" : "desc";
+  const dateValue = journalDateOf(params);
+
+  // ТЗ DR47 §2.3.3: only the search rides a debounce (the existing 300 ms
+  // window of the pricing preview); selects and the date popover send
+  // immediately. React Query keys every query and a stale response can
+  // never overwrite a newer one.
+  const [searchDraft, setSearchDraft] = useState(search);
+  // The debounce timer is a hook-order invariant: it is created BEFORE the
+  // early returns below (React hooks must run in the same order).
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // DR47 review: a pending debounce timer never fires after unmount.
+  useEffect(
+    () => () => {
+      if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    },
+    [],
+  );
+  // DR47 review: Back/Forward (or any external URL change of ``q``) keeps the
+  // visible draft in step with the committed search parameter. While a
+  // debounced commit is pending the draft is user-owned and never clobbered.
+  useEffect(() => {
+    if (debounceRef.current === null) setSearchDraft(search);
+  }, [search]);
 
   const query: JournalQuery = {
     laboratory_id: labId ?? "",
     status,
     q: search === "" ? null : search,
-    outcome: outcome === "" ? null : outcome === "FIT" || outcome === "UNFIT" ? outcome : null,
-    occurred_from: from === "" ? null : `${from}T00:00:00+03:00`,
-    occurred_to: to === "" ? null : nextDay(to),
+    outcome: outcome === "" || status === "WAITING" ? null : outcome === "FIT" || outcome === "UNFIT" ? outcome : null,
+    ...journalDateWindow(dateValue),
     sort,
     // §2: the specialist filter is SERVER-side — the id rides the query, so
     // the total and every page are computed over the filtered set.
@@ -113,8 +211,8 @@ function ExaminationJournalContent(): React.ReactElement {
       search,
       outcome,
       specialist,
-      from,
-      to,
+      query.occurred_from ?? "",
+      query.occurred_to ?? "",
       sort,
       page,
     ],
@@ -146,99 +244,126 @@ function ExaminationJournalContent(): React.ReactElement {
   const authorOptions: JournalAuthor[] =
     authorsProblem === null ? ((authors.data as JournalAuthor[]) ?? []) : [];
 
+  /** A filter change always resets the page to 1 (URL state, §2.3.3). */
   const setParam = (key: string, value: string): void => {
     const url = new URLSearchParams(params);
     if (value === "") url.delete(key);
     else url.set(key, value);
-    if (key !== "page") url.delete("page");
+    url.delete("page");
     setParams(url);
   };
 
+  const setDateValue = (next: JournalDateValue): void => {
+    const url = new URLSearchParams(params);
+    for (const key of DATE_KEYS) url.delete(key);
+    if (next.date !== "") url.set("date", next.date);
+    if (next.moment !== "") url.set("moment", next.moment);
+    if (next.from !== "") url.set("from", next.from);
+    if (next.to !== "") url.set("to", next.to);
+    if (next.mode !== "date" || next.date !== "" || next.from !== "" || next.to !== "") {
+      url.set("date_mode", next.mode);
+    }
+    url.delete("page");
+    setParams(url);
+  };
+
+  // The debounced commit of the search draft (Enter applies immediately).
+  const commitSearch = (value: string): void => {
+    setSearchDraft(value);
+    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      setParam("q", value.trim());
+    }, 300);
+  };
+  const commitSearchNow = (value: string): void => {
+    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    setParam("q", value.trim());
+  };
+
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
+
   return (
-    <div className="vse-app vse-page">
-      <nav className="vse-breadcrumb" aria-label="Навигация">
-        <Link to={`/labs/${labId}/arrivals`}>← Поступления</Link>
-      </nav>
-      <h1>Журнал ВСЭ мяса и мясопродуктов</h1>
+    <div className="vse-app vse-journal-page">
+      {/* ТЗ DR47 §2.3.2: no breadcrumb — the shell header owns navigation. */}
+      <div className="vse-journal-title">
+        <h1>Журнал ВСЭ мяса и мясопродуктов</h1>
+      </div>
+      {/* §2.3.1: the approved two tabs stay between the title and the filters. */}
+      <div className="vse-queue-tabs vse-journal-tabs" role="tablist" aria-label="Статус карточки">
+        {STATUSES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={status === value}
+            className="vse-queue-tab"
+            onClick={() => setParam("status", value === "COMPLETED" ? "" : value)}
+          >
+            {STATUS_HEADINGS[value]}
+          </button>
+        ))}
+      </div>
       <section className="vse-journal-filters" aria-label="Фильтры журнала">
-        <div className="vse-journal-filter-field">
-          <label htmlFor="journal-search">Поиск</label>
-          <input
-            id="journal-search"
-            type="search"
-            placeholder="Хозяйство или UUID ВСД"
-            defaultValue={search}
-            onChange={(event) => setParam("q", event.target.value.trim())}
-          />
-        </div>
-        <div className="vse-journal-filter-field">
-          <label htmlFor="journal-outcome">Итог ВСЭ</label>
-          <select
-            id="journal-outcome"
-            value={outcome}
-            onChange={(event) => setParam("outcome", event.target.value)}
-          >
-            <option value="">Все итоги</option>
-            <option value="FIT">Пригодно</option>
-            <option value="UNFIT">Непригодно</option>
-          </select>
-        </div>
-        <div className="vse-journal-filter-field">
-          <label htmlFor="journal-specialist">Врач</label>
-          <select
-            id="journal-specialist"
-            value={specialist}
-            onChange={(event) => setParam("specialist_id", event.target.value)}
-          >
-            <option value="">Все врачи</option>
-            {authorOptions.map((author) => (
-              <option key={author.id} value={author.id}>
-                {author.full_name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="vse-journal-filter-field">
-          <label htmlFor="journal-sort">Сортировка</label>
-          <select id="journal-sort" value={sort} onChange={(event) => setParam("sort", event.target.value)}>
-            <option value="desc">Сначала новые</option>
-            <option value="asc">Сначала старые</option>
-          </select>
-        </div>
-      </section>
-      <section className="vse-journal-filter" aria-label="Период и статус">
-        <div className="vse-queue-tabs" role="tablist" aria-label="Статус карточки">
-          {STATUSES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={status === value}
-              className="vse-queue-tab"
-              onClick={() => setParam("status", value === "COMPLETED" ? "" : value)}
-            >
-              {STATUS_HEADINGS[value]}
-            </button>
-          ))}
-        </div>
-        <div className="vse-journal-period">
+        <div className="vse-journal-filters-row">
           <div className="vse-journal-filter-field">
-            <label htmlFor="journal-from">Период завершения с</label>
+            <label htmlFor="journal-search">Поиск</label>
             <input
-              id="journal-from"
-              type="date"
-              value={from}
-              onChange={(event) => setParam("from", event.target.value)}
+              id="journal-search"
+              type="search"
+              placeholder="Хозяйство или UUID ВСД"
+              value={searchDraft}
+              onChange={(event) => commitSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitSearchNow(searchDraft);
+              }}
             />
           </div>
           <div className="vse-journal-filter-field">
-            <label htmlFor="journal-to">по</label>
-            <input
-              id="journal-to"
-              type="date"
-              value={to}
-              onChange={(event) => setParam("to", event.target.value)}
-            />
+            <label htmlFor="journal-outcome">Итог ВСЭ</label>
+            <select
+              id="journal-outcome"
+              value={status === "WAITING" ? "" : outcome}
+              disabled={status === "WAITING"}
+              onChange={(event) => setParam("outcome", event.target.value)}
+            >
+              <option value="">Все итоги</option>
+              <option value="FIT">Пригодно</option>
+              <option value="UNFIT">Непригодно</option>
+            </select>
+            {status === "WAITING" ? <p className="vse-journal-filter-note">Итог ещё не сформирован</p> : null}
+          </div>
+          <div className="vse-journal-filter-field">
+            <label htmlFor="journal-specialist">Автор</label>
+            <select
+              id="journal-specialist"
+              value={specialist}
+              onChange={(event) => setParam("specialist_id", event.target.value)}
+            >
+              <option value="">Все авторы</option>
+              {authorOptions.map((author) => (
+                <option key={author.id} value={author.id}>
+                  {author.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="vse-journal-filters-row secondary">
+          <div className="vse-journal-filter-field">
+            <label htmlFor="journal-sort">Сортировка</label>
+            <select
+              id="journal-sort"
+              value={sort}
+              onChange={(event) => setParam("sort", event.target.value)}
+            >
+              <option value="desc">Сначала новые</option>
+              <option value="asc">Сначала старые</option>
+            </select>
+          </div>
+          <div className="vse-journal-filter-field">
+            <label htmlFor="journal-date-trigger">Период обращения</label>
+            <JournalDateFilter value={dateValue} onChange={setDateValue} />
           </div>
         </div>
       </section>
@@ -252,13 +377,15 @@ function ExaminationJournalContent(): React.ReactElement {
       ) : rows.isLoading ? (
         <StatusView state="loading" title="Загрузка журнала…" />
       ) : items.length === 0 ? (
-        <StatusView state="empty" title="Карточек в этом статусе нет." />
+        <div className="vse-journal-empty" role="status">
+          По заданным условиям записи не найдены
+        </div>
       ) : (
         <section className="vse-journal-list" aria-label="Список ВСЭ">
           {items.map((item) => (
-            <JournalRow key={item.examination_id} labId={labId} view={item} status={status} />
+            <JournalRow key={item.examination_id} labId={labId} view={item} />
           ))}
-          <nav className="vse-pagination" aria-label="Страницы журнала">
+          <nav className="vse-pagination" aria-label="Пагинация журнала">
             <Button
               iconOnly
               label="Предыдущая страница"
@@ -267,17 +394,22 @@ function ExaminationJournalContent(): React.ReactElement {
             >
               ‹
             </Button>
-            <span aria-live="polite">
-              {`Страница ${page} из ${Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE))}`}
+            <span className="vse-pagination-page" aria-current="page">
+              {page}
             </span>
             <Button
               iconOnly
               label="Следующая страница"
-              disabled={data === null || page >= Math.ceil(data.total / PAGE_SIZE)}
+              disabled={data === null || page >= totalPages}
               onClick={() => setParam("page", String(page + 1))}
             >
               ›
             </Button>
+            {/* The total is announced to screen readers without the visible
+                «Страница N из M» text, which the mockup does not show. */}
+            <span className="vse-visually-hidden" aria-live="polite">
+              {`Всего страниц: ${totalPages}`}
+            </span>
           </nav>
         </section>
       )}
@@ -285,27 +417,18 @@ function ExaminationJournalContent(): React.ReactElement {
   );
 }
 
-interface JournalPage {
-  items: ExaminationJournalItem[];
-  total: number;
-}
-
 export function JournalRow({
   labId,
   view,
-  status,
 }: {
   labId: string;
   view: ExaminationJournalItem;
-  status: JournalStatus;
 }): React.ReactElement {
-  const waiting = badgeClass(status) === "waiting";
-  const outcomeLabel =
-    !waiting && (view.outcome === "FIT" || view.outcome === "UNFIT") ? OUTCOME_LABELS[view.outcome] : null;
+  const badge = journalBadgeOf(view);
   return (
-    <article className="vse-journal-row">
+    <article className="vse-journal-card">
       <div>
-        <p className="vse-journal-label">Дата и время внесения</p>
+        <p className="vse-journal-label">Дата и время обращения</p>
         <p className="vse-journal-value">{formatJournalMoment(view.created_at)}</p>
       </div>
       <div>
@@ -317,21 +440,22 @@ export function JournalRow({
         <p className="vse-journal-value">{view.evsd_uuid}</p>
       </div>
       <div>
-        <p className="vse-journal-label">Врач</p>
+        <p className="vse-journal-label">Автор</p>
         <p className="vse-journal-value">{view.specialist_name ?? "Название не получено"}</p>
       </div>
       <div>
-        <span className={`vse-status-badge ${waiting ? "waiting" : "completed"}`}>
-          {waiting ? "Ожидание результатов" : (outcomeLabel ?? "Завершено")}
-        </span>
+        <span className={badge.className}>{badge.label}</span>
       </div>
-      <div>
-        <Link
-          to={`/labs/${labId}/examinations/${view.examination_id}`}
-          aria-label={`Просмотр карточки ВСЭ, UUID ВСД ${view.evsd_uuid}`}
-        >
-          Просмотр
-        </Link>
+      <div className="vse-journal-card-actions">
+        <Tooltip text="Посмотреть карточку ВСЭ">
+          <Link
+            to={`/labs/${labId}/examinations/${view.examination_id}`}
+            className="app-button secondary icon-only"
+            aria-label="Посмотреть карточку ВСЭ"
+          >
+            <Icon name="admin-view" />
+          </Link>
+        </Tooltip>
       </div>
     </article>
   );

@@ -211,8 +211,11 @@ describe("ProfilePage", () => {
 describe("DR50: the login is displayed exactly once", () => {
   it("renders the login only inside the field labelled «Логин»", async () => {
     renderProfile();
-    await waitFor(() => expect(screen.getByLabelText("Логин")).toHaveTextContent("vet.longname"));
-    const occurrences = (document.body.textContent ?? "").split("vet.longname").length - 1;
+    await waitFor(() => expect(screen.getByText("Логин")).toBeInTheDocument());
+    // The value lives in the InfoField pair (label «Логин» → value); the
+    // exact login value counts once, while the email (vet.longname@lab.tatar)
+    // contains the substring and must not inflate the count.
+    const occurrences = (document.body.textContent ?? "").match(/vet\.longname(?!@)/g)?.length ?? 0;
     expect(occurrences).toBe(1);
   });
 });

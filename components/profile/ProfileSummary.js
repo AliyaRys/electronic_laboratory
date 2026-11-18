@@ -5,7 +5,6 @@
   /** Identity, access rights and available product types shown together in the profile sidebar. */
   profile.createSummary = ({
     name = 'Анна Кузнецова',
-    login = 'Kuznetsova.Anna@tatar.ru',
     initials = 'АК',
     permissions = ['Создание ВСЭ', 'Редактирование ВСЭ', 'Просмотр ВСЭ', 'Создание справочников'],
     products = [{ label: 'Мясо и продукты убоя', icon: 'meat' }, { label: 'Молоко и молочная продукция', icon: 'milk' }],
@@ -40,10 +39,7 @@
     const fullName = document.createElement('div');
     fullName.className = 'profile-name';
     fullName.textContent = name;
-    const userLogin = document.createElement('div');
-    userLogin.className = 'profile-login';
-    userLogin.textContent = login;
-    identity.append(fullName, userLogin);
+    identity.append(fullName);
     const access = document.createElement('div');
     access.className = 'profile-access';
     const accessTitle = document.createElement('div');

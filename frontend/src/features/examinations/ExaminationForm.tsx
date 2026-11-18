@@ -160,8 +160,7 @@ export function ExaminationForm({
   // DR35 §13.4: the preview payload covers the FULLY performed researches
   // only; the memoized identity keeps the debounce effect stable.
   const researchesKey = JSON.stringify(values.researches);
-  const previewRequest = useMemo<PricingPreviewRequestBody | null>(() => {
-    const researches: ResearchWrite[] = [];
+  const previewRequest = useMemo<PricingPreviewRequestBody | null>(() => {    const researches: ResearchWrite[] = [];
     for (const def of INDICATORS) {
       const entry = values.researches[def.id];
       if (entry === undefined || !entry.performed) continue;
@@ -180,12 +179,20 @@ export function ExaminationForm({
       const converted = toResearchValue(def.id, def.kind, entry.value, entry.otherText);
       if (converted !== null) researches.push(converted);
     }
-    return researches.length === 0 ? null : { researches };
+    return researches.length === 0 ? null : { researches, vseFair: values.vseFair };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [researchesKey, previewNonce]);
+  }, [researchesKey, values.vseFair, previewNonce]);
 
   const preview: PricingPreviewState = usePricingPreview(party.party_id, previewRequest);
+  // DR52 §3.4: while a preview runs the shown amount may be stale — the save
+  // stays disabled until the response for the current researches + vseFair.
+  const recalculating = preview.status === "loading" || preview.status === "recalculating";
   const confirmedPreviewTotal = preview.status === "success" ? preview.snapshot.total : null;
+  // DR52 §3.4: the inherited free rule of the party — the frozen
+  // reconciliation flag of the saved card (edit) or of the create read model.
+  const reconciliationFair = isEdit
+    ? (view.reconciliation_fair ?? false)
+    : (formView?.reconciliation_fair ?? false);
   // ТЗ DR41-B §7.2: the research cards are highlighted by the typed server
   // evaluation of the live preview — after every result change and on the
   // first load with data; the doctor's FIT/UNFIT outcome is never touched.
@@ -430,6 +437,30 @@ export function ExaminationForm({
         <PricingSection
           state={preview}
           disabled={busy}
+          waiver={
+            <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
+              {/* DR52 §3.4: a controlled RHF checkbox, not the snapshot flag.
+                  The inherited (reconciliation) free rule stays checked and
+                  cannot be removed here; the card's own waiver toggles the
+                  live server preview (race-safe, stale answers dropped). */}
+              <input
+                type="checkbox"
+                checked={reconciliationFair || values.vseFair}
+                disabled={busy || reconciliationFair}
+                onChange={(event) =>
+                  form.setValue("vseFair", event.target.checked, { shouldDirty: true })
+                }
+              />
+              <span>
+                <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
+                <span className="vse-rec-invoice-waiver-note">
+                  {reconciliationFair
+                    ? "Бесплатность установлена при сверке данных и распространяется на ВСЭ."
+                    : "ВСЭ по этой карточке проводится без оплаты. Стоимость сверки данных не изменится."}
+                </span>
+              </span>
+            </label>
+          }
           onRetry={() => setPreviewNonce((nonce) => nonce + 1)}
         />
       </CheckSectionCard>
@@ -479,6 +510,7 @@ export function ExaminationForm({
             <Button
               variant="primary"
               busy={busy}
+              disabled={recalculating}
               busyLabel="Сохраняем ожидание…"
               onClick={() => runCreate("WAITING")}
             >
@@ -487,6 +519,7 @@ export function ExaminationForm({
             <Button
               variant="primary"
               busy={busy}
+              disabled={recalculating}
               busyLabel="Завершаем ВСЭ…"
               onClick={() => runCreate("COMPLETED")}
             >
@@ -494,7 +527,13 @@ export function ExaminationForm({
             </Button>
           </>
         ) : (
-          <Button variant="primary" busy={busy} busyLabel="Сохраняем правку…" onClick={() => runUpdate()}>
+          <Button
+            variant="primary"
+            busy={busy}
+            disabled={recalculating}
+            busyLabel="Сохраняем правку…"
+            onClick={() => runUpdate()}
+          >
             Сохранить правку
           </Button>
         )}

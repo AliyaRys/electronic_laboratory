@@ -151,10 +151,13 @@ export function PricingSection({
   state,
   disabled,
   onRetry,
+  waiver,
 }: {
   state: PricingPreviewState;
   disabled: boolean;
   onRetry: () => void;
+  /** DR52 §3.4: the controlled RHF waiver node of the live form. */
+  waiver?: React.ReactNode;
 }): React.ReactElement {
   if (state.status === "empty") {
     return (
@@ -197,7 +200,7 @@ export function PricingSection({
       {/* DR44: one shared snapshot renderer; after the DR43 merge it carries
           the same reconciliation invoice look (vse-rec-invoice-*) and the
           server fair flag as a disabled Ярмарка checkbox. */}
-      <SnapshotPricingTable snapshot={snapshot} variant="live-examination" />
+      <SnapshotPricingTable snapshot={snapshot} variant="live-examination" waiver={waiver} />
     </div>
   );
 }

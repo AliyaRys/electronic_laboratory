@@ -26,8 +26,9 @@ export type PricingPreviewResponse = components["schemas"]["PricingPreviewRespon
 export type PricingSnapshotView = PricingPreviewResponse["snapshot"];
 /** ТЗ DR44 §2: the compact server examination summary of an arrival row. */
 export type ExaminationSummaryView = components["schemas"]["ExaminationSummary"];
-/** The body of the preview: only the fully performed researches (§13.3). */
-export type PricingPreviewRequestBody = { researches: ResearchWrite[] };
+/** The body of the preview: the fully performed researches plus the card's
+ * own VSE-only waiver (DR52 §3.4) — the save recomputes the same rule. */
+export type PricingPreviewRequestBody = { researches: ResearchWrite[]; vseFair: boolean };
 
 /** Minimal openapi-fetch result shape (see features/samples/api.ts). */
 interface RawResult<TData> {

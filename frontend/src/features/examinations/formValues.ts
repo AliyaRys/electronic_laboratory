@@ -56,6 +56,8 @@ export interface ExaminationFormValues {
   invasive: FindingEntry[];
   noncontagious: FindingEntry[];
   outcome: OutcomeEntry;
+  /** DR52 §3: the card's own VSE-only fair mark (controlled RHF field). */
+  vseFair: boolean;
   /** DR35 §12.3: the chosen Госветслужбы specialist (server-validated). */
   specialistId: string;
 }
@@ -187,6 +189,9 @@ export function initialValues(
     invasive,
     noncontagious,
     outcome: emptyOutcome(),
+    // DR52 §3.4: the saved card flag comes back from the server, never from
+    // local browser state.
+    vseFair: view?.vse_fair ?? false,
     specialistId: defaults.specialistId,
   };
 }
@@ -420,6 +425,8 @@ export function toWritePayload(
         : {}),
     })),
     sentToLab: isWaiting ? true : values.sentToLab,
+    // DR52 §3.4: the SAME value the last successful preview was computed with.
+    vseFair: values.vseFair,
     sample: toSample(values.sample),
     // DR35 §12.3: the chosen specialist travels with the save; the server
     // re-checks the scoped list.

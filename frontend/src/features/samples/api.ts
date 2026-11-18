@@ -191,11 +191,22 @@ export async function fetchAccountingExport(
     if (!response.ok || isProblemContentType(response)) {
       return { problem: await parseProblem(response) };
     }
-    const data = await response.arrayBuffer();
-    const type =
+    const expected =
       kind === "pdf"
         ? "application/pdf"
         : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const contentType = (response.headers.get("content-type") ?? "").split(";")[0]?.trim() ?? "";
+    // DR49 review: the bytes are trusted only with the expected media type —
+    // a wrong content type is an honest error, never a broken Blob.
+    if (contentType !== expected) {
+      return {
+        problem: networkProblem(
+          `Сервер вернул файл с неожиданным типом (${contentType || "без типа"}); ожидается ${expected}.`,
+        ),
+      };
+    }
+    const data = await response.arrayBuffer();
+    const type = expected;
     const disposition = response.headers.get("content-disposition") ?? "";
     const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
     const filename = match !== null ? decodeURIComponent(match[1] ?? "") : "";

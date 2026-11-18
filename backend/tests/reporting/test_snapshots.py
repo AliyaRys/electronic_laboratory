@@ -43,7 +43,13 @@ def codes(**overrides: str) -> ReportCodesWrite:
     return ReportCodesWrite(**values)
 
 
-async def seed_source(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+async def seed_source(
+    db: AsyncSession,
+    *,
+    species: str = SPECIES,
+    column: str = "PIG",
+    kind: str = "MEAT",
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
     territory = Territory(name="Территория")
     db.add(territory)
     await db.flush()
@@ -72,7 +78,7 @@ async def seed_source(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID
     party = Party(
         incoming_document_id=incoming.id,
         laboratory_id=lab.id,
-        classification_snapshot={"product": {"id": SPECIES}},
+        classification_snapshot={"product": {"id": species}},
     )
     db.add(party)
     await db.flush()
@@ -94,10 +100,10 @@ async def seed_source(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID
             ),
             ReportClassification(
                 version="2026-v1",
-                mercury_species_id=SPECIES,
+                mercury_species_id=species,
                 supported=True,
-                animal_column="PIG",
-                material_kind="MEAT",
+                animal_column=column,
+                material_kind=kind,
                 rev=1,
             ),
         ]
@@ -122,6 +128,34 @@ async def seed_source(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID
     db.add(examination)
     await db.commit()
     return actor.id, lab.id, examination.id
+
+
+@pytest.mark.asyncio
+async def test_preview_builds_with_the_real_buivol_guid_on_the_seeded_map(db_session: AsyncSession) -> None:
+    """DR49: the completed «буйволятина» ВСЭ is classified by its real Mercury
+    second-level GUID — the preview adds +1 to the CATTLE column of row 166."""
+    actor_id, lab_id, _source_id = await seed_source(
+        db_session,
+        species="e84f3cb2-0fd9-403e-8abf-9a2c7f1aa71f",  # буйволятина
+        column="CATTLE",
+        kind="MEAT",
+    )
+    preview = await preview_report(
+        db_session,
+        actor_id,
+        "session-a",
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
+        keyring=keyring(),
+        now=NOW,
+    )
+    matrix = preview.payload["matrix"]
+    columns = preview.payload["columns"]
+    cattle_index = list(columns).index("CATTLE")
+    # Row "166" (index 0 of row_codes): exactly +1 in the CATTLE column.
+    assert list(preview.payload["row_codes"])[0] == "166"
+    row166 = list(matrix)[0]
+    assert row166[cattle_index] == "1"
+    assert preview.payload["classification_version"] == "2026-v1"
 
 
 @pytest.mark.asyncio

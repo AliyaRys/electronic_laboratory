@@ -152,15 +152,23 @@ def _history_sheet(ws: Any, view: SampleAccountingDocumentView) -> None:  # noqa
 
 
 def render_sample_accounting_xlsx(view: SampleAccountingDocumentView) -> bytes:
+    """Render the two-sheet workbook; any engine failure is an honest 503."""
     from openpyxl import Workbook
 
-    workbook = Workbook()
-    balances = workbook.active
-    assert balances is not None
-    balances.title = "Остатки проб"
-    _balances_sheet(balances, view)
-    history = workbook.create_sheet("История утилизаций")
-    _history_sheet(history, view)
-    destination = io.BytesIO()
-    workbook.save(destination)
-    return destination.getvalue()
+    from backend.src.modules.documents.resources import RendererUnavailable
+
+    try:
+        workbook = Workbook()
+        balances = workbook.active
+        assert balances is not None
+        balances.title = "Остатки проб"
+        _balances_sheet(balances, view)
+        history = workbook.create_sheet("История утилизаций")
+        _history_sheet(history, view)
+        destination = io.BytesIO()
+        workbook.save(destination)
+        return destination.getvalue()
+    except RendererUnavailable:
+        raise
+    except Exception as error:  # noqa: BLE001 - the engine failure is a 503 by contract
+        raise RendererUnavailable(f"Движок формирования XLSX недоступен: {error}.") from error

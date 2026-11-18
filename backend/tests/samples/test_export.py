@@ -192,3 +192,61 @@ async def test_reversed_range_answers_422(dispose_env, lab) -> None:  # noqa: F8
         )
         assert response.status_code == 422
         assert "позже даты окончания" in response.text
+
+
+async def test_tie_break_is_recorded_at_desc_id_desc(db_session: AsyncSession, lab, actor: uuid.UUID, party) -> None:
+    """DR49 §7.2: two rows sharing one recorded_at are ordered id DESC too."""
+    species = species_id(party)
+    await apply_sample(db_session, actor, party.id, uuid.uuid4(), new_sample("1.0", date(2026, 11, 1)))
+    await db_session.commit()
+    first = await _dispose(db_session, actor, lab.id, species, "1.0", date(2026, 11, 5), "ВСД-001")
+    await db_session.commit()
+    await apply_sample(db_session, actor, party.id, uuid.uuid4(), new_sample("1.0", date(2026, 11, 2)))
+    await db_session.commit()
+    second = await _dispose(db_session, actor, lab.id, species, "1.0", date(2026, 11, 5), "ВСД-002")
+    await db_session.commit()
+    # Force the SAME recorded_at on both rows; the file must put the higher id
+    # first (recorded_at DESC, id DESC — DR49 §7.2).
+    await db_session.execute(
+        SampleDisposal.__table__.update()
+        .where(SampleDisposal.id.in_([first.id, second.id]))
+        .values(recorded_at=first.recorded_at)
+    )
+    await db_session.commit()
+
+    view = await export_service.build_sample_accounting_document(db_session, lab.id)
+    assert [row.external_vsd_number for row in view.disposals] == ["ВСД-002", "ВСД-001"]
+    assert first.id < second.id
+
+
+async def test_projection_is_not_n_plus_one(
+    db_session: AsyncSession, test_db_engine, lab, actor: uuid.UUID, party
+) -> None:
+    """The queries stay bounded regardless of the number of facts (§7.1)."""
+    from sqlalchemy import event
+
+    species = species_id(party)
+    for _index in range(30):
+        await apply_sample(db_session, actor, party.id, uuid.uuid4(), new_sample("0.1", date(2026, 11, 1)))
+        await db_session.commit()
+        await _dispose(db_session, actor, lab.id, species, "0.1", date(2026, 11, 2), f"ВСД-{uuid.uuid4().hex[:6]}")
+        await db_session.commit()
+
+    statements: list[str] = []
+    sync_engine = test_db_engine.sync_engine if hasattr(test_db_engine, "sync_engine") else None
+    if sync_engine is None:  # pragma: no cover - depends on SQLAlchemy version
+        sync_engine = getattr(test_db_engine, "engine", None).sync_engine
+
+    def _spy(_conn, _cursor, statement, *_args) -> None:  # noqa: ANN001 - event signature
+        statements.append(statement.strip().split()[0])
+
+    event.listen(sync_engine, "before_cursor_execute", _spy)
+    try:
+        view = await export_service.build_sample_accounting_document(db_session, lab.id)
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _spy)
+    assert len(view.disposals) == 30
+    selects = statements.count("SELECT")
+    # 4 bounded queries: lab, balances, disposal count-free history, +savepoint
+    # — never one per row (N+1 would be ~31+ for 31 facts).
+    assert selects <= 6

@@ -106,7 +106,11 @@ describe("SampleExportActions (DR49 §10)", () => {
             { status: 503, headers: { "content-type": "application/problem+json" } },
           );
         }
-        return new HttpResponse(new Blob(["PK"]));
+        return new HttpResponse(new Blob(["PK"]), {
+          headers: {
+            "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          },
+        });
       }),
     );
     const downloadSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
@@ -120,6 +124,28 @@ describe("SampleExportActions (DR49 §10)", () => {
     expect(gets[1]?.searchParams.has("date_to")).toBe(false);
     expect(downloadSpy).toHaveBeenCalled();
     downloadSpy.mockRestore();
+  });
+
+  it("a wrong content-type answers an honest error and downloads nothing", async () => {
+    const user = userEvent.setup();
+    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockImplementation(() => "blob:fake");
+    const downloadSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    server.use(
+      http.get("*/api/v1/samples/accounting/export.pdf", () =>
+        new HttpResponse('<html><body>not a pdf</body></html>', {
+          headers: { "content-type": "text/html" },
+        }),
+      ),
+    );
+    renderActions();
+    await user.click(await screen.findByRole("button", { name: "Скачать PDF" }));
+    expect(
+      await screen.findByText(/неожиданным типом/),
+    ).toBeVisible();
+    expect(createObjectURLSpy).not.toHaveBeenCalled();
+    expect(downloadSpy).not.toHaveBeenCalled();
+    downloadSpy.mockRestore();
+    createObjectURLSpy.mockRestore();
   });
 
   it("unmount aborts the in-flight request", async () => {

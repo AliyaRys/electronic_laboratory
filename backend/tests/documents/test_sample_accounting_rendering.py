@@ -208,3 +208,37 @@ def test_xlsx_empty_states() -> None:
 def test_xlsx_filename() -> None:
     assert sample_accounting_xlsx_filename(full_view()).endswith(".xlsx")
     assert sample_accounting_xlsx_filename(full_view()).startswith("Учёт_проб_")
+
+
+def test_xlsx_engine_failure_is_renderer_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DR49 §7.3/§9: a broken engine answers the honest 503, never a 500."""
+    from openpyxl import Workbook
+
+    def broken_save(_self: Workbook, _file: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Workbook, "save", broken_save)
+    from backend.src.modules.documents.resources import RendererUnavailable
+
+    with pytest.raises(RendererUnavailable) as error:
+        render_sample_accounting_xlsx(full_view())
+    assert error.value.status == 503
+
+
+def test_xlsx_full_history_beyond_20_rows_reopens_with_openpyxl() -> None:
+    rows = [
+        DisposalRow(
+            disposed_on=date(2026, 11, 3 + index % 10),
+            product_name=f"Продукция №{index}",
+            mass_kg=Decimal("0.5"),
+            external_vsd_number=f"ВСД-{index:03d}",
+            actor_name=f"Исполнитель №{index}",
+        )
+        for index in range(25)
+    ]
+    data = render_sample_accounting_xlsx(view(disposals=rows))
+    history = load_workbook(io.BytesIO(data))["История утилизаций"]
+    # All 25 rows are present, beyond the 20-row screen page (row 7..31).
+    assert history["A31"].value == datetime(2026, 11, 3 + 24 % 10)
+    assert history["D31"].value == "ВСД-024"
+    assert history["A32"].value is None

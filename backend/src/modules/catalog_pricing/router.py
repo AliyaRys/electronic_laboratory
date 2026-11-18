@@ -612,6 +612,21 @@ async def create_classification_version(
         key=key,
         request_hash=request_hash,
     )
+    if record.status == CommandStatus.SUCCESS and record.result_id is not None:
+        # DR49 §2.6: an idempotency replay never replaces the map a second
+        # time — the stored result row identifies the recorded version; the
+        # answer shows that version's rows (or the current map if the row
+        # was already replaced by a later POST).
+        stored = await commands.load_classification_row(db, record.result_id)
+        version = stored.version if stored is not None else payload.version
+        rows = await commands.classification_rows(db, version)
+        response.headers["Location"] = f"/api/v1/catalogs/classifications?version={payload.version}"
+        return Page[ClassificationItemView](
+            items=[queries.classification_view(row) for row in rows],
+            total=len(rows),
+            page=1,
+            page_size=queries.PAGE_SIZE,
+        )
     rows = await commands.create_classification_version(db, payload)
     if record.status == CommandStatus.IN_PROGRESS:
         await IdempotencyRecorder().complete(uow, record, rows[0].id)

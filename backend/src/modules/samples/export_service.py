@@ -147,7 +147,9 @@ async def _load_document(
             .outerjoin(User, User.id == SampleDisposal.actor_id)
             .where(*filters)  # type: ignore[arg-type]
             .group_by(SampleDisposal.id, User.full_name)
-            .order_by(SampleDisposal.recorded_at.desc(), SampleDisposal.id)
+            # DR49 §7.2: recorded_at DESC, id DESC — the newest rows first, and
+            # the tie-break follows the screen's descending id order too.
+            .order_by(SampleDisposal.recorded_at.desc(), SampleDisposal.id.desc())
         )
     ).all()
     rows = [(disposal, product_name, full_name) for (disposal, product_name, full_name) in disposal_rows]

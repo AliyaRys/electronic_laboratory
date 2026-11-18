@@ -419,6 +419,24 @@ async def create_classification_version(db: AsyncSession, payload: Classificatio
     return rows
 
 
+async def load_classification_row(db: AsyncSession, row_id: object) -> ReportClassification | None:
+    statement = select(ReportClassification).where(ReportClassification.id == row_id)
+    return (await db.execute(statement)).scalar_one_or_none()
+
+
+async def classification_rows(db: AsyncSession, version: str) -> list[ReportClassification]:
+    """The ordered rows of one stored version (replay projection)."""
+    return list(
+        (
+            await db.execute(
+                select(ReportClassification)
+                .where(ReportClassification.version == version)
+                .order_by(ReportClassification.mercury_species_id)
+            )
+        ).scalars()
+    )
+
+
 async def delete_classification_version(db: AsyncSession, version: str) -> int:
     counted = await db.execute(
         select(func.count()).select_from(ReportClassification).where(ReportClassification.version == version)

@@ -220,6 +220,13 @@ class ReportClassification(Base):
             "'OTHER_ANIMALS')",
             name="animal_column_valid",
         ),
+        # DR49 §2.4: a supported row MUST carry both values; an explicitly
+        # unsupported (ambiguous) row MUST carry none — no fabricated columns.
+        CheckConstraint(
+            "(supported AND animal_column IS NOT NULL AND material_kind IS NOT NULL) "
+            "OR (NOT supported AND animal_column IS NULL AND material_kind IS NULL)",
+            name="classification_mapping_shape",
+        ),
         Index("ix_classification_version", "version"),
     )
 
@@ -229,8 +236,9 @@ class ReportClassification(Base):
     product_type_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     product_state_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     supported: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
-    animal_column: Mapped[str] = mapped_column(String(32))
-    material_kind: Mapped[str] = mapped_column(String(16))
+    # Nullable since DR49: an explicitly unsupported row has neither value.
+    animal_column: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    material_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     rev: Mapped[int] = mapped_column(BigInteger, default=1, server_default=text("1"))
 
 

@@ -1185,6 +1185,80 @@ async def test_classification_replace_and_delete(api_env: SimpleNamespace) -> No
 
 
 @pytest.mark.integration
+async def test_classification_version_replaces_all_previous_versions(api_env: SimpleNamespace) -> None:
+    """DR49 §2.6: a new version atomically replaces the whole map — after the
+    commit exactly one version exists, never a mix of old and new rows."""
+    async with _client_for(api_env) as http:
+        item = {
+            "mercury_species_id": str(uuid.uuid4()),
+            "supported": True,
+            "animal_column": "PIG",
+            "material_kind": "MEAT",
+        }
+        first = await http.post(
+            "/api/v1/catalogs/classifications",
+            json={"version": "2024.1", "items": [item]},
+            headers=_csrf_headers(api_env),
+        )
+        assert first.status_code == 201
+        second = await http.post(
+            "/api/v1/catalogs/classifications",
+            json={"version": "2026.1", "items": [{**item, "mercury_species_id": str(uuid.uuid4())}]},
+            headers=_csrf_headers(api_env),
+        )
+        assert second.status_code == 201, second.text
+        listed = (await http.get("/api/v1/catalogs/classifications")).json()
+        assert listed["total"] == 1
+        assert listed["items"][0]["version"] == "2026.1"
+        old = (await http.get("/api/v1/catalogs/classifications", params={"version": "2024.1"})).json()
+        assert old["total"] == 0
+        # An explicitly unsupported row is stored with both values NULL.
+        unsupported = await http.post(
+            "/api/v1/catalogs/classifications",
+            json={
+                "version": "2026.2",
+                "items": [
+                    {**item, "mercury_species_id": str(uuid.uuid4())},
+                    {"mercury_species_id": str(uuid.uuid4()), "supported": False},
+                ],
+            },
+            headers=_csrf_headers(api_env),
+        )
+        assert unsupported.status_code == 201, unsupported.text
+        rows = unsupported.json()["items"]
+        assert {row["animal_column"] for row in rows} == {"PIG", None}
+        assert {row["material_kind"] for row in rows} == {"MEAT", None}
+
+
+@pytest.mark.integration
+async def test_classification_write_rejects_inconsistent_shape(api_env: SimpleNamespace) -> None:
+    async with _client_for(api_env) as http:
+        supported_without_values = {
+            "version": "bad-1",
+            "items": [{"mercury_species_id": str(uuid.uuid4()), "supported": True}],
+        }
+        refused = await http.post(
+            "/api/v1/catalogs/classifications", json=supported_without_values, headers=_csrf_headers(api_env)
+        )
+        assert refused.status_code == 422
+        unsupported_with_values = {
+            "version": "bad-2",
+            "items": [
+                {
+                    "mercury_species_id": str(uuid.uuid4()),
+                    "supported": False,
+                    "animal_column": "PIG",
+                    "material_kind": "MEAT",
+                }
+            ],
+        }
+        refused = await http.post(
+            "/api/v1/catalogs/classifications", json=unsupported_with_values, headers=_csrf_headers(api_env)
+        )
+        assert refused.status_code == 422
+
+
+@pytest.mark.integration
 async def test_idempotency_and_revision_requirements(api_env: SimpleNamespace) -> None:
     async with _client_for(api_env) as http:
         lab_id = str(api_env.lab.id)

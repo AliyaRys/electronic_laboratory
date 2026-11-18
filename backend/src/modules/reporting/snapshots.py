@@ -8,7 +8,6 @@ import json
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import cast
 
 from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -23,9 +22,7 @@ from backend.src.modules.reporting.queries import list_report_sources
 from backend.src.modules.reporting.schemas import (
     COLUMNS,
     ROW_CODES,
-    AnimalColumn,
     ClassificationMap,
-    MaterialKind,
     ReportPreviewParams,
     ReportSource,
     SignedPreview,
@@ -73,11 +70,15 @@ async def _load_facts(
     if lab is None:
         raise _problem("NOT_FOUND", "Лаборатория не найдена.", status=404)
 
-    versions = list((await db.execute(select(distinct(ReportClassification.version)))).scalars())
+    versions = sorted((await db.execute(select(distinct(ReportClassification.version)))).scalars())
+    # DR49 §2.6: the honest reasons differ — 0 versions is an unseeded
+    # installation, >1 is a configuration error; neither silently proceeds.
     if len(versions) != 1:
+        if not versions:
+            raise _problem("REPORT_MAPPING_INVALID", "Классификация продукции для отчёта не настроена.")
         raise _problem(
             "REPORT_MAPPING_INVALID",
-            "Для отчёта должна быть настроена ровно одна версия классификации продукции.",
+            "Обнаружено несколько версий классификации; требуется исправление конфигурации.",
         )
     version = versions[0]
     rows = list(
@@ -89,13 +90,15 @@ async def _load_facts(
             )
         ).scalars()
     )
+    # Runtime lookup is by GUID only; the (nullable) animal column and material
+    # kind are honest data of the row — never cast() into validity.
     mapping = build_classification_map(
         version,
         [
             SpeciesClassification(
                 mercury_species_id=row.mercury_species_id,
-                animal_column=cast(AnimalColumn, row.animal_column),
-                material_kind=cast(MaterialKind, row.material_kind),
+                animal_column=row.animal_column,  # type: ignore[arg-type]
+                material_kind=row.material_kind,  # type: ignore[arg-type]
                 supported=row.supported,
             )
             for row in rows

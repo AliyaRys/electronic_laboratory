@@ -7,7 +7,7 @@
  * pagination and the honest empty state.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -149,7 +149,7 @@ describe("ExaminationJournalPage composition (DR47 §2.3)", () => {
     const outcome = screen.getByLabelText("Итог ВСЭ") as HTMLSelectElement;
     expect(outcome.disabled).toBe(true);
     expect(screen.getByText("Итог ещё не сформирован")).toBeTruthy();
-    expect(screen.getByText("Ожидание результатов")).toBeTruthy();
+    expect(screen.getAllByText("Ожидание результатов").length).toBeGreaterThanOrEqual(1);
   });
 
   it("filters and sort ride in the URL and reset the page", async () => {
@@ -190,7 +190,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     await user.click(screen.getByRole("button", { name: /Период обращения/ }));
     await user.click(screen.getByRole("button", { name: "Дата" }));
     expect(screen.getByRole("button", { name: "Дата" }).getAttribute("aria-pressed")).toBe("true");
-    await user.type(screen.getByLabelText("Дата"), "2026-11-01");
+    fireEvent.change(screen.getByLabelText("Дата"), { target: { value: "2026-11-01" } });
     await user.click(screen.getByRole("button", { name: "Применить" }));
     await waitFor(() => {
       expect(queries.at(-1)).toContain("occurred_from=2026-11-01T00%3A00%3A00%2B03%3A00");
@@ -215,7 +215,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
     await user.click(screen.getByRole("button", { name: /Период обращения/ }));
     await user.click(screen.getByRole("button", { name: "Дата и время" }));
-    await user.type(screen.getByLabelText("Дата и время"), "2026-11-01T09:40");
+    fireEvent.change(screen.getByLabelText("Дата и время"), { target: { value: "2026-11-01T09:40" } });
     await user.click(screen.getByRole("button", { name: "Применить" }));
     await waitFor(() => {
       expect(queries.at(-1)).toContain("occurred_from=2026-11-01T09%3A40%3A00%2B03%3A00");
@@ -236,8 +236,8 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
     await user.click(screen.getByRole("button", { name: /Период обращения/ }));
     await user.click(screen.getByRole("button", { name: "Диапазон" }));
-    await user.type(screen.getByLabelText("С"), "2026-11-01T09:40");
-    await user.type(screen.getByLabelText("По"), "2026-11-10T18:00");
+    fireEvent.change(screen.getByLabelText("С"), { target: { value: "2026-11-01T09:40" } });
+    fireEvent.change(screen.getByLabelText("По"), { target: { value: "2026-11-10T18:00" } });
     await user.click(screen.getByRole("button", { name: "Применить" }));
     await waitFor(() => {
       expect(queries.at(-1)).toContain("occurred_from=2026-11-01T09%3A40%3A00%2B03%3A00");
@@ -258,8 +258,8 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
     await user.click(screen.getByRole("button", { name: /Период обращения/ }));
     await user.click(screen.getByRole("button", { name: "Диапазон" }));
-    await user.type(screen.getByLabelText("С"), "2026-11-10T18:00");
-    await user.type(screen.getByLabelText("По"), "2026-11-01T09:40");
+    fireEvent.change(screen.getByLabelText("С"), { target: { value: "2026-11-10T18:00" } });
+    fireEvent.change(screen.getByLabelText("По"), { target: { value: "2026-11-01T09:40" } });
     await user.click(screen.getByRole("button", { name: "Применить" }));
     expect(await screen.findByText("Начало диапазона не может быть позже конца.")).toBeTruthy();
     // The popover stays open with the inputs reachable.
@@ -301,15 +301,15 @@ describe("Journal rows, badges and pagination (DR47 §2.3.4–2.3.5)", () => {
       ),
     );
     renderRoute();
-    await screen.findByText("07.11.2026 10:00");
+    await screen.findAllByText("07.11.2026 10:00");
     // Exact column labels of the mockup, in order.
     const card = screen.getAllByRole("article")[0];
     expect(card.textContent).toContain("Дата и время обращения");
     expect(card.textContent).toContain("Хозяйство");
     expect(card.textContent).toContain("UUID ВСД");
     expect(card.textContent).toContain("Автор");
-    expect(screen.getByText("Пригодно")).toBeTruthy();
-    expect(screen.getByText("Непригодно")).toBeTruthy();
+    expect(screen.getAllByText("Пригодно").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Непригодно").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Ожидание результатов").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Итог не указан")).toBeTruthy();
     // The fit badge keeps its green tone, the unfit its red one, the unknown
@@ -375,9 +375,11 @@ describe("Journal rows, badges and pagination (DR47 §2.3.4–2.3.5)", () => {
       http.get("*/api/v1/examinations", () => HttpResponse.json({ items: [item(EXAM)], total: 1 })),
     );
     renderRoute();
-    expect(await screen.findByText("07.11.2026 10:00")).toBeTruthy();
+    expect((await screen.findAllByText("07.11.2026 10:00")).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Ветврач").length).toBeGreaterThanOrEqual(1);
     // The honest fallback of a missing consignor name.
     expect(screen.getByText("ООО «Мясопром»")).toBeTruthy();
   });
 });
+
+

@@ -507,7 +507,7 @@ const waitingRow = journalItem("e0000000-0000-4000-8000-000000000001", {
 });
 const completedRow = journalItem("e0000000-0000-4000-8000-000000000002");
 
-const waitingRender = () => <JournalRow labId={LAB} view={waitingRow} status="WAITING" />;
+const waitingRender = () => <JournalRow labId={LAB} view={waitingRow} />;
 
 export const ЖурналОжидание: StoryObj = {
   render: waitingRender,
@@ -515,12 +515,19 @@ export const ЖурналОжидание: StoryObj = {
 };
 
 export const ЖурналЗавершено: StoryObj = {
-  render: () => <JournalRow labId={LAB} view={completedRow} status="COMPLETED" />,
+  render: () => <JournalRow labId={LAB} view={completedRow} />,
 };
 
 export const ЖурналУзкийЭкран: StoryObj = {
   render: waitingRender,
   parameters: { viewport: { defaultViewport: "mobile1" } },
+};
+
+/** ТЗ DR47 §2.3.4: the unknown completed outcome keeps a neutral badge. */
+const unknownOutcomeRow = journalItem("e0000000-0000-4000-8000-000000000003", { outcome: null });
+
+export const ЖурналИтогНеУказан: StoryObj = {
+  render: () => <JournalRow labId={LAB} view={unknownOutcomeRow} />,
 };
 
 export const ДиалогУдаления: StoryObj<typeof DeleteDialog> = {

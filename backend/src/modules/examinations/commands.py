@@ -168,10 +168,16 @@ def fair_source(reconciliation: Reconciliation | None, vse_fair: bool) -> str:
     return "NONE"
 
 
-async def _reconciliation_for(db: AsyncSession, party_id: uuid.UUID) -> Reconciliation | None:
+async def reconciliation_for(db: AsyncSession, party_id: uuid.UUID) -> Reconciliation | None:
+    """The reconciliation row of one party (public helper — DR52 review fix)."""
     return (
         await db.execute(select(Reconciliation).where(Reconciliation.party_id == party_id))
     ).scalar_one_or_none()
+
+
+# Backwards-compatible alias for existing importers (DR52 review fix: the
+# canonical name is the public ``reconciliation_for``).
+_reconciliation_for = reconciliation_for
 
 
 async def preview_pricing(
@@ -291,21 +297,26 @@ async def save_examination(
     )
     uow.add(row)
     uow.add(ExaminationSample(examination_id=row.id, collection_id=collection.id))
-    # DR52 §3.2: the fair audit names the OLD/NEW card flag and the typed
-    # source of the effective free rule — never a bare unnamed ``fair=true``.
-    uow.add(
-        TechnicalEvent(
-            actor_id=ctx.actor_id,
-            object_uuid=row.id,
-            action="examination:vse_fair",
-            result=(
-                f"vse_fair=false->{str(payload.vse_fair).lower()}:"
-                f"{fair_source(await _reconciliation_for(uow, party.id), payload.vse_fair)}"
-            ),
-            trace_id=uuid.uuid4().hex,
-            revision=1,
+    # DR52 §3.2 (review fix): the fair audit names the OLD/NEW card flag and
+    # the typed source of the effective free rule — never a bare unnamed
+    # ``fair=true``. A create WITHOUT the card waiver stays silent: the row
+    # simply inherits the documented column default (``false``); a meaningless
+    # ``false->false:NONE`` init event would only pollute the audit trail.
+    # The waiver itself, when set at create, is audited exactly once.
+    if payload.vse_fair:
+        uow.add(
+            TechnicalEvent(
+                actor_id=ctx.actor_id,
+                object_uuid=row.id,
+                action="examination:vse_fair",
+                result=(
+                    f"vse_fair=false->{str(payload.vse_fair).lower()}:"
+                    f"{fair_source(await reconciliation_for(uow, party.id), payload.vse_fair)}"
+                ),
+                trace_id=uuid.uuid4().hex,
+                revision=1,
+            )
         )
-    )
     uow.add(
         TechnicalEvent(
             actor_id=ctx.actor_id,

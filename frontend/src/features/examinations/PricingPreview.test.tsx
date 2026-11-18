@@ -5,6 +5,14 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { PricingSection, type PricingPreviewState } from "./PricingPreview";
 import { SnapshotPricingTable } from "./PricingSnapshotTable";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+// vite.config sets css:false (imports stay empty in tests), so the shared
+// stylesheet is read straight from the source for the hit-area contract.
+const checkSectionCss: string = readFileSync(
+  resolve(process.cwd(), "src/shared/ui/check-section.css"),
+  "utf8",
+);
 import type { PricingSnapshotView } from "./api";
 
 const snapshot: PricingSnapshotView = {
@@ -105,6 +113,35 @@ describe("PricingSection live table (DR47/DR52)", () => {
     );
     expect(screen.getAllByText("0,00 ₽").length).toBeGreaterThanOrEqual(2);
     expect(document.querySelector('[data-testid="pricing-waiver"]')).not.toBeNull();
+  });
+
+  it("the waiver hit area is at least 40×40 px with the label (ТЗ DR52 §3.4)", () => {
+    // The label IS the click target: the shared CSS gives the label a
+    // comfortable min-height and padding while the visible square stays 18px.
+    render(
+      <PricingSection
+        state={state}
+        disabled={false}
+        onRetry={() => {}}
+        waiver={
+          <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
+            <input type="checkbox" checked={false} onChange={() => {}} />
+            <span>
+              <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
+              <span className="vse-rec-invoice-waiver-note">note</span>
+            </span>
+          </label>
+        }
+      />,
+    );
+    const waiver = document.querySelector("label.vse-rec-invoice-waiver");
+    expect(waiver).not.toBeNull();
+    // The checkbox is label-wrapped: a click anywhere on the label (≥40px tall
+    // and wide through the footer's flexible width) toggles the control.
+    expect(waiver?.querySelector("input[type='checkbox']")).not.toBeNull();
+    const rule = checkSectionCss.match(/\r?\n\.vse-rec-invoice-waiver \{[^}]*\}/)?.[0] ?? "";
+    expect(rule).toContain("min-height: 40px");
+    expect(rule).toContain("padding: 8px 10px");
   });
 
   it("the saved variant never renders the waiver (DR47 §2.1)", () => {

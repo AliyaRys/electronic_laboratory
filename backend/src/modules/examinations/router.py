@@ -126,7 +126,7 @@ async def pricing_preview(
         vse_fair=payload.vse_fair,
     )
     await db.commit()
-    reconciliation = await commands._reconciliation_for(db, party.id)
+    reconciliation = await commands.reconciliation_for(db, party.id)
     return PricingPreviewResponse(
         snapshot=snapshot,
         accepted_quantity=str(confirmation.accepted_quantity),

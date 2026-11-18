@@ -198,12 +198,19 @@
   padding: 14px;
 }
 
+/* ТЗ DR52 §3.4: the label IS the hit area of the checkbox — it keeps a
+   comfortable ≥40×40 px target (padding + min-height) while the visible
+   square stays 18×18; the negative margin keeps the visual alignment. */
 .vse-rec-invoice-waiver {
   display: inline-flex;
   align-items: flex-start;
   gap: 10px;
   margin-top: 14px;
   max-width: 640px;
+  min-height: 40px;
+  padding: 8px 10px;
+  margin-left: -10px;
+  margin-right: -10px;
 }
 
 .vse-rec-invoice-waiver input {

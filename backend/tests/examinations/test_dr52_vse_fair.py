@@ -13,7 +13,7 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.commands import UnitOfWork  # noqa: F401
@@ -219,6 +219,52 @@ async def test_same_day_edit_round_trip_and_reconciliation_snapshot_untouched(
         .all()
     )
     assert any("false->true:EXAMINATION" in event.result for event in events)
+
+
+@pytest.mark.asyncio
+async def test_create_without_waiver_writes_no_init_audit_noise(
+    db_session: AsyncSession, env: SimpleNamespace
+) -> None:
+    """DR52 review fix: a create that keeps the column default (``false``)
+    stays audit-silent; a create WITH the waiver audits exactly once."""
+    await configure(db_session, env.lab.id, BEEF, trich=False)
+    party = await dr35_party(db_session, env, BEEF)
+    await save_examination(
+        context(env.actor.id),
+        party.id,
+        write("DR52-Q1", specialist_id=env.actor.id, expected_total="18.75", vse_fair=False),
+        uow=db_session,
+    )
+    await db_session.commit()
+    count_false = await db_session.scalar(
+        select(func.count()).select_from(TechnicalEvent).where(
+            TechnicalEvent.action == "examination:vse_fair"
+        )
+    )
+    assert count_false == 0  # no meaningless false->false:NONE init event
+
+    party2 = await dr35_party(db_session, env, BEEF)
+    created = await save_examination(
+        context(env.actor.id),
+        party2.id,
+        write("DR52-Q2", specialist_id=env.actor.id, expected_total="0.00", vse_fair=True),
+        uow=db_session,
+    )
+    await db_session.commit()
+    events = (
+        (
+            await db_session.execute(
+                select(TechnicalEvent).where(
+                    TechnicalEvent.action == "examination:vse_fair",
+                    TechnicalEvent.object_uuid == uuid.UUID(created.id),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(events) == 1
+    assert "false->true:EXAMINATION" in events[0].result
 
 
 @pytest.mark.integration

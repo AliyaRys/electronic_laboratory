@@ -38,10 +38,10 @@ from backend.src.modules.catalog_pricing.schemas import PricingSnapshot, Researc
 from backend.src.modules.catalog_pricing.service import evaluate_and_price
 from backend.src.modules.examinations.commands import (
     _price_conflict,
-    _reconciliation_for,
     _resolve_specialist,
     fair_source,
     pricing_request_for,
+    reconciliation_for,
 )
 from backend.src.modules.examinations.models import Examination, ExaminationSample
 from backend.src.modules.examinations.queries import build_view, get_examination, get_view
@@ -241,7 +241,7 @@ async def update_examination(
                 action="examination:vse_fair",
                 result=(
                     f"vse_fair={str(previous_vse_fair).lower()}->{str(payload.vse_fair).lower()}:"
-                    f"{fair_source(await _reconciliation_for(db, row.party_id), payload.vse_fair)}"
+                    f"{fair_source(await reconciliation_for(db, row.party_id), payload.vse_fair)}"
                 ),
                 trace_id=uuid.uuid4().hex,
                 revision=row.rev,

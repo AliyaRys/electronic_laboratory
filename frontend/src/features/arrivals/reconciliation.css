@@ -99,7 +99,21 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 9px;
-  align-items: end;
+  align-items: center;
+}
+
+/* ТЗ DR47 §2.4: in the document head the ✓/× wrapper is a REAL flex group on
+   the right — the generic ``display: contents`` (correct for the ordinary
+   three-column compare rows) would drop the two buttons into separate grid
+   tracks of the head, so a long document name pushes the mismatch mark onto
+   its own row between text lines. Scoped to the head only: ordinary
+   ComparisonField keeps the shared geometry. */
+.vse-rec-document-head .vse-rec-check-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 6px;
 }
 
 .vse-rec-document-name {

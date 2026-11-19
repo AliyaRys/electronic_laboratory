@@ -13,6 +13,10 @@ export interface ReconciliationActionsProps {
   laboratoryId: string;
   busy: boolean;
   complete: boolean;
+  /** ТЗ DR53 Task 1: a non-null pricing-preview lock disables the save with
+   * an honest explanation (the preview of the current draft is pending or
+   * failed — the user never confirms a sum of another fair state). */
+  saveLock?: string | undefined;
   /** The currently chosen decision label, when one is selected. */
   chosenDecision?: string | undefined;
   /** Whether the party has at least one compared field to mark. */
@@ -24,14 +28,18 @@ export function ReconciliationActions({
   laboratoryId,
   busy,
   complete,
+  saveLock,
   chosenDecision,
   canMarkAll,
   onMarkAll,
 }: ReconciliationActionsProps): React.ReactElement {
+  const locked = saveLock !== undefined;
   return (
     <div className="vse-rec-actions">
       <span className="vse-rec-actions-note">
-        {complete
+        {saveLock !== undefined
+          ? saveLock
+          : complete
           ? "Сверка заполнена полностью; отправка приёмки — следующим шагом."
           : `Начатая сверка сохраняется и может быть неполной${
               chosenDecision !== undefined && chosenDecision !== "" ? `; выбрано: ${chosenDecision}` : ""
@@ -45,7 +53,13 @@ export function ReconciliationActions({
           Все соответствует
         </Button>
       ) : null}
-      <Button type="submit" variant="primary" disabled={busy} busy={busy} busyLabel="Сохранение…">
+      <Button
+        type="submit"
+        variant="primary"
+        disabled={busy || locked}
+        busy={busy}
+        busyLabel="Сохранение…"
+      >
         Сохранить сверку
       </Button>
     </div>

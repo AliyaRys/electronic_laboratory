@@ -70,7 +70,13 @@ from backend.src.modules.integrations.vetis.status import status_label
 from backend.src.modules.integrations.vetis.storage_types import storage_type_label
 from backend.src.modules.integrations.vetis.transport_types import transport_type_label
 
-__all__ = ["save_reconciliation", "build_reconciliation_view", "load_reconciliation", "source_projection"]
+__all__ = [
+    "save_reconciliation",
+    "build_reconciliation_view",
+    "load_reconciliation",
+    "preview_reconciliation_pricing",
+    "source_projection",
+]
 
 CAPABILITIES = ReceiptCapabilities()
 
@@ -410,6 +416,45 @@ def build_reconciliation_view(
         errors=validation.all_errors(),
         complete=validation.complete,
     )
+
+
+async def preview_reconciliation_pricing(
+    db: AsyncSession, party_id: UUID, payload: ReconciliationWrite
+) -> PricingSnapshot:
+    """ТЗ DR53 Task 1: the side-effect-free pricing preview of a сверка draft.
+
+    The SAME canonical path as the save — ``normalize_payload()``,
+    ``validate_receipt()`` and ``_price_check_services()`` — but read-only: no
+    lock beyond the plain reads, no INSERT/UPDATE, no idempotency claim, no
+    audit event and no external call. The client never supplies tariffs,
+    amounts or laboratory scope. An incomplete/invalid draft raises the typed
+    validation problem (never a fabricated zero); the final PUT keeps
+    recalculating independently and never trusts this preview.
+    """
+    party = (await db.execute(select(Party).where(Party.id == party_id))).scalar_one_or_none()
+    if party is None:
+        raise not_found("Поступление не найдено.")
+    document_row = (
+        await db.execute(select(IncomingDocumentRow).where(IncomingDocumentRow.id == party.incoming_document_id))
+    ).scalar_one()
+    saved = normalize_payload(payload)
+    source_unit_id = _source_unit_id(document_row)
+    names = await resolved_participant_names(db, document_row)
+    if source_unit_id:
+        # The same immutable source-snapshot unit authority as the save path.
+        saved = saved.model_copy(
+            update={
+                "delivered": saved.delivered.model_copy(update={"unit_id": source_unit_id}),
+                "accepted": saved.accepted.model_copy(update={"unit_id": source_unit_id}),
+                "returned": saved.returned.model_copy(update={"unit_id": source_unit_id}),
+            }
+        )
+    validation = validate_receipt(saved, source_projection(document_row, party, names=names), CAPABILITIES)
+    errors = validation.blocking if validation.blocking else validation.all_errors()
+    if errors:
+        raise validation_error(errors)
+    work = UnitOfWork(db)
+    return await _price_check_services(work, party, saved)
 
 
 async def _price_check_services(

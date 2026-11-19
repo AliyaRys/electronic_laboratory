@@ -932,6 +932,23 @@ export function saveReconciliation(
     }) as Promise<RawResult<ReconciliationView>>;
 }
 
+// --- ТЗ DR53 Task 1: the live read-only pricing preview of the сверка draft ---
+
+export async function previewReconciliationPricing(
+  partyId: string,
+  payload: ReconciliationWrite,
+  signal?: AbortSignal | null,
+): Promise<PricingSnapshot | Problem> {
+  const settled = await settle(
+    apiClient.POST("/api/v1/arrivals/{party_id}/reconciliation-pricing-preview", {
+      params: { path: { party_id: partyId } },
+      body: payload,
+      signal: signal ?? null,
+    }) as Promise<RawResult<PricingSnapshot>>,
+  );
+  return "problem" in settled ? settled.problem : settled.data;
+}
+
 // --- Verified VetIS receipt (W03) ----------------------------------------------
 
 export async function fetchReceiptContext(

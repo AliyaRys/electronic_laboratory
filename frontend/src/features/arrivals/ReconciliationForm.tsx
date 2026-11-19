@@ -49,6 +49,7 @@ import { ReconciliationActions } from "./ReconciliationActions";
 import { ReconciliationFeedback } from "./ReconciliationFeedback";
 import { ActPreview } from "./ActPreview";
 import { ReceiptDecision } from "./ReceiptDecision";
+import { ReconciliationPricingPreview } from "./ReconciliationPricingPreview";
 
 export interface ReconciliationFormProps {
   party: IncomingView;
@@ -344,6 +345,40 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   const command = useCommand<ReconciliationView>();
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // ТЗ DR53 Task 1: the save is locked while the pricing preview of the
+  // CURRENT draft is pending or failed (the user never confirms a sum that
+  // belongs to another fair state). The preview is armed by the «Ярмарка»
+  // checkbox change and recalculates immediately, before any save.
+  const [previewLock, setPreviewLock] = useState<string | null>(null);
+  const [previewArmed, setPreviewArmed] = useState(false);
+  /** The canonical payload of the shown draft; ``null`` = it still matches
+   * the saved view, whose snapshot is displayed as-is. */
+  const previewPayload = useMemo(() => {
+    if (!previewArmed) {
+      return null;
+    }
+    const draft = toPayload(
+      {
+        ...values,
+        delivered: canonicalQuantitySet(values.delivered),
+        accepted: canonicalQuantitySet(values.accepted),
+        returned: canonicalQuantitySet(values.returned),
+      },
+      party,
+    );
+    const savedInitial = initialValues(party, initial);
+    const saved = toPayload(
+      {
+        ...savedInitial,
+        delivered: canonicalQuantitySet(savedInitial.delivered),
+        accepted: canonicalQuantitySet(savedInitial.accepted),
+        returned: canonicalQuantitySet(savedInitial.returned),
+      },
+      party,
+    );
+    return JSON.stringify(draft) === JSON.stringify(saved) ? null : draft;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, party, initial, previewArmed]);
   /** The key + fingerprint of the save session (ТЗ DR13): reused while the
    * payload and the shown revision stay unchanged, otherwise re-keyed. */
   const sessionRef = useRef<{ key: string; fingerprint: string; etag: string } | null>(null);
@@ -836,45 +871,24 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         title={CHECK_SECTION_TITLES.invoice}
         description={CHECK_SECTION_DESCRIPTIONS.invoice}
       >
-        {initial.pricing === undefined || initial.pricing === null ? (
-          <p className="vse-rec-invoice-empty">
-            Стоимость будет рассчитана после сохранения и подтверждения сверки.
-          </p>
-        ) : (
-          <div className="vse-rec-invoice-table-wrap">
-            <table className="vse-rec-invoice-table">
-              <caption className="vse-visually-hidden">Расчёт стоимости услуг по сверке</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Услуга</th>
-                  <th scope="col">Количество</th>
-                  <th scope="col">Тариф</th>
-                  <th scope="col">Сумма</th>
-                </tr>
-              </thead>
-              <tbody>
-                {initial.pricing.lines.map((line) => (
-                  <tr key={line.service_code}>
-                    <td>{line.name}</td>
-                    <td>{line.quantity}</td>
-                    <td>{moneyLabel(line.unit_price)}</td>
-                    <td>{moneyLabel(line.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="vse-rec-invoice-total">
-              <span>Итого</span>
-              {/* The total is the SAVED server value; the client never computes it. */}
-              <strong>{moneyLabel(initial.pricing.total)}</strong>
-            </p>
-          </div>
-        )}
+        {/* ТЗ DR53 Task 1: the live server preview; the saved snapshot shows
+            as-is while the draft still matches it. */}
+        <ReconciliationPricingPreview
+          partyId={party.party_id}
+          payload={previewPayload}
+          savedPricing={initial.pricing}
+          onLockChange={setPreviewLock}
+        />
         <label className="vse-rec-invoice-waiver">
           <input
             type="checkbox"
             checked={values.fair}
-            onChange={(event) => form.setValue("fair", event.target.checked, { shouldDirty: true })}
+            onChange={(event) => {
+              form.setValue("fair", event.target.checked, { shouldDirty: true });
+              // ТЗ DR53 Task 1: the checkbox change starts the server preview
+              // immediately — no save is required.
+              setPreviewArmed(true);
+            }}
           />
           <span>
             <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
@@ -898,6 +912,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       <ReconciliationActions
         laboratoryId={party.laboratory_id}
         busy={command.status === "pending"}
+        saveLock={previewLock ?? undefined}
         complete={initial.complete}
         chosenDecision={decision !== null ? decisionLabel(decision) : undefined}
         canMarkAll={compared.length > 0}

@@ -785,3 +785,32 @@
     transition: none;
   }
 }
+
+/* ТЗ DR53 Task 1: the live pricing preview states. */
+.vse-rec-invoice-recalc {
+  margin: 0 0 8px;
+  color: var(--vse-color-text-secondary, #5a6572);
+  font-size: 14px;
+}
+
+.vse-rec-invoice-skeleton {
+  display: grid;
+  gap: 8px;
+}
+
+.vse-rec-invoice-skeleton-row {
+  height: 20px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e8ecf1 25%, #f2f5f8 50%, #e8ecf1 75%);
+  background-size: 200% 100%;
+  animation: vse-rec-invoice-skeleton 1.2s ease-in-out infinite;
+}
+
+.vse-rec-invoice-skeleton-row:first-child {
+  width: 70%;
+}
+
+@keyframes vse-rec-invoice-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

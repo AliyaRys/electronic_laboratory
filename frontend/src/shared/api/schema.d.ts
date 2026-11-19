@@ -390,6 +390,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/arrivals/{party_id}/reconciliation-pricing-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Reconciliation Pricing
+         * @description ТЗ DR53 Task 1: the live read-only pricing preview of the сверка draft.
+         *
+         *     The same party scope, CSRF and no-store cache rules as the save; the
+         *     endpoint performs no INSERT/UPDATE, no idempotency claim and no audit
+         *     event, and never contacts VetIS. The final PUT still recalculates
+         *     independently and never trusts this preview total.
+         */
+        post: operations["preview_reconciliation_pricing_api_v1_arrivals__party_id__reconciliation_pricing_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/arrivals/{party_id}/receipt-preview": {
         parameters: {
             query?: never;
@@ -4317,6 +4342,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReceiptContext"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_reconciliation_pricing_api_v1_arrivals__party_id__reconciliation_pricing_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                party_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconciliationWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingSnapshot"];
                 };
             };
             /** @description Validation Error */

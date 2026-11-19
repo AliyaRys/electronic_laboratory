@@ -29,7 +29,6 @@ import {
   documentChecksOf,
   documentFacts,
   hasSourceUnit,
-  moneyLabel,
   normalizeDecimalInput,
   formatDecimalDisplay,
   partyUnit,
@@ -374,8 +373,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       party,
     );
     return JSON.stringify(draft) === JSON.stringify(saved) ? null : draft;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values, party, initial, previewArmed]);
+    }, [values, party, initial, previewArmed]);
   /** The key + fingerprint of the save session (ТЗ DR13): reused while the
    * payload and the shown revision stay unchanged, otherwise re-keyed. */
   const sessionRef = useRef<{ key: string; fingerprint: string; etag: string } | null>(null);

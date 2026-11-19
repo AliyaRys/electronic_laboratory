@@ -21,7 +21,6 @@ import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Button } from "../../shared/ui/Button";
 import { StatusView } from "../../shared/ui/StatusView";
-import { Dialog } from "../../shared/ui/Dialog";
 import {
   createMethod,
   fetchMethodsContext,
@@ -594,9 +593,7 @@ export function MethodsEditorPage(): React.ReactElement {
               );
             })}
             {qualitativeRows.map((row) => {
-              if (row.unknown) return null;
               const draft = draftFor(row);
-              const rule = row.rule;
               const indicator = row.indicator;
               const registryOptions = (indicator?.options ?? []).map((value) => ({
                 value,

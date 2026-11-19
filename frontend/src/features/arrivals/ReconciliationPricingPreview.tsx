@@ -51,12 +51,18 @@ export function ReconciliationPricingPreview({
     controllerRef.current?.abort();
     controllerRef.current = controller;
     if (payload === null) {
-      setState({ kind: "saved" });
+      // The draft still matches the saved view: no request, no local state
+      // change — the render path shows ``savedPricing`` directly.
       onLockChange(null);
       return () => {
         controller.abort();
       };
     }
+    // The pending placeholder is derived state of the started request: the
+    // effect synchronously reflects "a request for THIS payload is in flight"
+    // before the async continuation settles it (abort/identity guards make
+    // superseded responses inert).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState((current) =>
       current.kind === "success" || current.kind === "recalculating"
         ? { kind: "recalculating", snapshot: current.snapshot }
@@ -93,11 +99,19 @@ export function ReconciliationPricingPreview({
   }, [payload, partyId, onLockChange, savedPricing]);
 
   const snapshot =
-    state.kind === "success" || state.kind === "recalculating"
-      ? state.snapshot
-      : state.kind === "saved"
-        ? savedPricing ?? null
+    payload === null
+      ? savedPricing ?? null
+      : state.kind === "success" || state.kind === "recalculating"
+        ? state.snapshot
         : null;
+  const recalculating = payload !== null && state.kind === "recalculating";
+  if (payload === null && savedPricing == null) {
+    return (
+      <p className="vse-rec-invoice-empty">
+        Стоимость будет рассчитана после сохранения и подтверждения сверки.
+      </p>
+    );
+  }
   if (state.kind === "incomplete" || snapshot === null) {
     return (
       <p className="vse-rec-invoice-empty">
@@ -125,7 +139,7 @@ export function ReconciliationPricingPreview({
   }
   return (
     <div className="vse-rec-invoice-table-wrap">
-      {state.kind === "recalculating" ? (
+      {recalculating ? (
         <p className="vse-rec-invoice-recalc" aria-live="polite">
           Пересчитываем стоимость…
         </p>

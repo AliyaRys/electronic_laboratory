@@ -51,6 +51,7 @@ BACTERIOSCOPY = _mandatory.BACTERIOSCOPY_INDICATOR_ID
 MICROSCOPY = _mandatory.MICROSCOPY_INDICATOR_ID
 COPPER = _mandatory.COPPER_INDICATOR_ID
 PEROXIDASE = _mandatory.PEROXIDASE_INDICATOR_ID
+TRICHINELLA = _mandatory.TRICHINELLA_INDICATOR_ID
 
 
 # --- §6.1–§6.3: the canonical registry modes -----------------------------------------
@@ -64,8 +65,25 @@ def test_registry_modes_match_the_ft_rules() -> None:
     assert modes["VSE-F27"] == "FIXED"
     assert modes["VSE-F28"] == "FIXED"
     assert modes["VSE-F23"] == "NONE"
-    for code in ("VSE-F20", "VSE-F21", "VSE-F24", "VSE-F25", "VSE-F26", "VSE-F29"):
+    # ТЗ DR53 Task 6: trichinelloscopy is FIXED now.
+    assert modes["VSE-F21"] == "FIXED"
+    for code in ("VSE-F20", "VSE-F24", "VSE-F25", "VSE-F26", "VSE-F29"):
         assert modes[code] == "CONFIGURABLE", code
+
+
+def test_trichinella_registry_is_fixed_conditional_boolean() -> None:
+    """ТЗ DR53 Task 6 Step 1: the F21 registry definition."""
+    definition = _mandatory.indicator_by_code("VSE-F21")
+    assert definition.result_schema == "BOOLEAN_MATCH"
+    assert definition.evaluation_mode == "FIXED"
+    assert definition.conditional is True
+    assert definition.mandatory is False
+    assert definition.options == ("Не обнаружено", "Обнаружено")
+    assert definition.fixed_criterion == "норма: Не обнаружено"
+    for value, expected in (("true", "IN_NORM"), (True, "IN_NORM"), ("Не обнаружено", "IN_NORM")):
+        assert definition.fixed_values[value] == expected, value
+    for value, expected in (("false", "DEVIATION"), (False, "DEVIATION"), ("Обнаружено", "DEVIATION")):
+        assert definition.fixed_values[value] == expected, value
 
 
 # --- §6.4: fixed evaluation without a MethodRule ---------------------------------------
@@ -188,6 +206,58 @@ async def test_write_norm_for_fixed_and_none_is_refused(db_session: AsyncSession
     )
     row = await _commands.create_method_rule(db_session, payload_ok)
     assert row.indicator_id == MICROSCOPY
+
+    # ТЗ DR53 Task 6: a NEW F21 norm is rejected as a FIXED indicator.
+    payload_trich = MethodRuleWrite(
+        laboratory_id=env.lab.id,
+        code="VSE-F21",
+        rule=QualitativeRule.model_validate({"type": "qualitative", "accepted_values": ["Не обнаружено"]}),
+    )
+    with pytest.raises(ProblemError) as problem_trich:
+        await _commands.create_method_rule(db_session, payload_trich)
+    assert problem_trich.value.status == 422
+
+
+@pytest.mark.integration
+async def test_trichinella_fixed_mapping_and_legacy_rule_ignored(db_session: AsyncSession) -> None:
+    """ТЗ DR53 Task 6: the fixed mapping evaluates boolean wire values and
+    accepts the legacy Russian labels; an old active F21 MethodRule does NOT
+    override the fixed evaluation."""
+    env = await _seed(db_session)
+    species = uuid.uuid4()
+    db_session.add(_tariff(env.lab.id, species, str(TRICHINELLA), "8.00", unit="RUB"))
+    # A legacy ACTIVE F21 MethodRule stays in the database (inserted directly:
+    # the create command refuses FIXED indicators since DR53).
+    db_session.add(
+        _rule(
+            env.lab.id,
+            species,
+            uuid.uuid4(),
+            TRICHINELLA,
+            version=1,
+            result_schema="BOOLEAN_MATCH",
+            unit_id="",
+            rule={"type": "qualitative", "accepted_values": ["Не обнаружено"]},
+        )
+    )
+    await db_session.commit()
+
+    for value, expected in (("true", "IN_NORM"), ("false", "DEVIATION"), ("Обнаружено", "DEVIATION")):
+        snapshot = await evaluate_and_price(
+            UnitOfWork(db_session),
+            _vse_request(
+                env.lab.id,
+                species,
+                uuid.uuid4(),
+                [ResearchValue.model_validate({"indicator_id": str(TRICHINELLA), "performed": True, "value": value})],
+                quantity="1",
+            ),
+            None,
+        )
+        evaluation = snapshot.lines[0].evaluation
+        assert evaluation["status"] == expected, value
+        assert evaluation["evaluation_mode"] == "FIXED"
+        assert evaluation["criterion"] == "норма: Не обнаружено"
 
 
 # --- the review finding: legacy INTEGER norms stay honest ------------------------------

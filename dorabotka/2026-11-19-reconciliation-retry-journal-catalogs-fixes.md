@@ -96,37 +96,37 @@ Read-only проверкой БД подтверждено:
 - Consumes current typed reconciliation draft; never consumes money, tariffs, laboratory id or service list from the client.
 - Produces the same typed `PricingSnapshot` used by final save plus a request identity/revision sufficient to reject stale UI responses.
 
-- [ ] **Step 1: Write backend RED tests for a side-effect-free preview.**
+- [x] **Step 1: Write backend RED tests for a side-effect-free preview.**
   - Payload uses the current `ReconciliationWrite` fields required for validation/pricing, but `services`, amounts, tariffs and laboratory are not client inputs.
   - Endpoint applies the same party scope/authorization as `reconciliation:save`, requires CSRF, returns `Cache-Control: no-store`.
   - It loads party/source context server-side, runs `normalize_payload()`, `validate_receipt()` and the same `_price_check_services()` used by save.
   - It performs no INSERT/UPDATE, no idempotency claim, no audit event and no external call.
 
-- [ ] **Step 2: Implement one shared server computation path.**
+- [x] **Step 2: Implement one shared server computation path.**
   - Extract only as much as necessary so preview and save cannot diverge.
   - A complete draft returns snapshot.
   - An incomplete/invalid draft returns the existing typed validation/configuration problem; it must not fabricate `0`.
   - Final `PUT reconciliation` still recalculates independently in its transaction and never trusts the preview total.
 
-- [ ] **Step 3: Write frontend RED tests for immediate fair recalculation.**
+- [x] **Step 3: Write frontend RED tests for immediate fair recalculation.**
   - Saved snapshot total `230.00`; click «Ярмарка»; before any save/PUT, POST preview with `fair:true` completes and UI shows `0,00 ₽`.
   - Uncheck; server preview returns normal snapshot and UI restores `230,00 ₽`.
   - Rapid `true → false`: an older `fair:true` response arriving last is ignored.
   - Preview failure keeps entered form values and shows a clear inline state; the old sum is never presented as current without «Пересчитываем стоимость…».
 
-- [ ] **Step 4: Implement controlled preview state.**
+- [x] **Step 4: Implement controlled preview state.**
   - Build the preview request from the same canonical `toPayload()` data used for save.
   - Checkbox change starts preview immediately; no save is required.
   - Abort superseded requests and additionally compare request identity before applying a response.
   - During first calculation show stable loading geometry; during recalculation the previous table may remain only with an `aria-live` status «Пересчитываем стоимость…».
   - Disable final save while a pricing preview for the current draft is pending or failed, so the user never confirms a sum belonging to another fair state.
 
-- [ ] **Step 5: Keep UI composition.**
+- [x] **Step 5: Keep UI composition.**
   - Current four columns and external total remain.
   - Checkbox remains in the same invoice block and keeps its existing wording.
   - Do not reintroduce unit/evaluation columns or client-side multiplication.
 
-- [ ] **Step 6: Regenerate OpenAPI types, run focused tests, commit.**
+- [x] **Step 6: Regenerate OpenAPI types, run focused tests, commit.**
 
 ---
 
@@ -148,31 +148,31 @@ Read-only проверкой БД подтверждено:
 - New writes use `DocumentCheck { matches, reason? }`; `actual` stays read-compatible for legacy stored rows but is not required or generated for new document-level mismatch.
 - Act item for a document mismatch carries source document text + reason; `actual=null` unless a future explicitly designed UI really captures an actual document.
 
-- [ ] **Step 1: Write RED UI tests.**
+- [x] **Step 1: Write RED UI tests.**
   - After «Не соответствует» the original type/number/date remain visible exactly once.
   - Appears exactly one `Field` named «Причина несоответствия».
   - «Фактическое значение» and the second `<dl>` are absent from DOM and accessibility tree.
   - Empty reason blocks save and is associated with the field.
 
-- [ ] **Step 2: Remove the duplicate visual block at the component source.**
+- [x] **Step 2: Remove the duplicate visual block at the component source.**
   - Do not hide with CSS.
   - Keep the reason inside the same document card under the original facts.
   - Preserve radio controls, long-text wrapping, keyboard focus and error announcement.
 
-- [ ] **Step 3: Stop fabricating `actual` in `toPayload()`.**
+- [x] **Step 3: Stop fabricating `actual` in `toPayload()`.**
   - New mismatch payload contains only `matches:false` and trimmed `reason`.
   - `matches:true` remains `{matches:true}`.
   - Old stored `actual` remains parseable, but the UI does not display a duplicate block.
 
-- [ ] **Step 4: Update server validation and act construction.**
+- [x] **Step 4: Update server validation and act construction.**
   - Unknown/removed document key remains blocking.
   - Mismatch requires reason, but no longer requires `actual`/CHK-F42.
   - Act preview and ReceiptIntent use the stable source document description plus reason; do not invent changed document details.
   - If `actual` exists in a legacy record, read it compatibly but do not require or propagate it as a new user fact without explicit input.
 
-- [ ] **Step 5: Add regression tests proving that the XML discrepancy description has the document source and reason, but no duplicated fabricated actual.**
+- [x] **Step 5: Add regression tests proving that the XML discrepancy description has the document source and reason, but no duplicated fabricated actual.**
 
-- [ ] **Step 6: Run focused tests and commit.**
+- [x] **Step 6: Run focused tests and commit.**
 
 ---
 
@@ -194,7 +194,7 @@ Read-only проверкой БД подтверждено:
 - `UNKNOWN`: only poll/check result, no new submission.
 - `REJECTED`: immutable prior attempt + explicit UI action to build a fresh preview; never automatic resend.
 
-- [ ] **Step 1: Preserve the proven XML contract.**
+- [x] **Step 1: Preserve the proven XML contract.**
   - `docInspection` order: `responsible → result → info` only for mismatch.
   - `discrepancyReport`: optional document fields, then `reason`, then `description`; no `info` child.
   - `CORRESPONDS`: neither `docInspection/info` nor `discrepancyReport`.
@@ -204,12 +204,12 @@ Read-only проверкой БД подтверждено:
   - RETURN_ALL: accepted consignment is absent, returned delivery contains full return.
   - `OTHER_REASON` requires text and is serialized once in returned certificate special marks.
 
-- [ ] **Step 2: Pin all six scenarios with generated-XML XSD tests.**
+- [x] **Step 2: Pin all six scenarios with generated-XML XSD tests.**
   - Validate the XML produced by `build_process_incoming_application()`, not only hand-written fixtures.
   - Transport spy must prove zero SOAP/network calls.
   - Fix the existing schema-pin failure caused by CRLF checkout safely: use `.gitattributes`/canonical bytes so hashes do not depend on Windows `core.autocrlf`. Never “fix” this by accepting arbitrary local hashes.
 
-- [ ] **Step 3: Write RED UI tests for recovery from REJECTED.**
+- [x] **Step 3: Write RED UI tests for recovery from REJECTED.**
   - Rejected message and VetIS detail remain visible as previous-attempt history.
   - A visible button is named **«Подготовить гашение заново»**.
   - Clicking it does not POST receipt and does not replay the old operation.
@@ -217,20 +217,20 @@ Read-only проверкой БД подтверждено:
   - Only the second explicit confirmation submits.
   - New response operation id replaces active polling id.
 
-- [ ] **Step 4: Implement the state machine without weakening one-shot safety.**
+- [x] **Step 4: Implement the state machine without weakening one-shot safety.**
   - Remove `REJECTED` from the early-return branch that permanently hides the form, or create an explicit rejected-recovery branch.
   - Keep prior rejection visible until the user starts a new preview.
   - Reset old preview/dialog/submitted ref before a fresh preview.
   - Backend must create a fresh `operation_id`, `localTransactionId`, fingerprint, idempotency key and outbox row. Old row stays REJECTED unchanged.
   - Re-read source/reconciliation revisions and rebuild intent from the current revision; for the example this means revision 10/`OTHER_REASON`, not frozen revision 8/`QUANTITY_DISCREPANCY`.
 
-- [ ] **Step 5: Test non-retry states.**
+- [x] **Step 5: Test non-retry states.**
   - `CONFIRMED` never shows retry.
   - `UNKNOWN` exposes only safe result recheck.
   - QUEUED/SUBMITTING/PROCESSING cannot submit again.
   - Stale source/revision conflict stops before external write and requires a new preview.
 
-- [ ] **Step 6: Run focused tests and commit.**
+- [x] **Step 6: Run focused tests and commit.**
 
 ---
 
@@ -248,26 +248,26 @@ Read-only проверкой БД подтверждено:
 - `occurred_from/occurred_to` now mean **creation date of VSE card** for both statuses.
 - Outcome filter exists only for COMPLETED.
 
-- [ ] **Step 1: Write RED tests for WAITING composition.**
+- [x] **Step 1: Write RED tests for WAITING composition.**
   - No label, disabled select or note «Итог ВСЭ» exists in DOM/accessibility tree.
   - Grid closes the empty space; remaining filters align at one level and do not leave a blank column.
   - Switching COMPLETED → WAITING removes stale `outcome` from URL while preserving search/author/sort/date/page rules.
 
-- [ ] **Step 2: Render outcome only for COMPLETED.**
+- [x] **Step 2: Render outcome only for COMPLETED.**
   - COMPLETED keeps «Итог ВСЭ» with FIT/UNFIT.
   - WAITING does not replace it with another explanatory card.
 
-- [ ] **Step 3: Rename the date filter everywhere.**
+- [x] **Step 3: Rename the date filter everywhere.**
   - Visible label: **«Дата создания ВСЭ»**.
   - Trigger `aria-label`, dialog accessible name, test ids/messages and Storybook use the same phrase.
   - Remove every user-visible «Период обращения» on both tabs.
 
-- [ ] **Step 4: Make backend semantics match the label.**
+- [x] **Step 4: Make backend semantics match the label.**
   - Both WAITING and COMPLETED filter `occurred_from/to` by `Examination.created_at`, with existing Moscow half-open range rules.
   - Current «Сначала новые / Сначала старые» sort on this screen also uses creation time for both tabs, so the same control does not silently change meaning between tabs.
   - Keep deterministic id tie-breaker and pagination behavior.
 
-- [ ] **Step 5: Run URL/back-forward, timezone boundary, responsive and accessibility tests; commit.**
+- [x] **Step 5: Run URL/back-forward, timezone boundary, responsive and accessibility tests; commit.**
 
 ---
 
@@ -287,35 +287,35 @@ Read-only проверкой БД подтверждено:
 - Historical `legacy_tariffs`/legacy method rules remain server-side audit data but are ignored by these editor screens.
 - Backend DELETE endpoints may remain for compatibility/internal administration; ordinary UI no longer exposes delete actions requested here.
 
-- [ ] **Step 1: Remove all requested context notes.**
+- [x] **Step 1: Remove all requested context notes.**
   - Tariffs: remove «Лаборатория … · Продукция …» and «Категория продукции … стоимость одна…».
   - Check services: remove `check-services-laboratory`.
   - Methods: remove laboratory/product/context/category note.
   - If a user may switch laboratories, keep `CatalogContextSelector` unchanged.
   - If `onPick === null`, `CatalogContextSlot` returns `null`; no empty wrapper.
 
-- [ ] **Step 2: Remove tariffs diagnostics from the user screen.**
+- [x] **Step 2: Remove tariffs diagnostics from the user screen.**
   - Do not render `tariffs-legacy-diag`, legacy audit table, `tariff-diag-*`, UUID/source/version/migration details or instruction to clean rows manually.
   - Do not delete/migrate old rows and do not auto-select a new “winner”.
   - Unknown/legacy technical facts go to structured server logs/monitoring, not a custom page card.
 
-- [ ] **Step 3: Remove tariff delete controls.**
+- [x] **Step 3: Remove tariff delete controls.**
   - No «Удалить», «Удалить тариф» button, delete dialog or delete state/wiring in **«Стоимость исследований ВСЭ»**.
   - Editing and saving prices remain.
   - Do not accidentally remove delete behavior from «Платные услуги»: пункт владельца для этой страницы касается только context note.
 
-- [ ] **Step 4: Remove methods details and delete controls.**
+- [x] **Step 4: Remove methods details and delete controls.**
   - No `<details>`, «Дополнительные настройки», inclusive checkboxes, «Дополнительные действия», «Удалить норму» or delete dialog.
   - Existing saved `lower_inclusive/upper_inclusive` must survive ordinary edits unchanged even though controls are hidden.
   - New interval norm defaults remain `true/true` unless current domain contract explicitly says otherwise.
   - Do not hardcode `true/true` on every update and thereby rewrite old exclusive boundaries.
 
-- [ ] **Step 5: Remove methods diagnostic cards.**
+- [x] **Step 5: Remove methods diagnostic cards.**
   - Do not render `method-legacy-*`, fixed-method messages, NONE messages or unknown-code diagnostics.
   - Fixed/NONE methods are simply absent from the editable list.
   - No empty section/gap remains.
 
-- [ ] **Step 6: Add tests.**
+- [x] **Step 6: Add tests.**
   - None of the removed texts/controls exist in DOM/accessibility tree.
   - Multi-lab selector still changes scoped requests.
   - Single-lab page has no empty context container.
@@ -323,7 +323,7 @@ Read-only проверкой БД подтверждено:
   - A stored interval with `lower_inclusive=false` remains false after editing only upper bound.
   - Legacy rows are not deleted or overwritten by opening/saving unrelated entries.
 
-- [ ] **Step 7: Build Storybook, inspect all three pages at 1440/1024/390 px and 200% zoom; commit.**
+- [x] **Step 7: Build Storybook, inspect all three pages at 1440/1024/390 px and 200% zoom; commit.**
 
 ---
 
@@ -347,7 +347,7 @@ Read-only проверкой БД подтверждено:
 - Wire value remains boolean/string-compatible: `true` = «Не обнаружено» = `IN_NORM`; `false` = «Обнаружено» = `DEVIATION`.
 - Tariff configuration remains; only norm configuration disappears.
 
-- [ ] **Step 1: Write RED registry/pricing tests.**
+- [x] **Step 1: Write RED registry/pricing tests.**
   - F21 is FIXED, conditional, not globally mandatory.
   - Fixed mapping accepts `true`, `"true"`, «Не обнаружено» as `IN_NORM`.
   - Accepts `false`, `"false"`, «Обнаружено» as `DEVIATION`.
@@ -356,26 +356,26 @@ Read-only проверкой БД подтверждено:
   - A legacy active F21 MethodRule does not override fixed evaluation.
   - POST/PUT a new F21 norm is rejected as a FIXED indicator.
 
-- [ ] **Step 2: Implement explicit trichinella mapping.**
+- [x] **Step 2: Implement explicit trichinella mapping.**
   - Do not reuse `_MATCH_OPTIONS`/«Соответствует» labels.
   - Preserve conditional requirement for: свинина; конина; субпродукты и жиры свиные; субпродукты и жиры конские.
   - Existing historical F21 MethodRule may remain in DB for audit but is not displayed or used.
 
-- [ ] **Step 3: Remove F21 from Methods editor by server semantics, not a fragile name filter.**
+- [x] **Step 3: Remove F21 from Methods editor by server semantics, not a fragile name filter.**
   - Context exposes it as FIXED/non-editable or omits it from editable rows according to the existing FIXED contract.
   - Page renders no trichinelloscopy norm card and no diagnostic explaining its absence.
 
-- [ ] **Step 4: Correct the examination form labels independent of `required`.**
+- [x] **Step 4: Correct the examination form labels independent of `required`.**
   - Required and optional F21 both display only **«Не обнаружено»** and **«Обнаружено»**.
   - Required controls whether the research can be removed and whether a value is mandatory; it never changes the option names.
   - Use the canonical `SelectDropdown`/existing research control; do not fork markup.
   - Payload remains BOOLEAN `true/false`; no Russian label is sent as wire value.
 
-- [ ] **Step 5: Prove tariffs remain.**
+- [x] **Step 5: Prove tariffs remain.**
   - «Трихинеллоскопия» still appears in «Стоимость исследований ВСЭ».
   - When performed, its tariff and quantity still enter pricing snapshot.
 
-- [ ] **Step 6: Run focused backend/frontend tests, Storybook states for optional/required/in-norm/deviation, commit.**
+- [x] **Step 6: Run focused backend/frontend tests, Storybook states for optional/required/in-norm/deviation, commit.**
 
 ---
 
@@ -386,20 +386,20 @@ Read-only проверкой БД подтверждено:
 - Update component/catalog README where public behavior changed
 - Append implementation evidence/report without replacing this plan
 
-- [ ] **Step 1: Run backend gates.**
+- [x] **Step 1: Run backend gates.**
   - Formatter/lint/typecheck by repository commands.
   - Focused arrivals, VetIS, examinations journal and catalog pricing suites.
   - Full backend suite.
   - Alembic single-head check; no migration is expected unless implementation truly changes schema. Do not create a decorative migration.
 
-- [ ] **Step 2: Run frontend gates.**
+- [x] **Step 2: Run frontend gates.**
   - `npm.cmd test -- --run`
   - `npm.cmd run typecheck`
   - `npm.cmd run lint`
   - production build
   - `npm.cmd run build-storybook`
 
-- [ ] **Step 3: Run browser/E2E flows.**
+- [x] **Step 3: Run browser/E2E flows.**
   - Reconciliation fair live preview.
   - One document mismatch with reason only.
   - REJECTED receipt recovery up to new confirmation dialog using mocked/offline transport; do not perform live VetIS write.
@@ -408,14 +408,14 @@ Read-only проверкой БД подтверждено:
   - Examination with conditional required trichinelloscopy.
   - Viewports 1440×900, 1024×768, 390×844 and 200% zoom; keyboard and screen-reader names.
 
-- [ ] **Step 4: Run premium UI audit and inspect results.**
+- [x] **Step 4: Run premium UI audit and inspect results.**
   - Run the installed frontend-design-premium strict audit.
   - Resolve findings relevant to changed files; report unrelated baseline findings separately, do not expand scope silently.
 
-- [ ] **Step 5: Whole-branch review.**
+- [x] **Step 5: Whole-branch review.**
   - Reviewer must explicitly check: no external VetIS call; no client money; no duplicate document actual; no automatic resend; no legacy cards; no loss of multi-lab selector; no use of old trich norm.
 
-- [ ] **Step 6: Commit final documentation/evidence.**
+- [x] **Step 6: Commit final documentation/evidence.**
 
 ---
 

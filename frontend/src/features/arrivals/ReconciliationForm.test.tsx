@@ -1762,7 +1762,7 @@ describe("ТЗ DR54 Task 2: двусторонний preview Ярмарки", ()
 
   it("a late superseded answer never overwrites the latest calculation", async () => {
     const calls: { fair: boolean }[] = [];
-    let releaseFirst: (() => void) | null = null;
+    let releaseFirst: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });

@@ -75,10 +75,9 @@ export function ResearchFields({
       title="Исследования ВСЭ"
       description="Результаты основных и дополнительных исследований ветеринарно-санитарной экспертизы."
     >
-      <p className="vse-exam-note">
-        Обязательные исследования нельзя пропустить; обязательность трихинеллоскопии определяет сервер по
-        классификации партии.
-      </p>
+      {/* ТЗ DR54 Task 4: the «Обязательные исследования нельзя пропустить…»
+          note was removed by the owner decision — server-driven required_research_ids,
+          the asterisks and the validation stay unchanged. */}
       <div className="vse-research-grid">
         {INDICATORS.map((def) => {
           const entry = values.researches[def.id];
@@ -224,7 +223,10 @@ function ResearchCard({
         {name}
         {required ? <span aria-hidden="true"> *</span> : null}
       </h4>
-      {evaluationStatus !== undefined ? (
+      {/* ТЗ DR54 Task 4: only IN_NORM/DEVIATION produce the user-facing
+          verdict; NOT_APPLICABLE/UNKNOWN/absence keep the card fully neutral
+          (no badge, no data-evaluation, no technical text). */}
+      {hasEvaluation ? (
         <span className="vse-research-evaluation" data-evaluation={evaluationStatus}>
           {evaluationLabel(evaluationStatus)}
           {evaluation?.hint ? <span className="vse-research-hint"> · {evaluation.hint}</span> : null}
@@ -247,7 +249,7 @@ function ResearchCard({
   return (
     <article
       className={required ? "vse-research primary" : "vse-research"}
-      data-evaluation={evaluationStatus ?? undefined}
+      data-evaluation={hasEvaluation ? evaluationStatus : undefined}
       data-evaluated={hasEvaluation ? "true" : undefined}
     >
       {heading}

@@ -18,11 +18,11 @@ from backend.src.modules.arrivals.models import IncomingDocument, Party, Reconci
 from backend.src.modules.arrivals.reconciliation import row_to_payload, source_projection
 from backend.src.modules.arrivals.validation import (
     FIELD_SPECS,
+    ReceiptCapabilities,
+    validate_receipt,
 )
 from backend.src.modules.arrivals.validation import (
-    ReceiptCapabilities,
     comparison_source_text as _comparison_source_text,
-    validate_receipt,
 )
 from backend.src.modules.identity.models import OutboxEntry
 from backend.src.modules.integrations.vetis.contracts import (

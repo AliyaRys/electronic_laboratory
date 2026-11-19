@@ -108,7 +108,7 @@ describe("ReceiptOperation", () => {
       route: "NONE",
     });
     const user = userEvent.setup();
-    const button = await screen.findByRole("button", { name: "Подготовить гашение" });
+    await screen.findByRole("button", { name: "Подготовить гашение" });
     expect(screen.queryByText("Сначала полностью заполните и сохраните сверку.")).toBeNull();
     await user.selectOptions(screen.getByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
     fireEvent.change(screen.getByLabelText(/Дата и время поступления/), {

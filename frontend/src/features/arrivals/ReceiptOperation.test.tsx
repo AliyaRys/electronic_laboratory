@@ -33,6 +33,45 @@ beforeAll(() => server.listen());
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+function rejectedHandlers(counters: { previews: number; submits: number }): object[] {
+  return [
+    http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () =>
+      HttpResponse.json({
+        write_enabled: true,
+        source_revision: 7,
+        reconciliation_revision: 10,
+        operation_id: "aaaaaaaa-0000-4000-8000-000000000009",
+        operation_state: "REJECTED",
+      }),
+    ),
+    http.get("*/api/v1/operations/*", () =>
+      HttpResponse.json({
+        id: "op",
+        kind: "vetis.receipt",
+        state: "REJECTED",
+        problem: "VETIS_RECEIPT_REJECTED",
+        diagnostics: { problem: "Элемент 'info' не предусмотрен" },
+      }),
+    ),
+    http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, () => {
+      counters.previews += 1;
+      return HttpResponse.json({
+        intent: { decision: "ACCEPT_ALL", vet_inspection: "CORRESPONDS" },
+        application_xml: "<application />",
+        fingerprint: "d".repeat(64),
+      });
+    }),
+    http.post(`*/api/v1/arrivals/${PARTY}/receipt`, () => {
+      counters.submits += 1;
+      return HttpResponse.json(
+        { operation_id: "aaaaaaaa-0000-4000-8000-000000000010", state: "QUEUED", status_url: "/x" },
+        { status: 202 },
+      );
+    }),
+  ];
+}
+
+
 function renderOperation(view: ReconciliationView = reconciliation): void {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -42,6 +81,77 @@ function renderOperation(view: ReconciliationView = reconciliation): void {
 }
 
 describe("ReceiptOperation", () => {
+  // ТЗ DR53 Task 3: safe recovery from a REJECTED гашение.
+  it("REJECTED offers the explicit «Подготовить гашение заново» path without any automatic write", async () => {
+    const counters = { previews: 0, submits: 0 };
+    server.use(...(rejectedHandlers(counters) as never[]));
+    renderOperation({ ...reconciliation, revision: 10 });
+    const user = userEvent.setup();
+    expect(await screen.findByText("ВетИС отклонил гашение")).toBeInTheDocument();
+    const retry = await screen.findByRole("button", { name: "Подготовить гашение заново" });
+    await user.click(retry);
+    // The click itself POSTs nothing: no receipt, no preview, no replay.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(counters.submits).toBe(0);
+    expect(counters.previews).toBe(0);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The rejection stays visible as the previous-attempt history.
+    expect(screen.getByText("ВетИС отклонил гашение")).toBeInTheDocument();
+    // The fresh form is armed: the doctor re-enters the inspection facts.
+    expect(screen.getByLabelText("Результат ветеринарного осмотра")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    await waitFor(() => expect(counters.previews).toBe(1));
+    const dialog = await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" });
+    expect(dialog).toBeInTheDocument();
+    expect(counters.submits).toBe(0);
+    // Only the SECOND explicit confirmation sends the new POST.
+    await user.click(screen.getByRole("button", { name: "Погасить эВСД" }));
+    await waitFor(() => expect(counters.submits).toBe(1));
+  });
+
+  it("CONFIRMED never offers a retry", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () =>
+        HttpResponse.json({
+          write_enabled: true,
+          source_revision: 7,
+          reconciliation_revision: 3,
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000011",
+          operation_state: "CONFIRMED",
+        }),
+      ),
+      http.get("*/api/v1/operations/*", () =>
+        HttpResponse.json({ id: "op", kind: "vetis.receipt", state: "CONFIRMED" }),
+      ),
+    );
+    renderOperation({ ...reconciliation, route: "NONE" });
+    expect(await screen.findByText("Гашение подтверждено ВетИС")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Подготовить гашение заново" })).toBeNull();
+  });
+
+  it("UNKNOWN exposes only the safe result recheck", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () =>
+        HttpResponse.json({
+          write_enabled: true,
+          source_revision: 7,
+          reconciliation_revision: 3,
+          operation_id: "aaaaaaaa-0000-4000-8000-000000000012",
+          operation_state: "UNKNOWN",
+        }),
+      ),
+      http.get("*/api/v1/operations/*", () =>
+        HttpResponse.json({ id: "op", kind: "vetis.receipt", state: "UNKNOWN" }),
+      ),
+    );
+    renderOperation();
+    expect(await screen.findByText("Результат гашения пока неизвестен")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Повторить" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Подготовить гашение заново" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Подготовить гашение" })).toBeNull();
+  });
+
   // ТЗ DR9 §6: a direct read of a stale document blocks the repeat гашение.
   it("a stale document shows the exact DR9 text and offers no submit", async () => {
     const staleParty = { ...party, source_presence: "NOT_IN_CURRENT_CONFIRMED_LIST" } as IncomingView;

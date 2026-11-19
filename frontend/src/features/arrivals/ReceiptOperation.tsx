@@ -134,6 +134,10 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  // ТЗ DR53 Task 3: the explicit rejected-recovery branch. Arming happens
+  // ONLY through the visible «Подготовить гашение заново» button — never on
+  // mount, refetch or session restore.
+  const [retryArmed, setRetryArmed] = useState(false);
   const submitted = useRef(false);
   const invalidatedTerminal = useRef<string | null>(null);
   const deliveryIso = useMemo(() => new Date(deliveryDate).toISOString(), [deliveryDate]);
@@ -293,6 +297,9 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
     }
     setDialogOpen(false);
     setOperationId(result.operation_id);
+    // ТЗ DR53 Task 3: the new attempt takes over — the recovery mode ends so
+    // the fresh operation state drives the view.
+    setRetryArmed(false);
     await queryClient.invalidateQueries({ queryKey: [party.laboratory_id, party.party_id] });
   }
 
@@ -332,7 +339,8 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
       />
     );
 
-  if (state !== null) {
+  const rejected = state === "REJECTED";
+  if (state !== null && !(rejected && retryArmed)) {
     const copy = operationCopy(state, operation?.diagnostics);
     return (
       <section className="vse-receipt-operation" aria-labelledby="receipt-operation-title">
@@ -350,6 +358,24 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
           >
             Создать ВСЭ
           </Link>
+        ) : null}
+        {state === "REJECTED" ? (
+          /* ТЗ DR53 Task 3: the old rejected operation stays an immutable
+              audit fact; the button only ARMS a new attempt — a fresh preview
+              and a second explicit confirmation are still required. */
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={() => {
+              setRetryArmed(true);
+              setPreview(null);
+              setDialogOpen(false);
+              setProblem(null);
+              submitted.current = false;
+            }}
+          >
+            Подготовить гашение заново
+          </Button>
         ) : null}
       </section>
     );
@@ -373,6 +399,19 @@ export function ReceiptOperation({ party, reconciliation }: ReceiptOperationProp
   return (
     <section className="vse-receipt-operation" aria-labelledby="receipt-operation-title">
       <h2 id="receipt-operation-title">Гашение эВСД</h2>
+      {rejected ? (
+        /* ТЗ DR53 Task 3: the previous rejection stays visible as history
+            while the new attempt is being prepared. */
+        <StatusView
+          state="forbidden"
+          title="ВетИС отклонил гашение"
+          detail={
+            operation?.diagnostics && typeof operation.diagnostics.problem === "string"
+              ? operation.diagnostics.problem
+              : "Предыдущая попытка отклонена; подготовьте гашение заново."
+          }
+        />
+      ) : null}
       <p className="vse-check-note">
         Подготовьте запрос, проверьте неизменяемое резюме и подтвердите отправку один раз.
       </p>

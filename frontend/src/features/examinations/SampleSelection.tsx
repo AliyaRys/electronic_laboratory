@@ -1,13 +1,11 @@
 /**
- * SampleSelection (FT-VSE-16/32, API-06, DR35 §11): the sample block.
- *
- * The owner decision DR35 supersedes O-04/FT-SMP-03 for the create flow: every
- * new card performs a NEW physical selection. The «Использовать имеющуюся
- * пробу» mode is gone — no radio group is shown when only one mode exists.
- * The weight keeps the 0,8 кг default; the collection date lives in the
- * «Итог экспертизы» section (the same single sample date, never a second one).
- * For a saved card the mode is EDIT by definition of the card state: the same
- * physical fact is corrected under revision rules, never re-selected.
+ * SampleSelection (FT-VSE-16/32, API-06, DR35 §11; ТЗ DR55 §5.2): the unified
+ * «Проба» block — the collection date, the mass and the sent-to-lab flag live
+ * HERE, no longer in «Итог экспертизы». The values and the payload keep their
+ * old wire names (`sample.collectedOn`, `sample.massKg`, `sentToLab`); the
+ * WAITING rule, the edit-disabled checkbox and the server contract are not
+ * touched. All state enters through explicit props — the component never
+ * reaches into unrelated parts of the form.
  */
 import type { ExaminationView } from "./api";
 import { FormSection } from "../../shared/ui/FormSection";
@@ -16,19 +14,30 @@ import type { ExaminationFormValues, SampleEntry } from "./formValues";
 export interface SampleSelectionProps {
   values: ExaminationFormValues;
   view: ExaminationView | null;
+  /** The Europe/Moscow server day (`max` of the date input, SPEC-05). */
+  today: string;
+  /** The busy state of the whole form (all controls stay consistent). */
   disabled: boolean;
+  /** The `sentToLab` flag is a separate form value, not part of `sample`. */
+  sentToLab: boolean;
+  onSentToLabChange: (checked: boolean) => void;
   onChange: (values: ExaminationFormValues) => void;
 }
 
 export function SampleSelection({
   values,
   view,
+  today,
   disabled,
+  sentToLab,
+  onSentToLabChange,
   onChange,
 }: SampleSelectionProps): React.ReactElement {
   const sample = values.sample;
   const setSample = (next: SampleEntry): void => onChange({ ...values, sample: next });
   const isEdit = view !== null && view.sample_collection_id !== "";
+  // ТЗ §5.2: editing an already sent sample keeps the flag unreachable.
+  const sentDisabled = disabled || (isEdit && (view?.sent_to_lab ?? false));
 
   return (
     <FormSection
@@ -36,8 +45,24 @@ export function SampleSelection({
       title="Проба"
       description={isEdit ? "Правка пробы этой партии." : "Новый отбор пробы этой партии."}
     >
+      {/* ТЗ DR55 §5.2 geometry: one grid, `align-items: end` so the checkbox
+          line sits on the same bottom line as the two fields; up to 700px
+          everything stacks in one column (Дата → Масса → чекбокс). */}
       <div className="vse-sample-inputs">
-        <label className="app-field">
+        <label className="app-field vse-sample-date">
+          <span className="app-field-heading">
+            <span>Дата отбора проб *</span>
+          </span>
+          <input
+            type="date"
+            max={today}
+            value={sample.collectedOn}
+            disabled={disabled}
+            aria-label="Дата отбора проб"
+            onChange={(event) => setSample({ ...sample, collectedOn: event.target.value })}
+          />
+        </label>
+        <label className="app-field vse-sample-mass">
           <span className="app-field-heading">
             <span>Вес взятой пробы, кг *</span>
           </span>
@@ -51,10 +76,16 @@ export function SampleSelection({
             onChange={(event) => setSample({ ...sample, massKg: event.target.value })}
           />
         </label>
+        <label className="vse-sent-flag">
+          <input
+            type="checkbox"
+            checked={sentToLab}
+            disabled={sentDisabled}
+            onChange={(event) => onSentToLabChange(event.target.checked)}
+          />
+          Пробы отправлены на специальные лабораторные исследования
+        </label>
       </div>
-      {sample.mode === "NEW" && sample.collectedOn === "" ? (
-        <p className="vse-exam-note">Дата отбора указывается в секции «Итог экспертизы».</p>
-      ) : null}
       {isEdit ? (
         <p className="vse-exam-note">Правка сохраняет тот же физический факт отбора по правилам ревизий.</p>
       ) : null}

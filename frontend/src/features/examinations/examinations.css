@@ -119,6 +119,21 @@
   color: var(--app-muted-readable);
 }
 
+/* ТЗ DR55 §5.1: the value keeps the readonly-field look without a visible
+   label; the accessible name is the research heading (aria-labelledby). */
+.vse-research-view .vse-research-value {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid var(--app-readonly-line);
+  border-radius: 9px;
+  padding: 0 12px;
+  background: var(--app-readonly-bg);
+  color: var(--app-readonly-ink);
+  font: inherit;
+  cursor: default;
+  min-width: 0;
+}
+
 /* Горизонтальный скролл на 390 px допустим только внутри таблицы стоимости. */
 .vse-invoice-scroll {
   max-width: 100%;
@@ -369,6 +384,26 @@
   max-width: 560px;
 }
 
+/* ТЗ DR55 §5.2: the unified «Проба» grid — the collection date, the mass and
+   the sent-to-lab checkbox live in ONE grid; the checkbox clickable area
+   lines up with the field controls (`align-items: end`, min-height 44px) and
+   its long text wraps inside its own column. Up to 700px everything folds
+   into one column in the order Дата → Масса → чекбокс. */
+.vse-sample-inputs .vse-sent-flag {
+  align-self: end;
+  min-height: 44px;
+  align-items: center;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .vse-sample-inputs {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+}
+
 .vse-sample-secondary {
   margin: 0;
   color: var(--app-muted);
@@ -402,28 +437,6 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-}
-
-/* ТЗ DR52 §5: the sample date and the lab-send checkbox share ONE layout
-   container; the checkbox aligns with the date control's baseline, and on a
-   narrow screen the columns fold into one (date above the checkbox). */
-.vse-sample-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  align-items: end;
-}
-
-.vse-sample-row .vse-sent-flag {
-  min-height: 44px;
-  align-items: center;
-}
-
-@media (max-width: 700px) {
-  .vse-sample-row {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
 }
 
 /* --- Pricing: the honest pending state in the mockup invoice styling ---------- */

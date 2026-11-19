@@ -143,6 +143,20 @@ describe("ExaminationForm", () => {
     expect(initialSample(null, [], "2026-11-07")).toMatchObject({ mode: "NEW", massKg: "0.8" });
   });
 
+  it("DR55 §5.2: the date, the mass and the checkbox live in «Проба», not «Итог экспертизы»", () => {
+    renderForm();
+    const sample = within(screen.getByLabelText("Проба"));
+    expect(sample.getByLabelText("Дата отбора проб")).toBeTruthy();
+    expect((sample.getByLabelText("Дата отбора проб") as HTMLInputElement).max).toBe("2026-11-07");
+    expect(sample.getByLabelText("Вес взятой пробы, кг")).toBeTruthy();
+    expect(sample.getByRole("checkbox", { name: /Пробы отправлены/ })).toBeTruthy();
+    const outcome = within(screen.getByLabelText("Итог экспертизы"));
+    expect(outcome.queryByLabelText("Дата отбора проб")).toBeNull();
+    expect(outcome.queryByRole("checkbox", { name: /Пробы отправлены/ })).toBeNull();
+    // The stale hint of the moved field is gone.
+    expect(screen.queryByText(/Дата отбора указывается в секции/)).toBeNull();
+  });
+
   it("renders two strictly separate create actions and never a draft button", () => {
     renderForm();
     expect(screen.getByRole("button", { name: "Отправить в ожидание результата" })).toBeTruthy();

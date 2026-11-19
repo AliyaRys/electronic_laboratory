@@ -385,16 +385,8 @@ function ExaminationViewContent(): React.ReactElement {
                         <ReadonlyField label="Причина направления" value={view.reason} />
                       </div>
                     ) : null}
-                    <div className="vse-span6">
-                      <ReadonlyField
-                        label="Дата первого завершения"
-                        value={
-                          view.first_completed_at !== null
-                            ? formatMoscowCellDateTime(view.first_completed_at)
-                            : "—"
-                        }
-                      />
-                    </div>
+                    {/* ТЗ DR55 §5.3: «Дата первого завершения» больше не
+                        показывается; поле API/модели сохраняется. */}
                   </div>
                 </FormSection>
               )}

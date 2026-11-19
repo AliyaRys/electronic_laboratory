@@ -100,14 +100,25 @@ async def test_ph_inclusive_boundaries_pass(db_session: AsyncSession, result_env
     await validate_researches(db_session, party, parsed)
 
 
-async def test_ph_over_14_fails_server_validation(db_session: AsyncSession, result_env: SimpleNamespace) -> None:
+async def test_ph_over_14_is_not_a_blocking_error(db_session: AsyncSession, result_env: SimpleNamespace) -> None:
+    """ТЗ DR52 §2: pH вне настроенной нормы (14,5) — это оценка DEVIATION
+    серверным прайсинг-движком, а не VALIDATION_ERROR; значение сохраняется."""
     party = await party_with_confirmation(db_session, result_env.lab.id, BEEF)
     base = payload(trich=False).model_dump(mode="json", by_alias=True)
-    base["researches"].append({"indicatorId": str(PH), "kind": "DECIMAL", "value": "14.1"})
+    base["researches"].append({"indicatorId": str(PH), "kind": "DECIMAL", "value": "14.5"})
     parsed = ExaminationWrite.model_validate(base)
-    with pytest.raises(ProblemError) as raised:
-        await validate_researches(db_session, party, parsed)
-    assert raised.value.code == "VALIDATION_ERROR"
+    await validate_researches(db_session, party, parsed)
+
+
+async def test_ph_invalid_shape_still_fails(db_session: AsyncSession, result_env: SimpleNamespace) -> None:
+    """ТЗ DR52 §2: нечисловое/экспоненциальное значение остаётся структурной
+    ошибкой ввода; decimal-грамматика не ослаблена."""
+    from pydantic import ValidationError as PydValidationError
+
+    base = payload(trich=False).model_dump(mode="json", by_alias=True)
+    base["researches"].append({"indicatorId": str(PH), "kind": "DECIMAL", "value": "abc"})
+    with pytest.raises(PydValidationError):
+        ExaminationWrite.model_validate(base)
 
 
 def test_microscopy_negative_fails_medical_validation() -> None:

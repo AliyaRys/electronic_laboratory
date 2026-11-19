@@ -1903,6 +1903,8 @@ export interface components {
             required_research_ids: string[];
             /** Eligible Specialists */
             eligible_specialists: components["schemas"]["EligibleSpecialist"][];
+            /** Reconciliation Fair */
+            reconciliation_fair: boolean;
             /** Source Revision */
             source_revision: string;
             /** Reconciliation Revision */
@@ -2027,6 +2029,12 @@ export interface components {
             direction: string | null;
             /** Reason */
             reason: string | null;
+            /** Vse Fair */
+            vse_fair: boolean;
+            /** Reconciliation Fair */
+            reconciliation_fair: boolean;
+            /** Fair Source */
+            fair_source: string;
             /** Created By */
             created_by: string;
             /** Specialist Id */
@@ -2065,6 +2073,11 @@ export interface components {
              * @default false
              */
             sentToLab: boolean;
+            /**
+             * Vsefair
+             * @default false
+             */
+            vseFair: boolean;
             /** Sample */
             sample: components["schemas"]["NewSample"] | components["schemas"]["ReuseSample"] | components["schemas"]["EditSample"];
             /** Specialistid */
@@ -2593,6 +2606,11 @@ export interface components {
         PricingPreviewRequest: {
             /** Researches */
             researches?: (components["schemas"]["BooleanResearch"] | components["schemas"]["DecimalResearch"] | components["schemas"]["EnumResearch"] | components["schemas"]["TextResearch"] | components["schemas"]["DosimetryResearch"])[];
+            /**
+             * Vsefair
+             * @default false
+             */
+            vseFair: boolean;
         };
         /**
          * PricingPreviewResponse
@@ -2607,6 +2625,8 @@ export interface components {
             acceptedUnitId: string;
             /** Fair */
             fair: boolean;
+            /** Fairsource */
+            fairSource: string;
             /** Revision */
             revision: number;
         };

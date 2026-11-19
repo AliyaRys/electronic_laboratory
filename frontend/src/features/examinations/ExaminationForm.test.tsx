@@ -23,6 +23,14 @@ const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const PARTY = "9c1b2d3e-1111-4222-8333-444444444444";
 const ME = "77777777-7777-4777-8777-777777777777";
 
+/** DR52 §7: the research dropdowns use the shared SelectDropdown — an option
+ * is chosen through the listbox trigger click and the option click. */
+type User = Awaited<ReturnType<typeof userEvent.setup>>;
+async function chooseOption(user: User, label: RegExp, optionText: string): Promise<void> {
+  await user.click(screen.getByRole("button", { name: label }));
+  await user.click(await screen.findByRole("option", { name: optionText }));
+}
+
 const server = setupServer();
 beforeAll(() => server.listen());
 afterEach(() => server.resetHandlers());
@@ -79,6 +87,7 @@ const formView: ExaminationFormView = {
   accepted: { massKg: "100.0", quantity: "4", unitId: "шт", unitName: null },
   required_research_ids: [],
   eligible_specialists: [{ id: ME, fullName: "Врач Ветеринарный" }],
+  reconciliation_fair: false,
   source_revision: "1f0e6d2a-1111-4222-8333-444444444444",
   reconciliation_revision: 1,
   revision: 1,
@@ -182,9 +191,9 @@ describe("ExaminationForm", () => {
         required_research_ids: [TRICHINELLA_INDICATOR_ID],
       },
     });
-    const select = screen.getByRole("combobox", { name: "Трихинеллоскопия" });
+    const select = screen.getByRole("button", { name: /Трихинеллоскопия/ });
     expect(select).toBeTruthy();
-    expect(select.textContent).toContain("Соответствует");
+    expect(select.textContent).toContain("Выберите результат");
     expect(screen.queryByRole("button", { name: "Удалить трихинеллоскопию" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Добавить трихинеллоскопию" })).toBeNull();
   });
@@ -202,18 +211,15 @@ describe("ExaminationForm", () => {
     const user = userEvent.setup();
     renderForm();
     await user.click(screen.getByRole("button", { name: "Добавить пробу варки" }));
-    await user.selectOptions(screen.getByRole("combobox", { name: "Проба варки" }), "OTHER");
+    await chooseOption(user, /Проба варки/, "Иное (указать)");
     await user.type(screen.getByRole("textbox", { name: "Номер ВСЭ *" }), "№ 1");
     await user.type(
       screen.getByRole("textbox", { name: "Маркировка — ветеринарное клеймо лаборатории *" }),
       "кл-1",
     );
-    // Mandatory research cards are selects; choose «Соответствует» twice.
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Органолептическое исследование" }),
-      "MATCH",
-    );
-    await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
+    // Mandatory research cards are the shared SelectDropdown; choose «Соответствует» twice.
+    await chooseOption(user, /Органолептическое исследование/, "Соответствует");
+    await chooseOption(user, /Идентификация продукции/, "Соответствует");
     await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "3.5");
     await user.click(screen.getByRole("button", { name: "Завершить ВСЭ" }));
     expect(await screen.findByText(/для «Иное» требуется пояснение/i)).toBeTruthy();
@@ -223,9 +229,9 @@ describe("ExaminationForm", () => {
     const user = userEvent.setup();
     renderForm();
     await user.click(screen.getByRole("button", { name: "Добавить незаразное заболевание" }));
-    expect(screen.getByRole("combobox", { name: "Незаразные болезни: наименование болезни" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Незаразные болезни: наименование болезни/ })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Удалить незаразное заболевание 1" }));
-    expect(screen.queryByRole("combobox", { name: "Незаразные болезни: наименование болезни" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Незаразные болезни: наименование болезни/ })).toBeNull();
   });
 
   it("DR35 §12.3: the scoped specialist is prefilled and visible without UUIDs", () => {
@@ -239,11 +245,8 @@ describe("ExaminationForm", () => {
   it("WAITING without the sent-to-lab mark is refused with a readable message", async () => {
     const user = userEvent.setup();
     renderForm();
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Органолептическое исследование" }),
-      "MATCH",
-    );
-    await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
+    await chooseOption(user, /Органолептическое исследование/, "Соответствует");
+    await chooseOption(user, /Идентификация продукции/, "Соответствует");
     await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "2.0");
     await user.type(screen.getByRole("textbox", { name: "Номер ВСЭ *" }), "№ 5");
     await user.type(
@@ -277,11 +280,8 @@ describe("ExaminationForm", () => {
       "кл-7",
     );
     await user.click(screen.getByRole("checkbox", { name: /Пробы отправлены/ }));
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Органолептическое исследование" }),
-      "MATCH",
-    );
-    await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
+    await chooseOption(user, /Органолептическое исследование/, "Соответствует");
+    await chooseOption(user, /Идентификация продукции/, "Соответствует");
     await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "2.0");
     await user.click(screen.getByRole("button", { name: "Отправить в ожидание результата" }));
     expect(
@@ -301,11 +301,8 @@ describe("ExaminationForm", () => {
       "кл-9",
     );
     await user.click(screen.getByRole("checkbox", { name: /Пробы отправлены/ }));
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Органолептическое исследование" }),
-      "MATCH",
-    );
-    await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
+    await chooseOption(user, /Органолептическое исследование/, "Соответствует");
+    await chooseOption(user, /Идентификация продукции/, "Соответствует");
     await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "2.0");
     await user.click(screen.getByRole("button", { name: "Отправить в ожидание результата" }));
     expect(await screen.findByText(/Не удалось сохранить ВСЭ|Ошибка соединения/)).toBeTruthy();
@@ -326,5 +323,76 @@ describe("ExaminationForm", () => {
       value: "2.5",
     });
     expect(toResearchValue(temperatureId, "DECIMAL", "2", "")).toMatchObject({ value: "2" });
+  });
+});
+
+describe("ExaminationForm VSE-only waiver (ТЗ DR52 §3)", () => {
+  const previewBodies: { vseFair?: boolean }[] = [];
+
+  function usePreviewHandler(total: string, delay = 0): void {
+    server.use(
+      http.post(
+        "*/api/v1/examinations/parties/*/pricing-preview",
+        async ({ request }) => {
+          const body = (await request.json()) as { vseFair?: boolean };
+          previewBodies.push(body);
+          if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+          return HttpResponse.json(
+            {
+              snapshot: { lines: [], total, currency: "RUB", fair: body.vseFair ?? false },
+              accepted_quantity: "4",
+              accepted_unit_id: "шт",
+              fair: body.vseFair ?? false,
+              fair_source: body.vseFair ? "EXAMINATION" : "NONE",
+              revision: 1,
+            },
+            { status: 200 },
+          );
+        },
+      ),
+    );
+  }
+
+  it("the checkbox is available, speaks honestly and toggles a NEW preview with vseFair", async () => {
+    const user = userEvent.setup();
+    usePreviewHandler("120.00");
+    renderForm();
+    await user.type(screen.getByRole("textbox", { name: /Температура в толще мышц/ }), "2.5");
+    const waiver = (await screen.findByTestId("pricing-waiver")).querySelector("input");
+    expect(waiver).not.toBeNull();
+    expect(waiver?.checked).toBe(false);
+    expect(screen.getByText(/Стоимость сверки данных не изменится/)).toBeTruthy();
+    await user.click(waiver as HTMLElement);
+    await screen.findByText(/0,00 ₽/);
+    await waitFor(() => expect(previewBodies.some((body) => body.vseFair === true)).toBe(true));
+    // Toggling back restores the regular server total, not a fabricated zero.
+    await user.click(waiver as HTMLElement);
+    await screen.findByText(/120,00 ₽/);
+    await waitFor(() =>
+      expect(previewBodies[previewBodies.length - 1]?.vseFair).toBe(false),
+    );
+  });
+
+  it("the save is disabled while the preview recalculates", async () => {
+    const user = userEvent.setup();
+    usePreviewHandler("0.00", 500);
+    renderForm();
+    await user.type(screen.getByRole("textbox", { name: /Температура в толще мышц/ }), "2.5");
+    const waiver = await screen.findByTestId("pricing-waiver");
+    await user.click(waiver.querySelector("input") as HTMLElement);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Завершить ВСЭ" })).toBeDisabled());
+    await screen.findByText(/0,00 ₽/);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Завершить ВСЭ" })).not.toBeDisabled());
+  });
+
+  it("the inherited free rule is checked, disabled and separately explained", async () => {
+    const user = userEvent.setup();
+    usePreviewHandler("0.00");
+    renderForm([], { formView: { ...formView, reconciliation_fair: true } });
+    await user.type(screen.getByRole("textbox", { name: /Температура в толще мышц/ }), "2.5");
+    const waiver = (await screen.findByTestId("pricing-waiver")).querySelector("input");
+    expect(waiver?.checked).toBe(true);
+    expect(waiver?.disabled).toBe(true);
+    expect(screen.getByText(/Бесплатность установлена при сверке данных/)).toBeTruthy();
   });
 });

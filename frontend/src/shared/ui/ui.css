@@ -22,6 +22,11 @@
   --app-teal-dark: #0d5358;
   --app-tint: #eaf6f4;
   --app-danger: #a33943;
+  /* DR52 §9: the soft-danger tokens shared by the Button variant and the
+     research-card DEVIATION highlight. */
+  --app-danger-soft-bg: #fbf3f4;
+  --app-danger-soft-border: #c97985;
+  --app-danger-soft-ink: #9b3440;
   --app-focus: #75bfc2;
   --app-input-line: #cbdadb;
 
@@ -162,6 +167,19 @@
 .app-button.danger:hover:not(:disabled) {
   border-color: #842d36;
   background: #842d36;
+}
+/* ТЗ DR52 §9: the calm soft-danger variant of the shared tokens — for a
+   quiet icon-only destructive action (confirm dialogs keep the solid danger). */
+.app-button.danger-soft {
+  border-color: var(--app-danger-soft-border);
+  background: var(--app-danger-soft-bg);
+  color: var(--app-danger-soft-ink);
+  box-shadow: none;
+}
+.app-button.danger-soft:hover:not(:disabled) {
+  border-color: var(--app-danger-soft-ink);
+  background: #f7e8ea;
+  color: var(--app-danger-soft-ink);
 }
 .app-button:active:not(:disabled) {
   transform: translateY(1px);

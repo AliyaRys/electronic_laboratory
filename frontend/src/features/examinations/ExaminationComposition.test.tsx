@@ -25,6 +25,14 @@ const LAB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const PARTY = "9c1b2d3e-1111-4222-8333-444444444444";
 const ME = "77777777-7777-4777-8777-777777777777";
 
+/** DR52 §7: the research dropdowns use the shared SelectDropdown listbox —
+ * an option is chosen through the trigger click and the option click. */
+type User = Awaited<ReturnType<typeof userEvent.setup>>;
+async function chooseOption(user: User, label: RegExp, optionText: string): Promise<void> {
+  await user.click(screen.getByRole("button", { name: label }));
+  await user.click(await screen.findByRole("option", { name: optionText }));
+}
+
 const server = setupServer();
 beforeAll(() => server.listen());
 afterEach(() => server.resetHandlers());
@@ -104,6 +112,7 @@ const formView: ExaminationFormView = {
   accepted: { massKg: "100.0", quantity: "4", unitId: "шт", unitName: null },
   required_research_ids: [],
   eligible_specialists: [{ id: ME, fullName: "Кузнецова Алиса Викторовна" }],
+  reconciliation_fair: false,
   source_revision: "1f0e6d2a-1111-4222-8333-444444444444",
   reconciliation_revision: 1,
   revision: 1,
@@ -224,6 +233,9 @@ describe("DR30 examination composition", () => {
             stamp: "кл-1",
             status: "COMPLETED",
             sent_to_lab: false,
+            vse_fair: false,
+            reconciliation_fair: false,
+            fair_source: "NONE",
             researches: [],
             invasive_findings: [],
             noncontagious_findings: [],
@@ -252,11 +264,8 @@ describe("DR30 examination composition", () => {
     );
     await user.click(screen.getByRole("button", { name: "Добавить бактериоскопию" }));
     await user.type(screen.getByRole("textbox", { name: "Бактериоскопия" }), "стафилококк");
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Органолептическое исследование" }),
-      "MATCH",
-    );
-    await user.selectOptions(screen.getByRole("combobox", { name: "Идентификация продукции" }), "MATCH");
+    await chooseOption(user, /Органолептическое исследование/, "Соответствует");
+    await chooseOption(user, /Идентификация продукции/, "Соответствует");
     await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "3.0");
     await user.click(screen.getByRole("button", { name: /Результат ВСЭ/ }));
     await user.click(screen.getByRole("option", { name: "Пригодно" }));

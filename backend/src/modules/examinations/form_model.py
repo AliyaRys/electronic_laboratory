@@ -191,6 +191,9 @@ async def build_form_view(db: AsyncSession, party: Party, document: IncomingDocu
         db, party.laboratory_id, uuid.UUID(str(product_id)) if product_id else None
     )
     unit_name = snapshot.get("acceptedUnitName")
+    reconciliation = (
+        await db.execute(select(Reconciliation).where(Reconciliation.party_id == party.id))
+    ).scalar_one_or_none()
 
     return {
         "party_id": str(party.id),
@@ -210,6 +213,8 @@ async def build_form_view(db: AsyncSession, party: Party, document: IncomingDocu
         },
         "required_research_ids": required,
         "eligible_specialists": [{"id": str(item.id), "full_name": item.full_name} for item in specialists],
+        # DR52 §3.4: the frozen reconciliation fair flag of the party.
+        "reconciliation_fair": bool(reconciliation.fair) if reconciliation is not None else False,
         "source_revision": str(snapshot.get("sourceRevision") or ""),
         "reconciliation_revision": snapshot.get("reconciliationRevision"),
         "revision": revision,

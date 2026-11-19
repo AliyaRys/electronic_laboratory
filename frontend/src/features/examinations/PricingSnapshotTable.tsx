@@ -22,9 +22,13 @@ export type PricingTableVariant = "live-examination" | "saved-examination";
 export function SnapshotPricingTable({
   snapshot,
   variant = "live-examination",
+  waiver,
 }: {
   snapshot: PricingSnapshotView;
   variant?: PricingTableVariant | undefined;
+  /** DR52 §3.4/§3.5: the live form's CONTROLLED waiver node; when provided
+   * the checkbox and the total share the ``.vse-rec-invoice-footer`` row. */
+  waiver?: React.ReactNode;
 }): React.ReactElement {
   const saved = variant === "saved-examination";
   return (
@@ -54,24 +58,21 @@ export function SnapshotPricingTable({
       </table>
       {/* ТЗ DR46 §3.4 / DR47 §2.6: the total is the ``p.vse-rec-invoice-total``
           row below the table for BOTH variants — never a ``tfoot``, never a
-          client recomputation. */}
-      <p className="vse-rec-invoice-total">
-        <span>Итого</span>
-        <strong>{moneyLabel(snapshot.total)}</strong>
-      </p>
-      {saved ? null : (
-        /* The fair flag belongs to the party's reconciliation step; on the
-           live form the readonly indicator explains why the server returned
-           a zero (DR43). The SAVED card never renders it (ТЗ DR47 §2.1). */
-        <label className="vse-rec-invoice-waiver" data-testid="pricing-waiver">
-          <input type="checkbox" checked={snapshot.fair} disabled readOnly aria-label="Ярмарка" />
-          <span>
-            <span className="vse-rec-invoice-waiver-title">Ярмарка</span>
-            <span className="vse-rec-invoice-waiver-note">
-              Сверка данных и ВСЭ по этой партии проводятся без оплаты.
-            </span>
-          </span>
-        </label>
+          client recomputation. DR52 §3.5: with the controlled waiver the
+          checkbox sits left and the total right in one footer row. */}
+      {waiver !== undefined && !saved ? (
+        <div className="vse-rec-invoice-footer">
+          {waiver}
+          <p className="vse-rec-invoice-total">
+            <span>Итого</span>
+            <strong>{moneyLabel(snapshot.total)}</strong>
+          </p>
+        </div>
+      ) : (
+        <p className="vse-rec-invoice-total">
+          <span>Итого</span>
+          <strong>{moneyLabel(snapshot.total)}</strong>
+        </p>
       )}
     </div>
   );

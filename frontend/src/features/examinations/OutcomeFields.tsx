@@ -11,7 +11,6 @@
  */
 import { SelectDropdown, type SelectOption } from "../../shared/ui/SelectDropdown";
 import type { OutcomeEntry } from "./formValues";
-
 export const OUTCOME_LABELS: Readonly<Record<string, string>> = Object.freeze({
   FIT: "Пригодно",
   UNFIT: "Непригодно",
@@ -98,14 +97,15 @@ export function OutcomeFields({
       {unfit ? (
         <div className="vse-span12">
           <div className="app-field">
-            {/* DR42 fix-loop: a label cannot nest another label — the heading is
-                an explicit sibling <label htmlFor>, the textarea keeps its
-                accessible name. */}
+            {/* DR52 §4: the reason is a plain single-line input styled exactly
+                like the other text fields (the same .app-field markup, no
+                local CSS); maxLength and the controlled value stay. */}
             <label className="app-field-heading" htmlFor={`${idPrefix}-reason`}>
               Причина направления *
             </label>
-            <textarea
+            <input
               id={`${idPrefix}-reason`}
+              type="text"
               value={value.reason}
               disabled={disabled}
               maxLength={2000}
@@ -114,13 +114,15 @@ export function OutcomeFields({
           </div>
         </div>
       ) : null}
-      <p className="vse-exam-note vse-span12">
-        {fit
-          ? "Для пригодной продукции направление — реализация без ограничений, причина не сохраняется."
-          : unfit
-            ? "Для непригодной продукции доступны утилизация и уничтожение; причина обязательна."
-            : "Итог не выбран: направление и причина останутся недоступными."}
-      </p>
+      {fit ? (
+        <p className="vse-exam-note vse-span12">
+          Для пригодной продукции направление — реализация без ограничений, причина не сохраняется.
+        </p>
+      ) : unfit ? null : (
+        <p className="vse-exam-note vse-span12">
+          Итог не выбран: направление и причина останутся недоступными.
+        </p>
+      )}
     </>
   );
 }

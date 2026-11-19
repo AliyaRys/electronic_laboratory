@@ -117,9 +117,17 @@ def _ensure_meat_product_type(party: Party) -> None:
 
 
 async def pricing_request_for(
-    uow: AsyncSession | UnitOfWork, party: Party, results: list[ResearchValue]
+    uow: AsyncSession | UnitOfWork,
+    party: Party,
+    results: list[ResearchValue],
+    vse_fair: bool = False,
 ) -> PricingRequest:
-    """Assemble the VSE pricing request from the confirmed party's facts."""
+    """Assemble the VSE pricing request from the confirmed party's facts.
+
+    DR52 §3.1: the effective VSE free rule is
+    ``reconciliation.fair OR examination.vse_fair`` — the card's own waiver
+    never changes the reconciliation price, only the VSE calculation.
+    """
     db = uow.session if isinstance(uow, UnitOfWork) else uow
     confirmation = await ensure_confirmed(db, party.id)
     reconciliation = (
@@ -131,7 +139,12 @@ async def pricing_request_for(
         laboratory_id=party.laboratory_id,
         context="VSE",
         results=results,
-        fair=bool(reconciliation.fair) if reconciliation is not None else False,
+        # DR52 §3.1: the effective VSE free rule —
+        # ``reconciliation.fair OR examination.vse_fair``.
+        fair=_effective_fair(reconciliation, vse_fair),
+        # DR52 §3.1: the frozen snapshot line prices never re-price by the
+        # card's own flag — ``previous`` lines keep their amounts; the NEW
+        # lines are zeroed by ``request.fair``.
         product_species_id=_classification_id(party, "product"),
         product_state_id=_classification_id(party, "subProduct"),
         accepted_quantity=str(confirmation.accepted_quantity),
@@ -139,13 +152,43 @@ async def pricing_request_for(
     )
 
 
-async def preview_pricing(db: AsyncSession, party: Party, results: list[ResearchValue]) -> object:
+def _effective_fair(reconciliation: Reconciliation | None, vse_fair: bool) -> bool:
+    """DR52 §3.1: ``reconciliation.fair OR examination.vse_fair``."""
+    if reconciliation is not None and reconciliation.fair:
+        return True
+    return vse_fair
+
+
+def fair_source(reconciliation: Reconciliation | None, vse_fair: bool) -> str:
+    """The typed source of the effective free rule (DR52 §3.3)."""
+    if reconciliation is not None and reconciliation.fair:
+        return "RECONCILIATION"
+    if vse_fair:
+        return "EXAMINATION"
+    return "NONE"
+
+
+async def reconciliation_for(db: AsyncSession, party_id: uuid.UUID) -> Reconciliation | None:
+    """The reconciliation row of one party (public helper — DR52 review fix)."""
+    return (
+        await db.execute(select(Reconciliation).where(Reconciliation.party_id == party_id))
+    ).scalar_one_or_none()
+
+
+# Backwards-compatible alias for existing importers (DR52 review fix: the
+# canonical name is the public ``reconciliation_for``).
+_reconciliation_for = reconciliation_for
+
+
+async def preview_pricing(
+    db: AsyncSession, party: Party, results: list[ResearchValue], vse_fair: bool = False
+) -> object:
     """DR35 §13.3: the preview computation of the SAME domain function.
 
     Pure read/compute on the caller's session: no row is written, no commit,
     no idempotency record, no event — the caller may safely roll back.
     """
-    request = await pricing_request_for(db, party, results)
+    request = await pricing_request_for(db, party, results, vse_fair=vse_fair)
     return await evaluate_and_price(UnitOfWork(db), request, None)
 
 
@@ -208,6 +251,7 @@ async def save_examination(
             ResearchValue(indicator_id=result.indicator_id, performed=True, value=result.value)
             for result in payload.researches
         ],
+        vse_fair=payload.vse_fair,
     )
     pricing = await evaluate_and_price(work, pricing_request, None)
     # DR35 §13.5: a COMPLETED save must confirm the previewed total. A missing
@@ -232,6 +276,7 @@ async def save_examination(
         stamp=payload.stamp,
         status=payload.mode,
         sent_to_lab=payload.sent_to_lab,
+        vse_fair=payload.vse_fair,
         research_snapshot=[
             cast(dict[str, object], result.model_dump(mode="json", by_alias=True)) for result in payload.researches
         ],
@@ -252,6 +297,26 @@ async def save_examination(
     )
     uow.add(row)
     uow.add(ExaminationSample(examination_id=row.id, collection_id=collection.id))
+    # DR52 §3.2 (review fix): the fair audit names the OLD/NEW card flag and
+    # the typed source of the effective free rule — never a bare unnamed
+    # ``fair=true``. A create WITHOUT the card waiver stays silent: the row
+    # simply inherits the documented column default (``false``); a meaningless
+    # ``false->false:NONE`` init event would only pollute the audit trail.
+    # The waiver itself, when set at create, is audited exactly once.
+    if payload.vse_fair:
+        uow.add(
+            TechnicalEvent(
+                actor_id=ctx.actor_id,
+                object_uuid=row.id,
+                action="examination:vse_fair",
+                result=(
+                    f"vse_fair=false->{str(payload.vse_fair).lower()}:"
+                    f"{fair_source(await reconciliation_for(uow, party.id), payload.vse_fair)}"
+                ),
+                trace_id=uuid.uuid4().hex,
+                revision=1,
+            )
+        )
     uow.add(
         TechnicalEvent(
             actor_id=ctx.actor_id,

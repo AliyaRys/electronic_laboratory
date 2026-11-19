@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError, not_found
+from backend.src.modules.arrivals.models import Reconciliation
 from backend.src.modules.examinations.models import Examination, ExaminationSample, ExaminationTombstone
 from backend.src.modules.examinations.schemas import ExaminationSampleView, ExaminationView
 from backend.src.modules.identity.models import User
@@ -79,6 +80,13 @@ async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
     specialist_name = row.specialist_name
     if specialist_name is None:
         specialist_name = await db.scalar(select(User.full_name).where(User.id == specialist_id))
+    # DR52 §3.3: the honest fair state of the card — the saved flag, the frozen
+    # reconciliation flag and the typed source of the effective rule.
+    vse_fair = bool(row.vse_fair)
+    reconciliation_fair = bool(
+        await db.scalar(select(Reconciliation.fair).where(Reconciliation.party_id == row.party_id))
+    )
+    fair = "RECONCILIATION" if reconciliation_fair else ("EXAMINATION" if vse_fair else "NONE")
     return ExaminationView(
         id=str(row.id),
         party_id=str(row.party_id),
@@ -101,6 +109,9 @@ async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
         outcome=row.outcome,
         direction=row.direction,
         reason=row.reason,
+        vse_fair=vse_fair,
+        reconciliation_fair=reconciliation_fair,
+        fair_source=fair,
         created_by=str(row.created_by),
         specialist_id=str(specialist_id),
         specialist_name=specialist_name,

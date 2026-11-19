@@ -123,13 +123,17 @@ async def pricing_preview(
             ResearchValue(indicator_id=result.indicator_id, performed=True, value=result.value)
             for result in payload.researches
         ],
+        vse_fair=payload.vse_fair,
     )
     await db.commit()
+    reconciliation = await commands.reconciliation_for(db, party.id)
     return PricingPreviewResponse(
         snapshot=snapshot,
         accepted_quantity=str(confirmation.accepted_quantity),
         accepted_unit_id=confirmation.accepted_unit_id,
         fair=snapshot.fair,
+        # DR52 §3.3: the typed WHY of the free preview.
+        fair_source=commands.fair_source(reconciliation, payload.vse_fair),
         revision=party.rev,
     )
 

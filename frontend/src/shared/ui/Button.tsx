@@ -7,7 +7,7 @@ import "./ui.css";
 import type { ReactNode, Ref } from "react";
 import { Icon, type IconName } from "./Icon";
 
-export type ButtonVariant = "primary" | "secondary" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "danger" | "dangerSoft";
 
 export interface ButtonProps {
   children?: ReactNode;
@@ -63,6 +63,7 @@ export function Button({
       type={type}
       className={["app-button", variant, iconOnly ? "icon-only" : "", className ?? ""]
         .filter(Boolean)
+        .map((part) => (part === "dangerSoft" ? "danger-soft" : part))
         .join(" ")}
       disabled={disabled || busy}
       aria-busy={busy ? "true" : undefined}

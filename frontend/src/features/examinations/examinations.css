@@ -395,6 +395,37 @@
   accent-color: var(--app-teal);
 }
 
+/* ТЗ DR52 §8: the shared section-stack of the SAVED card view — the same
+   18px vertical rhythm as the create/edit form (``.vse-exam-form``), applied
+   by the container instead of per-section margins. */
+.vse-exam-view-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ТЗ DR52 §5: the sample date and the lab-send checkbox share ONE layout
+   container; the checkbox aligns with the date control's baseline, and on a
+   narrow screen the columns fold into one (date above the checkbox). */
+.vse-sample-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: end;
+}
+
+.vse-sample-row .vse-sent-flag {
+  min-height: 44px;
+  align-items: center;
+}
+
+@media (max-width: 700px) {
+  .vse-sample-row {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
 /* --- Pricing: the honest pending state in the mockup invoice styling ---------- */
 .vse-invoice-pending {
   border: 1px solid var(--app-card-line);
@@ -420,7 +451,7 @@
 }
 
 .vse-invoice-evaluation[data-evaluation="DEVIATION"] {
-  color: #9b3440;
+  color: var(--app-danger-soft-ink);
 }
 
 .vse-invoice-evaluation[data-evaluation="UNKNOWN"] {
@@ -455,8 +486,8 @@
 }
 
 .vse-research[data-evaluated="true"][data-evaluation="DEVIATION"] {
-  border-color: #c97985;
-  background: #fbf3f4;
+  border-color: var(--app-danger-soft-border);
+  background: var(--app-danger-soft-bg);
 }
 
 .vse-research-evaluation[data-evaluation="IN_NORM"] {
@@ -464,7 +495,7 @@
 }
 
 .vse-research-evaluation[data-evaluation="DEVIATION"] {
-  color: #9b3440;
+  color: var(--app-danger-soft-ink);
 }
 
 .vse-invoice-pending p {

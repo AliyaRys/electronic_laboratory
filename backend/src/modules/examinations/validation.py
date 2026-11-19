@@ -101,13 +101,8 @@ async def validate_researches(db: AsyncSession, party: Party, payload: Examinati
                 )
             )
 
-    ph = by_id.get(PH)
-    if ph is not None and ph.kind == "DECIMAL":
-        value = Decimal(str(ph.value))
-        if value < 0 or value > 14:
-            errors.append(
-                ProblemItem(path=f"researches.{PH}.value", field_id="VSE-F25", message="pH должен быть от 0 до 14.")
-            )
+    # DR52 §2: pH вне настроенной нормы — это оценка DEVIATION, а не блокирующая
+    # структурная ошибка; save не препятствуется выходом за справочник.
 
     # ТЗ DR42 §5.1: the microscopy field is a nonnegative decimal; the wire
     # grammar alone still admits a sign, so the FT bound is enforced here.

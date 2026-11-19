@@ -13,6 +13,12 @@ type Story = StoryObj<typeof Button>;
 export const Primary: Story = { args: { children: "Сохранить", variant: "primary" } };
 export const Secondary: Story = { args: { children: "Продолжить" } };
 export const Danger: Story = { args: { children: "Удалить", variant: "danger" } };
+/** DR52 §9: the calm soft-danger variant for quiet icon-only destructive
+ * actions; confirm dialogs keep the solid danger. */
+export const DangerSoft: Story = { args: { children: "Удалить ВСЭ", variant: "dangerSoft" } };
+export const DangerSoftIconOnly: Story = {
+  args: { children: "", label: "Удалить ВСЭ", icon: "admin-delete", iconOnly: true, variant: "dangerSoft" },
+};
 export const Disabled: Story = { args: { children: "Удалить", variant: "danger", disabled: true } };
 export const Busy: Story = { args: { children: "Сохранить", variant: "primary", busy: true } };
 export const IconOnly: Story = {

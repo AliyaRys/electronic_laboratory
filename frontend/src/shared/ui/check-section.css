@@ -124,6 +124,41 @@
   font-weight: 760;
 }
 
+/* ТЗ DR52 §3.5: the shared footer of the pricing block — the controlled
+   waiver checkbox on the left, the total on the right, both on one baseline
+   inside the card; below the collision point it folds into a column. */
+.vse-rec-invoice-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 17px;
+  padding-top: 15px;
+  border-top: 1px solid var(--app-line);
+}
+
+.vse-rec-invoice-footer .vse-rec-invoice-total {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  flex-shrink: 0;
+}
+
+.vse-rec-invoice-footer .vse-rec-invoice-waiver {
+  margin-top: 0;
+}
+
+@media (max-width: 700px) {
+  .vse-rec-invoice-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vse-rec-invoice-footer .vse-rec-invoice-total {
+    justify-content: space-between;
+  }
+}
+
 /* ТЗ DR11 §7: on a narrow screen the two-line invoice stays readable inside
    the card — the columns wrap instead of pushing the page width. */
 @media (max-width: 768px) {
@@ -163,12 +198,19 @@
   padding: 14px;
 }
 
+/* ТЗ DR52 §3.4: the label IS the hit area of the checkbox — it keeps a
+   comfortable ≥40×40 px target (padding + min-height) while the visible
+   square stays 18×18; the negative margin keeps the visual alignment. */
 .vse-rec-invoice-waiver {
   display: inline-flex;
   align-items: flex-start;
   gap: 10px;
   margin-top: 14px;
   max-width: 640px;
+  min-height: 40px;
+  padding: 8px 10px;
+  margin-left: -10px;
+  margin-right: -10px;
 }
 
 .vse-rec-invoice-waiver input {

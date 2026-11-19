@@ -137,30 +137,31 @@ function renderEditor(search = `/catalogs?tab=tariffs`): void {
 }
 
 describe("TariffsEditorPage", () => {
-  it("HEAD has no laboratory selector and reads its own assigned scope", async () => {
+  it("HEAD has no laboratory selector and no context note (DR53 Task 5)", async () => {
     renderEditor();
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Стоимость исследований ВСЭ" })).toBeInTheDocument(),
     );
     expect(screen.queryByLabelText("Лаборатория")).toBeNull();
-    expect(await screen.findByText(/Лаборатория №1 г\. Казань/)).toBeInTheDocument();
+    // ТЗ DR53 Task 5: the context note («Лаборатория … · Продукция …») is
+    // gone for the single-context role; no empty wrapper remains.
+    expect(screen.queryByText(/Лаборатория №1 г\. Казань/)).toBeNull();
+    expect(screen.queryByText(/Продукция:/)).toBeNull();
     await waitFor(() => expect(tariffsSpy).toHaveBeenCalledWith(LAB));
     expect(screen.queryByText(new RegExp(LAB.slice(0, 8)))).toBeNull();
   });
 
-  it("DR43: no species selector exists — the area context is shown instead", async () => {
+  it("DR53 Task 5: no species selector and no context note — the cards come first", async () => {
     renderEditor();
     await screen.findByRole("heading", { name: "Стоимость исследований ВСЭ" });
     expect(screen.queryByRole("button", { name: /Вид продукции/ })).toBeNull();
-    // ТЗ DR46: the header roadmap now also shows «Мясо и мясопродукты»,
-    // so the area context may appear twice on the page.
-    expect((await screen.findAllByText(/Мясо и мясопродукты/)).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/стоимость одна на всю категорию/)).toBeInTheDocument();
-    // The internal GUID never appears.
-    expect(screen.queryByText(new RegExp(SPECIES.slice(0, 8)))).toBeNull();
+    expect(screen.queryByText(/стоимость одна на всю категорию/)).toBeNull();
+    expect(screen.queryByText(/Категория продукции/)).toBeNull();
+    // The editable cards are still present.
+    expect(await screen.findByText(organoleptic.name)).toBeInTheDocument();
   });
 
-  it("DR43: the rows outside the area scope are shown as audit diagnostics", async () => {
+  it("DR53 Task 5: the legacy audit table and its instruction are gone from the screen", async () => {
     server.use(
       http.get("*/api/v1/catalogs/tariffs/context", () =>
         HttpResponse.json({
@@ -181,39 +182,26 @@ describe("TariffsEditorPage", () => {
               source: { name: "прейскурант" },
               revision: 1,
             },
-            {
-              id: "aaaaaaaa-0000-4000-8000-000000000009",
-              laboratory_id: LAB,
-              product_species_id: LAB,
-              product_area_code: null,
-              species_name: null,
-              service_code: trich.id,
-              unit_id: "RUB",
-              price: "12.00",
-              version: 1,
-              source: { name: "прейскурант" },
-              revision: 1,
-            },
           ],
         }),
       ),
     );
     renderEditor();
-    const diag = await screen.findByTestId("tariffs-legacy-diag");
-    // The audit table shows the REAL values (not only the count): the losing
-    // service names, the human species names and the prices.
-    expect(diag).toHaveTextContent(/вне области «Мясо и мясопродукты»: 2/);
-    expect(diag).toHaveTextContent(/сами цены, проигравшие выбору при миграции/);
-    expect(diag).toHaveTextContent(`${organoleptic.name}`);
-    expect(diag).toHaveTextContent("Говядина");
-    expect(diag).toHaveTextContent("55.00 ₽ / RUB");
-    // The nameless mis-scoped species stays honest — never a bare UUID.
-    expect(diag).toHaveTextContent(`${trich.name}`);
-    expect(diag).toHaveTextContent("вид не определён (аудит)");
-    expect(diag).toHaveTextContent("12.00 ₽ / RUB");
-    // No UUID of any row or species is ever printed.
-    expect(diag.textContent).not.toContain(SPECIES.slice(0, 8));
-    expect(diag.textContent).not.toContain(LAB.slice(0, 8));
+    await screen.findByRole("heading", { name: "Стоимость исследований ВСЭ" });
+    // The historical rows stay in the database; the screen never shows them.
+    expect(screen.queryByTestId("tariffs-legacy-diag")).toBeNull();
+    expect(screen.queryByText(/проигравшие выбору при миграции/)).toBeNull();
+    expect(screen.queryByText(/Обратитесь к ответственному за прейскурант/)).toBeNull();
+  });
+
+  it("DR53 Task 5: the tariff delete control and dialog are gone", async () => {
+    renderEditor();
+    await screen.findByRole("heading", { name: "Стоимость исследований ВСЭ" });
+    const cards = await screen.findAllByRole("heading");
+    expect(cards.length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Удалить тариф/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Удалить" })).toBeNull();
+    expect(screen.queryByText("Удалить тариф?")).toBeNull();
   });
 
   it("a foreign laboratory query does not override the HEAD scope", async () => {

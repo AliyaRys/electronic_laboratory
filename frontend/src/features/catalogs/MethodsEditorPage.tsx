@@ -24,7 +24,6 @@ import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
 import {
   createMethod,
-  deleteMethod,
   fetchMethodsContext,
   updateMethod,
   type CatalogIndicator,
@@ -42,7 +41,6 @@ import {
 import { CatalogContextSlot } from "./catalog-context-slot";
 import { useCatalogContext } from "./use-catalog-context";
 import { useDirtyGuard } from "../context/SwitchContext";
-import { DELETE_WARNING } from "./editor-parts";
 
 const NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 
@@ -117,11 +115,6 @@ interface RowModel {
   name: string;
   unit: string | undefined;
   kind: "interval" | "qualitative" | "text";
-  /** Unknown to the shared registry: honest diagnostic, no invented name. */
-  unknown: boolean;
-  /** ТЗ DR41-B §6.1–6.3: a FIXED/NONE indicator with a legacy rule — never
-   * editable, an honest diagnostic of the non-configurable rule. */
-  legacy: boolean;
 }
 
 /** Annotation of the conditionally mandatory F21 (spec §4, GUID list — never
@@ -149,9 +142,11 @@ function isConfigurable(indicator: CatalogIndicator): boolean {
 }
 
 /**
- * The registry-driven rows (§6.1): every expected indicator of the context is
- * listed in the canonical order — with its active rule or as «Не настроено» —
- * and an ACTIVE rule outside the registry keeps its honest diagnostic.
+ * The registry-driven rows (§6.1, ТЗ DR53 Task 5): every CONFIGURABLE
+ * indicator of the context is listed in the canonical order — with its active
+ * rule or as «Не настроено». FIXED/NONE indicators are simply absent (even
+ * with a legacy rule — the old rule stays server-side audit data), and a rule
+ * outside the registry is not rendered as a diagnostic card any more.
  */
 export function buildMethodRows(
   indicators: readonly CatalogIndicator[],
@@ -161,27 +156,8 @@ export function buildMethodRows(
   for (const rule of rules) byIndicator.set(rule.indicator_id, rule);
   const rows: RowModel[] = [];
   for (const indicator of indicators) {
+    if (!isConfigurable(indicator)) continue;
     const rule = byIndicator.get(indicator.id) ?? null;
-    if (!isConfigurable(indicator)) {
-      // ТЗ DR41-B §6.4: the fixed/none indicator is not a catalog row; a
-      // legacy rule created before the registry stays an honest diagnostic.
-      // DR41-B fix-loop: an UNKNOWN mode without a rule is still surfaced as
-      // an honest diagnostic row — the absence never silently becomes a
-      // configurable «Не настроено».
-      if (rule !== null || evaluationMode(indicator) === "UNKNOWN") {
-        rows.push({
-          key: rule?.id ?? `missing-${indicator.id}`,
-          rule,
-          indicator,
-          name: indicator.name,
-          unit: undefined,
-          kind: "text",
-          unknown: false,
-          legacy: true,
-        });
-      }
-      continue;
-    }
     const kind: RowModel["kind"] =
       indicator.result_schema === "TEXT"
         ? "text"
@@ -195,21 +171,6 @@ export function buildMethodRows(
       name: indicator.name,
       unit: rule?.unit_id === "" ? undefined : (rule?.unit_id ?? indicator.unit_id ?? undefined),
       kind,
-      unknown: false,
-      legacy: false,
-    });
-  }
-  for (const rule of rules) {
-    if (indicators.some((item) => item.id === rule.indicator_id)) continue;
-    rows.push({
-      key: rule.id,
-      rule,
-      indicator: null,
-      name: "",
-      unit: rule.unit_id === "" ? undefined : rule.unit_id,
-      kind: rule.rule.type === "qualitative" ? "qualitative" : "interval",
-      unknown: true,
-      legacy: false,
     });
   }
   return rows;
@@ -240,8 +201,6 @@ export function MethodsEditorPage(): React.ReactElement {
     text: string;
     details: string[];
   } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{ key: string; rule: MethodRuleTyped } | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
   const [savePending, setSavePending] = useState(false);
 
   const scopedContext = methods.data !== undefined && !("code" in methods.data) ? methods.data : null;
@@ -277,7 +236,6 @@ export function MethodsEditorPage(): React.ReactElement {
   const dirty = useMemo(
     () =>
       rows.some((row) => {
-        if (row.unknown || row.legacy) return false;
         const draft = drafts[row.key];
         if (draft === undefined) return false;
         if (row.rule === null) {
@@ -312,7 +270,6 @@ export function MethodsEditorPage(): React.ReactElement {
     let saved = 0;
     let conflicted = false;
     for (const row of rows) {
-      if (row.unknown || row.legacy) continue;
       const draft = drafts[row.key];
       // A conflicted row waits for the explicit §12.6 choice; a second
       // «Сохранить» never re-submits the stale draft against the fresh
@@ -526,10 +483,9 @@ export function MethodsEditorPage(): React.ReactElement {
 
   const problem = methods.data !== undefined && "code" in methods.data ? (methods.data as Problem) : null;
 
-  const intervalRows = rows.filter((row) => row.kind === "interval" && !row.legacy);
-  const qualitativeRows = rows.filter((row) => row.kind === "qualitative" && !row.legacy);
-  const textRows = rows.filter((row) => row.kind === "text" && !row.unknown && !row.legacy);
-  const legacyRows = rows.filter((row) => row.legacy && row.indicator !== null);
+  const intervalRows = rows.filter((row) => row.kind === "interval");
+  const qualitativeRows = rows.filter((row) => row.kind === "qualitative");
+  const textRows = rows.filter((row) => row.kind === "text");
 
   /** §15.1: the loading skeleton keeps the section geometry. */
   const skeleton =
@@ -584,21 +540,9 @@ export function MethodsEditorPage(): React.ReactElement {
           {/* §7.3: the category is one calm line under the lead — never a
               technical field or an empty context container. Without an area
               name the honest state is no line at all, not an empty label. */}
-          {scopedContext?.product_area_name ? (
-            <p className="vse-catalog-context-note" data-testid="methods-area-name">
-              Категория продукции: {scopedContext.product_area_name}
-            </p>
-          ) : null}
+          {/* ТЗ DR53 Task 5: the context note is gone from the user screen. */}
           <div className="vse-catalog-norm-list">
             {intervalRows.map((row) => {
-              if (row.unknown) {
-                return (
-                  <article className="vse-catalog-diag" key={row.key} data-testid={`method-diag-${row.key}`}>
-                    Норма показателя вне общего каталога. Наименование недоступно в read model — значение не
-                    редактируется на этой странице.
-                  </article>
-                );
-              }
               const draft = draftFor(row);
               const rule = row.rule;
               const interval = rule?.rule.type === "interval" ? rule.rule : null;
@@ -607,51 +551,6 @@ export function MethodsEditorPage(): React.ReactElement {
                   ? `от ${interval.lower ?? "—"} до ${interval.upper ?? "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`
                   : "Не настроено";
               const draftValue = `от ${draft.lower || "—"} до ${draft.upper || "—"}${row.unit !== undefined ? ` ${row.unit}` : ""}`;
-              const overflow = canEdit ? (
-                <>
-                  <div className="vse-catalog-field">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={draft.lowerInclusive}
-                        disabled={savePending}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [row.key]: { ...draftFor(row), lowerInclusive: event.target.checked },
-                          }))
-                        }
-                      />{" "}
-                      нижняя граница включена
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={draft.upperInclusive}
-                        disabled={savePending}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [row.key]: { ...draftFor(row), upperInclusive: event.target.checked },
-                          }))
-                        }
-                      />{" "}
-                      верхняя граница включена
-                    </label>
-                  </div>
-                  {rule !== null ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={savePending}
-                      ariaLabel={`Удалить норму: ${row.name}`}
-                      onClick={() => setDeleteTarget({ key: row.key, rule: rule as MethodRuleTyped })}
-                    >
-                      Удалить норму
-                    </Button>
-                  ) : null}
-                </>
-              ) : undefined;
               return (
                 <NormRow
                   key={row.key}
@@ -670,7 +569,6 @@ export function MethodsEditorPage(): React.ReactElement {
                   error={errors[row.key]}
                   busy={savePending}
                   readOnly={!canEdit}
-                  details={overflow}
                   conflict={
                     conflicts[row.key] === true && drafts[row.key] !== undefined
                       ? { serverValue, draftValue }
@@ -782,19 +680,6 @@ export function MethodsEditorPage(): React.ReactElement {
                   readOnly={!canEdit}
                   busy={savePending}
                   error={errors[row.key]}
-                  secondary={
-                    canEdit && rule !== null ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={savePending}
-                        ariaLabel={`Удалить норму: ${row.name}`}
-                        onClick={() => setDeleteTarget({ key: row.key, rule: rule as MethodRuleTyped })}
-                      >
-                        Удалить норму
-                      </Button>
-                    ) : undefined
-                  }
                 />
               );
             })}
@@ -808,17 +693,6 @@ export function MethodsEditorPage(): React.ReactElement {
                   <div className="vse-catalog-norm-name">{row.name}</div>
                   <p className="vse-catalog-norm-meta">{TEXT_NOTE}</p>
                 </div>
-              </article>
-            ))}
-            {/* ТЗ DR41-B §6: a legacy norm of a fixed/none indicator is never
-                editable — an honest diagnostic keeps the data visible. */}
-            {legacyRows.map((row) => (
-              <article className="vse-catalog-diag" key={row.key} data-testid={`method-legacy-${row.key}`}>
-                {row.indicator?.evaluation_mode === "NONE"
-                  ? `Исследование «${row.name}» не имеет нормы: результат вводится текстом в форме ВСЭ без оценки.`
-                  : row.indicator !== null && evaluationMode(row.indicator) === "UNKNOWN"
-                    ? `Режим оценки исследования «${row.name}» неизвестен системе: строка не редактируется в справочнике.`
-                    : `Норма исследования «${row.name}» фиксирована методикой ФТ и не настраивается в справочнике.`}
               </article>
             ))}
           </div>
@@ -840,20 +714,6 @@ export function MethodsEditorPage(): React.ReactElement {
         </Button>
       </div>
 
-      {deleteTarget !== null ? (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setDeleteTarget(null);
-          }}
-          title="Удалить действующую норму?"
-          description={DELETE_WARNING}
-          confirmLabel="Удалить норму"
-          danger
-          busy={deleteBusy}
-          onConfirm={() => void runDelete()}
-        />
-      ) : null}
     </CatalogEditorPage>
   );
 
@@ -861,23 +721,6 @@ export function MethodsEditorPage(): React.ReactElement {
     setSavePending(true);
     await save();
     setSavePending(false);
-  }
-
-  async function runDelete(): Promise<void> {
-    if (deleteTarget === null) return;
-    setDeleteBusy(true);
-    const problem = await deleteMethod(
-      deleteTarget.rule.id,
-      `"${deleteTarget.rule.revision}"`,
-      crypto.randomUUID(),
-    );
-    setDeleteBusy(false);
-    if (problem !== null) {
-      setDeleteTarget(null);
-      return;
-    }
-    setDeleteTarget(null);
-    await methods.refetch();
   }
 
   function pickLaboratory(id: string): void {

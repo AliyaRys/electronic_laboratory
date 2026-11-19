@@ -209,11 +209,12 @@ describe("CheckServicesEditorPage", () => {
     });
   });
 
-  it("shows only the laboratory context and no species anywhere (owner DR14)", async () => {
+  it("no context note and no species anywhere (owner DR14 / DR53 Task 5)", async () => {
     renderEditor();
-    expect(await screen.findByTestId("check-services-laboratory")).toHaveTextContent(
-      "Лаборатория: Лаборатория №1 г. Казань",
-    );
+    await screen.findByRole("heading", { name: "Платные услуги" });
+    // ТЗ DR53 Task 5: the context note is gone from the user screen.
+    expect(screen.queryByTestId("check-services-laboratory")).toBeNull();
+    expect(screen.queryByText(/Лаборатория:/)).toBeNull();
     expect(screen.queryByTestId("check-services-species")).toBeNull();
     expect(screen.queryByText(/Вид продукции/)).toBeNull();
     expect(screen.queryByText(/Продукция/)).toBeNull();

@@ -187,7 +187,7 @@ const normLabel = (indicatorName: string, bound: "от" | "до"): string => `Н
 describe("MethodsEditorPage", () => {
   it("opens immediately with the full registry, the readonly area and no species/state selectors", async () => {
     renderEditor();
-    await screen.findByTestId("methods-area-name");
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
     // §19.1: ONE h1 and ONE section header «Диапазоны нормы».
     expect(screen.getAllByRole("heading", { level: 1, name: "Нормы исследований" })).toHaveLength(1);
     expect(screen.getAllByRole("heading", { name: "Диапазоны нормы" })).toHaveLength(1);
@@ -200,7 +200,9 @@ describe("MethodsEditorPage", () => {
         "Диапазоны используются для автоматической отметки нормы и отклонений в карточке ВСЭ.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("methods-area-name")).toHaveTextContent("Мясо и мясопродукты");
+    // ТЗ DR53 Task 5: the category context line is gone from the screen.
+    expect(screen.queryByTestId("methods-area-name")).toBeNull();
+    expect(screen.queryByText(/Категория продукции/)).toBeNull();
     // ТЗ DR41-B §6: only the CONFIGURABLE indicators are catalog rows.
     const configurable = INDICATORS.filter((item) => !FIXED_CODES.has(item.code) && item.code !== "VSE-F23");
     for (const indicator of configurable) {
@@ -239,8 +241,7 @@ describe("MethodsEditorPage", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("keeps the technical metadata off the main surface (source, version, delete)", async () => {
-    const act = userEvent.setup();
+  it("keeps the technical metadata and delete off the main surface (DR53 Task 5)", async () => {
     activeRules = [intervalRule({})];
     renderEditor();
     await screen.findByLabelText(normLabel(microscopy.name, "от"));
@@ -248,19 +249,17 @@ describe("MethodsEditorPage", () => {
     expect(screen.queryByText(/Источник/)).toBeNull();
     expect(screen.queryByText(/Методика и версия/)).toBeNull();
     expect(screen.queryByText(/Настройка границ/)).toBeNull();
-    // §19.12: the delete action stays available in the folded overflow and
-    // goes through the confirming dialog.
-    const row = screen.getByLabelText(normLabel(microscopy.name, "от")).closest("article") as HTMLElement;
-    await act.click(within(row).getByText("Дополнительные настройки"));
-    await act.click(within(row).getByRole("button", { name: "Удалить норму: Микроскопия" }));
-    expect(await screen.findByRole("dialog", { name: /Удалить действующую норму\?/i })).toBeInTheDocument();
-    expect(screen.getByText(/Удаление действующей нормы заблокирует/)).toBeInTheDocument();
-    await act.click(screen.getByRole("button", { name: "Отмена" }));
+    // ТЗ DR53 Task 5: the folded overflow is gone — no «Дополнительные
+    // настройки», no inclusive checkboxes, no «Удалить норму», no dialog.
+    expect(screen.queryByText("Дополнительные настройки")).toBeNull();
+    expect(screen.queryByLabelText(/нижняя граница включена/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Удалить норму/ })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: /Удалить действующую норму\?/i })).toBeNull();
   });
 
   it("save is disabled until a row is edited (§19.13)", async () => {
     renderEditor();
-    await screen.findByTestId("methods-area-name");
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
     expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
   });
 
@@ -276,7 +275,7 @@ describe("MethodsEditorPage", () => {
   it("the first norm is typed directly into the row and POSTs only the code and rule", async () => {
     const act = userEvent.setup();
     renderEditor();
-    await screen.findByTestId("methods-area-name");
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
     // §10.2: no «Настроить» step — the fields wait for the input right away.
     const lower = await screen.findByLabelText(normLabel(temperature.name, "от"));
     expect(screen.queryByLabelText("Тип результата")).toBeNull();
@@ -312,7 +311,7 @@ describe("MethodsEditorPage", () => {
   it("empty unset rows are never sent when other rows are saved (§19.6)", async () => {
     const act = userEvent.setup();
     renderEditor();
-    await screen.findByTestId("methods-area-name");
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
     // Touch nothing but the temperature row; every other unset row stays empty.
     await act.type(await screen.findByLabelText(normLabel(temperature.name, "от")), "0");
     await act.type(screen.getByLabelText(normLabel(temperature.name, "до")), "6");
@@ -341,10 +340,21 @@ describe("MethodsEditorPage", () => {
     expect(screen.getAllByText("ед.").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Версия записи/)).toBeNull();
     expect(screen.queryByText(/Источник/)).toBeNull();
-    // The inclusivity checkboxes live in the folded overflow of the row.
+    // ТЗ DR53 Task 5: the inclusive checkboxes are gone from the surface; the
+    // stored boundary inclusivity must still survive an ordinary edit (never
+    // hardcoded) — the payload keeps the saved values.
+    expect(screen.queryByLabelText(/нижняя граница включена/)).toBeNull();
     const row = screen.getByLabelText(normLabel(microscopy.name, "от")).closest("article") as HTMLElement;
-    await act.click(within(row).getByText("Дополнительные настройки"));
-    expect(within(row).getByLabelText(/нижняя граница включена/)).toBeChecked();
+    await act.clear(within(row).getByLabelText(normLabel(microscopy.name, "от")));
+    await act.type(within(row).getByLabelText(normLabel(microscopy.name, "от")), "2");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalledTimes(1));
+    const payload = putSpy.mock.calls[0][0] as {
+      rule: { lower_inclusive: boolean; upper_inclusive: boolean; lower: string };
+    };
+    expect(payload.rule.lower_inclusive).toBe(true);
+    expect(payload.rule.upper_inclusive).toBe(true);
+    expect(payload.rule.lower).toBe("2");
   });
 
   it("a null upper boundary stays empty and is sent as a string, never as 0", async () => {
@@ -435,7 +445,7 @@ describe("MethodsEditorPage", () => {
   it("a partial mass save keeps the input and reports which rows failed", async () => {
     const act = userEvent.setup();
     renderEditor();
-    await screen.findByTestId("methods-area-name");
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
     await act.type(await screen.findByLabelText(normLabel(temperature.name, "от")), "0");
     await act.type(screen.getByLabelText(normLabel(temperature.name, "до")), "6");
     postFailures = 1;
@@ -471,12 +481,12 @@ describe("MethodsEditorPage", () => {
 
   it("бактериоскопия is not a catalog row any more (ТЗ DR41-B §6.2)", async () => {
     renderEditor();
-    await screen.findByTestId("methods-area-name");
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
     expect(screen.queryByText("Результат вводится текстом; диапазон нормы не задаётся.")).toBeNull();
     expect(screen.queryByText("Бактериоскопия")).toBeNull();
   });
 
-  it("a legacy rule of a fixed indicator stays an honest diagnostic (ТЗ DR41-B §6.4)", async () => {
+  it("a legacy rule of a fixed indicator is simply absent (ТЗ DR53 Task 5)", async () => {
     const organoleptic = INDICATORS.find((item) => item.code === "VSE-F18") as (typeof INDICATORS)[number];
     activeRules = [
       intervalRule({
@@ -488,12 +498,16 @@ describe("MethodsEditorPage", () => {
       }),
     ];
     renderEditor();
-    await screen.findByTestId(`method-legacy-bbbbbbbb-0000-4000-8000-000000000004`);
-    expect(screen.getByText(/фиксирована методикой ФТ и не настраивается/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
+    // The fixed indicator is not a row and not a diagnostic any more; the old
+    // rule stays server-side audit data (no DELETE is sent for it).
+    expect(screen.queryByText(organoleptic.name)).toBeNull();
+    expect(screen.queryByText(/фиксирована методикой ФТ и не настраивается/)).toBeNull();
+    expect(screen.queryByTestId("method-legacy-bbbbbbbb-0000-4000-8000-000000000004")).toBeNull();
+    expect(screen.getByRole("button", { name: "Сохранить справочник" })).toBeDisabled();
   });
 
-  it("DR41-B fix-loop: a missing evaluation_mode is UNKNOWN — honest diagnostic, never CONFIGURABLE", () => {
+  it("DR41-B fix-loop: a missing evaluation_mode is UNKNOWN and NOT rendered as a row", () => {
     const organoleptic = INDICATORS.find((item) => item.code === "VSE-F18") as (typeof INDICATORS)[number];
     const unknownIndicator = {
       id: organoleptic.id,
@@ -508,11 +522,9 @@ describe("MethodsEditorPage", () => {
       evaluation_mode: undefined as unknown as string,
     };
     expect(evaluationMode(unknownIndicator as never)).toBe("UNKNOWN");
+    // ТЗ DR53 Task 5: an UNKNOWN mode is simply absent from the editable list.
     const rows = buildMethodRows([unknownIndicator as never], []);
-    // Not a configurable «Не настроено» row — an honest non-editable diagnostic.
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.legacy).toBe(true);
-    expect(rows[0]?.rule).toBeNull();
+    expect(rows).toHaveLength(0);
   });
 
   it("DR41-B fix-loop: boolean keys of a legacy qualitative rule serialize as strings", () => {
@@ -534,6 +546,30 @@ describe("MethodsEditorPage", () => {
       type: "qualitative",
       accepted_values: ["true", "false", "Соответствует"],
     });
+  });
+
+  it("a stored lower_inclusive=false survives an ordinary upper-bound edit (DR53 Task 5)", async () => {
+    const act = userEvent.setup();
+    activeRules = [
+      intervalRule({
+        id: "bbbbbbbb-0000-4000-8000-000000000006",
+        indicator_id: temperature.id,
+        result_schema: "DECIMAL",
+        unit_id: "°C",
+        rule: { type: "interval", lower: "0", upper: "5", lower_inclusive: false, upper_inclusive: true },
+      }),
+    ];
+    renderEditor();
+    const upper = await screen.findByLabelText(normLabel(temperature.name, "до"));
+    await act.clear(upper);
+    await act.type(upper, "6");
+    await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalledTimes(1));
+    const payload = putSpy.mock.calls[0][0] as {
+      rule: { lower_inclusive: boolean; upper_inclusive: boolean };
+    };
+    expect(payload.rule.lower_inclusive).toBe(false);
+    expect(payload.rule.upper_inclusive).toBe(true);
   });
 
   it("a qualitative block uses the square ＋/− buttons and removable custom variants (§19.9/§19.10)", async () => {
@@ -637,14 +673,14 @@ describe("MethodsEditorPage", () => {
       capabilities: [],
     };
     renderEditor();
-    await screen.findByTestId("methods-area-name");
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
     expect(screen.queryByRole("button", { name: "Настроить" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Удалить норму" })).toBeNull();
     const save = screen.getByRole("button", { name: "Сохранить справочник" });
     expect(save).toBeDisabled();
   });
 
-  it("an unknown indicator keeps the honest diagnostic without an invented name", async () => {
+  it("an unknown indicator is simply absent without an invented name (DR53 Task 5)", async () => {
     activeRules = [
       intervalRule({
         id: "bbbbbbbb-0000-4000-8000-000000000009",
@@ -653,6 +689,9 @@ describe("MethodsEditorPage", () => {
       }),
     ];
     renderEditor();
-    expect(await screen.findByText(/показателя вне общего каталога/i)).toBeInTheDocument();
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
+    // The rule outside the shared registry is no longer a diagnostic card.
+    expect(screen.queryByText(/вне общего каталога/i)).toBeNull();
+    expect(screen.queryByTestId("method-diag-bbbbbbbb-0000-4000-8000-000000000009")).toBeNull();
   });
 });

@@ -16,17 +16,20 @@ from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.identity.models import CommandStatus, TechnicalEvent
 from backend.src.modules.reporting.models import ReportSnapshot
 from backend.src.modules.reporting.schemas import (
-    ReportCodesWrite,
     ReportSnapshotView,
     ReportSummary,
     ReportSummaryPage,
     SignedPreview,
 )
-from backend.src.modules.reporting.snapshots import verify_preview
+from backend.src.modules.reporting.snapshots import adapt_payload, verify_preview
 
 
 def snapshot_view(row: ReportSnapshot) -> ReportSnapshotView:
-    return ReportSnapshotView.model_validate(row)
+    """The read view of one stored row; the payload is adapted to the full
+    printed form read-only (DR51 §4): legacy compact snapshots open in the
+    47-row catalogue without any live recalculation."""
+    view = ReportSnapshotView.model_validate(row)
+    return view.model_copy(update={"payload": adapt_payload(view.payload)})
 
 
 def _period_context(report_type: str, laboratory_id: uuid.UUID, date_from: date, date_to: date) -> uuid.UUID:
@@ -52,7 +55,6 @@ async def load_report(db: AsyncSession, report_id: uuid.UUID) -> ReportSnapshotV
 async def save_report(
     ctx: CommandContext,
     preview: SignedPreview,
-    codes: ReportCodesWrite,
     *,
     session_id: str,
     db: AsyncSession,
@@ -81,9 +83,7 @@ async def save_report(
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": str(context_id)})
     work = UnitOfWork(db)
     recorder = IdempotencyRecorder()
-    request_hash = canonical_request_hash(
-        {"preview": preview.model_dump(mode="json"), "codes": codes.model_dump(mode="json")}, None
-    )
+    request_hash = canonical_request_hash({"preview": preview.model_dump(mode="json")}, None)
     record = await recorder.claim(
         work,
         actor_id=ctx.actor_id,
@@ -116,7 +116,6 @@ async def save_report(
         date_from=date_from,
         date_to=date_to,
         payload=payload,
-        codes=codes.model_dump(),
         source_count=source_count,
         preview_generated_at=generated_at,
         saved_at=instant,

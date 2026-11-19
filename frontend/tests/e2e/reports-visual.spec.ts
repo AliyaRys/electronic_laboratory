@@ -16,7 +16,7 @@ test("matrix is readable at 1440 / 1024 / 768 / 390", async ({ page }) => {
   for (const width of [1440, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(STORY);
-    await expect(page.getByText("Матрица сохранённого отчёта")).toBeVisible();
+    await expect(page.getByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
     await expect(page.getByText("Предварительная форма")).toBeVisible();
     // Below 768 the table container may scroll horizontally BY DESIGN
     // (overflow-x: auto); the page itself must not be wider than the viewport.
@@ -31,7 +31,7 @@ test("matrix is readable at 1440 / 1024 / 768 / 390", async ({ page }) => {
 test("print media emulation renders the matrix without clipped cells", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(STORY);
-  await expect(page.getByText("Матрица сохранённого отчёта")).toBeVisible();
+  await expect(page.getByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
   await page.emulateMedia({ media: "print" });
   await page.screenshot({ path: "test-results/r03-print.png", fullPage: true });
   const clipped = await page.evaluate(() => {

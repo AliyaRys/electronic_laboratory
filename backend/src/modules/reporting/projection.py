@@ -3,48 +3,45 @@
 The projection is built **exclusively** from the stored snapshot (API-08:
 «готовый файл исключительно из snapshot»): no live ВСЭ query ever contributes,
 so an export re-renders exactly the snapshot that was signed, never a silent
-recomputation. The two decisions that belong to the projection:
+recomputation. DR51 decisions:
 
-- the printed form merges the two bird data columns (CHICKEN + OTHER_BIRDS,
-  DATA-04) into one printed «Птица — куры/другие» column per the ФТ 09 table;
-  the data layer keeps 8 columns (R01 note 1);
-- the two rows the system never computes (INPUT-04 manifest
-  ``noncalculated_cells``) are printed as non-calculated rows — «Не
-  рассчитывается», never an invented number.
+- the full printed form keeps CHICKEN and OTHER_BIRDS as two separate
+  columns under the «Птица» group (DR51 §2.1) — nothing is merged;
+- a BLANK row is printed as an EMPTY cell, never «Не рассчитывается», «—»
+  or a forged zero; a calculated zero stays the visible number ``0``;
+- the header is the simplified user header: title, creation date, period,
+  laboratory — the seven organizational codes and the formal half-year
+  heading are cancelled (owner decision 2026-11-18).
 """
 
 from __future__ import annotations
 
 import re
-from decimal import Decimal, InvalidOperation
+from datetime import datetime
 
-from backend.src.modules.documents.schemas import ReportCodes, ReportDocumentView, ReportMatrixRow
-from backend.src.modules.reporting.schemas import ROW_CODES, ROW_NAMES, ReportSnapshotView
+from backend.src.core.clock import MOSCOW
+from backend.src.modules.documents.schemas import ReportDocumentView, ReportMatrixRow
+from backend.src.modules.reporting.schemas import ReportSnapshotView
 
-__all__ = ["period_label", "report_document_view", "report_pdf_filename", "report_xlsx_filename"]
+__all__ = [
+    "period_label",
+    "report_document_view",
+    "report_pdf_filename",
+    "report_xlsx_filename",
+]
 
-#: Printed labels of the 8 data columns; the two bird columns share one row.
+#: The printed labels of the 8 data columns (DR51 §2.1); CHICKEN and
+#: OTHER_BIRDS stay two columns under the «Птица» group header.
 COLUMN_NAMES: dict[str, str] = {
-    "CATTLE": "КРС",
+    "CATTLE": "Крупный рогатый скот, яки, буйволы",
     "PIG": "Свиньи",
-    "SHEEP_GOAT": "Овцы и козы",
-    "RABBIT_NUTRIA": "Кролики и нутрии",
-    "CHICKEN": "Птица — куры",
-    "OTHER_BIRDS": "Птица — другие",
+    "SHEEP_GOAT": "Овцы, козы",
+    "RABBIT_NUTRIA": "Кролики, нутрии",
+    "CHICKEN": "Птица: куры",
+    "OTHER_BIRDS": "Птица: другие виды",
     "FISH": "Рыба",
-    "OTHER_ANIMALS": "Прочие",
+    "OTHER_ANIMALS": "Другие виды животных",
 }
-
-#: The single printed bird column that merges CHICKEN and OTHER_BIRDS.
-BIRD_COLUMN = "Птица — куры/другие"
-BIRD_KEYS = frozenset({"CHICKEN", "OTHER_BIRDS"})
-
-#: The two rows that are never calculated by the system (INPUT-04 manifest
-#: ``noncalculated_cells`` of form ``report-5vet``): printed «Не рассчитывается».
-MANUAL_ROWS: tuple[tuple[str, str], ...] = (
-    ("sickness_of_animals", "Заболеваемость животных"),
-    ("inspections_of_meat", "Осмотры мяса"),
-)
 
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -61,14 +58,10 @@ def period_label(date_from: str, date_to: str) -> str:
     return f"{_ru(date_from)} — {_ru(date_to)}"
 
 
-def _decimal(value: object) -> Decimal | None:
-    """The exact payload Decimal string; never a guess."""
-    if value is None or value == "":
-        return None
-    try:
-        return Decimal(str(value))
-    except InvalidOperation, ValueError:
-        return None
+def _created_label(moment: datetime) -> str:
+    """«ДД.ММ.ГГГГ, ЧЧ:ММ» in Europe/Moscow (server time, never the browser)."""
+    local = moment.astimezone(MOSCOW)
+    return f"{local.day:02d}.{local.month:02d}.{local.year:04d}, {local.hour:02d}:{local.minute:02d}"
 
 
 def _filename_stem(view: ReportSnapshotView) -> str:
@@ -92,66 +85,50 @@ def report_xlsx_filename(view: ReportSnapshotView) -> str:
 
 
 def report_document_view(view: ReportSnapshotView) -> ReportDocumentView:
-    """Build the printable projection strictly from the saved payload."""
+    """Build the printable projection strictly from the saved payload.
+
+    ``view.payload`` is already the read-only full-form adaptation (DR51 §4):
+    47 rows with the canonical code/name/mode catalogue and a 47×8 matrix of
+    decimal strings (AUTO, always present incl. ``0``) and ``null`` (BLANK).
+    """
     payload = view.payload
     laboratory = payload.get("laboratory")
     laboratory_name = (laboratory.get("name", "") if isinstance(laboratory, dict) else "") or str(view.laboratory_id)
 
-    # Printed columns: the bird pair is merged once, at CHICKEN's position.
-    raw = payload.get("columns")
-    raw_columns = [str(column) for column in raw] if isinstance(raw, list) else []
-    printed: list[str] = []
-    offsets: list[list[int]] = []  # per printed column: the payload column indices it sums
-    for index, column in enumerate(raw_columns):
-        if column == "OTHER_BIRDS":
-            continue
-        if column == "CHICKEN":
-            other = raw_columns.index("OTHER_BIRDS") if "OTHER_BIRDS" in raw_columns else None
-            printed.append(BIRD_COLUMN)
-            offsets.append([index] if other is None else [index, other])
-        else:
-            printed.append(COLUMN_NAMES.get(column, column))
-            offsets.append([index])
+    raw_columns = payload.get("columns")
+    columns = (
+        [COLUMN_NAMES.get(str(column), str(column)) for column in raw_columns] if isinstance(raw_columns, list) else []
+    )
 
-    raw_rows_value = payload.get("matrix")
-    raw_rows = raw_rows_value if isinstance(raw_rows_value, list) else []
-    matrix: list[ReportMatrixRow] = []
-    for row_index, row_code in enumerate(ROW_CODES):
-        raw_row = raw_rows[row_index] if row_index < len(raw_rows) else []
-        values: dict[str, str | float | None] = {}
-        for column, indices in zip(printed, offsets, strict=True):
-            total = sum((_decimal(raw_row[i]) or Decimal(0) for i in indices if i < len(raw_row)), Decimal(0))
-            values[column] = float(total) if any(i < len(raw_row) for i in indices) else None
-        matrix.append(
-            ReportMatrixRow(code=row_code, name=ROW_NAMES.get(row_code, row_code), automatic=True, values=values)
-        )
-    for code, name in MANUAL_ROWS:
-        matrix.append(
-            ReportMatrixRow(
-                code=code,
-                name=name,
-                automatic=False,
-                values=dict.fromkeys(printed, None),
-            )
-        )
+    raw_matrix = payload.get("matrix")
+    matrix_rows: list[ReportMatrixRow] = []
+    rows_catalogue = payload.get("rows")
+    if isinstance(rows_catalogue, list):
+        for index, row_meta in enumerate(rows_catalogue):
+            if not isinstance(row_meta, dict):
+                continue
+            code = str(row_meta.get("code", ""))
+            name = str(row_meta.get("name", code))
+            automatic = row_meta.get("mode") == "AUTO"
+            raw_values = raw_matrix[index] if index < len(raw_matrix) and isinstance(raw_matrix[index], list) else []
+            values: dict[str, str | float | None] = {}
+            for column_index, column in enumerate(columns):
+                raw = raw_values[column_index] if column_index < len(raw_values) else None
+                if not automatic or raw is None:
+                    values[column] = None
+                else:
+                    values[column] = float(str(raw))
+            matrix_rows.append(ReportMatrixRow(code=code, name=name, automatic=automatic, values=values))
 
-    codes = dict(view.codes)
     return ReportDocumentView(
         form_id="report-5vet",
+        title="5-вет, раздел III",
+        created_label="Дата создания",
+        created_at=_created_label(view.saved_at),
         laboratory=laboratory_name,
         period=period_label(view.date_from.isoformat(), view.date_to.isoformat()),
-        codes=ReportCodes(
-            okud=codes.get("okud", ""),
-            okpo=codes.get("okpo", ""),
-            okved=codes.get("okved", ""),
-            oktmo=codes.get("oktmo", ""),
-            okogu=codes.get("okogu", ""),
-            okopf=codes.get("okopf", ""),
-            okfs=codes.get("okfs", ""),
-        ),
-        columns=printed,
-        matrix=matrix,
-        versions={"версия классификации": str(payload.get("classification_version", "—"))},
+        columns=columns,
+        matrix=matrix_rows,
         official=bool(payload.get("official", False)),
         warnings=["Предварительная форма"] if not bool(payload.get("official", False)) else [],
     )

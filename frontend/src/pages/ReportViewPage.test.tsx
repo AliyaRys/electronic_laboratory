@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ReportViewPage tests (R03): the summary + form of one saved snapshot; a
  * report deleted elsewhere answers 404 and the honest not-found state; the
  * export actions call the snapshot-only export URLs.
@@ -21,12 +21,17 @@ const REPORT = "11111111-2222-4333-8444-555555555555";
 
 const payload = {
   version: 2,
+  form_version: "2",
   laboratory: { name: "Лаборатория №1" },
   date_from: "2026-01-01",
   date_to: "2026-06-30",
   classification_version: "2026-v1",
   columns: ["PIG"],
-  matrix: [["2"]],
+  rows: [
+    { code: "166", name: "1. Осмотрено (проведено ветеринарно-санитарных экспертиз), всего, единиц", mode: "AUTO" },
+    { code: "174", name: "Ящур", mode: "BLANK" },
+  ],
+  matrix: [["2"], [null]],
   source_count: 1,
   official: false,
 };
@@ -53,7 +58,6 @@ function snapshotView(): Record<string, unknown> {
     date_from: "2026-01-01",
     date_to: "2026-06-30",
     payload,
-    codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
     source_count: 1,
     saved_at: "2027-01-02T10:00:00Z",
     saved_by: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
@@ -81,11 +85,18 @@ describe("ReportViewPage", () => {
       http.get(`*/api/v1/reports/5vet/${REPORT}`, () => HttpResponse.json(snapshotView())),
     );
     renderView();
-    expect(await screen.findByText("Матрица сохранённого отчёта")).toBeVisible();
-    expect(screen.getByText(/Лаборатория №1/)).toBeVisible();
+    expect(
+      await screen.findByText(
+        "Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("Дата создания")).toBeVisible();
     expect(screen.getByText("01.01.2026 — 30.06.2026")).toBeVisible();
+    expect(screen.getByText("Лаборатория №1")).toBeVisible();
     expect(screen.getByText("Предварительная форма")).toBeVisible();
-    expect(screen.getByText(/Источников в снимке: 1/)).toBeVisible();
+    expect(screen.queryByText(/Коды шапки/)).toBeNull();
+    expect(screen.queryByText(/Источников в снимке/)).toBeNull();
+    expect(screen.queryByText(/версия классификации/)).toBeNull();
   });
 
   it("an official=true snapshot does NOT show the preliminary marking", async () => {
@@ -112,7 +123,7 @@ describe("ReportViewPage", () => {
       ),
     );
     renderView();
-    expect(await screen.findByText("Матрица сохранённого отчёта")).toBeVisible();
+    expect(await screen.findByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
     expect(screen.queryByText("Предварительная форма")).toBeNull();
   });
 
@@ -172,7 +183,7 @@ describe("ReportViewPage", () => {
       }),
     );
     renderView();
-    await screen.findByText("Матрица сохранённого отчёта");
+    await screen.findByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках");
     const user = (await import("@testing-library/user-event")).default.setup();
     await user.click(screen.getByRole("button", { name: "Скачать PDF" }));
     expect(await screen.findByText(/Файл не сформирован/)).toBeVisible();
@@ -229,7 +240,7 @@ describe("ReportViewPage capability guard (DR37)", () => {
       http.get(`*/api/v1/reports/5vet/${REPORT}`, () => HttpResponse.json(snapshotView())),
     );
     renderView();
-    await screen.findByText("Матрица сохранённого отчёта");
+    await screen.findByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках");
     expect(screen.queryByRole("button", { name: "Скачать PDF" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Удалить отчёт" })).toBeNull();
     expect(screen.getByText("Действия с отчётом недоступны: нет соответствующих полномочий.")).toBeVisible();

@@ -3070,26 +3070,6 @@ export interface components {
             actNumber?: string | null;
         };
         /**
-         * ReportCodesWrite
-         * @description Seven required textual codes; leading zeroes are meaningful.
-         */
-        ReportCodesWrite: {
-            /** Okud */
-            okud: string;
-            /** Okpo */
-            okpo: string;
-            /** Okved */
-            okved: string;
-            /** Oktmo */
-            oktmo: string;
-            /** Okogu */
-            okogu: string;
-            /** Okopf */
-            okopf: string;
-            /** Okfs */
-            okfs: string;
-        };
-        /**
          * ReportPeriod
          * @description The reporting window as it was requested (API-08 ``period``).
          */
@@ -3162,10 +3142,6 @@ export interface components {
             /** Payload */
             payload: {
                 [key: string]: unknown;
-            };
-            /** Codes */
-            codes: {
-                [key: string]: string;
             };
             /** Source Count */
             source_count: number;
@@ -3297,10 +3273,13 @@ export interface components {
              */
             collectionId: string;
         };
-        /** SaveReportWrite */
+        /**
+         * SaveReportWrite
+         * @description DR51 §6.2: the save request carries only the signed preview — the seven
+         *     organizational codes are cancelled and never accepted again.
+         */
         SaveReportWrite: {
             preview: components["schemas"]["SignedPreview"];
-            codes: components["schemas"]["ReportCodesWrite"];
         };
         /**
          * ScopeInput

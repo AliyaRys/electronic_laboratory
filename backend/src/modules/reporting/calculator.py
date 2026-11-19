@@ -48,6 +48,8 @@ from backend.src.modules.catalog_pricing.mandatory import (
 )
 from backend.src.modules.reporting.schemas import (
     COLUMNS,
+    COUNT_ROWS,
+    MASS_ROWS,
     ROW_CODES,
     ROW_NAMES,
     ClassificationMap,
@@ -131,7 +133,7 @@ def _empty_matrix() -> ReportMatrix:
     return ReportMatrix(
         columns=COLUMNS,
         rows={code: {column: Decimal(0) for column in COLUMNS} for code in ROW_CODES},
-        names=dict(ROW_NAMES),
+        names={code: name for code, name in ROW_NAMES.items() if code in COUNT_ROWS or code in MASS_ROWS},
     )
 
 
@@ -191,6 +193,10 @@ def calculate_5vet(sources: Sequence[ReportSource], mapping: ClassificationMap) 
             matrix.rows[row][column] += Decimal(performed)
         if source.sent_to_lab:
             matrix.rows["172"][column] += Decimal(1)
+        # DR51 §3: row 210 «Незаразные болезни» counts every saved finding
+        # line of the newest revision as one separate case — no dedup, and an
+        # invasive/organoleptic fact never adds here (209/173 stay BLANK).
+        matrix.rows["210"][column] += Decimal(source.noncontagious_findings_count)
         if source.direction == "DESTRUCTION":
             kg["240"][column] += source.accepted_mass_kg
             # DR49 §2.2: meat and offal of the same animal share the column

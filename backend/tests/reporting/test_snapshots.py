@@ -23,7 +23,7 @@ from backend.src.modules.catalog_pricing.models import ReportClassification
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.identity.models import Laboratory, Territory, User
 from backend.src.modules.reporting.commands import delete_report, load_report, save_report
-from backend.src.modules.reporting.schemas import ReportCodesWrite, ReportPreviewParams
+from backend.src.modules.reporting.schemas import ReportPreviewParams
 from backend.src.modules.reporting.snapshots import MAX_PAYLOAD_BYTES, canonical_json, preview_report, verify_preview
 
 ACTIVATED = datetime(2026, 1, 1, tzinfo=UTC)
@@ -34,13 +34,6 @@ SPECIES = "mercury-pig-meat"
 def keyring() -> PreviewKeyring:
     # The active key may sign for 90 days, so use a fresh key for NOW.
     return PreviewKeyring(SigningKey("r02", b"r" * 32, NOW - timedelta(days=1)))
-
-
-def codes(**overrides: str) -> ReportCodesWrite:
-    names = ("okud", "okpo", "okved", "oktmo", "okogu", "okopf", "okfs")
-    values = {name: f"00{index}" for index, name in enumerate(names, 1)}
-    values.update(overrides)
-    return ReportCodesWrite(**values)
 
 
 async def seed_source(
@@ -177,7 +170,6 @@ async def test_preview_save_preserves_deleted_source(db_session: AsyncSession) -
     saved = await save_report(
         CommandContext(actor_id=actor_id, idempotency_key="save-1"),
         preview,
-        codes(okud=" 001 "),
         session_id="session-a",
         db=db_session,
         keyring=keyring(),
@@ -185,13 +177,11 @@ async def test_preview_save_preserves_deleted_source(db_session: AsyncSession) -
     )
     await db_session.commit()
     assert saved.payload == preview.payload
-    assert saved.codes["okud"] == "001"
     assert saved.source_count == 1
 
     replay = await save_report(
         CommandContext(actor_id=actor_id, idempotency_key="save-1"),
         preview,
-        codes(okud=" 001 "),
         session_id="session-a",
         db=db_session,
         keyring=keyring(),
@@ -258,10 +248,101 @@ async def test_foreign_payload_version_is_rejected(db_session: AsyncSession) -> 
     assert wrong.value.code == "REPORT_PREVIEW_INVALID"
 
 
+@pytest.mark.asyncio
+async def test_payload_is_full_form_v2_with_blank_semantics(db_session: AsyncSession) -> None:
+    """DR51 §4: the signed payload carries form_version 2, the 47-row
+    catalogue and a 47×8 matrix where AUTO keeps 0 and BLANK stays null."""
+    actor_id, lab_id, _source_id = await seed_source(db_session)
+    preview = await preview_report(
+        db_session,
+        actor_id,
+        "session-a",
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
+        keyring=keyring(),
+        now=NOW,
+    )
+    payload = preview.payload
+    assert payload["form_version"] == "2"
+    rows = payload["rows"]
+    codes = [row["code"] for row in rows]
+    assert len(codes) == 47 and codes[0] == "166" and codes[-1] == "242"
+    assert rows[26]["code"] == "210" and rows[26]["mode"] == "AUTO"
+    matrix = payload["matrix"]
+    assert len(matrix) == 47 and all(len(row) == 8 for row in matrix)
+    # The completed destruction source: 166 is 1 in the PIG column, the
+    # tonnes are present, every BLANK row stays null.
+    pig = list(payload["columns"]).index("PIG")
+    assert matrix[0][pig] == "1" and matrix[26][pig] == "0"
+    assert matrix[7][pig] is None and matrix[8][pig] is None  # 173/174 are BLANK
+
+
+@pytest.mark.asyncio
+async def test_legacy_saved_snapshot_opens_in_the_full_form(db_session: AsyncSession) -> None:
+    """A compact legacy payload is adapted read-only: no live recalculation,
+    row 210 stays empty, the two bird columns stay separate."""
+    actor_id, lab_id, _source_id = await seed_source(db_session)
+    preview = await preview_report(
+        db_session,
+        actor_id,
+        "session-a",
+        ReportPreviewParams(laboratory_id=lab_id, date_from=date(2026, 1, 1), date_to=date(2026, 6, 30)),
+        keyring=keyring(),
+        now=NOW,
+    )
+    legacy = preview.model_copy(deep=True)
+    legacy.payload.pop("form_version")
+    legacy.payload.pop("rows")
+    legacy.payload["row_codes"] = ["166", "167", "168", "169", "170", "171", "172", "240", "241", "242"]
+    legacy.payload["matrix"] = [
+        ["1", None, None, None, None, None, None, None],
+        ["0", None, None, None, None, None, None, None],
+        ["0", None, None, None, None, None, None, None],
+        ["0", None, None, None, None, None, None, None],
+        ["0", None, None, None, None, None, None, None],
+        ["0", None, None, None, None, None, None, None],
+        ["0", None, None, None, None, None, None, None],
+        ["0.25", None, None, None, None, None, None, None],
+        ["0.25", None, None, None, None, None, None, None],
+        ["0", None, None, None, None, None, None, None],
+    ]
+    from backend.src.modules.reporting.models import ReportSnapshot
+
+    row = ReportSnapshot(
+        report_type="5VET_SECTION_III",
+        laboratory_id=lab_id,
+        date_from=date(2026, 1, 1),
+        date_to=date(2026, 6, 30),
+        payload=dict(legacy.payload),
+        source_count=1,
+        preview_generated_at=NOW,
+        saved_at=NOW,
+        saved_by=actor_id,
+        key_id=preview.key_id,
+        signature=preview.signature,
+    )
+    db_session.add(row)
+    await db_session.commit()
+    view = await load_report(db_session, row.id)
+    payload = view.payload
+    assert payload["form_version"] == "2"
+    codes = list(payload["row_codes"])  # type: ignore[arg-type]
+    assert len(codes) == 47
+    matrix = list(payload["matrix"])  # type: ignore[arg-type]
+    index = {code: position for position, code in enumerate(codes)}
+    assert matrix[index["166"]][0] == "1"
+    assert matrix[index["210"]][0] is None
+    assert matrix[index["174"]][0] is None
+
+
 def test_codes_preserve_leading_zeroes_and_reject_blank() -> None:
-    assert codes(okud=" 001 ").okud == "001"
-    with pytest.raises(ValidationError):
-        codes(okud="   ")
+    """DR51 §6.2: the seven codes no longer exist anywhere in the model."""
+    from backend.src.modules.reporting.schemas import SaveReportWrite
+
+    assert not hasattr(SaveReportWrite.model_fields, "codes")
+    from backend.src.modules.reporting.schemas import ReportSnapshotView
+
+    assert "codes" not in ReportSnapshotView.model_fields
+    assert "okud" not in SaveReportWrite.model_fields
 
 
 @pytest.mark.asyncio
@@ -313,7 +394,6 @@ async def test_rejected_bounds_and_overlapping_ranges(db_session: AsyncSession) 
     await save_report(
         CommandContext(actor_id=actor_id, idempotency_key="dup-1"),
         first,
-        codes(),
         session_id="session-a",
         db=db_session,
         keyring=ring,
@@ -333,7 +413,6 @@ async def test_rejected_bounds_and_overlapping_ranges(db_session: AsyncSession) 
         await save_report(
             CommandContext(actor_id=actor_id, idempotency_key="dup-2"),
             again,
-            codes(),
             session_id="session-a",
             db=db_session,
             keyring=ring,
@@ -352,7 +431,6 @@ async def test_rejected_bounds_and_overlapping_ranges(db_session: AsyncSession) 
     saved = await save_report(
         CommandContext(actor_id=actor_id, idempotency_key="dup-3"),
         overlap,
-        codes(),
         session_id="session-a",
         db=db_session,
         keyring=ring,
@@ -385,7 +463,6 @@ async def test_concurrent_period_save(db_session: AsyncSession, test_db_engine: 
                 await save_report(
                     CommandContext(actor_id=actor_id, idempotency_key=key),
                     preview,
-                    codes(),
                     session_id="session-a",
                     db=session,
                     keyring=ring,

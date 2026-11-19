@@ -92,6 +92,7 @@ def source(
     outcome: str | None = None,
     fair: bool = False,
     internal: bool = False,
+    noncontagious: int = 0,
 ) -> Any:
     return ReportSource(
         id=UUID(id_),
@@ -105,6 +106,7 @@ def source(
         direction=direction,  # type: ignore[arg-type]
         fair=fair,
         internal=internal,
+        noncontagious_findings_count=noncontagious,
     )
 
 
@@ -446,6 +448,58 @@ def test_cattle_and_sheep_goat_meat_offal_splits_match_the_owner_decision() -> N
 def test_supported_false_row_carries_no_column_nor_kind() -> None:
     entry = species_classification(MEAT_SPECIES, None, None, supported=False)
     assert entry.animal_column is None and entry.material_kind is None
+
+
+# --- DR51 §3: row 210 «Незаразные болезни» --------------------------------------------
+
+
+def test_row_210_counts_every_saved_finding_line() -> None:
+    # One completed VSE with three noncontagious finding lines → row210 = 3:
+    # every saved line is one separate case (no dedup of names).
+    matrix = calculate([source(noncontagious=3)])
+    assert cell(matrix, "210", "CATTLE") == Decimal(3)
+
+
+def test_row_210_sums_two_cards_of_one_column() -> None:
+    matrix = calculate(
+        [source(noncontagious=3), source(noncontagious=2, id_="22222222-2222-2222-2222-222222222222")]
+    )
+    assert cell(matrix, "210", "CATTLE") == Decimal(5)
+
+
+def test_row_210_duplicates_stay_separate_cases() -> None:
+    matrix = calculate([source(noncontagious=2)])
+    assert cell(matrix, "210", "CATTLE") == Decimal(2)
+
+
+def test_row_210_ignores_invasive_and_never_fills_209_173() -> None:
+    matrix = calculate([source(noncontagious=3)])
+    assert cell(matrix, "210", "CATTLE") == Decimal(3)
+    # Invasive findings are not part of ReportSource at all; rows 173/209 are
+    # BLANK and never enter the automatic matrix.
+    assert "173" not in matrix.rows and "209" not in matrix.rows
+
+
+def test_row_210_waits_for_completion_like_166() -> None:
+    matrix = calculate([source(noncontagious=3, first_completed_at=None)])
+    assert cell(matrix, "210", "CATTLE") == Decimal(0)
+
+
+def test_row_210_uses_the_newest_revision_only() -> None:
+    matrix = calculate([source(noncontagious=3, revision=1), source(noncontagious=1, revision=2)])
+    assert cell(matrix, "210", "CATTLE") == Decimal(1)
+
+
+def test_row_210_of_a_card_without_findings_is_calculated_zero() -> None:
+    matrix = calculate([source()])
+    assert cell(matrix, "210", "CATTLE") == Decimal(0)
+
+
+def test_row_210_rejects_negative_counts() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        source(noncontagious=-1)
 
 
 def test_write_dto_requires_values_for_supported_and_none_for_unsupported() -> None:

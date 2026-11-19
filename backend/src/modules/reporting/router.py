@@ -84,7 +84,7 @@ async def save(
         ) from exc
     await authorizer.authorize(db, identity.actor_id, "report:5vet-save", ScopeTarget(laboratory_id=laboratory_id))
     ctx = CommandContext(actor_id=identity.actor_id, idempotency_key=_idempotency_key(request))
-    view = await commands.save_report(ctx, payload.preview, payload.codes, session_id=identity.session_id, db=db)
+    view = await commands.save_report(ctx, payload.preview, session_id=identity.session_id, db=db)
     await db.commit()
     return view
 

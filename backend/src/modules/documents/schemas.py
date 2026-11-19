@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-__all__ = ["ConclusionView", "ReportDocumentView", "DocumentView", "ReportCodes", "ReportMatrixRow"]
+__all__ = ["ConclusionView", "ReportDocumentView", "DocumentView", "ReportMatrixRow"]
 
 
 class ConclusionView(BaseModel):
@@ -26,24 +26,13 @@ class ConclusionView(BaseModel):
     warnings: list[str]
 
 
-class ReportCodes(BaseModel):
-    """The header requisites of the 5-вет form (API-08 snapshot codes)."""
-
-    okud: str
-    okpo: str
-    okved: str
-    oktmo: str
-    okogu: str
-    okopf: str
-    okfs: str
-
-
 class ReportMatrixRow(BaseModel):
-    """One row of the 5-вет matrix.
+    """One printed row of the 5-вет section III form (DR51 §2.2).
 
-    ``automatic=False`` marks a cell that is not computed by the system
-    (INPUT-04): the renderer prints «Не рассчитывается» instead of inventing
-    a number. ``values`` keys are the column keys of the projection.
+    ``automatic=False`` marks a BLANK row: the system never computes it and
+    the renderer prints an EMPTY cell — never «Не рассчитывается», «—» or a
+    forged zero (owner decision 2026-11-18). ``values`` keys are the column
+    keys of the projection.
     """
 
     code: str
@@ -53,20 +42,23 @@ class ReportMatrixRow(BaseModel):
 
 
 class ReportDocumentView(BaseModel):
-    """The printable projection of one saved report snapshot (API-08).
+    """The printable projection of one saved report snapshot (API-08, DR51 §2/§8).
 
     It is built exclusively from the stored snapshot — no current ВСЭ query
-    ever contributes to it, so an export re-renders the very snapshot that was
-    signed, never a silent recomputation.
+    ever contributes to it, so an export re-renders the very snapshot that
+    was signed, never a silent recomputation. The header is the simplified
+    user header: title, creation date, period and laboratory — the seven
+    organizational codes and the formal half-year heading are cancelled.
     """
 
     form_id: Literal["report-5vet"]
+    title: str = "5-вет, раздел III"
+    created_label: str = "Дата создания"
+    created_at: str
     laboratory: str
     period: str
-    codes: ReportCodes
     columns: list[str]
     matrix: list[ReportMatrixRow]
-    versions: dict[str, str]
     ton_precision: int = 6
     official: bool
     warnings: list[str]

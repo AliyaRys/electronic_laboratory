@@ -82,30 +82,27 @@
     },
     {
       "form_id": "report-5vet",
-      "version": "1",
-      "date": "2026-11-07",
+      "version": "2",
+      "date": "2026-11-18",
       "template": "report-5vet.html",
-      "template_sha256": "7C72B49C948116540273ECF3AFB119801686DFDE18F39A4FF175F5DE5DEBB100",
+      "template_sha256": "AF70F3FA68BC3D2299AAF5735EACE02850EE006DED67D2AB2D3C7841ED0B8DD0",
       "official": false,
       "title": "Форма 5-вет, раздел III",
       "required_fields": [
+        "created_at",
         "laboratory",
-        "year",
-        "half",
-        "period"
+        "period",
+        "rows"
       ],
       "paper": "A4",
       "margins_mm": {
-        "top": 18,
-        "right": 12,
-        "bottom": 18,
-        "left": 12
+        "top": 10,
+        "right": 10,
+        "bottom": 10,
+        "left": 10
       },
       "repeat_headers": true,
-      "noncalculated_cells": [
-        "sickness_of_animals",
-        "inspections_of_meat"
-      ],
+      "noncalculated_cells": [],
       "ton_precision": 6,
       "fonts": [
         {

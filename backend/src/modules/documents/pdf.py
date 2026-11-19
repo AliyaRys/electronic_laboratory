@@ -88,41 +88,30 @@ def _conclusion_mapping(view: ConclusionView) -> dict[str, str]:
 
 
 def _report_fragments(view: Any) -> dict[str, str]:
-    codes = (
-        ("ОКУД", view.codes.okud),
-        ("ОКПО", view.codes.okpo),
-        ("ОКВЭД", view.codes.okved),
-        ("ОКТМО", view.codes.oktmo),
-        ("ОКОГУ", view.codes.okogu),
-        ("ОКОПФ", view.codes.okopf),
-        ("ОКФС", view.codes.okfs),
-    )
-    codes_html = "".join(
-        f'<tr><th scope="row">{_escape(label)}</th><td>{_escape(value)}</td></tr>' for label, value in codes
-    )
+    """The full-form report fragments (DR51 §8): a simplified header (title,
+    creation date, period, laboratory) and the 47×8 matrix with the exact
+    two-level thead hardcoded in the template. BLANK cells print empty; a
+    calculated zero prints ``0``; no codes, versions or formal heading."""
     columns_html = "".join(f'<th scope="col">{_escape(name)}</th>' for name in view.columns)
     rows_html = []
     for row in view.matrix:
-        cells = [f'<th scope="row">{_escape(row.code)} {_escape(row.name)}</th>']
+        cells = [f'<th scope="row">{_escape(row.name)}</th>', f"<td>{_escape(row.code)}</td>"]
         for column in view.columns:
             value = row.values.get(column)
-            if not row.automatic:
-                shown = "Не рассчитывается"
-            elif value is None:
-                shown = "—"
+            if not row.automatic or value is None:
+                cells.append("<td></td>")
             else:
                 shown = f"{float(value):.{view.ton_precision}f}".rstrip("0").rstrip(".")
-            cells.append(f"<td>{_escape(shown)}</td>")
+                cells.append(f"<td>{_escape(shown)}</td>")
         rows_html.append("<tr>" + "".join(cells) + "</tr>")
-    versions = "; ".join(f"{_escape(key)} {_escape(value)}" for key, value in view.versions.items())
     return {
         "laboratory": _escape(view.laboratory),
         "period": _escape(view.period),
-        "form_id": _escape(view.form_id),
-        "codes": codes_html,
+        "created_label": _escape(view.created_label),
+        "created_at": _escape(view.created_at),
+        "title": _escape(view.title),
         "columns": columns_html,
         "rows": "".join(rows_html),
-        "versions": versions,
         "preliminary": PRELIMINARY_LABEL if not view.official else "",
     }
 
@@ -172,7 +161,10 @@ def render_pdf(model: DocumentView, form: FormManifest) -> bytes:
     try:
         reader = PdfReader(io.BytesIO(data))
         box = reader.pages[0].mediabox
-        if len(reader.pages) == 0 or abs(float(box.width) - A4_PT[0]) > 3 or abs(float(box.height) - A4_PT[1]) > 3:
+        # A4 in either orientation (DR51 §8: the 47×8 report prints landscape).
+        portrait = abs(float(box.width) - A4_PT[0]) <= 3 and abs(float(box.height) - A4_PT[1]) <= 3
+        landscape = abs(float(box.width) - A4_PT[1]) <= 3 and abs(float(box.height) - A4_PT[0]) <= 3
+        if len(reader.pages) == 0 or not (portrait or landscape):
             raise RendererUnavailable("Движок рендера вернул страницу не формата A4.")
     except RendererUnavailable:
         raise

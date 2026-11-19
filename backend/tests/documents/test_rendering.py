@@ -91,27 +91,38 @@ VIEW = ConclusionView(
 
 REPORT = ReportDocumentView(
     form_id="report-5vet",
+    title="5-вет, раздел III",
+    created_label="Дата создания",
+    created_at="18.11.2026, 15:51",
     laboratory="Лаборатория №1",
     period="01.07.2026 — 31.12.2026",
-    codes={
-        "okud": "001",
-        "okpo": "12345678",
-        "okved": "01.46",
-        "oktmo": "92701001",
-        "okogu": "-",
-        "okopf": "75404",
-        "okfs": "42",
-    },
-    columns=["Всего", "КРС", "Свиньи"],
+    columns=["Крупный рогатый скот, яки, буйволы", "Свиньи", "Птица: куры", "Птица: другие виды", "Рыба"],
     matrix=[
         ReportMatrixRow(
-            code="001", name="Поступило животных", automatic=True, values={"Всего": 12.0, "КРС": 8.0, "Свиньи": 4.0}
+            code="166",
+            name="1. Осмотрено (проведено ветеринарно-санитарных экспертиз), всего, единиц",
+            automatic=True,
+            values={
+                "Крупный рогатый скот, яки, буйволы": 12.0,
+                "Свиньи": 8.0,
+                "Птица: куры": 4.0,
+                "Птица: другие виды": 0.0,
+                "Рыба": None,
+            },
         ),
         ReportMatrixRow(
-            code="010", name="Падёж животных", automatic=False, values={"Всего": None, "КРС": None, "Свиньи": None}
+            code="174",
+            name="Ящур",
+            automatic=False,
+            values={
+                "Крупный рогатый скот, яки, буйволы": None,
+                "Свиньи": None,
+                "Птица: куры": None,
+                "Птица: другие виды": None,
+                "Рыба": None,
+            },
         ),
     ],
-    versions={"mapping": "2026-11-07/1", "payload": "1"},
     official=False,
     warnings=["Предварительная форма"],
 )
@@ -166,14 +177,23 @@ def test_pdf_long_names_and_repeated_headers_without_clipping() -> None:
 
     report_form = load_manifest("report-5vet")
     rows = [
-        ReportMatrixRow(code=f"{index:03d}", name=f"Показатель №{index}", automatic=True, values={"Всего": 1.0})
+        ReportMatrixRow(
+            code=f"{index:03d}", name=f"Показатель №{index}", automatic=True, values={"Свиньи": 1.0}
+        )
         for index in range(1, 121)
     ]
     data = render_pdf(REPORT.model_copy(update={"matrix": rows}), report_form)
     reader = PdfReader(io.BytesIO(data))
+    # DR51 §8: the 47×8 report prints A4 landscape and repeats its header.
+    box = reader.pages[0].mediabox
+    assert abs(float(box.width) - 842.0) < 2.0 and abs(float(box.height) - 595.0) < 2.0
     assert len(reader.pages) >= 2
     second = reader.pages[1].extract_text() or ""
-    assert "Наименование показателя" in second  # the matrix header repeats per page
+    assert "Наименование показателей" in second  # the matrix header repeats per page
+    assert "Птица" in second and "другие виды" in second
+    full = "\n".join(page.extract_text() or "" for page in reader.pages)
+    assert "ОКУД" not in full and "Не рассчитывается" not in full
+    assert "Дата создания" in full and "Лаборатория №1" in full
 
 
 def test_pdf_of_previous_basis_uses_its_template() -> None:
@@ -250,18 +270,20 @@ def _load_sheet(data: bytes):
     return load_workbook(io.BytesIO(data)).active
 
 
-def test_xlsx_code_001_is_text_not_coerced() -> None:
-    sheet = _load_sheet(render_xlsx(REPORT, load_manifest("report-5vet")))
-    okud = sheet.cell(row=2, column=2)
-    assert okud.value == "001"
-    assert okud.data_type == "s"  # the code keeps its leading zero as text
-
-
 def test_xlsx_numbers_are_numeric_with_ton_precision() -> None:
     model = REPORT.model_copy(
-        update={"matrix": [ReportMatrixRow(code="001", name="Масса, т", automatic=True, values={"Всего": 1.234567891})]}
+        update={
+            "matrix": [
+                ReportMatrixRow(
+                    code="166",
+                    name="1. Осмотрено, всего, единиц",
+                    automatic=True,
+                    values={"Крупный рогатый скот, яки, буйволы": 1.234567891},
+                )
+            ]
+        }
     )
-    cell = _load_sheet(render_xlsx(model, load_manifest("report-5vet"))).cell(row=5, column=3)
+    cell = _load_sheet(render_xlsx(model, load_manifest("report-5vet"))).cell(row=10, column=3)
     assert cell.data_type == "n"
     assert cell.value == pytest.approx(1.234568)  # 6 decimals until official precision
 
@@ -270,13 +292,18 @@ def test_xlsx_formula_text_is_not_a_formula() -> None:
     model = REPORT.model_copy(
         update={
             "matrix": [
-                ReportMatrixRow(code="001", name="=cmd|' /C calc'!A0", automatic=True, values={"Всего": "=1+1"}),
+                ReportMatrixRow(
+                    code="166",
+                    name="=cmd|' /C calc'!A0",
+                    automatic=True,
+                    values={"Крупный рогатый скот, яки, буйволы": "=1+1"},
+                ),
             ]
         }
     )
     data = render_xlsx(model, load_manifest("report-5vet"))
     sheet = _load_sheet(data)
-    for cell in (sheet.cell(row=5, column=1), sheet.cell(row=5, column=3)):
+    for cell in (sheet.cell(row=10, column=1), sheet.cell(row=10, column=3)):
         assert cell.data_type == "s"
         assert cell.value.startswith("=")
     zf = zipfile.ZipFile(io.BytesIO(data))
@@ -285,11 +312,32 @@ def test_xlsx_formula_text_is_not_a_formula() -> None:
     assert "inlineStr" in xml
 
 
-def test_xlsx_noncalculated_cells_show_not_calculated() -> None:
+def test_xlsx_blank_cells_stay_genuinely_empty_and_zero_stays_zero() -> None:
     sheet = _load_sheet(render_xlsx(REPORT, load_manifest("report-5vet")))
     assert REPORT.matrix[1].automatic is False
-    values = [sheet.cell(row=6, column=column).value for column in range(3, 6)]
-    assert values == ["Не рассчитывается"] * 3
+    # The BLANK row (174) stays genuinely empty — no «—», no text, no number.
+    for column in range(3, 8):
+        cell = sheet.cell(row=11, column=column)
+        assert cell.value is None
+    # The calculated zero of an AUTO row stays the numeric 0.
+    zero = sheet.cell(row=10, column=6)
+    assert zero.value == 0 and zero.data_type == "n"
+
+
+def test_xlsx_report_has_one_sheet_full_table_and_freeze_panes() -> None:
+    data = render_xlsx(REPORT, load_manifest("report-5vet"))
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(io.BytesIO(data))
+    assert workbook.sheetnames == ["Раздел III"]
+    sheet = workbook.active
+    assert sheet is not None
+    # The bird group header is merged over its two subcolumns.
+    merged = [str(r) for r in sheet.merged_cells.ranges]
+    assert "G7:H7" in merged  # «Птица» over columns 7–8
+    assert sheet.freeze_panes == "C10"
+    assert sheet.page_setup.orientation == "landscape"
+    assert sheet.print_title_rows == "$7:$9"
 
 
 def test_xlsx_filename_is_safe_for_content_disposition() -> None:
@@ -301,11 +349,11 @@ def test_xlsx_filename_is_safe_for_content_disposition() -> None:
 
 def test_xlsx_scales_to_200_rows() -> None:
     rows = [
-        ReportMatrixRow(code=f"{index:03d}", name=f"Показатель №{index}", automatic=True, values={"Всего": 1.0})
+        ReportMatrixRow(code=f"{index:03d}", name=f"Показатель №{index}", automatic=True, values={"Свиньи": 1.0})
         for index in range(1, 201)
     ]
     sheet = _load_sheet(render_xlsx(REPORT.model_copy(update={"matrix": rows}), load_manifest("report-5vet")))
-    assert sheet.cell(row=204, column=1).value == "Показатель №200"
+    assert sheet.cell(row=209, column=1).value == "Показатель №200"
 
 
 # --- HTTP: the same no-store contract, honest 503, re-checked access ------------------

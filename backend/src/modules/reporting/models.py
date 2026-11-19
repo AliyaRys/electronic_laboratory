@@ -31,7 +31,6 @@ class ReportSnapshot(Base):
     date_from: Mapped[date] = mapped_column(Date)
     date_to: Mapped[date] = mapped_column(Date)
     payload: Mapped[dict[str, object]] = mapped_column(JSONB)
-    codes: Mapped[dict[str, str]] = mapped_column(JSONB)
     source_count: Mapped[int] = mapped_column(Integer)
     preview_generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     saved_at: Mapped[datetime] = mapped_column(

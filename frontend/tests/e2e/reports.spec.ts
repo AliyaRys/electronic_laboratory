@@ -2,16 +2,16 @@
  * Reporting e2e (R03, MSW route mocks — the same honest pattern as
  * examinations.spec.ts; the real-API leg is documented in the evidence file).
  *
- * Named controller flows:
- * - change params → warning → preview/codes cleared;
- * - network save failure preserves both (params and codes stay);
+ * Named controller flows (DR51):
+ * - the two permanent date inputs and the single «Применить» apply the
+ *   range AND request the preview;
+ * - changing an input marks the preview stale and blocks the save;
+ * - the save sends ONLY the signed preview — the seven codes are cancelled;
  * - 25 reports, page 2, back;
  * - report deleted elsewhere → not found;
  * - delete a source after preview/save → screen/PDF/XLSX/print matrix all
- *   EQUAL (the saved snapshot is rendered, never recomputed) and the
- *   count/source identities are unchanged;
- * - the period is an honest calendar range (date_from/date_to) chosen in the
- *   shared date-range popover — there are no year/half controls.
+ *   EQUAL (the saved snapshot is rendered, never recomputed);
+ * - the period is an honest calendar range — there are no year/half controls.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
 
@@ -26,6 +26,7 @@ function shot(page: Page, name: string): Promise<void> {
 
 const payload = {
   version: 2,
+  form_version: "2",
   report_type: "5VET_SECTION_III",
   laboratory_id: LAB,
   laboratory: { name: "Лаборатория №1", address: "Адрес" },
@@ -43,7 +44,18 @@ const payload = {
     "FISH",
     "OTHER_ANIMALS",
   ],
-  row_codes: ["166", "167", "168", "169", "170", "171", "172", "240", "241", "242"],
+  rows: [
+    { code: "166", name: "1. Осмотрено (проведено ветеринарно-санитарных экспертиз), всего, единиц", mode: "AUTO" },
+    { code: "167", name: "в том числе: микроскопических", mode: "AUTO" },
+    { code: "168", name: "трихинеллоскопий", mode: "AUTO" },
+    { code: "169", name: "физико-химических", mode: "AUTO" },
+    { code: "170", name: "радиометрических", mode: "AUTO" },
+    { code: "171", name: "других лабораторных исследований", mode: "AUTO" },
+    { code: "172", name: "2. Проведено специальных лабораторных исследований всего, единиц", mode: "AUTO" },
+    { code: "210", name: "Незаразные болезни", mode: "AUTO" },
+    { code: "240", name: "7. Направлено на уничтожение, тонн", mode: "AUTO" },
+    { code: "174", name: "Ящур", mode: "BLANK" },
+  ],
   matrix: [
     ["12", "34", "2", "0", "5", "7", "0", "1"],
     ["8", "20", "1", "0", "3", "4", "0", "0"],
@@ -141,18 +153,17 @@ async function expectAlertCount(page: Page, text: string): Promise<void> {
   await expect(page.getByText(text).first()).toBeVisible();
 }
 
-const PREVIEW_BUTTON = "Сформировать предварительный просмотр";
-
-/** Applies a calendar range through the shared popover (trigger → С/По → Применить). */
+/** Fills the two permanent date inputs and presses the single «Применить». */
 async function applyRange(page: Page, from: string, to: string): Promise<void> {
-  await page.getByRole("button", { name: /^Период отчёта/ }).click();
-  await page.getByLabel("С", { exact: true }).fill(from);
-  await page.getByLabel("По", { exact: true }).fill(to);
+  await page.getByLabel("С даты").fill(from);
+  await page.getByLabel("По дату").fill(to);
   await page.getByRole("button", { name: "Применить" }).click();
 }
 
 test.describe("report creation", () => {
-  test("change params → warning → preview and codes are cleared", async ({ page }) => {
+  test("«Применить» applies the range and requests the preview; an input marks it stale", async ({
+    page,
+  }) => {
     await mockMe(page);
     let previewPosts = 0;
     await page.route("**/api/v1/reports/5vet/preview", (route: Route) => {
@@ -165,23 +176,20 @@ test.describe("report creation", () => {
     });
     await page.goto(`/labs/${LAB}/reports/new`);
     await expect(page.getByRole("heading", { name: "Создание отчёта 5-вет (раздел III)" })).toBeVisible();
-    // The honest range: no year/half controls, only the popover С/По pair.
+    // The honest range: no year/half controls, only the two permanent inputs.
     await expect(page.getByRole("radio")).toHaveCount(0);
     await applyRange(page, RANGE_A.from, RANGE_A.to);
-    await expect(page.getByTestId("applied-period")).toHaveText(/01\.01\.2026 — 30\.06\.2026/);
-    await page.getByRole("button", { name: PREVIEW_BUTTON }).click();
-    await expect(page.getByText("Предварительный просмотр матрицы")).toBeVisible();
-    await page.getByLabel("ОКУД").fill("001");
-    // Changing the applied range clears the preview and the codes with the warning.
-    await applyRange(page, RANGE_B.from, RANGE_B.to);
-    await expectAlertCount(page, "Параметры изменены");
-    await expect(page.getByLabel("ОКУД")).toHaveCount(0);
-    await expect(page.getByText("Предварительный просмотр матрицы")).toHaveCount(0);
+    await expect(page.getByLabel("С даты")).toHaveValue(RANGE_A.from);
+    await expect(page.getByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
     expect(previewPosts).toBe(1);
+    // Changing an input marks the preview stale and blocks the save.
+    await page.getByLabel("С даты").fill("2026-02-01");
+    await expectAlertCount(page, "Параметры изменены");
+    await expect(page.getByRole("button", { name: "Сохранить отчёт" })).toBeDisabled();
     await shot(page, "create-param-warning");
   });
 
-  test("a network save failure preserves both the parameters and the codes", async ({ page }) => {
+  test("a network save failure preserves the parameters", async ({ page }) => {
     await mockMe(page);
     await page.route("**/api/v1/reports/5vet/preview", (route: Route) =>
       route.fulfill({
@@ -193,21 +201,15 @@ test.describe("report creation", () => {
     await page.route("**/api/v1/reports/5vet", (route: Route) => route.abort());
     await page.goto(`/labs/${LAB}/reports/new`);
     await applyRange(page, RANGE_A.from, RANGE_A.to);
-    await page.getByRole("button", { name: PREVIEW_BUTTON }).click();
-    await expect(page.getByText("Предварительный просмотр матрицы")).toBeVisible();
-    for (const label of ["ОКУД", "ОКПО", "ОКВЭД", "ОКТМО", "ОКОГУ", "ОКОПФ", "ОКФС"]) {
-      await page.getByLabel(label, { exact: true }).fill("001");
-    }
+    await expect(page.getByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
     await page.getByRole("button", { name: "Сохранить отчёт" }).click();
     await expect(page.getByText(/Не удалось сохранить отчёт/)).toBeVisible();
-    await expect(page.getByLabel("ОКУД")).toHaveValue("001");
-    await expect(page.getByLabel("ОКФС")).toHaveValue("001");
     // The applied parameters survive the failed save too.
-    await expect(page.getByTestId("applied-period")).toHaveText(/01\.01\.2026 — 30\.06\.2026/);
+    await expect(page.getByLabel("С даты")).toHaveValue(RANGE_A.from);
     await shot(page, "create-save-failure");
   });
 
-  test("a successful save sends the signed preview and the trimmed codes", async ({ page }) => {
+  test("a successful save sends the signed preview only", async ({ page }) => {
     await mockMe(page);
     const posts: Record<string, unknown>[] = [];
     await page.route("**/api/v1/reports/5vet/preview", (route: Route) =>
@@ -226,7 +228,6 @@ test.describe("report creation", () => {
         body: JSON.stringify({
           ...summary(REPORT, RANGE_A.from, RANGE_A.to),
           payload,
-          codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
       });
     });
@@ -237,29 +238,20 @@ test.describe("report creation", () => {
         body: JSON.stringify({
           ...summary(REPORT, RANGE_A.from, RANGE_A.to),
           payload,
-          codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
       }),
     );
     await page.goto(`/labs/${LAB}/reports/new`);
     await applyRange(page, RANGE_A.from, RANGE_A.to);
-    await page.getByRole("button", { name: PREVIEW_BUTTON }).click();
-    await expect(page.getByText("Предварительный просмотр матрицы")).toBeVisible();
-    await page.getByLabel("ОКУД").fill(" 001 ");
-    for (const label of ["ОКПО", "ОКВЭД", "ОКТМО", "ОКОГУ", "ОКОПФ", "ОКФС"]) {
-      await page.getByLabel(label, { exact: true }).fill("1");
-    }
+    await expect(page.getByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
     await page.getByRole("button", { name: "Сохранить отчёт" }).click();
     await expect(page).toHaveURL(new RegExp(`/labs/${LAB}/reports/${REPORT}`));
     expect(posts).toHaveLength(1);
-    const body = posts[0] as {
-      preview: { signature: string; payload: Record<string, unknown> };
-      codes: Record<string, string>;
-    };
+    const body = posts[0] as { preview: { signature: string; payload: Record<string, unknown> } };
     expect(body.preview.signature).toBe("sig");
     expect(body.preview.payload["date_from"]).toBe("2026-01-01");
     expect(body.preview.payload["date_to"]).toBe("2026-06-30");
-    expect(body.codes["okud"]).toBe("001");
+    expect("codes" in (posts[0] as object)).toBe(false);
     await shot(page, "create-saved-view");
   });
 });
@@ -375,7 +367,6 @@ test.describe("saved report view and exports", () => {
         body: JSON.stringify({
           ...summary(REPORT, RANGE_A.from, RANGE_A.to),
           payload,
-          codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
       });
     });
@@ -405,7 +396,7 @@ test.describe("saved report view and exports", () => {
     });
 
     await page.goto(`/labs/${LAB}/reports/${REPORT}`);
-    await expect(page.getByText("Матрица сохранённого отчёта")).toBeVisible();
+    await expect(page.getByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
     const screenCell = await page.getByText("0.25").first().textContent();
     expect(screenCell).toBe("0.25");
 
@@ -423,11 +414,10 @@ test.describe("saved report view and exports", () => {
     expect(deletions).toHaveLength(1);
 
     await page.reload();
-    await expect(page.getByText("Матрица сохранённого отчёта")).toBeVisible();
+    await expect(page.getByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
     // The screen still renders the SAVED matrix: same values, same count,
     // same source identities — the deletion did not recompute anything.
     expect(await page.getByText("0.25").first().textContent()).toBe(screenCell);
-    await expect(page.getByText(/Источников в снимке: 34/)).toBeVisible();
     expect(snapshotServes).toBeGreaterThanOrEqual(2);
 
     const pdfDownload2 = page.waitForEvent("download");
@@ -457,7 +447,6 @@ test.describe("saved report view and exports", () => {
         body: JSON.stringify({
           ...summary(REPORT, RANGE_A.from, RANGE_A.to),
           payload,
-          codes: { okud: "001", okpo: "1", okved: "1", oktmo: "1", okogu: "1", okopf: "1", okfs: "1" },
         }),
       }),
     );
@@ -467,7 +456,7 @@ test.describe("saved report view and exports", () => {
       return route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4 print" });
     });
     await page.goto(`/labs/${LAB}/reports/${REPORT}`);
-    await expect(page.getByText("Матрица сохранённого отчёта")).toBeVisible();
+    await expect(page.getByText("Раздел III. Результаты ветеринарно-санитарной экспертизы мяса и мясных продуктов на рынках")).toBeVisible();
     const popup = page.waitForEvent("popup");
     await page.getByRole("button", { name: "Печать" }).click();
     await popup;

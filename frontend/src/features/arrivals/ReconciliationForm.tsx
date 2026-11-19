@@ -348,12 +348,16 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
   const [previewLock, setPreviewLock] = useState<string | null>(null);
   const [previewArmed, setPreviewArmed] = useState(false);
   /** The canonical payload of the shown draft; ``null`` = it still matches
-   * the saved view, whose snapshot is displayed as-is. */
+   * the saved view, whose snapshot is displayed as-is. ТЗ DR54 Task 2: once
+   * the preview session is armed by a «Ярмарка» change, the draft payload is
+   * NEVER collapsed back to ``null`` — returning the checkbox to the saved
+   * value still shows the SERVER preview of the current state, not the stale
+   * saved snapshot (which may belong to another fair state). */
   const previewPayload = useMemo(() => {
     if (!previewArmed) {
       return null;
     }
-    const draft = toPayload(
+    return toPayload(
       {
         ...values,
         delivered: canonicalQuantitySet(values.delivered),
@@ -362,18 +366,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
       },
       party,
     );
-    const savedInitial = initialValues(party, initial);
-    const saved = toPayload(
-      {
-        ...savedInitial,
-        delivered: canonicalQuantitySet(savedInitial.delivered),
-        accepted: canonicalQuantitySet(savedInitial.accepted),
-        returned: canonicalQuantitySet(savedInitial.returned),
-      },
-      party,
-    );
-    return JSON.stringify(draft) === JSON.stringify(saved) ? null : draft;
-    }, [values, party, initial, previewArmed]);
+  }, [values, party, previewArmed]);
   /** The key + fingerprint of the save session (ТЗ DR13): reused while the
    * payload and the shown revision stay unchanged, otherwise re-keyed. */
   const sessionRef = useRef<{ key: string; fingerprint: string; etag: string } | null>(null);
@@ -447,6 +440,10 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             // invalidation inside this promise chain, so the receipt stage
             // never keeps a cached context older than the saved view.
             await onSaved(result.data);
+            // ТЗ DR54 Task 2: a successful save starts a NEW preview session —
+            // the fresh view (its revision and its own snapshot) is shown
+            // as-is until the next interaction.
+            setPreviewArmed(false);
             form.reset(initialValues(party, result.data));
           }
           return result;

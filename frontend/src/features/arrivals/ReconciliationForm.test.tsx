@@ -1677,6 +1677,128 @@ describe("participant enterprise/owner comparison cards (ТЗ DR21 §5)", () => 
   });
 });
 
+/** ТЗ DR54 Task 2: the bidirectional fair preview — every change of the
+ * «Ярмарка» checkbox (including the return to the saved value) asks the
+ * server again and never falls back to the saved snapshot. */
+describe("ТЗ DR54 Task 2: двусторонний preview Ярмарки", () => {
+  /** The preview answers by the requested fair flag; the calls are counted. */
+  function previewServer() {
+    const calls: { fair: boolean }[] = [];
+    const server = setupServer(
+      http.post("*/api/v1/arrivals/:partyId/reconciliation-pricing-preview", async ({ request }) => {
+        const body = (await request.json()) as { fair: boolean };
+        calls.push({ fair: body.fair });
+        return HttpResponse.json(
+          body.fair
+            ? { lines: [], total: "0.00", currency: "RUB", fair: true }
+            : {
+                lines: [
+                  {
+                    service_code: "PRODUCT_IDENTIFICATION",
+                    name: "Идентификация",
+                    unit_id: "service",
+                    quantity: "1",
+                    unit_price: "280.00",
+                    amount: "280.00",
+                  },
+                ],
+                total: "280.00",
+                currency: "RUB",
+                fair: false,
+              },
+        );
+      }),
+    );
+    return { server, calls };
+  }
+
+  it("false → true → false: two POST previews, the ordinary total returns before save", async () => {
+    const { server, calls } = previewServer();
+    server.listen();
+    try {
+      renderForm({
+        initial: { ...emptyView, delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" } },
+      });
+      const checkbox = screen.getByRole("checkbox", { name: /Ярмарка/ });
+      await userEvent.click(checkbox);
+      expect(
+        await screen.findByText("0,00 ₽", { selector: ".vse-rec-invoice-total strong" }),
+      ).toBeInTheDocument();
+      await userEvent.click(checkbox);
+      // The SECOND preview POST fires for fair=false: the saved snapshot is
+      // never shown as a substitute for the reverse calculation.
+      await screen.findByText("280,00 ₽", { selector: ".vse-rec-invoice-total strong" });
+      expect(calls.map((call) => call.fair)).toEqual([true, false]);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("true → false → true: three server states 0 → ordinary → 0", async () => {
+    const { server, calls } = previewServer();
+    server.listen();
+    try {
+      renderForm({
+        initial: {
+          ...emptyView,
+          fair: true,
+          delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" },
+        },
+      });
+      const checkbox = screen.getByRole("checkbox", { name: /Ярмарка/ });
+      await userEvent.click(checkbox);
+      expect(
+        await screen.findByText("280,00 ₽", { selector: ".vse-rec-invoice-total strong" }),
+      ).toBeInTheDocument();
+      await userEvent.click(checkbox);
+      expect(
+        await screen.findByText("0,00 ₽", { selector: ".vse-rec-invoice-total strong" }),
+      ).toBeInTheDocument();
+      expect(calls.map((call) => call.fair)).toEqual([false, true]);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("a late superseded answer never overwrites the latest calculation", async () => {
+    const calls: { fair: boolean }[] = [];
+    let releaseFirst: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const server = setupServer(
+      http.post("*/api/v1/arrivals/:partyId/reconciliation-pricing-preview", async ({ request }) => {
+        const body = (await request.json()) as { fair: boolean };
+        calls.push({ fair: body.fair });
+        if (body.fair) {
+          await gate; // the fair=true answer stays in flight
+          return HttpResponse.json({ lines: [], total: "0.00", currency: "RUB", fair: true });
+        }
+        return HttpResponse.json({ lines: [], total: "280.00", currency: "RUB", fair: false });
+      }),
+    );
+    server.listen();
+    try {
+      renderForm({
+        initial: { ...emptyView, delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" } },
+      });
+      const checkbox = screen.getByRole("checkbox", { name: /Ярмарка/ });
+      await userEvent.click(checkbox);
+      await waitFor(() => expect(calls.length).toBe(1));
+      await userEvent.click(checkbox);
+      await screen.findByText("280,00 ₽", { selector: ".vse-rec-invoice-total strong" });
+      releaseFirst?.();
+      // The late fair=true answer must never repaint the ordinary total.
+      await waitFor(() =>
+        expect(screen.getByText("280,00 ₽", { selector: ".vse-rec-invoice-total strong" })).toBeInTheDocument(),
+      );
+      expect(calls.map((call) => call.fair)).toEqual([true, false]);
+    } finally {
+      server.close();
+    }
+  });
+});
+
 /** ТЗ DR54 Task 1: the canonical select of the transaction type and the
  * atomic composition of RETURN_ALL/ACCEPT_ALL. */
 describe("ТЗ DR54 Task 1: канонический select и полный возврат", () => {

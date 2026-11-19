@@ -293,16 +293,15 @@ def _validate_journal_params(request: Request, status: str) -> None:
             title="Validation error",
             detail=f"Неизвестные параметры журнала: {', '.join(unknown)}.",
         )
-    if status == "WAITING" and any(
-        key in request.query_params for key in ("outcome", "occurred_from", "occurred_to")
-    ):
-        # The completion period and the outcome filter are meaningful for
-        # COMPLETED cards only; a WAITING query cannot combine them.
+    if status == "WAITING" and "outcome" in request.query_params:
+        # ТЗ DR53 Task 4: the outcome filter is meaningful for COMPLETED cards
+        # only; the creation-date window is now meaningful for BOTH tabs
+        # («Дата создания ВСЭ»), so it no longer belongs to this guard.
         raise ProblemError(
             status=422,
             code="VALIDATION_ERROR",
             title="Validation error",
-            detail="Итог и период завершения доступны только для вкладки завершённых карточек.",
+            detail="Итог ВСЭ доступен только для вкладки завершённых карточек.",
         )
 
 

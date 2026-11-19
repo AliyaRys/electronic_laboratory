@@ -258,8 +258,8 @@ describe("ActPreview", () => {
     expect(screen.getByText("Недостача при доставке")).toBeInTheDocument();
   });
 
-  it("never promises the act branch for RETURN_ALL", () => {
-    render(
+  it("hides the act plate entirely for RETURN_ALL (ТЗ DR54 Task 1)", () => {
+    const { container } = render(
       <ActPreview
         decision="RETURN_ALL"
         problemItems={[]}
@@ -269,7 +269,25 @@ describe("ActPreview", () => {
         }}
       />,
     );
-    expect(screen.getByText(/акт несоответствия этой ветки не формируется/)).toBeInTheDocument();
+    // No header, no table, no «Фактическое значение» column, no note: a full
+    // return never shows the contradictory act plate.
+    expect(container.querySelector(".vse-rec-act")).toBeNull();
+    expect(screen.queryByText(/акт несоответствия/)).toBeNull();
+  });
+
+  it("labels the fact column honestly for the promised branches", () => {
+    render(
+      <ActPreview
+        decision="PARTIAL"
+        problemItems={[]}
+        act={{
+          required: true,
+          items: [{ field_id: "CHK-F21", source: "120.0", actual: "100", reason: "Недостача при доставке" }],
+        }}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: "Фактическое значение" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Факт" })).toBeNull();
   });
 
   it("renders server validation errors with the CHK id", () => {
@@ -1653,6 +1671,148 @@ describe("participant enterprise/owner comparison cards (ТЗ DR21 §5)", () => 
       for (const fieldId of ["CHK-F05", "CHK-F06", "CHK-F07", "CHK-F08"]) {
         expect(savedPayloads[0].checks[fieldId]).toEqual({ matches: true });
       }
+    } finally {
+      server.close();
+    }
+  });
+});
+
+/** ТЗ DR54 Task 1: the canonical select of the transaction type and the
+ * atomic composition of RETURN_ALL/ACCEPT_ALL. */
+describe("ТЗ DR54 Task 1: канонический select и полный возврат", () => {
+  it("uses the shared canonical select class on both native controls", async () => {
+    renderForm({ initial: { ...emptyView, delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" } } });
+    await userEvent.click(screen.getByRole("radio", { name: "Да" }));
+    const transaction = screen.getByLabelText("Тип транзакции") as HTMLSelectElement;
+    const joint = screen.getByLabelText(/Совместная перевозка/) as HTMLSelectElement;
+    expect(joint.id).toBe("inspection-joint");
+    expect(transaction.className).toContain(joint.className.split(" ").filter((c) => c !== "").join(" "));
+    expect(transaction.className).toContain("vse-rec-select");
+    expect(joint.className).toContain("vse-rec-select");
+    // The placeholder option and the two wire values stay unchanged.
+    expect(screen.getByRole("option", { name: "Выберите тип" })).toBeInTheDocument();
+    await userEvent.selectOptions(transaction, "EXTERNAL");
+    expect(transaction.value).toBe("EXTERNAL");
+    await userEvent.selectOptions(transaction, "INTERNAL");
+    expect(transaction.value).toBe("INTERNAL");
+  });
+
+  it("keeps the placeholder option and hides the select while «Нет»", () => {
+    renderForm();
+    expect(screen.queryByLabelText("Тип транзакции")).toBeNull();
+  });
+
+  it("fills the composition atomically for RETURN_ALL and ACCEPT_ALL", async () => {
+    renderForm({ initial: { ...emptyView, delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" } } });
+    await userEvent.click(screen.getByRole("radio", { name: "Полный возврат" }));
+    const mass = screen.getAllByLabelText("Вес, кг");
+    const count = screen.getAllByLabelText("Количество мест, шт.");
+    expect(mass[1]).toHaveValue("0"); // accepted
+    expect(mass[2]).toHaveValue("120"); // returned
+    expect(count[1]).toHaveValue("0");
+    expect(count[2]).toHaveValue("4");
+    await userEvent.click(screen.getByRole("radio", { name: "Полное гашение" }));
+    expect(mass[1]).toHaveValue("120");
+    expect(mass[2]).toHaveValue("0");
+    expect(count[1]).toHaveValue("4");
+    expect(count[2]).toHaveValue("0");
+  });
+
+  it("syncs the dependent parts when delivered changes after the choice", async () => {
+    renderForm({ initial: { ...emptyView, delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" } } });
+    await userEvent.click(screen.getByRole("radio", { name: "Полный возврат" }));
+    const mass = screen.getAllByLabelText("Вес, кг");
+    await userEvent.clear(mass[0]);
+    await userEvent.type(mass[0], "100");
+    expect(mass[2]).toHaveValue("100");
+    // PARTIAL leaves both parts to the doctor.
+    await userEvent.click(screen.getByRole("radio", { name: "Частичное гашение" }));
+    await userEvent.clear(mass[0]);
+    await userEvent.type(mass[0], "90");
+    expect(mass[2]).toHaveValue("100");
+  });
+
+  it("hides the act plate for RETURN_ALL with a marked mismatch and no server problems", () => {
+    renderForm({
+      initial: {
+        ...emptyView,
+        delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" },
+        decision: "RETURN_ALL",
+        checks: {
+          "CHK-F21": { matches: false, actual: "100", reason: "Недостача" },
+        },
+        act: { required: false, items: [] },
+      },
+    });
+    expect(document.querySelector(".vse-rec-act")).toBeNull();
+  });
+
+  /** The live pricing preview answer of the DR53 contract (the composition
+   * change always fires the server preview). */
+  const previewSnapshot = {
+    lines: [],
+    total: "0.00",
+    currency: "RUB",
+    fair: false,
+  };
+  it("keeps the server problem list visible even for RETURN_ALL", async () => {
+    const server = setupServer(
+      http.post("*/api/v1/arrivals/:partyId/reconciliation-pricing-preview", () =>
+        HttpResponse.json(previewSnapshot),
+      ),
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", () =>
+        HttpResponse.json(
+          {
+            code: "VALIDATION_ERROR",
+            detail: "Проверьте введённые данные.",
+            errors: [{ path: "checks.CHK-F07", field_id: "CHK-F07", message: "Сравнение не отмечено." }],
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    server.listen();
+    try {
+      renderForm({ initial: { ...emptyView, delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" } } });
+      await userEvent.click(screen.getByRole("radio", { name: "Полный возврат" }));
+      // ТЗ DR53: the save is locked while the draft preview is pending.
+      await waitFor(() => expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeEnabled());
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      expect((await screen.findAllByText(/Сервер вернул ошибки проверки/)).length).toBeGreaterThan(0);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("binds a server composition problem to the quantity block, not the decision radios", async () => {
+    const server = setupServer(
+      http.post("*/api/v1/arrivals/:partyId/reconciliation-pricing-preview", () =>
+        HttpResponse.json(previewSnapshot),
+      ),
+      http.put("*/api/v1/arrivals/:partyId/reconciliation", () =>
+        HttpResponse.json(
+          {
+            code: "VALIDATION_ERROR",
+            detail: "Проверьте введённые данные.",
+            errors: [
+              { path: "returned", field_id: "CHK-F34", message: "Полный возврат: возвращается вся прибывшая партия." },
+            ],
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    server.listen();
+    try {
+      renderForm({ initial: { ...emptyView, delivered: { mass_kg: "120", quantity: "4", unit_id: "u1" } } });
+      await userEvent.click(screen.getByRole("radio", { name: "Полный возврат" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Сохранить сверку" })).toBeEnabled());
+      await userEvent.click(screen.getByRole("button", { name: "Сохранить сверку" }));
+      const messages = await screen.findAllByText("Полный возврат: возвращается вся прибывшая партия.");
+      expect(
+        messages.some((message) => message.closest(".vse-rec-quantities-part") !== null),
+      ).toBe(true);
+      expect(messages.every((message) => message.closest(".vse-rec-decision") === null)).toBe(true);
     } finally {
       server.close();
     }

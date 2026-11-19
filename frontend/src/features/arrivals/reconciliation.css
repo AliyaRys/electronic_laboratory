@@ -392,10 +392,21 @@
   line-height: 1.2;
 }
 
-.vse-rec-observation select {
+/* The layout position of the observation select stays local; the whole
+   control geometry lives in the shared .vse-rec-select class. */
+.vse-rec-observation .vse-rec-select {
+  margin-top: auto;
+}
+
+/* ТЗ DR54 Task 1: the CANONICAL native select of the reconciliation screen —
+   ONE shared class carries the whole geometry (appearance, arrow, height,
+   padding, border, focus, disabled); ``#inspection-joint`` (the reference)
+   and ``#transaction-type`` (and the sibling observation select) all use it
+   and the local ``.vse-rec-observation select`` selector no longer owns any
+   property of its own. */
+.vse-rec-select {
   width: 100%;
   height: 40px;
-  margin-top: auto;
   border: 1px solid var(--app-mercury-line);
   border-radius: 10px;
   background: var(--app-panel);
@@ -409,8 +420,8 @@
   background-position: calc(100% - 16px) center;
 }
 
-.vse-rec-observation select:invalid,
-.vse-rec-observation select option[value=""] {
+.vse-rec-select:invalid,
+.vse-rec-select option[value=""] {
   color: #7a9297;
 }
 

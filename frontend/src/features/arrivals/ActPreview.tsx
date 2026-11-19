@@ -34,21 +34,22 @@ export function ActPreview({ act, decision, problemItems }: ActPreviewProps): Re
   if (act === null || act.items === undefined || act.items.length === 0) {
     return null;
   }
-  const promised = decision !== "RETURN_ALL";
+  // ТЗ DR54 Task 1: a full return never shows the act plate at all — no
+  // header, no table, no «Факт» column and no new note. The server-side
+  // problems keep their priority branch above.
+  if (decision === "RETURN_ALL") {
+    return null;
+  }
   return (
-    <div className="vse-rec-act" role="status" data-required={promised ? "true" : "false"}>
-      <p className="vse-rec-act-title">
-        {promised
-          ? "Будет сформирован акт несоответствия"
-          : "При возврате акт несоответствия этой ветки не формируется"}
-      </p>
+    <div className="vse-rec-act" role="status" data-required="true">
+      <p className="vse-rec-act-title">Будет сформирован акт несоответствия</p>
       <table className="vse-rec-act-table">
         <caption className="vse-visually-hidden">Расхождения, включаемые в акт</caption>
         <thead>
           <tr>
             <th scope="col">Поле</th>
             <th scope="col">Исходное значение</th>
-            <th scope="col">Факт</th>
+            <th scope="col">Фактическое значение</th>
             <th scope="col">Причина</th>
           </tr>
         </thead>

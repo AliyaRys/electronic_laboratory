@@ -470,7 +470,20 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
         }
       ).errors ?? [];
     for (const item of items) {
-      if (item.field_id === "CHK-F34") decisionErrors.decision = item.message;
+      if (item.field_id === "CHK-F34") {
+        // ТЗ DR54 Task 1: a composition violation is the error of the
+        // quantity block the server named (accepted/returned) — it never
+        // turns into a permanent hint under the decision radios.
+        if (
+          item.path !== null &&
+          item.path !== undefined &&
+          QUANTITY_PARTS.includes(item.path as (typeof QUANTITY_PARTS)[number])
+        ) {
+          quantityErrors[item.path] = item.message;
+        } else {
+          decisionErrors.decision = item.message;
+        }
+      }
       if (item.field_id === "CHK-F35" && item.message.includes("текст")) {
         decisionErrors.return_reason_text = item.message;
       }
@@ -510,6 +523,39 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
     values.comparisons[fieldId] ?? { matches: null, actual: "", reason: "" };
   const comparisonChange = (fieldId: string) => (next: ComparisonValue) =>
     form.setValue(`comparisons.${fieldId}`, next, { shouldDirty: true });
+  // ТЗ DR54 Task 1: the canonical composition of the chosen decision is
+  // filled atomically from the CURRENT delivered quantities (the unit_id of
+  // every part keeps riding untouched — only mass/quantity change). PARTIAL
+  // leaves both parts to the doctor.
+  const applyDecisionComposition = (chosen: Decision | null): void => {
+    if (chosen === null) {
+      return;
+    }
+    const delivered = canonicalQuantitySet(values.delivered);
+    if (chosen === "RETURN_ALL") {
+      form.setValue("accepted.mass_kg", "0", { shouldDirty: true });
+      form.setValue("accepted.quantity", "0", { shouldDirty: true });
+      form.setValue("returned.mass_kg", delivered.mass_kg, { shouldDirty: true });
+      form.setValue("returned.quantity", delivered.quantity, { shouldDirty: true });
+    } else if (chosen === "ACCEPT_ALL") {
+      form.setValue("accepted.mass_kg", delivered.mass_kg, { shouldDirty: true });
+      form.setValue("accepted.quantity", delivered.quantity, { shouldDirty: true });
+      form.setValue("returned.mass_kg", "0", { shouldDirty: true });
+      form.setValue("returned.quantity", "0", { shouldDirty: true });
+    }
+  };
+  // ТЗ DR54 Task 1: after a full return (or full acceptance) is chosen, a
+  // changed delivered value keeps the dependent parts synchronized until the
+  // next preview/save.
+  const setDeliveredQuantity = (key: "mass_kg" | "quantity", next: string): void => {
+    form.setValue(`delivered.${key}`, next, { shouldDirty: true });
+    if (decision === "RETURN_ALL" || decision === "ACCEPT_ALL") {
+      const delivered = canonicalQuantitySet({ ...values.delivered, [key]: next });
+      const target = decision === "RETURN_ALL" ? "returned" : "accepted";
+      form.setValue(`${target}.mass_kg`, delivered.mass_kg, { shouldDirty: true });
+      form.setValue(`${target}.quantity`, delivered.quantity, { shouldDirty: true });
+    }
+  };
 
   const documents = useMemo(() => accompanyingDocuments(party), [party]);
   const markAllCompared = (): void => {
@@ -625,6 +671,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             <select
               id="inspection-compartment"
               required
+              className="vse-rec-select"
               value={values.compartment ?? ""}
               onChange={(event) =>
                 form.setValue(
@@ -648,6 +695,7 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             <select
               id="inspection-joint"
               required
+              className="vse-rec-select"
               value={values.joint_carriage ?? ""}
               onChange={(event) =>
                 form.setValue(
@@ -704,7 +752,11 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
                   label="Вес, кг"
                   value={formatDecimalDisplay(values[part].mass_kg)}
                   error={fieldErrors[`${part}.mass_kg`] ?? ""}
-                  onChange={(next) => form.setValue(`${part}.mass_kg`, next, { shouldDirty: true })}
+                  onChange={
+                    part === "delivered"
+                      ? (next) => setDeliveredQuantity("mass_kg", next)
+                      : (next) => form.setValue(`${part}.mass_kg`, next, { shouldDirty: true })
+                  }
                   onBlur={() =>
                     form.setValue(`${part}.mass_kg`, normalizeDecimalInput(values[part].mass_kg), {
                       shouldDirty: true,
@@ -715,7 +767,11 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
                   label="Количество мест, шт."
                   value={formatDecimalDisplay(values[part].quantity)}
                   error={fieldErrors[`${part}.quantity`] ?? ""}
-                  onChange={(next) => form.setValue(`${part}.quantity`, next, { shouldDirty: true })}
+                  onChange={
+                    part === "delivered"
+                      ? (next) => setDeliveredQuantity("quantity", next)
+                      : (next) => form.setValue(`${part}.quantity`, next, { shouldDirty: true })
+                  }
                   onBlur={() =>
                     form.setValue(`${part}.quantity`, normalizeDecimalInput(values[part].quantity), {
                       shouldDirty: true,
@@ -848,6 +904,9 @@ export function ReconciliationForm({ party, initial, onSaved }: ReconciliationFo
             form.setValue("return_reason_text", next.return_reason_text, { shouldDirty: true });
             form.setValue("transaction_planned", next.transaction_planned, { shouldDirty: true });
             form.setValue("transaction_type", next.transaction_type, { shouldDirty: true });
+            // ТЗ DR54 Task 1: the composition of the chosen decision is
+            // atomic — accepted/returned follow RETURN_ALL/ACCEPT_ALL.
+            applyDecisionComposition(next.decision);
           }}
           allowed={allowed}
           errors={{

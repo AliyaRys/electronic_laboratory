@@ -298,7 +298,18 @@ function ExaminationJournalContent(): React.ReactElement {
             role="tab"
             aria-selected={status === value}
             className="vse-queue-tab"
-            onClick={() => setParam("status", value === "COMPLETED" ? "" : value)}
+            onClick={() => {
+              // ТЗ DR53 Task 4: a WAITING switch removes the stale outcome
+              // from the URL while every other rule (search/author/sort/
+              // date/page) stays as-is. ONE URL commit (never two stacked
+              // setParam calls over the same params snapshot).
+              const url = new URLSearchParams(params);
+              if (value === "COMPLETED") url.delete("status");
+              else url.set("status", value);
+              if (value === "WAITING") url.delete("outcome");
+              url.delete("page");
+              setParams(url);
+            }}
           >
             {STATUS_HEADINGS[value]}
           </button>
@@ -319,20 +330,20 @@ function ExaminationJournalContent(): React.ReactElement {
               }}
             />
           </div>
-          <div className="vse-journal-filter-field">
-            <label htmlFor="journal-outcome">Итог ВСЭ</label>
-            <select
-              id="journal-outcome"
-              value={status === "WAITING" ? "" : outcome}
-              disabled={status === "WAITING"}
-              onChange={(event) => setParam("outcome", event.target.value)}
-            >
-              <option value="">Все итоги</option>
-              <option value="FIT">Пригодно</option>
-              <option value="UNFIT">Непригодно</option>
-            </select>
-            {status === "WAITING" ? <p className="vse-journal-filter-note">Итог ещё не сформирован</p> : null}
-          </div>
+          {status === "WAITING" ? null : (
+            <div className="vse-journal-filter-field">
+              <label htmlFor="journal-outcome">Итог ВСЭ</label>
+              <select
+                id="journal-outcome"
+                value={outcome}
+                onChange={(event) => setParam("outcome", event.target.value)}
+              >
+                <option value="">Все итоги</option>
+                <option value="FIT">Пригодно</option>
+                <option value="UNFIT">Непригодно</option>
+              </select>
+            </div>
+          )}
           <div className="vse-journal-filter-field">
             <label htmlFor="journal-specialist">Автор</label>
             <select
@@ -362,7 +373,7 @@ function ExaminationJournalContent(): React.ReactElement {
             </select>
           </div>
           <div className="vse-journal-filter-field">
-            <label htmlFor="journal-date-trigger">Период обращения</label>
+            <label htmlFor="journal-date-trigger">Дата создания ВСЭ</label>
             <JournalDateFilter value={dateValue} onChange={setDateValue} />
           </div>
         </div>

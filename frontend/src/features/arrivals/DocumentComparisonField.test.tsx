@@ -67,7 +67,7 @@ describe("DocumentComparisonField", () => {
     expect(headEl?.contains(wrapper)).toBe(true);
   });
 
-  it("reveals the structured actual value and the reason input on mismatch", async () => {
+  it("on mismatch reveals ONLY the reason input (no duplicate actual block, DR53 Task 2)", async () => {
     const user = userEvent.setup();
     let current = base;
     const { rerender } = render(
@@ -92,8 +92,14 @@ describe("DocumentComparisonField", () => {
     );
     await user.click(screen.getByRole("radio", { name: `Не соответствует: ${documentRow.typeLabel}` }));
     expect(current.matches).toBe(false);
-    expect(await screen.findByText("Фактическое значение")).toBeTruthy();
-    expect(screen.getByLabelText("Причина несоответствия")).toBeTruthy();
+    expect(await screen.findByLabelText("Причина несоответствия")).toBeTruthy();
+    // ТЗ DR53 Task 2: the fabricated «Фактическое значение» block is gone
+    // from the DOM and accessibility tree; the source facts stay printed once.
+    expect(screen.queryByText("Фактическое значение")).toBeNull();
+    const factDls = document.querySelectorAll(".vse-rec-document-facts");
+    expect(factDls.length).toBe(1);
+    const typeDds = document.querySelectorAll(".vse-rec-document-fact dt");
+    expect(typeDds.length).toBe(3);
     // The mark buttons stay in place: the head keeps its two children.
     expect(document.querySelector(".vse-rec-document-head .vse-rec-check-buttons")).not.toBeNull();
   });

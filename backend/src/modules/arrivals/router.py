@@ -23,6 +23,7 @@ from backend.src.modules.arrivals.schemas import (
     ReconciliationWrite,
     StrictCalendarDate,
 )
+from backend.src.modules.catalog_pricing.schemas import PricingSnapshot
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
 from backend.src.modules.identity.models import User
 from backend.src.modules.identity.router import _idempotency_key, _require_csrf, require_session
@@ -359,6 +360,31 @@ async def put_reconciliation(
     response.headers["Cache-Control"] = "no-store"
     response.headers["ETag"] = format_etag(view.revision)
     return view
+
+
+@router.post("/{party_id}/reconciliation-pricing-preview", response_model=PricingSnapshot)
+async def preview_reconciliation_pricing(
+    party_id: uuid.UUID,
+    payload: ReconciliationWrite,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(async_session)],
+    principal: Annotated[tuple[SessionIdentity, User], Depends(require_session)],
+    authorizer: Annotated[Authorizer, Depends(get_authorizer)],
+) -> PricingSnapshot:
+    """ТЗ DR53 Task 1: the live read-only pricing preview of the сверка draft.
+
+    The same party scope, CSRF and no-store cache rules as the save; the
+    endpoint performs no INSERT/UPDATE, no idempotency claim and no audit
+    event, and never contacts VetIS. The final PUT still recalculates
+    independently and never trusts this preview total.
+    """
+    identity, actor = principal
+    _require_csrf(request, identity.csrf_token)
+    await _scoped_party(db, authorizer, actor, party_id, "reconciliation:save")
+    snapshot = await reconciliation.preview_reconciliation_pricing(db, party_id, payload)
+    response.headers["Cache-Control"] = "no-store"
+    return snapshot
 
 
 @router.post("/{party_id}/receipt-preview", response_model=ReceiptPreview)

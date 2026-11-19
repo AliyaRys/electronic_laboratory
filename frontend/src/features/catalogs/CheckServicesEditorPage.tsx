@@ -225,20 +225,17 @@ export function CheckServicesEditorPage(): React.ReactElement {
       title="Платные услуги"
       description="Стоимость услуг сверки данных для лаборатории. Значения используются при расчёте стоимости услуг в журнале для продукции всех видов."
     >
-      <div className="vse-catalog-context" data-testid="catalog-context-info">
-        {allowedToSwitch ? (
+      {allowedToSwitch ? (
+        <div className="vse-catalog-context" data-testid="catalog-context-info">
+          {/* ТЗ DR53 Task 5: the context note is gone; the multi-lab selector
+              itself stays. */}
           <CatalogContextSelector
             laboratories={context.laboratories}
             value={laboratoryId ?? ""}
             onChange={pickLaboratory}
           />
-        ) : null}
-        {/* Owner decision DR14: the header shows only the laboratory — no
-            product species in this directory. */}
-        <p className="vse-catalog-context-note" data-testid="check-services-laboratory">
-          Лаборатория: {context.laboratoryName ?? "название недоступно"}
-        </p>
-      </div>
+        </div>
+      ) : null}
       {summary !== null ? (
         <SaveSummary state={summary.state} text={summary.text} details={summary.details} />
       ) : null}

@@ -108,6 +108,19 @@ class CatalogIndicatorDef:
 
 _MATCH_OPTIONS = ("Соответствует", "Не соответствует")
 _REACTION_OPTIONS = ("Отрицательная", "Положительная")
+_TRICHINELLA_OPTIONS = ("Не обнаружено", "Обнаружено")
+
+# ТЗ DR53 Task 6: trichinelloscopy is a FIXED BOOLEAN_MATCH indicator —
+# ``true`` = «Не обнаружено» = IN_NORM, ``false`` = «Обнаружено» = DEVIATION.
+# The wire keeps boolean/string-compatible values; no Russian label is stored.
+_TRICHINELLA_FIXED = {
+    "true": "IN_NORM",
+    True: "IN_NORM",
+    "Не обнаружено": "IN_NORM",
+    "false": "DEVIATION",
+    False: "DEVIATION",
+    "Обнаружено": "DEVIATION",
+}
 
 # ТЗ DR41-B §6.1: the fixed qualitative rules live in this registry, never in
 # catalog rows and never in the methodist's input. The mapping accepts both
@@ -188,6 +201,10 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         unit=None,
         mandatory=False,
         conditional=True,
+        options=_TRICHINELLA_OPTIONS,
+        evaluation_mode="FIXED",
+        fixed_values=_TRICHINELLA_FIXED,
+        fixed_criterion="норма: Не обнаружено",
     ),
     CatalogIndicatorDef(
         id=LUMINESCENT_INDICATOR_ID,

@@ -310,7 +310,9 @@ def test_migration_0025_adds_column_and_keeps_single_head(test_db_url: str) -> N
             assert default is not None and "false" in (default[0] or "")
         heads = alembic("heads")
         assert heads.stdout.strip().count("\n") == 0  # exactly one head
-        assert "0025_examination_vse_fair" in heads.stdout
+        # DR52's 0025 became a mid-chain revision after DR51 relinked to 0026.
+        assert "0025_examination_vse_fair" not in heads.stdout
+        assert "0026_report_remove_codes" in heads.stdout
     finally:
         restored = alembic("upgrade", "head")
         assert restored.returncode == 0, restored.stdout + restored.stderr

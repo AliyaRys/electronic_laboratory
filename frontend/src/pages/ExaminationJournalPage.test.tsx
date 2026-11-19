@@ -108,7 +108,7 @@ describe("ExaminationJournalPage composition (DR47 §2.3)", () => {
     expect(screen.getByLabelText("Автор")).toBeTruthy();
     expect(screen.queryByLabelText("Врач")).toBeNull();
     expect(screen.getByLabelText("Сортировка")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Период обращения/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Дата создания ВСЭ/ })).toBeTruthy();
   });
 
   it("the author filter rides the server query as specialist_id", async () => {
@@ -128,7 +128,7 @@ describe("ExaminationJournalPage composition (DR47 §2.3)", () => {
     );
   });
 
-  it("the waiting tab re-queries WAITING, disables the outcome filter and resets the page", async () => {
+  it("the waiting tab re-queries WAITING, hides the outcome filter and resets the page (DR53 Task 4)", async () => {
     const queries: string[] = [];
     server.use(
       http.get("*/api/v1/examinations", ({ request }) => {
@@ -146,10 +146,31 @@ describe("ExaminationJournalPage composition (DR47 §2.3)", () => {
     await screen.findByRole("tab", { name: "Ожидание результатов", selected: true });
     expect(queries.at(-1)).toContain("status=WAITING");
     expect(queries.at(-1)).toContain("page=1");
-    const outcome = screen.getByLabelText("Итог ВСЭ") as HTMLSelectElement;
-    expect(outcome.disabled).toBe(true);
-    expect(screen.getByText("Итог ещё не сформирован")).toBeTruthy();
+    // ТЗ DR53 Task 4: WAITING has NO «Итог ВСЭ» at all — neither a disabled
+    // select nor an explanatory note; the grid closes the empty space.
+    expect(screen.queryByLabelText("Итог ВСЭ")).toBeNull();
+    expect(screen.queryByText("Итог ещё не сформирован")).toBeNull();
+    // The stale outcome parameter left the URL with the tab switch.
+    expect(queries.at(-1)).not.toContain("outcome=FIT");
     expect(screen.getAllByText("Ожидание результатов").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("the date filter is named «Дата создания ВСЭ» on both tabs (DR53 Task 4)", async () => {
+    server.use(
+      http.get("*/api/v1/examinations", () =>
+        HttpResponse.json({ items: [item(EXAM)], total: 1 }),
+      ),
+    );
+    renderRoute(`/labs/${LAB}/examinations`);
+    await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
+    // No «Период обращения» anywhere on the COMPLETED tab.
+    expect(screen.queryByLabelText("Период обращения")).toBeNull();
+    expect(screen.queryByText("Период обращения")).toBeNull();
+    const trigger = screen.getByLabelText(/Дата создания ВСЭ/) as HTMLElement;
+    expect(trigger).toBeTruthy();
+    const user = userEvent.setup();
+    await user.click(trigger);
+    expect(await screen.findByRole("dialog", { name: /Дата создания ВСЭ/ })).toBeTruthy();
   });
 
   it("filters and sort ride in the URL and reset the page", async () => {
@@ -193,7 +214,7 @@ describe("ExaminationJournalPage composition (DR47 §2.3)", () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    await screen.findByRole("button", { name: /Период обращения/ });
+    await screen.findByRole("button", { name: /Дата создания ВСЭ/ });
     const input = screen.getByLabelText("Поиск") as HTMLInputElement;
     expect(input.value).toBe("");
     await userEvent.setup().click(screen.getByText("Перейти"));
@@ -213,8 +234,8 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     const user = userEvent.setup();
     renderRoute();
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
-    expect(screen.getByRole("button", { name: /Период обращения: Любая дата/ })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /Период обращения/ }));
+    expect(screen.getByRole("button", { name: /Дата создания ВСЭ: Любая дата/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /Дата создания ВСЭ/ }));
     await user.click(screen.getByRole("button", { name: "Дата" }));
     expect(screen.getByRole("button", { name: "Дата" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.change(screen.getByLabelText("Дата"), { target: { value: "2026-11-01" } });
@@ -225,7 +246,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     });
     expect(screen.queryByLabelText("Дата")).toBeNull();
     expect(
-      screen.getByRole("button", { name: /Период обращения: Дата: 01.11.2026/ }),
+      screen.getByRole("button", { name: /Дата создания ВСЭ: Дата: 01.11.2026/ }),
     ).toBeTruthy();
   });
 
@@ -240,7 +261,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     const user = userEvent.setup();
     renderRoute();
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
-    await user.click(screen.getByRole("button", { name: /Период обращения/ }));
+    await user.click(screen.getByRole("button", { name: /Дата создания ВСЭ/ }));
     await user.click(screen.getByRole("button", { name: "Дата и время" }));
     fireEvent.change(screen.getByLabelText("Дата и время"), { target: { value: "2026-11-01T09:40" } });
     await user.click(screen.getByRole("button", { name: "Применить" }));
@@ -261,7 +282,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     const user = userEvent.setup();
     renderRoute();
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
-    await user.click(screen.getByRole("button", { name: /Период обращения/ }));
+    await user.click(screen.getByRole("button", { name: /Дата создания ВСЭ/ }));
     await user.click(screen.getByRole("button", { name: "Диапазон" }));
     fireEvent.change(screen.getByLabelText("С"), { target: { value: "2026-11-01T09:40" } });
     fireEvent.change(screen.getByLabelText("По"), { target: { value: "2026-11-10T18:00" } });
@@ -283,7 +304,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     const user = userEvent.setup();
     renderRoute();
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
-    await user.click(screen.getByRole("button", { name: /Период обращения/ }));
+    await user.click(screen.getByRole("button", { name: /Дата создания ВСЭ/ }));
     await user.click(screen.getByRole("button", { name: "Диапазон" }));
     fireEvent.change(screen.getByLabelText("С"), { target: { value: "2026-11-10T18:00" } });
     fireEvent.change(screen.getByLabelText("По"), { target: { value: "2026-11-01T09:40" } });
@@ -306,7 +327,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     );
     expect(
       await screen.findByRole("button", {
-        name: /Период обращения: 01.11.2026 09:40 — 10.11.2026 18:00/,
+        name: /Дата создания ВСЭ: 01.11.2026 09:40 — 10.11.2026 18:00/,
       }),
     ).toBeTruthy();
   });
@@ -323,7 +344,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     renderRoute(`/labs/${LAB}/examinations?from=2026-11-01&to=2026-11-10`);
     expect(
       await screen.findByRole("button", {
-        name: /Период обращения: 01.11.2026 — 10.11.2026/,
+        name: /Дата создания ВСЭ: 01.11.2026 — 10.11.2026/,
       }),
     ).toBeTruthy();
     // The server query keeps the half-open Moscow day window.
@@ -342,7 +363,7 @@ describe("Journal date popover (DR47 §2.3.3)", () => {
     const user = userEvent.setup();
     renderRoute();
     await screen.findByRole("link", { name: "Посмотреть карточку ВСЭ" });
-    const trigger = screen.getByRole("button", { name: /Период обращения/ });
+    const trigger = screen.getByRole("button", { name: /Дата создания ВСЭ/ });
     await user.click(trigger);
     expect(screen.getByLabelText("Дата")).toBeTruthy();
     await user.click(screen.getByLabelText("Дата"));

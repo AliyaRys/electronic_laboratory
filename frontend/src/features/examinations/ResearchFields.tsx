@@ -252,6 +252,9 @@ function ResearchCard({
     >
       {heading}
       {kind === "BOOLEAN" ? (
+        /* ТЗ DR53 Task 6: the trichinelloscopy variants are ALWAYS
+            «Не обнаружено»/«Обнаружено» — required only changes whether the
+            research can be removed and whether a value is mandatory. */
         required ? (
           <SelectDropdown
             id={`research-${id}-value`}
@@ -259,8 +262,8 @@ function ResearchCard({
             hideLabel
             value={entry.value}
             options={[
-              { value: "true", label: "Соответствует" },
-              { value: "false", label: "Не соответствует" },
+              { value: "true", label: "Не обнаружено" },
+              { value: "false", label: "Обнаружено" },
             ]}
             placeholder="Выберите результат"
             disabled={disabled}

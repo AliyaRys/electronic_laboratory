@@ -18,6 +18,11 @@
  * «Сохранить справочник» saves ONLY the dirty cards sequentially. A partial
  * failure keeps the failed cards dirty with a per-card message and retry
  * re-sends only those.
+ *
+ * ТЗ DR53 Task 5: the user screen shows ONLY editable data. The legacy audit
+ * table, the migration/UUID diagnostics, the context notes and the delete
+ * controls were removed at the source; historical rows stay in the database
+ * and audit but are ignored by this screen.
  */
 import { useQuery } from "@tanstack/react-query";
 import "./catalogs.css";
@@ -29,7 +34,6 @@ import { StatusView } from "../../shared/ui/StatusView";
 import { Dialog } from "../../shared/ui/Dialog";
 import {
   createTariff,
-  deleteTariff,
   fetchTariffs,
   fetchTariffsContext,
   updateTariff,
@@ -72,29 +76,22 @@ interface CardMeta {
 }
 
 export function buildTariffCards(tariffs: TariffView[]): CardMeta[] {
-  const list: CardMeta[] = INDICATORS.map((indicator) => ({
-    tariff: tariffs.find((tariff) => tariff.service_code === indicator.id) ?? null,
-    serviceCode: indicator.id,
-    name: indicator.name,
-    unit: indicator.unit ?? "",
-    mandatory: indicator.mandatory,
-    unknown: false,
-  }));
-  // Honest diagnostics: tariffs outside the shared registry. The CHECK codes
-  // of these scopes are intentionally NOT here: the «Платные услуги» page
-  // owns them (exact service codes, §10.3).
+  // ТЗ DR53 Task 5: tariffs outside the shared registry are NOT rendered as
+  // diagnostic cards any more — historical/technical rows stay server-side
+  // audit data and are ignored by this screen.
   const known = new Set(INDICATORS.map((indicator) => indicator.id));
-  for (const tariff of tariffs) {
-    if (known.has(tariff.service_code) || CHECK_SERVICE_CODES.has(tariff.service_code)) continue;
+  const list: CardMeta[] = [];
+  for (const indicator of INDICATORS) {
     list.push({
-      tariff,
-      serviceCode: tariff.service_code,
-      name: "",
-      unit: tariff.unit_id,
-      mandatory: false,
-      unknown: true,
+      tariff: tariffs.find((tariff) => tariff.service_code === indicator.id) ?? null,
+      serviceCode: indicator.id,
+      name: indicator.name,
+      unit: indicator.unit ?? "",
+      mandatory: indicator.mandatory,
+      unknown: false,
     });
   }
+  void known;
   return list;
 }
 
@@ -130,13 +127,6 @@ export function TariffsEditorPage(): React.ReactElement {
   const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState<SaveSummaryState | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{
-    card: CardMeta;
-    key: string;
-    tariff: TariffView;
-  } | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
   const [savePending, setSavePending] = useState(false);
 
   const cards = useMemo(() => {
@@ -208,7 +198,7 @@ export function TariffsEditorPage(): React.ReactElement {
         }
       } else {
         if (price === "") {
-          fail("Пустая цена сохраняется удалением записи вторичным действием карточки.");
+          fail("Пустая цена не сохраняется: укажите значение цены тарифа.");
           continue;
         }
         const tariff = card.tariff;
@@ -293,6 +283,9 @@ export function TariffsEditorPage(): React.ReactElement {
       ? (tariffsContext.data as Problem)
       : null;
   const legacyTariffs = tariffContextData?.legacy_tariffs ?? [];
+  // ТЗ DR53 Task 5: the legacy rows are not rendered as a user-screen table;
+  // they stay server-side audit data and are ignored by this page.
+  void legacyTariffs;
 
   return (
     <CatalogEditorPage
@@ -316,53 +309,8 @@ export function TariffsEditorPage(): React.ReactElement {
         />
       ) : (
         <>
-          {/* Owner decision DR43: the catalog is bound to the meat product
-              area; no species selector exists any more. */}
-          <section className="vse-catalog-section" aria-label="Область справочника">
-            <p className="vse-catalog-context-note">
-              Категория продукции: {tariffContextData?.product_area_name ?? "Мясо и мясопродукты"} · стоимость
-              одна на всю категорию, без деления по видам продукции.
-            </p>
-            {/* The rows OUTSIDE the area scope are shown as the audit table
-                with their REAL values: the owner sees exactly which prices did
-                not become the active ones. No UUID is ever printed. */}
-            {legacyTariffs.length > 0 ? (
-              <article className="vse-catalog-diag" data-testid="tariffs-legacy-diag">
-                Устаревшие строки тарифов вне области «Мясо и мясопродукты»: {legacyTariffs.length}. Они
-                остались после миграции справочника на единую стоимость по категории; расчёт их не использует.
-                Ниже — сами цены, проигравшие выбору при миграции.
-                <table className="vse-catalog-legacy-table">
-                  <caption className="vse-visually-hidden">
-                    Устаревшие тарифы вне области «Мясо и мясопродукты»
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Услуга</th>
-                      <th scope="col">Вид продукции (аудит)</th>
-                      <th scope="col">Тариф</th>
-                      <th scope="col">Версия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {legacyTariffs.map((row) => (
-                      <tr key={row.id} data-testid={`tariff-legacy-${row.id}`}>
-                        <td>
-                          {INDICATORS.find((item) => item.id === row.service_code)?.name ??
-                            "Услуга вне общего каталога показателей"}
-                        </td>
-                        <td>{row.species_name ?? "вид не определён (аудит)"}</td>
-                        <td>
-                          {row.price} ₽ / {row.unit_id}
-                        </td>
-                        <td>{row.version}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                Обратитесь к ответственному за прейскурант, чтобы перенести или удалить их вручную.
-              </article>
-            ) : null}
-          </section>
+          {/* ТЗ DR53 Task 5: the context note and the legacy audit table are
+              gone; the catalog goes straight to the editable cards. */}
           <section className="vse-catalog-section" aria-labelledby="tariffs-section-title">
             <CatalogSectionHeader
               icon="directory-price"
@@ -382,14 +330,6 @@ export function TariffsEditorPage(): React.ReactElement {
               <div className="vse-catalog-cards">
                 {cards.map((card, index) => {
                   const key = card.tariff?.id ?? `new-${index}`;
-                  if (card.unknown) {
-                    return (
-                      <article className="vse-catalog-diag" key={key} data-testid={`tariff-diag-${key}`}>
-                        Тариф вне общего каталога показателей. Код услуги: <code>{card.serviceCode}</code>.
-                        Наименование недоступно в read model — значение не редактируется на этой странице.
-                      </article>
-                    );
-                  }
                   const draft = drafts[key];
                   const conflict =
                     conflicts[key] === true && draft !== undefined
@@ -412,22 +352,6 @@ export function TariffsEditorPage(): React.ReactElement {
                         setDrafts((current) => ({ ...current, [key]: next }));
                         setSummary(null);
                       }}
-                      secondary={
-                        card.tariff !== null && canEdit ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={savePending}
-                            aria-label={`Удалить тариф: ${card.name}`}
-                            onClick={() => {
-                              setDeleteError("");
-                              setDeleteTarget({ card, key, tariff: card.tariff as TariffView });
-                            }}
-                          >
-                            Удалить
-                          </Button>
-                        ) : undefined
-                      }
                     />
                   );
                 })}
@@ -456,22 +380,6 @@ export function TariffsEditorPage(): React.ReactElement {
           Сохранить справочник
         </Button>
       </div>
-
-      {deleteTarget !== null ? (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setDeleteTarget(null);
-          }}
-          title="Удалить тариф?"
-          description="Тариф перестанет покрывать расчёты этого показателя: готовность раздела станет неполной. Сохранённые расчёты не пересчитываются."
-          confirmLabel="Удалить тариф"
-          danger
-          busy={deleteBusy}
-          error={deleteError !== "" ? deleteError : undefined}
-          onConfirm={() => void runDelete()}
-        />
-      ) : null}
 
       {bulkOpen ? (
         <Dialog
@@ -559,23 +467,6 @@ export function TariffsEditorPage(): React.ReactElement {
       delete next[key];
       return next;
     });
-  }
-
-  async function runDelete(): Promise<void> {
-    if (deleteTarget === null) return;
-    setDeleteBusy(true);
-    const problem = await deleteTariff(
-      deleteTarget.tariff.id,
-      `"${deleteTarget.tariff.revision}"`,
-      crypto.randomUUID(),
-    );
-    setDeleteBusy(false);
-    if (problem !== null) {
-      setDeleteError(problem.detail !== "" ? problem.detail : "Не удалось удалить тариф.");
-      return;
-    }
-    setDeleteTarget(null);
-    await tariffs.refetch();
   }
 
   function pickLaboratory(id: string): void {

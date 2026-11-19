@@ -1,5 +1,5 @@
 /**
- * JournalDateFilter (ТЗ DR47 §2.3.3): the «Период обращения» filter of the
+ * JournalDateFilter (ТЗ DR47 §2.3.3): the «Дата создания ВСЭ» filter of the
  * journal — ONE trigger button with a summary and a popover offering three
  * modes (Дата / Дата и время / Диапазон). The entered values travel to the
  * URL state through ``onChange`` on «Применить»; «Сбросить» clears them.
@@ -158,7 +158,7 @@ export function JournalDateFilter({
         ref={triggerRef}
         type="button"
         className="vse-journal-date-trigger"
-        aria-label={`Период обращения: ${summary}`}
+        aria-label={`Дата создания ВСЭ: ${summary}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={toggleOpen}
@@ -167,7 +167,7 @@ export function JournalDateFilter({
         <Icon name="calendar" />
       </button>
       {open ? (
-        <div className="vse-journal-date-popover" role="dialog" aria-label="Период обращения">
+        <div className="vse-journal-date-popover" role="dialog" aria-label="Дата создания ВСЭ">
           <div className="vse-journal-date-modes" aria-label="Режим выбора периода">
             {(Object.keys(MODE_LABELS) as JournalDateMode[]).map((mode) => (
               <button

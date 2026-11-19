@@ -8,8 +8,8 @@ the frozen source snapshot and the specialist ФИО (frozen at save time; a
 legacy row without one resolves it once from the user). No UUID of a party,
 user or product ever leaves the model raw.
 
-Ordering: COMPLETED by ``first_completed_at``, WAITING by ``created_at``,
-with ``id`` as the deterministic tie-breaker, ascending or descending.
+Ordering: both tabs by ``created_at`` (ТЗ DR53 Task 4), with ``id`` as the
+deterministic tie-breaker, ascending or descending.
 """
 
 from __future__ import annotations
@@ -82,12 +82,13 @@ async def journal_page(
 ) -> tuple[list[ExaminationJournalItem], int]:
     """One stable journal page of one laboratory; ``total`` matches the filter.
 
-    COMPLETED cards are filtered by the ``occurred_*`` window on
-    ``first_completed_at`` and ordered by it; WAITING cards use
-    ``created_at``. The window is half-open ``[from; to)``.
+    ТЗ DR53 Task 4: the ``occurred_*`` window means the CREATION date of the
+    VSE card on BOTH tabs — ``Examination.created_at`` with the half-open
+    ``[from; to)`` window; the «Сначала новые/старые» sort also uses the
+    creation time on both tabs, so the control never changes meaning.
     """
 
-    order_column = Examination.first_completed_at if status == "COMPLETED" else Examination.created_at
+    order_column = Examination.created_at
     primary = order_column.desc() if sort == "desc" else order_column.asc()
     filters: list[object] = [Examination.laboratory_id == laboratory_id, Examination.status == status]
     if outcome is not None:

@@ -197,11 +197,13 @@ async def test_filters_and_ordering(dispose_env: SimpleNamespace) -> None:
     unfit_party = await _party(env.db, env, consignor="Бракованное хозяйство")
     await _examination(
         env.db, env, old_party, number="ВСЭ-001", stamp="Клеймо-старое",
+        created_at=datetime(2026, 1, 15, 9, 0, 0, tzinfo=UTC),
         first_completed_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
         outcome="FIT",
     )
     await _examination(
         env.db, env, new_party, number="ВСЭ-002",
+        created_at=datetime(2026, 2, 3, 9, 0, 0, tzinfo=UTC),
         first_completed_at=datetime(2026, 2, 1, 9, 0, 0, tzinfo=UTC),
         outcome="UNFIT", specialist_name=vet.full_name,
     )
@@ -239,12 +241,24 @@ async def test_filters_and_ordering(dispose_env: SimpleNamespace) -> None:
     assert waiting_total == 1 and waiting_items[0].number == "ВСЭ-003"
     assert waiting_items[0].first_completed_at is None
 
-    # The Moscow half-open window: from the Moscow midnight boundary.
-    moscow_from = datetime(2026, 1, 31, 23, 0, 0, tzinfo=UTC)  # 02:00 МСК 01.02
+    # The Moscow half-open window on the CREATION date of the VSE card:
+    # from the Moscow midnight boundary (ТЗ DR53 Task 4).
+    moscow_from = datetime(2026, 1, 31, 21, 0, 0, tzinfo=UTC)  # 00:00 МСК 01.02
     window_items, window_total = await journal_model.journal_page(
         env.db, env.own.id, status="COMPLETED", occurred_from=moscow_from
     )
     assert window_total == 1 and window_items[0].number == "ВСЭ-002"
+
+    # The same window is meaningful for WAITING too («Дата создания ВСЭ»):
+    waiting_window, waiting_window_total = await journal_model.journal_page(
+        env.db, env.own.id, status="WAITING", occurred_from=moscow_from
+    )
+    assert waiting_window_total == 1 and waiting_window[0].number == "ВСЭ-003"
+    future_from = datetime(2026, 3, 1, 0, 0, 0, tzinfo=UTC)
+    _, empty_total = await journal_model.journal_page(
+        env.db, env.own.id, status="WAITING", occurred_from=future_from
+    )
+    assert empty_total == 0
 
 
 async def test_pagination_page_two_shows_next_rows(dispose_env: SimpleNamespace) -> None:
@@ -387,17 +401,28 @@ async def test_unknown_query_parameter_is_422(dispose_env: SimpleNamespace) -> N
 
 
 async def test_incompatible_query_combination_is_422(dispose_env: SimpleNamespace) -> None:
-    """The completion period/outcome only combine with COMPLETED cards."""
+    """ТЗ DR53 Task 4: the outcome stays COMPLETED-only, while the creation
+    window is now meaningful for BOTH tabs (a WAITING query accepts it)."""
     env = dispose_env
     async with client_for(env, env.vet) as (http, _identity):
         for params in (
-            {"status": "WAITING", "occurred_from": "2026-01-01T00:00:00+03:00"},
             {"status": "WAITING", "outcome": "FIT"},
         ):
             answer = await http.get(  # type: ignore[attr-defined]
                 "/api/v1/examinations", params={"laboratory_id": str(env.own.id), **params}
             )
             assert answer.status_code == 422, (params, answer.text)  # type: ignore[attr-defined]
+            assert "Итог ВСЭ" in answer.json()["detail"]  # type: ignore[attr-defined]
+        # The creation-date window no longer conflicts with WAITING.
+        answer = await http.get(  # type: ignore[attr-defined]
+            "/api/v1/examinations",
+            params={
+                "laboratory_id": str(env.own.id),
+                "status": "WAITING",
+                "occurred_from": "2026-01-01T00:00:00+03:00",
+            },
+        )
+        assert answer.status_code == 200, answer.text  # type: ignore[attr-defined]
 
 
 async def test_authors_endpoint_scopes_to_the_laboratory(dispose_env: SimpleNamespace) -> None:

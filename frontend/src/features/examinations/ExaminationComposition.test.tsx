@@ -281,8 +281,57 @@ describe("DR30 examination composition", () => {
     expect(researches).toHaveLength(4);
   });
 
-  it("the sticky action panel is the last element of the composition", () => {
-    renderForm();
+  it("trichinelloscopy always offers «Не обнаружено»/«Обнаружено» and sends booleans (DR53 Task 6)", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(`*/api/v1/examinations/parties/${PARTY}`, async ({ request }) => {
+        bodies.push(await request.clone().json());
+        return HttpResponse.json(
+          {
+            id: "ex-1",
+            status: "COMPLETED",
+            outcome: "FIT",
+            pricing: { lines: [], total: "0.00", currency: "RUB", fair: false },
+            revision: 1,
+          },
+          { status: 200 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm({ availableCollections: [] });
+    await user.type(screen.getByRole("textbox", { name: "Номер ВСЭ *" }), "№ 1");
+    await user.type(
+      screen.getByRole("textbox", { name: "Маркировка — ветеринарное клеймо лаборатории *" }),
+      "кл-1",
+    );
+    await user.click(screen.getByRole("button", { name: "Добавить трихинеллоскопию" }));
+    // The OPTIONAL card shows the same subject variants (never «Соответствует»).
+    const group = await screen.findByRole("radiogroup", { name: /Трихинеллоскопия/ });
+    const radios = group.querySelectorAll<HTMLInputElement>("input[type=radio]");
+    expect(radios.length).toBe(2);
+    expect(group.textContent).toContain("Не обнаружено");
+    expect(group.textContent).toContain("Обнаружено");
+    expect(group.textContent).not.toContain("Соответствует");
+    await user.click(radios[1] as HTMLElement);
+    await chooseOption(user, /Органолептическое исследование/, "Соответствует");
+    await chooseOption(user, /Идентификация продукции/, "Соответствует");
+    await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "3.0");
+    await user.click(screen.getByRole("button", { name: /Результат ВСЭ/ }));
+    await user.click(screen.getByRole("option", { name: "Пригодно" }));
+    await user.click(screen.getByRole("button", { name: "Завершить ВСЭ" }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const researches = (
+      (bodies[0] ?? { researches: [] }) as { researches: { indicatorId: string; kind: string; value: unknown }[] }
+    ).researches;
+    expect(researches).toContainEqual({
+      indicatorId: "adf96c8a-a6d6-50c4-9ec9-86f058b329f1",
+      kind: "BOOLEAN",
+      value: false,
+    });
+  });
+
+  it("the sticky action panel is the last element of the composition", () => {    renderForm();
     const form = document.querySelector(".vse-exam-form");
     expect(form?.lastElementChild?.classList.contains("vse-exam-actions")).toBe(true);
   });

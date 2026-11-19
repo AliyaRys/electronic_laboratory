@@ -3,6 +3,12 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
+# ТЗ DR53 Task 3: the pinned VetIS XSD/WSDL fixtures are CANONICAL BYTES —
+# the manifest.sha256 pins were computed over the downloaded CRLF files, so
+# git must never renormalize them (otherwise the pin check depends on the
+# platform's core.autocrlf).
+backend/tests/fixtures/vetis/xsd/** -text
+
 # Binary project assets
 *.png binary
 *.jpg binary

@@ -642,12 +642,6 @@
   overflow-wrap: anywhere;
 }
 
-.vse-profile-login {
-  color: var(--app-muted-readable, #566e75);
-  font-weight: 650;
-  overflow-wrap: anywhere;
-}
-
 .vse-profile-access {
   width: 100%;
   border-top: 1px solid var(--app-line, #dfe9e9);

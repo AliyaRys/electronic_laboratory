@@ -184,3 +184,33 @@ export const Narrow: Story = {
     ),
   ],
 };
+/** ТЗ DR50 §4: the /profile route — the circular active ring on the avatar,
+ * no rectangular navlink background. */
+export const ProfileActive: Story = {
+  args: {
+    mode: "work",
+    user,
+    product: "meat",
+    institution: "Лаборатория ВСЭ №1 г. Казань",
+    links: selectedLabLinks,
+    onLogout: () => undefined,
+  },
+};
+ProfileActive.parameters = {
+  docs: {
+    description: {
+      story: "profileActive: аватар помечен круглым кольцом 2px #146c73, без прямоугольного фона.",
+    },
+  },
+};
+
+/** ТЗ DR50 §4: long full name in title/aria-label never stretches the header. */
+export const ProfileActiveLongName: Story = {
+  args: { ...ProfileActive.args, user: longUser },
+};
+
+/** ТЗ DR50 §4: active profile on the narrow 390px viewport. */
+export const ProfileActiveNarrow: Story = {
+  ...ProfileActive,
+  globals: { viewport: { value: "mobile1", isRotated: false } },
+};

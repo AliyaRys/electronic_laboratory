@@ -98,3 +98,31 @@ for (const [name, width, height] of [['desktop', 1440, 1000], ['mobile', 390, 84
     await page.screenshot({ path: resolve(screenshotDir, `profile-${name}.png`), fullPage: true, animations: 'disabled' });
   });
 }
+
+
+// ТЗ DR50: логин отображается один раз (в подробном поле «Логин»), а активная
+// ссылка профиля в шапке — круглая, кольцо 2px вокруг аватара, без
+// прямоугольной подложки.
+test('DR50: логин один раз и круглое активное состояние профиля', async ({ page }) => {
+  await page.goto(profileUrl);
+  const login = 'Kuznetsova.Anna@tatar.ru';
+  const count = await page.evaluate(
+    value => (document.body.textContent ?? '').split(value).length - 1,
+    login,
+  );
+  await expect(page.locator('.vse-profile-login, .profile-login')).toHaveCount(0);
+  expect(count).toBe(1);
+  await expect(page.getByText('Логин', { exact: true })).toBeVisible();
+
+  await page.goto(storyUrl('system-app-header--profile-active'));
+  const link = page.locator('#profile.user-link.active');
+  await expect(link).toHaveAttribute('aria-current', 'page');
+  const box = await link.locator('.avatar').boundingBox();
+  expect(box.width).toBeGreaterThanOrEqual(32);
+  // Кольцо живёт на .avatar (box-shadow), фон ссылки прозрачен.
+  const ring = await link.locator('.avatar').evaluate(node => getComputedStyle(node).boxShadow);
+  expect(ring).toContain('rgb(20, 108, 115)');
+  const linkBackground = await link.evaluate(node => getComputedStyle(node).backgroundColor);
+  // База .user-link белая (как шапка) — активное состояние не добавляет tint.
+  expect(linkBackground).toBe('rgb(255, 255, 255)');
+});

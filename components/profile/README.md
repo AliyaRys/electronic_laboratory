@@ -6,7 +6,7 @@
 
 | Функция | Параметры | Результат |
 | --- | --- | --- |
-| `createSummary(options)` | имя, логин, инициалы, права, типы продукции, `disabled`, `onPhotoSelect(file)` | Карточка пользователя с `.photoInput` |
+| `createSummary(options)` | имя, инициалы, права, типы продукции, `disabled`, `onPhotoSelect(file)` (ТЗ DR50: логин отображается один раз — в подробном поле «Логин» `createScreen`; в кратком резюме его нет) | Карточка пользователя с `.photoInput` |
 | `createPasswordChangeForm(options)` | `idPrefix`, `open`, `disabled`, `busy`, `error`, `onSubmit` | Раскрываемая форма с `setOpen`, `setBusy`, `setError`, `.fields`, `.toggleButton`, `.submitButton` |
 | `createScreen(options)` | `user`, `title`, состояния формы, обработчики фото и пароля | Основное содержимое профиля с `.summary` и `.passwordForm` |
 

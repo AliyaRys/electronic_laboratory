@@ -135,3 +135,17 @@ export default meta;
 type Story = StoryObj<typeof IconCatalog>;
 
 export const Registry: Story = { render: () => <IconCatalog /> };
+
+/** ТЗ DR50 §2.3: the three library icons side by side — same size,
+ * same currentColor, original Font Awesome geometry. */
+export const ProductLibraryIcons: Story = {
+  render: () => (
+    <div style={{ display: "flex", gap: 24, padding: 16, color: "#146c73", alignItems: "center" }}>
+      {["product-eggs", "product-fish", "product-plant"].map((name) => (
+        <span key={name} style={{ width: 32, height: 32, display: "inline-grid", placeItems: "center" }}>
+          <Icon name={name as never} />
+        </span>
+      ))}
+    </div>
+  ),
+};

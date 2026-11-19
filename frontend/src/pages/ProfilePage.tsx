@@ -96,7 +96,6 @@ function ProfileContent(): React.ReactElement {
           </label>
           <div className="vse-profile-identity">
             <div className="vse-profile-name">{user.full_name}</div>
-            <div className="vse-profile-login">{user.login}</div>
           </div>
           <div className="vse-profile-access">
             <p className="app-info-label">Права доступа</p>

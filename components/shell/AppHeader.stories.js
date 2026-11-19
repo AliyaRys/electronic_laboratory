@@ -105,3 +105,15 @@ export const GeometryReference = {
     },
   },
 };
+
+// ТЗ DR50 §4: активный профиль — круглое кольцо вокруг аватара, без
+// прямоугольного фона.
+export const ProfileActive = {
+  name: "Профиль активен (/profile)",
+  args: { profileActive: true, active: "" },
+};
+export const ProfileActiveNarrow = {
+  name: "Профиль активен, узкий экран",
+  args: { profileActive: true, active: "" },
+  globals: { viewport: { value: "mobile1", isRotated: false } },
+};

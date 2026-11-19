@@ -457,6 +457,33 @@ def test_mismatch_return_all_keeps_doc_inspection_info_without_act() -> None:
     assert count(xml, "discrepancyReport") == 0
 
 
+def test_document_mismatch_description_has_source_and_reason_no_actual() -> None:
+    """ТЗ DR53 Task 2 Step 5: a document-level mismatch carries the stable
+    source description + reason in the XML discrepancy description; no
+    duplicated fabricated actual is ever appended."""
+    value = intent(mismatch=True, decision="PARTIALLY").model_copy(
+        update={
+            "discrepancy_items": [
+                {
+                    "field_id": "documents.torg12",
+                    "label": "Сопроводительный документ: ТОРГ-12",
+                    "source": "Тип сопроводительного документа: ТОРГ-12; Серия и номер: 33333 66666",
+                    "actual": None,
+                    "reason": "Номер не совпадает",
+                }
+            ]
+        }
+    )
+    xml = build_process_incoming_application(value, source_xml=SOURCE_XML, service_id="s", issuer_id="i")
+    report = next(node for node in ET.fromstring(xml).iter() if node.tag.rsplit("}", 1)[-1] == "discrepancyReport")
+    description = next(node for node in report if node.tag.rsplit("}", 1)[-1] == "description")
+    assert description.text == (
+        "Сопроводительный документ: ТОРГ-12: в ВСД Тип сопроводительного документа: ТОРГ-12; "
+        "Серия и номер: 33333 66666 (Номер не совпадает)"
+    )
+    assert "фактически" not in (description.text or "")
+
+
 def test_discrepancy_description_too_long_is_refused_before_submit() -> None:
     """ТЗ DR38 §5: превышение лимита описания — отказ, а не тихая обрезка."""
     value = intent(mismatch=True, decision="PARTIALLY").model_copy(

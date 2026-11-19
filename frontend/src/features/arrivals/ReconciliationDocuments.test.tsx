@@ -194,14 +194,14 @@ describe("ТЗ DR40: сопроводительные документы", () =>
     expect(documentCards().length).toBe(0);
   });
 
-  it("marks a mismatch and reveals the structured actual fields and reason INSIDE the card", async () => {
+  it("marks a mismatch and reveals ONLY the reason field inside the card (DR53 Task 2)", async () => {
     renderForm();
     await userEvent.click(screen.getByRole("radio", { name: "Не соответствует: ТОРГ-12" }));
     const cards = documentCards();
-    expect(within(cards[1]).getByText("Фактическое значение")).toBeInTheDocument();
-    expect(within(cards[1]).getAllByText("Серия и номер").length).toBeGreaterThanOrEqual(2);
+    // The source facts stay printed exactly once — no duplicate block.
+    expect(within(cards[1]).queryByText("Фактическое значение")).toBeNull();
+    expect(within(cards[1]).getAllByText("Серия и номер").length).toBe(1);
     expect(within(cards[1]).getByLabelText("Причина несоответствия")).toBeInTheDocument();
-    expect(within(cards[0]).queryByText("Фактическое значение")).toBeNull();
   });
 
   it("requires the reason of a mismatched document before saving", async () => {
@@ -211,7 +211,7 @@ describe("ТЗ DR40: сопроводительные документы", () =>
     expect(await screen.findByText("Проверьте введённые значения количеств и отметки.")).toBeInTheDocument();
   });
 
-  it("sends documentChecks with the structured actual value and no legacy CHK-F25/26/27", async () => {
+  it("sends documentChecks with the reason only and no legacy CHK-F25/26/27", async () => {
     const savedPayloads: Record<string, unknown>[] = [];
     const savedView: ReconciliationView = {
       ...emptyView,
@@ -272,9 +272,10 @@ describe("ТЗ DR40: сопроводительные документы", () =>
       expect(Object.keys(payload.checks ?? {})).not.toContain("CHK-F25");
       const documentChecks = payload.documentChecks ?? {};
       expect(documentChecks[TTN_KEY]).toEqual({ matches: true });
+      // ТЗ DR53 Task 2: the new mismatch payload carries ONLY the reason —
+      // no fabricated actual is sent or stored.
       expect(documentChecks[TORG_KEY]).toEqual({
         matches: false,
-        actual: { typeCode: "6", series: "33333", number: "66666", createdOn: "2026-11-16" },
         reason: "Номер в накладной другой",
       });
     } finally {

@@ -233,12 +233,9 @@ function toPayload(values: FormValues, party: IncomingView): ReconciliationWrite
         ? { matches: true }
         : {
             matches: false,
-            actual: {
-              typeCode: document.typeCode ?? null,
-              series: document.series ?? null,
-              number: document.number ?? null,
-              createdOn: document.createdOn ?? null,
-            },
+            // ТЗ DR53 Task 2: a NEW mismatch carries ONLY the reason; no
+            // fabricated actual (the source description + reason describe the
+            // act). A legacy stored actual stays read-compatible on read.
             reason: saved.reason === "" ? null : saved.reason,
           };
   }

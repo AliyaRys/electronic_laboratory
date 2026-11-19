@@ -272,12 +272,24 @@ def test_document_check_removed_document_key_is_blocked() -> None:
     assert blocking_ids(result) != set()
 
 
-def test_document_mismatch_requires_actual_and_reason() -> None:
+def test_document_mismatch_requires_only_reason() -> None:
+    """ТЗ DR53 Task 2: the fabricated actual is no longer required; only the
+    reason stays mandatory for a document mismatch."""
     key = key_of("6", "33333", "66666", "6")
     payload = write_payload(documentChecks={key: {"matches": False}})
     result = validate_receipt(payload, source_with_documents(), CAPS)
-    assert "CHK-F42" in error_ids(result)
     assert "CHK-F43" in error_ids(result)
+    assert "CHK-F42" not in error_ids(result)
+
+
+def test_document_mismatch_with_only_reason_is_valid() -> None:
+    key = key_of("6", "33333", "66666", "6")
+    payload = write_payload(
+        documentChecks={key: {"matches": False, "reason": "Номер не совпадает"}}
+    )
+    result = validate_receipt(payload, source_with_documents(), CAPS)
+    assert blocking_ids(result) == set()
+    assert "CHK-F42" not in error_ids(result) and "CHK-F43" not in error_ids(result)
 
 
 def test_document_mismatch_with_actual_and_reason_is_valid() -> None:
@@ -394,7 +406,21 @@ def test_act_preview_carries_concrete_document() -> None:
     item = next(entry for entry in result.act.items if entry.field_id == f"documents.{key}")
     assert "ТОРГ-12" in (item.source or "")
     assert "66666" in item.actual
-    assert item.reason == "Данные накладной не совпадают"
+
+
+def test_act_preview_reason_only_mismatch_has_source_and_no_actual() -> None:
+    """ТЗ DR53 Task 2: a NEW mismatch builds the act from the stable source
+    description + reason; no fabricated actual is invented."""
+    key = key_of("6", "33333", "66666", "6")
+    payload = write_payload(
+        documentChecks={key: {"matches": False, "reason": "Номер не совпадает"}}
+    )
+    result = validate_receipt(payload, source_with_documents(), CAPS)
+    item = next(entry for entry in result.act.items if entry.field_id == f"documents.{key}")
+    assert "ТОРГ-12" in (item.source or "")
+    assert "66666" in (item.source or "")
+    assert item.actual is None
+    assert item.reason == "Номер не совпадает"
 
 
 # --- 2: atomic save through the real command ---------------------------------------

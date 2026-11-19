@@ -3,10 +3,11 @@
  * accompanying document of the эВСД — the typed read model from the backend
  * (type label, series+number, creation date) with a single
  * «Соответствует»/«Не соответствует» pair for the whole document (never one
- * pair per field). On a mismatch the structured actual value of the SAME
- * document is revealed inside the card together with the reason the
- * discrepancy act will carry. Accessible names are full Russian phrases;
- * long values wrap and never break the grid.
+ * pair per field). On a mismatch the card reveals ONLY the reason field
+ * (ТЗ DR53 Task 2): the fabricated duplicate «Фактическое значение» block is
+ * gone from the source and the mismatch payload never carries a fabricated
+ * `actual` — the act keeps the stable source description + reason. Accessible
+ * names are full Russian phrases; long values wrap and never break the grid.
  */
 import "./reconciliation.css";
 import { useId } from "react";
@@ -108,22 +109,10 @@ export function DocumentComparisonField({
         </div>
       </dl>
       {mismatch ? (
-        <div className="vse-rec-document-actual">
-          <p className="vse-rec-document-actual-title">Фактическое значение</p>
-          <dl className="vse-rec-document-facts">
-            <div className="vse-rec-document-fact">
-              <dt>Тип сопроводительного документа</dt>
-              <dd>{label}</dd>
-            </div>
-            <div className="vse-rec-document-fact">
-              <dt>Серия и номер</dt>
-              <dd>{seriesAndNumber}</dd>
-            </div>
-            <div className="vse-rec-document-fact">
-              <dt>Дата создания</dt>
-              <dd>{createdOn}</dd>
-            </div>
-          </dl>
+        <div className="vse-rec-document-reason">
+          {/* ТЗ DR53 Task 2: the mismatch reveals ONLY the reason field; the
+              duplicate «Фактическое значение» block was removed at the source
+              (never hidden with CSS) — the document facts stay printed once. */}
           <Field
             label="Причина несоответствия"
             name={`${name}.reason`}

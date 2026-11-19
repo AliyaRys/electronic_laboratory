@@ -330,8 +330,14 @@ def _document_source_text(document: AccompanyingDocumentView) -> str:
     return "; ".join(parts)
 
 
-def _document_actual_text(actual: object) -> str:
-    """The human-readable structured actual value of one document mismatch."""
+def _document_actual_text(actual: object) -> str | None:
+    """The human-readable structured actual value of one document mismatch.
+
+    ТЗ DR53 Task 2: a NEW mismatch no longer fabricates an actual; only a
+    LEGACY stored actual is read compatibly for the act row.
+    """
+    if actual is None:
+        return None
     if not isinstance(actual, DocumentActual):
         return str(actual)
     series_number = " ".join(part for part in (actual.series, actual.number) if part) or "—"
@@ -404,19 +410,15 @@ def validate_receipt(
             continue
         if check.matches:
             continue
-        if check.actual is None:
-            errors.append(
-                _item(
-                    f"documentChecks.{document_key}",
-                    "CHK-F42",
-                    "Для расхождения по сопроводительному документу обязательно фактическое значение.",
-                )
-            )
+        # ТЗ DR53 Task 2: a document mismatch requires only the REASON; the
+        # fabricated «actual» was removed from the contract (the stable source
+        # description + reason describe the act row). A legacy stored actual
+        # stays read-compatible and still appears in the act when present.
         if check.reason is None or check.reason.strip() == "":
             errors.append(
                 _item(f"documentChecks.{document_key}", "CHK-F43", "Для расхождения по документу обязательна причина.")
             )
-        if check.actual is not None and check.reason is not None and check.reason.strip() != "":
+        if check.reason is not None and check.reason.strip() != "":
             document_act_items.append(
                 ActItem(
                     field_id=f"documents.{document_key}",

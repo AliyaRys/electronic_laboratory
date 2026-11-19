@@ -1,4 +1,4 @@
-﻿"""API-04 arrival read/write contracts (strict DTOs, ``extra=forbid``).
+"""API-04 arrival read/write contracts (strict DTOs, ``extra=forbid``).
 
 The source snapshot is the external eVSD shape as received from VetIS: it is
 validated strictly on import and stored as JSONB. Product levels are kept
@@ -20,6 +20,7 @@ from pydantic.alias_generators import to_camel
 
 from backend.src.core.problems import ProblemItem
 from backend.src.modules.catalog_pricing.schemas import MoneyStringType, PricingSnapshot
+from backend.src.modules.documents.schemas import ConclusionFlagView
 from backend.src.modules.integrations.vetis.models import VetisContour
 
 __all__ = [
@@ -261,9 +262,7 @@ class VdDocument(StrictModel):
     # children of the current vd:vetDocument, in the source order, all types
     # 1–24 and unknown codes kept, optional fields as honest nulls. Never
     # descendant-wide: nested laboratoryResearch references stay out.
-    referenced_documents: list[ReferencedDocument] = Field(
-        default_factory=list, alias="referencedDocuments"
-    )
+    referenced_documents: list[ReferencedDocument] = Field(default_factory=list, alias="referencedDocuments")
 
 
 # ТЗ DR17 §1/§5.2: the agreed informational text published for an absent or
@@ -362,9 +361,7 @@ class ExternalFields(BaseModel):
     # ТЗ DR40 §6: the typed accompanying documents of the read model (keys and
     # Russian labels are owned by the backend registry; the client never
     # duplicates the DocumentType dictionary).
-    accompanying_documents: list[AccompanyingDocumentView] = Field(
-        default_factory=list, alias="accompanyingDocuments"
-    )
+    accompanying_documents: list[AccompanyingDocumentView] = Field(default_factory=list, alias="accompanyingDocuments")
 
 
 class ClassificationEntry(BaseModel):
@@ -452,6 +449,9 @@ class IncomingView(BaseModel):
     examination_id: str | None
     # ТЗ DR44 §2: the compact ВСЭ summary of the row (absent = None).
     examination: ExaminationSummary | None = None
+    # ТЗ DR55 §5.4: the compact conclusion availability of the row (a display
+    # projection; the preview/PDF routes always re-check the live basis).
+    conclusion: ConclusionFlagView | None = None
     revision: int
     # ТЗ DR9 §6: the freshness diagnostics of the source observation, shown
     # separately from the local queue state (never a fabricated UTILIZED).
@@ -594,5 +594,3 @@ class ReconciliationView(BaseModel):
     route: Literal["EXAMINATION", "CONCLUSION", "NONE"] | None
     errors: list[ProblemItem]
     complete: bool
-
-

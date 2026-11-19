@@ -6,7 +6,19 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-__all__ = ["ConclusionView", "ReportDocumentView", "DocumentView", "ReportMatrixRow"]
+__all__ = ["ConclusionView", "ConclusionFlagView", "ReportDocumentView", "DocumentView", "ReportMatrixRow"]
+
+
+class ConclusionFlagView(BaseModel):
+    """The compact conclusion availability of one row (ТЗ DR55 §5.4).
+
+    A display convenience of the read model only: the preview/PDF routes
+    always re-derive the live basis and re-check the rights. ``basis_kind``
+    is ``LOCAL``/``PREVIOUS`` when a basis exists, ``None`` when none does.
+    """
+
+    available: bool
+    basis_kind: Literal["LOCAL", "PREVIOUS"] | None
 
 
 class ConclusionView(BaseModel):

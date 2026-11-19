@@ -19,8 +19,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision: str = "0025_report_remove_codes"
-down_revision: str | None = "0024_report_classification_seed"
+revision: str = "0026_report_remove_codes"
+down_revision: str | None = "0025_examination_vse_fair"
 branch_labels = None
 depends_on = None
 

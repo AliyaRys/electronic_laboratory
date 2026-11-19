@@ -1,4 +1,4 @@
-"""Migration 0025: report_snapshots.codes is dropped (DR51 §6.2).
+"""Migration 0026: report_snapshots.codes is dropped (DR51 §6.2).
 
 The seven organizational codes are cancelled by the owner decision of
 2026-11-18: the upgrade drops the column without touching ``payload`` (the
@@ -68,7 +68,7 @@ def _codes_column(cursor: psycopg.Cursor) -> bool:
 
 
 @pytest.mark.integration
-def test_0025_drops_codes_keeps_payload_and_opens_reports(test_db_url: str) -> None:
+def test_0026_drops_codes_keeps_payload_and_opens_reports(test_db_url: str) -> None:
     down = _alembic(test_db_url, "downgrade", "0024_report_classification_seed")
     assert down.returncode == 0, down.stdout + down.stderr
     laboratory = actor = snapshot_id = None

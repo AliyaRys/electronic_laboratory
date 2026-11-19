@@ -52,6 +52,11 @@ export async function fetchConclusion(
 export interface PdfResult {
   /** The PDF bytes; handed over only after the Problem check. */
   blob: Blob;
+  /**
+   * ТЗ DR55 §5.5: the server's Content-Disposition file name; the client
+   * fallback is used only when the header is absent.
+   */
+  fileName?: string;
 }
 
 /**
@@ -75,10 +80,27 @@ export async function fetchConclusionPdf(
       return { problem: await parseProblem(response) };
     }
     const data = await response.arrayBuffer();
-    return { blob: new Blob([data], { type: "application/pdf" }) };
+    return { blob: new Blob([data], { type: "application/pdf" }), fileName: dispositionName(response) };
   } catch (thrown) {
     return { problem: networkProblem(thrown instanceof Error ? thrown.message : "Ошибка сети.") };
   }
+}
+
+/** The UTF-8 RFC 5987 file name of the Content-Disposition header, if any. */
+function dispositionName(response: Response): string | undefined {
+  const header = response.headers.get("content-disposition") ?? "";
+  const extended = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+  if (extended !== null) {
+    try {
+      const name = decodeURIComponent(extended[1].trim());
+      return name !== "" ? name : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(header);
+  const name = plain?.[1]?.trim();
+  return name !== undefined && name !== "" ? name : undefined;
 }
 
 /** Russian labels of the INPUT-04 manifest spaces, in the form order. */

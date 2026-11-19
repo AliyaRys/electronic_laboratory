@@ -361,8 +361,90 @@ describe("CompletedArrivalsTable", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("the cost header carries the accessible help tooltip", async () => {
+  // --- ТЗ DR55 §5.6: the conclusion menu of the completed table ----------------------
+
+  it("DR55: an available row shows the menu before the card button, unavailable shows nothing", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[
+          withExamination({
+            ...base,
+            queue: "ACCEPTED",
+            examination_id: "77777777-1111-4222-8333-444444444444",
+            conclusion: { available: true, basis_kind: "LOCAL" },
+          }),
+        ]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Действия с заключением" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Открыть карточку ВСЭ" })).toBeTruthy();
+  });
+
+  it("DR55: PREVIOUS without examination_id keeps the menu and has no card button", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[
+          withReconciliation({
+            ...base,
+            queue: "ACCEPTED",
+            examination_id: null,
+            conclusion: { available: true, basis_kind: "PREVIOUS" },
+          }),
+        ]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Действия с заключением" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Открыть карточку ВСЭ" })).toBeNull();
+  });
+
+  it("DR55: unavailable/missing flag renders no menu and no disabled stub", () => {
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[
+          withExamination(
+            {
+              ...base,
+              queue: "ACCEPTED",
+              examination_id: "77777777-1111-4222-8333-444444444444",
+            },
+            { outcome: "UNFIT" },
+          ),
+        ]}
+        hiddenColumns={new Set()}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Открыть карточку ВСЭ" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Действия с заключением" })).toBeNull();
+  });
+
+
+  it("DR55: the capabilities gate the menu items", async () => {
     const user = userEvent.setup();
+    render(
+      <CompletedArrivalsTable
+        labId={LAB}
+        items={[
+          withExamination({
+            ...base,
+            queue: "ACCEPTED",
+            conclusion: { available: true, basis_kind: "PREVIOUS" },
+          }),
+        ]}
+        hiddenColumns={new Set()}
+        conclusionCapabilities={{ download: false, print: true }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Действия с заключением" }));
+    expect(screen.queryByRole("menuitem", { name: "Скачать" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Печать" })).toBeTruthy();
+  });
+
+  it("the cost header carries the accessible help tooltip", async () => {    const user = userEvent.setup();
     render(
       <CompletedArrivalsTable
         labId={LAB}

@@ -186,6 +186,104 @@ describe("ExaminationViewPage", () => {
     expect(screen.queryByRole("button", { name: "Завершить ожидание" })).toBeNull();
   });
 
+  // --- ТЗ DR55 §5.3/§5.7: the cleaned card and the conclusion menu -------------------
+
+  it("DR55: «Дата первого завершения» is hidden, «Дата и время создания» stays", async () => {
+    server.use(
+      http.get(`*/api/v1/examinations/${EXAM}`, () =>
+        HttpResponse.json(
+          card({
+            status: "COMPLETED",
+            outcome: "FIT",
+            direction: "SALE",
+            first_completed_at: "2026-11-07T12:00:00Z",
+          }),
+        ),
+      ),
+    );
+    renderRoute();
+    await screen.findByDisplayValue("Пригодно · В реализацию без ограничений");
+    expect(screen.queryByText("Дата первого завершения")).toBeNull();
+    expect(screen.getByText("Дата и время создания")).toBeTruthy();
+  });
+
+  it("DR55: a FIT card with an available LOCAL basis and rights shows the menu", async () => {
+    server.use(
+      http.get(`*/api/v1/examinations/${EXAM}`, () =>
+        HttpResponse.json(
+          card({ status: "COMPLETED", outcome: "FIT", direction: "SALE" }),
+        ),
+      ),
+      http.get(`*/api/v1/arrivals/${PARTY}`, () =>
+        HttpResponse.json({
+          ...partyView,
+          conclusion: { available: true, basis_kind: "LOCAL" },
+        }),
+      ),
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+          full_name: "Ветврач",
+          login: "vet",
+          email: "vet@lab.test",
+          position: null,
+          role: "VET",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: ["conclusion:pdf", "conclusion:print"],
+          revision: 1,
+        }),
+      ),
+    );
+    renderRoute();
+    expect(
+      await screen.findByRole("button", { name: "Действия с заключением" }, { timeout: 6000 }),
+    ).toBeTruthy();
+  });
+
+  it("DR55: the menu is absent for UNFIT, unavailable basis or missing rights", async () => {
+    // UNFIT card with an otherwise available basis.
+    server.use(
+      http.get(`*/api/v1/examinations/${EXAM}`, () =>
+        HttpResponse.json(
+          card({ status: "COMPLETED", outcome: "UNFIT", direction: "DISPOSAL", reason: "Порча" }),
+        ),
+      ),
+      http.get(`*/api/v1/arrivals/${PARTY}`, () =>
+        HttpResponse.json({
+          ...partyView,
+          conclusion: { available: true, basis_kind: "LOCAL" },
+        }),
+      ),
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+          full_name: "Ветврач",
+          login: "vet",
+          email: "vet@lab.test",
+          position: null,
+          role: "VET",
+          active: true,
+          scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+          capabilities: ["conclusion:pdf"],
+          revision: 1,
+        }),
+      ),
+    );
+    const client = new QueryClient();
+    render(
+      <MemoryRouter initialEntries={[`/labs/${LAB}/examinations/${EXAM}`]}>
+        <QueryClientProvider client={client}>
+          <Routes>
+            <Route path="/labs/:labId/examinations/:examinationId" element={<ExaminationViewPage />} />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByDisplayValue("Непригодно · На утилизацию", {}, { timeout: 6000 });
+    expect(screen.queryByRole("button", { name: "Действия с заключением" })).toBeNull();
+  });
+
   // --- ТЗ DR44 §4: the vse-view composition (Task 6) ---------------------------------
 
   it("renders the six mockup sections with real data", async () => {

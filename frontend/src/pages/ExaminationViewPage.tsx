@@ -38,6 +38,7 @@ import { emptyOutcome, type OutcomeEntry } from "../features/examinations/formVa
 import { useCommand } from "../shared/api/command";
 import { Button } from "../shared/ui/Button";
 import { Tooltip } from "../shared/ui/HelpTooltip";
+import { ConclusionActionsMenu } from "../features/documents/ConclusionActionsMenu";
 import { FormSection } from "../shared/ui/FormSection";
 import { ReadonlyField } from "../shared/ui/ReadonlyField";
 import { StatusView } from "../shared/ui/StatusView";
@@ -164,6 +165,23 @@ function ExaminationViewContent(): React.ReactElement {
   const sameDay = moscowDay(view.created_at) === todayMoscow;
   const role = me.user?.role ?? null;
   const canAct = role === "VET" || role === "HEAD";
+  // ТЗ DR55 §5.7: the conclusion menu of the LOCAL card — only for the own
+  // COMPLETED + FIT card with an available LOCAL basis and the matching
+  // /me capabilities (never a hardcoded role rule).
+  const capabilities = me.user?.capabilities ?? [];
+  const conclusionMenu =
+    view.status === "COMPLETED" &&
+    view.outcome === "FIT" &&
+    partyView !== null &&
+    partyView.conclusion?.available === true &&
+    partyView.conclusion.basis_kind === "LOCAL" &&
+    (capabilities.includes("conclusion:pdf") || capabilities.includes("conclusion:print")) ? (
+      <ConclusionActionsMenu
+        partyId={partyView.party_id}
+        canDownload={capabilities.includes("conclusion:pdf")}
+        canPrint={capabilities.includes("conclusion:print")}
+      />
+    ) : null;
 
   const runLateOutcome = (): void => {
     if (outcome.outcome === "" || outcome.direction === "") {
@@ -205,6 +223,7 @@ function ExaminationViewContent(): React.ReactElement {
           <h1>{examinationTitle(view.number)}</h1>
         </div>
         <div className="vse-page-actions">
+          {conclusionMenu}
           {canAct && sameDay && !editing ? (
             <Tooltip text="Редактировать ВСЭ">
               <Button

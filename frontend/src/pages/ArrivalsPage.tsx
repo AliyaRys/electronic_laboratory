@@ -112,6 +112,12 @@ function ArrivalsContent(): React.ReactElement {
   const { labId } = useParams<{ labId: string }>();
   const [params, setParams] = useSearchParams();
   const { user } = useMe();
+  // ТЗ DR55 §5.6: the conclusion menu items follow the normalized /me
+  // capability model — never a hardcoded role rule.
+  const conclusionCapabilities = {
+    download: (user?.capabilities ?? []).includes("conclusion:pdf"),
+    print: (user?.capabilities ?? []).includes("conclusion:print"),
+  };
   const filters = filtersFromParams(params);
   const [hideTarget, setHideTarget] = useState<IncomingView | null>(null);
   const [hideError, setHideError] = useState("");
@@ -397,6 +403,7 @@ function ArrivalsContent(): React.ReactElement {
           })
         }
         hiddenColumns={hiddenColumns}
+    conclusionCapabilities={conclusionCapabilities}
         onToggleColumn={(id) =>
           setHiddenColumns((previous) => {
             const next = new Set(previous);

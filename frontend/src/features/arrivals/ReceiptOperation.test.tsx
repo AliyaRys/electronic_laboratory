@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -81,6 +81,46 @@ function renderOperation(view: ReconciliationView = reconciliation): void {
 }
 
 describe("ReceiptOperation", () => {
+  // ТЗ DR54 Task 3: the server-complete сверка unlocks the local receipt
+  // preparation; the honest blocked note is absent.
+  it("activates «Подготовить гашение» for a complete сверка with a marked mismatch", async () => {
+    server.use(
+      http.get(`*/api/v1/arrivals/${PARTY}/receipt-context`, () =>
+        HttpResponse.json({
+          write_enabled: true,
+          source_revision: 7,
+          reconciliation_revision: 3,
+          operation_id: null,
+          operation_state: null,
+        }),
+      ),
+      http.post(`*/api/v1/arrivals/${PARTY}/receipt-preview`, () =>
+        HttpResponse.json({
+          intent: { decision: "RETURN_ALL", vet_inspection: "CORRESPONDS" },
+          application_xml: "<application />",
+          fingerprint: "d".repeat(64),
+        }),
+      ),
+    );
+    renderOperation({
+      ...reconciliation,
+      decision: "RETURN_ALL",
+      route: "NONE",
+    });
+    const user = userEvent.setup();
+    const button = await screen.findByRole("button", { name: "Подготовить гашение" });
+    expect(screen.queryByText("Сначала полностью заполните и сохраните сверку.")).toBeNull();
+    await user.selectOptions(screen.getByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
+    fireEvent.change(screen.getByLabelText(/Дата и время поступления/), {
+      target: { value: "2026-11-19T10:00" },
+    });
+    fireEvent.change(screen.getByLabelText("Дата и время возврата"), {
+      target: { value: "2026-11-19T10:00" },
+    });
+    await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
+    expect(await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" })).toBeInTheDocument();
+  });
+
   // ТЗ DR53 Task 3: safe recovery from a REJECTED гашение.
   it("REJECTED offers the explicit «Подготовить гашение заново» path without any automatic write", async () => {
     const counters = { previews: 0, submits: 0 };

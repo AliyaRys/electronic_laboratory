@@ -151,13 +151,14 @@ _PEROXIDASE_FIXED = {
     True: "IN_NORM",
     False: "DEVIATION",
 }
+# ТЗ DR54 Task 6: «Иное (указать)» removed by the owner decision — exactly
+# five subject-defined variants of the cooking test remain.
 _COOKING_OPTIONS = (
     "Бульон прозрачный, аромат специфический",
     "Бульон мутный",
     "Бульон с хлопьями",
     "Бульон с осадком",
     "Нехарактерный / неприятный запах",
-    "Иное (указать)",
 )
 
 CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (

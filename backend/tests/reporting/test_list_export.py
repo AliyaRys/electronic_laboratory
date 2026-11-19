@@ -265,7 +265,7 @@ async def test_exports_render_the_saved_snapshot(db_session: AsyncSession) -> No
     text = "\n".join(page.extract_text() or "" for page in reader.pages)
     assert "5-вет, раздел III" in text
     assert "Предварительная форма" in text
-    assert "Незаразные болезни" in text and "Ящур" in text
+    assert "Незаразные болезни" in text and "Ящур" in text and "субпродуктов" in text
     assert "Не рассчитывается" not in text and "ОКУД" not in text
 
     sheet = load_workbook(io.BytesIO(xlsx.render_xlsx(model, form))).active

@@ -10,7 +10,8 @@
 backend/tests/fixtures/vetis/xsd/** -text
 
 # Binary project assets
-*.png binary*.jpg binary
+*.png binary
+*.jpg binary
 *.jpeg binary
 *.gif binary
 *.webp binary

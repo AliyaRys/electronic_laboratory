@@ -24,7 +24,8 @@ const LAB = "11111111-2222-4333-8444-555555555555";
 /** ТЗ DR41-B §6: the fixed FT rules and the norm-free research. */
 const FIXED_CODES = new Set(["VSE-F18", "VSE-F19", "VSE-F22", "VSE-F27", "VSE-F28"]);
 
-const microscopy = INDICATORS.find((item) => item.code === "VSE-F24") as (typeof INDICATORS)[number];
+/** ТЗ DR54 Task 5: microscopy (VSE-F24) has NO norm — it never appears as a
+ * row in this editor, so the fixture rows use the configurable indicators. */
 const temperature = INDICATORS.find((item) => item.code === "VSE-F20") as (typeof INDICATORS)[number];
 const cooking = INDICATORS.find((item) => item.code === "VSE-F26") as (typeof INDICATORS)[number];
 
@@ -43,7 +44,9 @@ function intervalRule(overrides: Partial<MethodRuleTyped>): MethodRuleTyped {
     id: "bbbbbbbb-0000-4000-8000-000000000001",
     laboratory_id: LAB,
     product_area_code: "meat",
-    indicator_id: microscopy.id,
+    // ТЗ DR54 Task 5: the fixture row belongs to the CONFIGURABLE
+    // temperature indicator — microscopy (NONE) never renders a row.
+    indicator_id: temperature.id,
     version: 1,
     result_schema: "INTEGER_NONNEGATIVE",
     unit_id: "ед.",
@@ -81,13 +84,16 @@ function contextFixture(overrides: Partial<MethodsContextTyped> = {}): MethodsCo
       options: item.options ? item.options.map((option) => option.label) : null,
       evaluation_mode: FIXED_CODES.has(item.code)
         ? "FIXED"
-        : item.code === "VSE-F23"
+        : item.code === "VSE-F23" || item.code === "VSE-F24"
           ? "NONE"
           : "CONFIGURABLE",
     })),
     active_rules: [...activeRules, ...createdRules],
     missing: INDICATORS.filter(
-      (item) => ![...activeRules, ...createdRules].some((rule) => rule.indicator_id === item.id),
+      (item) =>
+        item.code !== "VSE-F23" &&
+        item.code !== "VSE-F24" &&
+        ![...activeRules, ...createdRules].some((rule) => rule.indicator_id === item.id),
     ).map((item) => item.id),
     ...overrides,
   };
@@ -203,13 +209,17 @@ describe("MethodsEditorPage", () => {
     // ТЗ DR53 Task 5: the category context line is gone from the screen.
     expect(screen.queryByTestId("methods-area-name")).toBeNull();
     expect(screen.queryByText(/Категория продукции/)).toBeNull();
-    // ТЗ DR41-B §6: only the CONFIGURABLE indicators are catalog rows.
-    const configurable = INDICATORS.filter((item) => !FIXED_CODES.has(item.code) && item.code !== "VSE-F23");
+    // ТЗ DR41-B §6 + ТЗ DR54 Task 5: only the CONFIGURABLE indicators are
+    // catalog rows — FIXED (F18/F19/F21/F22/F27/F28) and NONE (F23/F24)
+    // never render one, even with a legacy active rule.
+    const configurable = INDICATORS.filter(
+      (item) => !FIXED_CODES.has(item.code) && item.code !== "VSE-F23" && item.code !== "VSE-F24",
+    );
     for (const indicator of configurable) {
       expect(screen.getByText(indicator.name)).toBeInTheDocument();
     }
     for (const indicator of INDICATORS.filter(
-      (item) => FIXED_CODES.has(item.code) || item.code === "VSE-F23",
+      (item) => FIXED_CODES.has(item.code) || item.code === "VSE-F23" || item.code === "VSE-F24",
     )) {
       expect(screen.queryByText(indicator.name)).toBeNull();
     }
@@ -244,7 +254,7 @@ describe("MethodsEditorPage", () => {
   it("keeps the technical metadata and delete off the main surface (DR53 Task 5)", async () => {
     activeRules = [intervalRule({})];
     renderEditor();
-    await screen.findByLabelText(normLabel(microscopy.name, "от"));
+    await screen.findByLabelText(normLabel(temperature.name, "от"));
     // §19.11: no source/version/UUID on the surface.
     expect(screen.queryByText(/Источник/)).toBeNull();
     expect(screen.queryByText(/Методика и версия/)).toBeNull();
@@ -304,8 +314,9 @@ describe("MethodsEditorPage", () => {
     expect(payload["source"]).toBeUndefined();
     // The configured row appears through the context refetch, no page reload.
     expect(await screen.findByLabelText(normLabel(temperature.name, "от"))).toHaveValue("0");
-    // The remaining unset INTERVAL rows keep the «Не настроено» signature.
-    expect(screen.getAllByText("Не настроено").length).toBe(3);
+    // The remaining unset INTERVAL rows keep the «Не настроено» signature
+    // (ТЗ DR54 Task 5: the norm-free F24 row no longer exists).
+    expect(screen.getAllByText("Не настроено").length).toBe(2);
   });
 
   it("empty unset rows are never sent when other rows are saved (§19.6)", async () => {
@@ -326,16 +337,16 @@ describe("MethodsEditorPage", () => {
       intervalRule({}),
       intervalRule({
         id: "bbbbbbbb-0000-4000-8000-000000000002",
-        indicator_id: temperature.id,
+        indicator_id: (INDICATORS.find((item) => item.code === "VSE-F25") as (typeof INDICATORS)[number]).id,
         result_schema: "DECIMAL",
         unit_id: "°C",
         rule: { type: "interval", lower: "0", upper: null, lower_inclusive: true, upper_inclusive: true },
       }),
     ];
     renderEditor();
-    const lower = await screen.findByLabelText(normLabel(microscopy.name, "от"));
+    const lower = await screen.findByLabelText(normLabel(temperature.name, "от"));
     expect(lower).toHaveValue("0");
-    expect(screen.getByLabelText(normLabel(microscopy.name, "до"))).toHaveValue("10");
+    expect(screen.getByLabelText(normLabel(temperature.name, "до"))).toHaveValue("10");
     // The unit suffix of the row comes from the canonical registry.
     expect(screen.getAllByText("ед.").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Версия записи/)).toBeNull();
@@ -344,9 +355,9 @@ describe("MethodsEditorPage", () => {
     // stored boundary inclusivity must still survive an ordinary edit (never
     // hardcoded) — the payload keeps the saved values.
     expect(screen.queryByLabelText(/нижняя граница включена/)).toBeNull();
-    const row = screen.getByLabelText(normLabel(microscopy.name, "от")).closest("article") as HTMLElement;
-    await act.clear(within(row).getByLabelText(normLabel(microscopy.name, "от")));
-    await act.type(within(row).getByLabelText(normLabel(microscopy.name, "от")), "2");
+    const row = screen.getByLabelText(normLabel(temperature.name, "от")).closest("article") as HTMLElement;
+    await act.clear(within(row).getByLabelText(normLabel(temperature.name, "от")));
+    await act.type(within(row).getByLabelText(normLabel(temperature.name, "от")), "2");
     await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
     await waitFor(() => expect(putSpy).toHaveBeenCalledTimes(1));
     const payload = putSpy.mock.calls[0][0] as {
@@ -382,7 +393,7 @@ describe("MethodsEditorPage", () => {
     const act = userEvent.setup();
     activeRules = [intervalRule({})];
     renderEditor();
-    const lower = await screen.findByLabelText(normLabel(microscopy.name, "от"));
+    const lower = await screen.findByLabelText(normLabel(temperature.name, "от"));
     await act.clear(lower);
     await act.type(lower, "50");
     await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
@@ -468,10 +479,10 @@ describe("MethodsEditorPage", () => {
     );
     activeRules = [intervalRule({})];
     renderEditor();
-    const lower = await screen.findByLabelText(normLabel(microscopy.name, "от"));
+    const lower = await screen.findByLabelText(normLabel(temperature.name, "от"));
     await act.clear(lower);
     await act.type(lower, "1");
-    await act.type(screen.getByLabelText(normLabel(microscopy.name, "до")), "20");
+    await act.type(screen.getByLabelText(normLabel(temperature.name, "до")), "20");
     await act.click(screen.getByRole("button", { name: "Сохранить справочник" }));
     await waitFor(() => expect(screen.getByTestId("catalog-conflict")).toBeInTheDocument());
     // The draft stays visible for the comparison and the choice.
@@ -532,7 +543,7 @@ describe("MethodsEditorPage", () => {
       id: "bbbbbbbb-0000-4000-8000-000000000005",
       laboratory_id: LAB,
       product_area_code: "meat",
-      indicator_id: microscopy.id,
+      indicator_id: temperature.id,
       version: 1,
       result_schema: "BOOLEAN_MATCH",
       unit_id: "",

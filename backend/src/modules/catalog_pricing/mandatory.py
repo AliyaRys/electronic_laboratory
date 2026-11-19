@@ -233,9 +233,15 @@ CATALOG_INDICATORS: tuple[CatalogIndicatorDef, ...] = (
         name="Микроскопия",
         # ТЗ DR42 §5.1: the FT field accepts fractional counts, so the canonical
         # schema is a nonnegative decimal; old INTEGER snapshots keep reading.
+        # ТЗ DR54 Task 5: the owner decision — there is NO universal norm for
+        # microscopy; the result stays a numeric fact (the nonnegative check
+        # remains in examinations validation), the research stays available and
+        # tariffed, but it is not a configurable norm and receives no norm
+        # evaluation.
         result_schema="DECIMAL",
         unit=None,
         mandatory=False,
+        evaluation_mode="NONE",
     ),
     CatalogIndicatorDef(
         id=PH_INDICATOR_ID,

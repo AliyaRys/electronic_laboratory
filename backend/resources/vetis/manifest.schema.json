@@ -39,6 +39,11 @@
       "pattern": "^https://",
       "description": "The pinned read-only EnterpriseService endpoint (GetEnterpriseByGuid v2 / GetBusinessEntityByGUID, ТЗ DR18 §8). Absent = the participant-name resolution is not configured for this profile."
     },
+    "product_endpoint": {
+      "type": ["string", "null"],
+      "pattern": "^https://",
+      "description": "The pinned read-only ProductService endpoint (GetUnitByUuidOperation — the unit dictionary of the printable conclusion, fix-loop DR55). Absent = unit rows stay an honest retriable missing."
+    },
     "business_schema_version": { "type": "string", "minLength": 1 },
     "soap_version": { "type": "string", "const": "1.1" },
     "namespaces": {
@@ -64,7 +69,8 @@
         "receive": { "type": "string", "const": "receiveApplicationResult" },
         "purpose_list": { "type": "string", "const": "getPurposeListRequest" },
         "enterprise_by_guid": { "type": "string", "const": "getEnterpriseByGuidRequest" },
-        "business_entity_by_guid": { "type": "string", "const": "getBusinessEntityByGUIDRequest" }
+        "business_entity_by_guid": { "type": "string", "const": "getBusinessEntityByGUIDRequest" },
+        "unit_by_uuid": { "type": "string", "const": "getUnitByUuidRequest" }
       }
     },
     "operations": {

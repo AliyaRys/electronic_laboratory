@@ -11,11 +11,13 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.integrations.vetis.models import VetisEntityKind, VetisReferenceName
 from backend.src.modules.integrations.vetis.reference_names import (
+    compose_unit_reference_transport,
     extract_unit,
     resolve_due_reference_names,
     resolved_unit_names,
@@ -75,6 +77,49 @@ def test_parse_unit_by_uuid_reads_the_own_name_only() -> None:
     assert record["active"] is True and record["last"] is True
 
 
+def test_compose_unit_reference_transport_targets_the_product_service() -> None:
+    """The UNIT boundary is the pinned ProductService — never the
+    EnterpriseService (that mismatch was the live HTTP 500)."""
+    import hashlib
+    from pathlib import Path
+
+    from backend.src.core.problems import ProblemError
+    from backend.src.modules.integrations.vetis.manifest import load_manifest_with_pins
+
+    resources = Path(__file__).resolve().parents[2] / "resources" / "vetis"
+    fixtures = Path(__file__).resolve().parent / "fixtures"
+    wsdl = fixtures / "fixture.wsdl"
+    pins = {
+        "status": "PINNED",
+        "wsdl": {"resource": str(wsdl), "sha256": hashlib.sha256(wsdl.read_bytes()).hexdigest()},
+        "xsd": [],
+    }
+    manifest = load_manifest_with_pins(resources / "manifest.json", pins)
+    transport = compose_unit_reference_transport(manifest)
+    assert transport._endpoint == "https://api2.vetrf.ru:8002/platform/services/2.0/ProductService"  # noqa: SLF001
+    assert transport._unit_by_uuid_action == "getUnitByUuidRequest"  # noqa: SLF001
+    # Fail-closed: the product endpoint is in the allowlist.
+    assert "https://api2.vetrf.ru:8002/platform/services/2.0/ProductService" in transport._allowed_urls  # noqa: SLF001
+
+    without_product = manifest.model_copy(update={"product_endpoint": None}, deep=True)
+    with pytest.raises(ProblemError) as raised:
+        compose_unit_reference_transport(without_product)
+    assert raised.value.status == 503
+    assert raised.value.code == "INTEGRATION_NOT_CONFIGURED"
+
+
+def test_committed_manifest_pins_the_product_service() -> None:
+    from pathlib import Path
+
+    from backend.src.modules.integrations.vetis.manifest import load_manifest
+
+    resources = Path(__file__).resolve().parents[2] / "resources" / "vetis"
+    manifest = load_manifest(resources / "manifest.json")
+    assert manifest.product_endpoint == "https://api2.vetrf.ru:8002/platform/services/2.0/ProductService"
+    assert manifest.soap_actions["unit_by_uuid"] == "getUnitByUuidRequest"
+    assert any(op.name == "GetUnitByUuidOperation" and op.read_only for op in manifest.operations)
+
+
 # --- the cache mechanics ------------------------------------------------------------
 
 
@@ -120,7 +165,7 @@ async def test_tick_resolves_a_due_unit_row_through_the_read_only_spy(db_session
     await upsert_reference_names(db_session, _PILOT, unit_snapshot(), now=datetime.now(UTC))
     await db_session.commit()
     spy = SpyEnterpriseLookupTransport(unit_responses=[UNIT_RESPONSE])  # type: ignore[arg-type]
-    counters = await resolve_due_reference_names(db_session, spy, now=datetime.now(UTC))
+    counters = await resolve_due_reference_names(db_session, spy, now=datetime.now(UTC), unit_transport=spy)
     await db_session.commit()
     assert counters["resolved"] == 1
     assert [call["operation"] for call in spy.calls] == ["GetUnitByUuid"]  # zero writes, zero other reads
@@ -137,7 +182,7 @@ async def test_tick_echo_guard_never_applies_a_foreign_uuid(db_session: AsyncSes
     await db_session.commit()
     foreign = UNIT_RESPONSE.replace(str(UNIT_UUID), str(uuid.UUID(int=42)))
     spy = SpyEnterpriseLookupTransport(unit_responses=[foreign])  # type: ignore[arg-type]
-    counters = await resolve_due_reference_names(db_session, spy, now=datetime.now(UTC))
+    counters = await resolve_due_reference_names(db_session, spy, now=datetime.now(UTC), unit_transport=spy)
     await db_session.commit()
     assert counters["retried"] == 1 and counters["resolved"] == 0
     row = (
@@ -150,13 +195,51 @@ async def test_tick_transport_failure_keeps_the_row_pending(db_session: AsyncSes
     await upsert_reference_names(db_session, _PILOT, unit_snapshot(), now=datetime.now(UTC))
     await db_session.commit()
     spy = SpyEnterpriseLookupTransport(failure=RuntimeError("no network in tests"))  # type: ignore[arg-type]
-    counters = await resolve_due_reference_names(db_session, spy, now=datetime.now(UTC))
+    counters = await resolve_due_reference_names(db_session, spy, now=datetime.now(UTC), unit_transport=spy)
     await db_session.commit()
     assert counters["retried"] == 1
     row = (
         await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.entity_kind == "UNIT"))
     ).scalar_one()
     assert row.name is None and row.failure_count == 1
+
+
+async def test_unit_rows_resolve_through_the_product_service_boundary(db_session: AsyncSession) -> None:
+    """UNIT rows go to the dedicated unit transport (ProductService); the
+    EnterpriseService transport is never asked about a unit."""
+    await upsert_reference_names(db_session, _PILOT, unit_snapshot(), now=datetime.now(UTC))
+    await db_session.commit()
+    enterprise_spy = SpyEnterpriseLookupTransport()  # type: ignore[arg-type]
+    unit_spy = SpyEnterpriseLookupTransport(unit_responses=[UNIT_RESPONSE])  # type: ignore[arg-type]
+    counters = await resolve_due_reference_names(
+        db_session, enterprise_spy, now=datetime.now(UTC), unit_transport=unit_spy
+    )
+    await db_session.commit()
+    assert counters["resolved"] == 1
+    assert enterprise_spy.calls == []  # the 500 bug never happens again
+    assert [call["operation"] for call in unit_spy.calls] == ["GetUnitByUuid"]
+    row = (
+        await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.entity_kind == "UNIT"))
+    ).scalar_one()
+    assert row.name == "кг" and row.status == "RESOLVED"
+
+
+async def test_missing_product_pin_is_an_honest_retriable_missing(db_session: AsyncSession) -> None:
+    """Without the unit transport (no product pin) the UNIT row stays a
+    retriable missing and the OTHER kinds keep resolving normally."""
+    await upsert_reference_names(db_session, _PILOT, unit_snapshot(), now=datetime.now(UTC))
+    await db_session.commit()
+    enterprise_spy = SpyEnterpriseLookupTransport()  # type: ignore[arg-type]
+    counters = await resolve_due_reference_names(db_session, enterprise_spy, now=datetime.now(UTC))
+    await db_session.commit()
+    assert counters["retried"] == 1 and counters["resolved"] == 0
+    assert enterprise_spy.calls == []
+    row = (
+        await db_session.execute(select(VetisReferenceName).where(VetisReferenceName.entity_kind == "UNIT"))
+    ).scalar_one()
+    assert row.name is None
+    assert row.last_problem_code == "VETIS_UNIT_LOOKUP_NOT_CONFIGURED"
+    assert row.next_check_at is not None  # honest retry schedule, never a crash
 
 
 # --- the read model of the conclusion -----------------------------------------------

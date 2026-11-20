@@ -1,12 +1,13 @@
 {
   "profile_id": "VU-TEST-2.0",
-  "manifest_version": 1,
+  "manifest_version": 2,
   "contour": "PILOT",
   "family": "mercury-vu.service",
   "service_id": "mercury-vu.service:2.0",
   "endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/ApplicationManagementService",
   "dictionary_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/DictionaryService",
   "enterprise_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/EnterpriseService",
+  "product_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/ProductService",
   "business_schema_version": "2.0",
   "soap_version": "1.1",
   "namespaces": {
@@ -23,7 +24,8 @@
     "receive": "receiveApplicationResult",
     "purpose_list": "getPurposeListRequest",
     "enterprise_by_guid": "getEnterpriseByGuidRequest",
-    "business_entity_by_guid": "getBusinessEntityByGUIDRequest"
+    "business_entity_by_guid": "getBusinessEntityByGUIDRequest",
+    "unit_by_uuid": "getUnitByUuidRequest"
   },
   "operations": [
     {
@@ -48,6 +50,12 @@
       "name": "GetBusinessEntityByGUID",
       "input_type": "getBusinessEntityByGuidRequest",
       "output_type": "getBusinessEntityByGuidResponse",
+      "read_only": true
+    },
+    {
+      "name": "GetUnitByUuidOperation",
+      "input_type": "getUnitByUuidRequest",
+      "output_type": "getUnitByUuidResponse",
       "read_only": true
     },
     {
@@ -81,6 +89,8 @@
     "https://help.vetrf.ru/wiki/GetPurposeList_v2.0",
     "https://help.vetrf.ru/wiki/GetEnterpriseByGuid_v2",
     "https://help.vetrf.ru/wiki/GetBusinessEntityByGUID",
+    "https://help.vetrf.ru/wiki/GetUnitByUuidOperation_v2",
+    "http://api.vetrf.ru/schema/platform/services/2.0-last/ProductService_v2.0.wsdl",
     "docs/TZ_development/plans/mercury-test-integration-contract.md"
   ]
 }

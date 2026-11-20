@@ -33,6 +33,7 @@ from typing import Protocol
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.src.modules.integrations.vetis.manifest import VetisManifest
 from backend.src.modules.integrations.vetis.models import (
     VetisContour,
     VetisEntityKind,
@@ -62,6 +63,7 @@ __all__ = [
     "backfill_reference_names",
     "participant_name_overrides",
     "resolved_unit_names",
+    "compose_unit_reference_transport",
 ]
 
 _LOG = logging.getLogger("vetis.reference_names")
@@ -519,6 +521,7 @@ async def resolve_due_reference_names(
     now: datetime | None = None,
     limit: int = 20,
     contour: str | None = None,
+    unit_transport: EnterpriseLookupPort | None = None,
 ) -> dict[str, int]:
     """Resolve due cache entries via the pinned read-only methods (§8).
 
@@ -527,6 +530,12 @@ async def resolve_due_reference_names(
     With a ``contour`` given, only that contour's rows are claimed (ТЗ DR23
     §5.2): one manifest never reads or changes another contour's rows.
     The never-delete rule holds: an error keeps the previous name.
+
+    ``UNIT`` rows resolve through the ProductService boundary
+    (``unit_transport`` — the units live in a different VetIS service than
+    the EnterpriseService); without the pinned product endpoint they stay
+    an honest retriable missing and the participant kinds keep resolving
+    through the EnterpriseService (fix-loop DR55 unit-reference fix).
     """
     current = now or datetime.now(UTC)
     claimed = await _claim_due(db, now=current, limit=limit, contour=contour)
@@ -535,13 +544,38 @@ async def resolve_due_reference_names(
     resolved = 0
     retried = 0
     for contour, kind, guid in keys:
+        row_transport = transport
+        if kind == VetisEntityKind.UNIT.value and unit_transport is None:
+            # The pinned ProductService endpoint is absent: the unit row
+            # stays an honest retriable missing — the EnterpriseService is
+            # never asked about a unit (that is the 500 bug this fixes).
+            row = (
+                await db.execute(
+                    select(VetisReferenceName).where(
+                        VetisReferenceName.contour == contour,
+                        VetisReferenceName.entity_kind == kind,
+                        VetisReferenceName.guid == guid,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is not None:
+                await _apply_lookup_failure(db, row, "VETIS_UNIT_LOOKUP_NOT_CONFIGURED", now=datetime.now(UTC))
+            await db.commit()
+            retried += 1
+            _LOG.warning(
+                "unit_reference_lookup_not_configured",
+                extra={"contour": contour, "entity_kind": kind},
+            )
+            continue
+        if kind == VetisEntityKind.UNIT.value:
+            row_transport = unit_transport
         try:
             if kind == VetisEntityKind.ENTERPRISE.value:
-                record = parse_enterprise_by_guid(await transport.get_enterprise_by_guid(str(guid)))
+                record = parse_enterprise_by_guid(await row_transport.get_enterprise_by_guid(str(guid)))
             elif kind == VetisEntityKind.UNIT.value:
-                record = parse_unit_by_uuid(await transport.get_unit_by_uuid(str(guid)))
+                record = parse_unit_by_uuid(await row_transport.get_unit_by_uuid(str(guid)))
             else:
-                record = parse_business_entity_by_guid(await transport.get_business_entity_by_guid(str(guid)))
+                record = parse_business_entity_by_guid(await row_transport.get_business_entity_by_guid(str(guid)))
             # The cheap echo guard (§8): the response GUID must match the
             # requested key before ANY result is applied; a mismatch is a
             # diagnostic + retry, never an applied name. A UNIT row is keyed
@@ -652,6 +686,53 @@ async def resolved_unit_names(
     return result
 
 
+def product_allowlist(manifest: VetisManifest) -> set[str]:
+    """The fail-closed allowlist of the ProductService lookup boundary."""
+    from backend.src.modules.integrations.vetis.transport import enterprise_allowlist
+
+    allowed = enterprise_allowlist(manifest)
+    if manifest.product_endpoint:
+        allowed.add(manifest.product_endpoint)
+    return allowed
+
+
+def compose_unit_reference_transport(manifest: VetisManifest) -> EnterpriseLookupPort:
+    """Build the pinned ProductService lookup transport for UNIT rows.
+
+    The VetIS unit dictionary lives in the ProductService family — pointing
+    it at the EnterpriseService is exactly the HTTP 500 the fix removes.
+    A missing product endpoint pin raises an honest 503: the tick keeps
+    resolving participant kinds and leaves UNIT rows an honest missing.
+    """
+    from backend.src.modules.integrations.vetis.manifest import (
+        integration_not_configured,
+        load_secret_profile,
+        secret_profile_path,
+    )
+    from backend.src.modules.integrations.vetis.transport import ZeepEnterpriseLookupTransport
+
+    if manifest.schema_pins.status != "PINNED" or not manifest.product_endpoint:
+        raise integration_not_configured()
+    gateway_user = gateway_password = None
+    profile_path = secret_profile_path()
+    if profile_path:
+        profile = load_secret_profile(profile_path)
+        gateway_user = profile.gateway_user
+        gateway_password = profile.gateway_password
+    unit_action = manifest.soap_actions.get("unit_by_uuid", "getUnitByUuidRequest")
+    return ZeepEnterpriseLookupTransport(
+        endpoint=manifest.product_endpoint,
+        enterprise_action="getEnterpriseByGuidRequest",
+        business_entity_action="getBusinessEntityByGUIDRequest",
+        unit_by_uuid_action=unit_action,
+        connect_timeout_s=manifest.constraints.connect_timeout_s,
+        read_timeout_s=manifest.constraints.read_timeout_s,
+        allowed_urls=product_allowlist(manifest),
+        gateway_user=gateway_user,
+        gateway_password=gateway_password,
+    )
+
+
 def compose_reference_transport(manifest: object) -> EnterpriseLookupPort:
     """Build the pinned EnterpriseService lookup transport from the profile.
 
@@ -678,12 +759,10 @@ def compose_reference_transport(manifest: object) -> EnterpriseLookupPort:
         gateway_password = profile.gateway_password
     enterprise_action = manifest.soap_actions.get("enterprise_by_guid", "getEnterpriseByGuidRequest")
     business_entity_action = manifest.soap_actions.get("business_entity_by_guid", "getBusinessEntityByGUIDRequest")
-    unit_action = manifest.soap_actions.get("unit_by_uuid", "getUnitByUuidRequest")
     return ZeepEnterpriseLookupTransport(
         endpoint=manifest.enterprise_endpoint,
         enterprise_action=enterprise_action,
         business_entity_action=business_entity_action,
-        unit_by_uuid_action=unit_action,
         connect_timeout_s=manifest.constraints.connect_timeout_s,
         read_timeout_s=manifest.constraints.read_timeout_s,
         allowed_urls=enterprise_allowlist(manifest),

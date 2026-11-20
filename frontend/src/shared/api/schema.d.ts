@@ -1095,10 +1095,11 @@ export interface paths {
          * @description The controlled PDF of the same live conclusion view-model (API-07).
          *
          *     The view-model is rebuilt (and re-authorized) on every call exactly as for
-         *     the preview — print never bypasses the fresh access check. Rendered bytes
-         *     are never cached (``no-store``) and no «выдано/подписано» record is
-         *     written by a read. An unusable template/engine is an honest 503 Problem
-         *     without a file.
+         *     the preview — print never bypasses the fresh access check, and the PDF
+         *     route checks its OWN capability ``conclusion:pdf`` (ТЗ DR55 §3.5), not
+         *     the preview one. Rendered bytes are never cached (``no-store``) and no
+         *     «выдано/подписано» record is written by a read. An unusable
+         *     template/engine is an honest 503 Problem without a file.
          */
         get: operations["download_conclusion_api_v1_arrivals__party_id__conclusion_pdf_get"];
         put?: never;
@@ -1660,6 +1661,20 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * ConclusionFlagView
+         * @description The compact conclusion availability of one row (ТЗ DR55 §5.4).
+         *
+         *     A display convenience of the read model only: the preview/PDF routes
+         *     always re-derive the live basis and re-check the rights. ``basis_kind``
+         *     is ``LOCAL``/``PREVIOUS`` when a basis exists, ``None`` when none does.
+         */
+        ConclusionFlagView: {
+            /** Available */
+            available: boolean;
+            /** Basis Kind */
+            basis_kind: ("LOCAL" | "PREVIOUS") | null;
+        };
+        /**
          * ConclusionView
          * @description One derived view of the currently valid basis (API-07).
          *
@@ -2194,6 +2209,7 @@ export interface components {
             /** Examination Id */
             examination_id: string | null;
             examination?: components["schemas"]["ExaminationSummary"] | null;
+            conclusion?: components["schemas"]["ConclusionFlagView"] | null;
             /** Revision */
             revision: number;
             /**

@@ -54,13 +54,20 @@ async def download_conclusion(
     """The controlled PDF of the same live conclusion view-model (API-07).
 
     The view-model is rebuilt (and re-authorized) on every call exactly as for
-    the preview — print never bypasses the fresh access check. Rendered bytes
-    are never cached (``no-store``) and no «выдано/подписано» record is
-    written by a read. An unusable template/engine is an honest 503 Problem
-    without a file.
+    the preview — print never bypasses the fresh access check, and the PDF
+    route checks its OWN capability ``conclusion:pdf`` (ТЗ DR55 §3.5), not
+    the preview one. Rendered bytes are never cached (``no-store``) and no
+    «выдано/подписано» record is written by a read. An unusable
+    template/engine is an honest 503 Problem without a file.
     """
     identity, _actor = principal
-    view = await service.build_conclusion(identity.actor_id, party_id, uow=db, authorizer=authorizer)
+    view = await service.build_conclusion(
+        identity.actor_id,
+        party_id,
+        uow=db,
+        authorizer=authorizer,
+        capability="conclusion:pdf",
+    )
     form = resources.load_manifest(view.form_id)
     data = pdf.render_pdf(view, form)
     response.headers["Cache-Control"] = "no-store"

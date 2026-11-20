@@ -177,9 +177,7 @@ def test_pdf_long_names_and_repeated_headers_without_clipping() -> None:
 
     report_form = load_manifest("report-5vet")
     rows = [
-        ReportMatrixRow(
-            code=f"{index:03d}", name=f"Показатель №{index}", automatic=True, values={"Свиньи": 1.0}
-        )
+        ReportMatrixRow(code=f"{index:03d}", name=f"Показатель №{index}", automatic=True, values={"Свиньи": 1.0})
         for index in range(1, 121)
     ]
     data = render_pdf(REPORT.model_copy(update={"matrix": rows}), report_form)
@@ -200,6 +198,45 @@ def test_pdf_of_previous_basis_uses_its_template() -> None:
     previous = VIEW.model_copy(update={"form_id": "conclusion-previous"})
     form = load_manifest("conclusion-previous")
     assert "убойного пункта" in _pdf_text(render_pdf(previous, form)).lower()
+
+
+# --- ТЗ DR55 §5.8: the controlled coat asset ----------------------------------------
+
+
+def test_pdf_embeds_the_manifest_approved_coat() -> None:
+    """The real coat image travels into the rendered PDF of both bases."""
+    for form_id in ("conclusion-local", "conclusion-previous"):
+        form = load_manifest(form_id)
+        data = render_pdf(VIEW.model_copy(update={"form_id": form_id}), form)
+        reader = PdfReader(io.BytesIO(data))
+        images = [image.name for image in reader.pages[0].images]
+        assert images, f"форма {form_id} не содержит герб"
+
+
+def test_asset_resolver_is_manifest_scoped() -> None:
+    from backend.src.modules.documents.resources import ASSETS_DIR, asset_file
+
+    manifest = load_manifest("conclusion-local")
+    coat = asset_file(manifest, "russia-coat-small.png")
+    assert coat.is_file() and ASSETS_DIR.resolve() in coat.resolve().parents
+    # A tampered asset (hash mismatch) and an unapproved name are refused.
+    with pytest.raises(RendererUnavailable):
+        asset_file(manifest.model_copy(update={"assets": []}), "russia-coat-small.png")
+    with pytest.raises(RendererUnavailable):
+        asset_file(manifest, "not-in-manifest.png")
+    with pytest.raises(RendererUnavailable):
+        asset_file(manifest, "../fonts/DejaVuSans.ttf")
+
+
+def test_tampered_coat_hash_is_503() -> None:
+    from backend.src.modules.documents.resources import AssetEntry, asset_file
+
+    manifest = load_manifest("conclusion-local")
+    wrong = manifest.model_copy(
+        update={"assets": [AssetEntry(**{**manifest.assets[0].model_dump(), "sha256": "2" * 64})]}
+    )
+    with pytest.raises(RendererUnavailable):
+        asset_file(wrong, manifest.assets[0].resource)
 
 
 # --- rejected renderer ----------------------------------------------------------------

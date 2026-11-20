@@ -171,7 +171,15 @@ async def enrich_document(db: AsyncSession, party: Party) -> None:
         "vdDocument": {
             "issueNumber": "ЭВСД-120",
             "consignee": {"name": "ИП Владелец"},
-            "batch": {"volume": "120", "quantity": "120", "productItem": {"name": "Говядина охлаждённая"}},
+            "batch": {
+                "volume": "120",
+                "quantity": "120",
+                "productItem": {"name": "Говядина охлаждённая"},
+                # ТЗ DR55 §5.8: the human-readable unit name of the SAME
+                # source GUID the confirmation freezes — a GUID is never
+                # printed as the unit.
+                "unit": {"guid": str(UNIT), "name": "кг"},
+            },
         }
     }
     await db.commit()
@@ -386,7 +394,9 @@ async def test_no_demo_signatures_or_foreign_requisites(db_session: AsyncSession
     assert view.fields["evsd"] == str(incoming.evsd_uuid)
     assert view.fields["owner"] == "ИП Владелец"
     assert view.fields["product"] == "Говядина охлаждённая"
-    assert view.fields["unit"] == str(UNIT)
+    # ТЗ DR55 §5.8: the unit prints as the human-readable name, never a GUID.
+    assert view.fields["unit"] == "кг"
+    assert str(UNIT) not in (view.fields["unit"] or "")
 
 
 async def test_deleted_required_local_never_falls_back_to_previous(

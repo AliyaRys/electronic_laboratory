@@ -41,6 +41,8 @@ export interface ArrivalsScreenProps {
   onReconciledApply: (next: AppliedReconciliationDate) => void;
   hiddenColumns: ReadonlySet<string>;
   onToggleColumn: (id: string) => void;
+  /** ТЗ DR55 §5.6: the /me capabilities of the session's conclusion actions. */
+  conclusionCapabilities?: { download: boolean; print: boolean } | undefined;
   labId: string;
   items: readonly IncomingView[];
   loading: boolean;
@@ -74,6 +76,7 @@ export function ArrivalsScreen({
   onReconciledApply,
   hiddenColumns,
   onToggleColumn,
+  conclusionCapabilities,
   labId,
   items,
   loading,
@@ -91,7 +94,14 @@ export function ArrivalsScreen({
       case "WORK":
         return <WorkArrivalsTable labId={labId} items={items} />;
       case "ACCEPTED":
-        return <CompletedArrivalsTable labId={labId} items={items} hiddenColumns={hiddenColumns} />;
+        return (
+          <CompletedArrivalsTable
+            labId={labId}
+            items={items}
+            hiddenColumns={hiddenColumns}
+            conclusionCapabilities={conclusionCapabilities}
+          />
+        );
       default:
         return <ExpectedArrivalsTable labId={labId} items={items} onHide={onHide} />;
     }

@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <!--
-  Предварительная форма ВСЭ убойного пункта (conclusion-previous, version 1).
-  Основание — предыдущая ВСЭ из подтверждённого ЧЕК-разреза входящего ЭВСД;
-  клеймо и дата принадлежат убойному пункту, местная ВСЭ не требуется.
-  Официального утверждённого образца пока нет: official=false, метка
-  «Предварительная форма» выводится рендерером. Все значения подставляет
-  рендерер и экранирует; внешние ссылки, скрипты и сетевые стили запрещены.
+  Печатная форма ветеринарного заключения (conclusion-previous, version 2).
+  ТЗ DR55 §5.8: та же композиция, что у местной ВСЭ, но основание — прежняя
+  достаточная ВСЭ убойного пункта. Данные подставляются ТОЛЬКО из серверной
+  ConclusionView; демонстрационные реквизиты статических SVG не копируются.
+  Форма остаётся предварительной (official=false в manifest.json).
 -->
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <title>Ветеринарное заключение (ВСЭ убойного пункта)</title>
+    <title>Ветеринарное заключение (прежняя ВСЭ)</title>
     <style>
       @font-face {
         font-family: "DejaVuSans";
@@ -18,12 +17,26 @@
       }
       @page {
         size: a4 portrait;
-        margin: 20mm 15mm 20mm 15mm;
+        margin: 16mm 15mm 18mm 15mm;
       }
       body {
         font-family: "DejaVuSans";
         font-size: 10pt;
         color: #000000;
+      }
+      .coat {
+        text-align: center;
+        margin: 0 0 3mm 0;
+      }
+      h1 {
+        font-size: 14pt;
+        text-align: center;
+        margin: 0 0 2mm 0;
+      }
+      .subtitle {
+        text-align: center;
+        margin: 0 0 5mm 0;
+        font-size: 10pt;
       }
       .watermark {
         text-align: right;
@@ -31,17 +44,7 @@
         color: #555555;
         border: 1px solid #555555;
         padding: 2mm 3mm;
-        margin-bottom: 6mm;
-      }
-      h1 {
-        font-size: 14pt;
-        text-align: center;
-        margin: 0 0 4mm 0;
-      }
-      .subtitle {
-        text-align: center;
-        margin: 0 0 6mm 0;
-        font-size: 10pt;
+        margin-bottom: 5mm;
       }
       table.requisites {
         width: 100%;
@@ -65,7 +68,12 @@
         padding: 1.5mm 2mm;
       }
       .signature-space {
-        height: 16mm;
+        height: 30mm;
+      }
+      .sign-line {
+        width: 70%;
+        border-bottom: 0.5pt solid #000000;
+        height: 6mm;
       }
       .footer {
         margin-top: 8mm;
@@ -76,20 +84,14 @@
   </head>
   <body>
     <div class="watermark">{{preliminary}}</div>
+    <div class="coat"><img src="russia-coat-small.png" width="110" height="121" /></div>
     <h1>ВЕТЕРИНАРНОЕ ЗАКЛЮЧЕНИЕ</h1>
-    <p class="subtitle">по результатам ВСЭ убойного пункта</p>
+    <p class="subtitle">о проведении ветеринарно-санитарной экспертизы (по прежней ВСЭ убойного пункта)</p>
+    <p class="subtitle">{{organization}} · {{laboratory}}</p>
     <table class="requisites">
       <tbody>
         <tr>
-          <th scope="row">Организация</th>
-          <td>{{organization}}</td>
-        </tr>
-        <tr>
-          <th scope="row">Лаборатория</th>
-          <td>{{laboratory}}</td>
-        </tr>
-        <tr>
-          <th scope="row">Дата ВСЭ убойного пункта</th>
+          <th scope="row">Дата и основание</th>
           <td>{{date}}</td>
         </tr>
         <tr>
@@ -130,11 +132,12 @@
     <table class="requisites">
       <tbody>
         <tr>
-          <th scope="row">Подпись (заполняется от руки)</th>
+          <th scope="row">Место для подписи и клейма/печати</th>
           <td>{{signature}}</td>
         </tr>
       </tbody>
     </table>
-    <p class="footer">Форма {{form_id}}, версия {{form_version}}. Печатается с живого состояния партии.</p>
+    <div class="sign-line"></div>
+    <p class="footer">Форма {{form_id}}, версия {{form_version}}. Документ построен из живых данных системы; подписание от руки.</p>
   </body>
 </html>

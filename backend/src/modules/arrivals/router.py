@@ -217,6 +217,10 @@ async def list_arrivals(
             for party_id in party_ids
         },
     )
+    # ТЗ DR55 §5.4: the conclusion availability of ONE page is ONE bulk
+    # projection (three set reads) — no preview/PDF request per row, no N+1.
+    documents_by_party = {party.id: document for party, document in zip(parties, documents, strict=True)}
+    conclusion_flags_map = await queries.conclusion_flags(db, list(parties), documents_by_party)
     views: list[IncomingView] = []
     for party, document in zip(parties, documents, strict=True):
         views.append(
@@ -226,6 +230,7 @@ async def list_arrivals(
                 document,
                 reconciliation_summary=summaries.get(party.id),
                 examination_summary=exam_summaries.get(party.id),
+                conclusion_flag=conclusion_flags_map.get(party.id),
             )
         )
     response.headers["Cache-Control"] = "no-store"
@@ -267,7 +272,7 @@ async def get_reconciliation(
         await db.execute(select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id))
     ).scalar_one()
     row = await reconciliation.load_reconciliation(db, party_id)
-    names = await reconciliation.resolved_participant_names(db, document) 
+    names = await reconciliation.resolved_participant_names(db, document)
     view = reconciliation.build_reconciliation_view(row, party, document, names=names)
     response.headers["Cache-Control"] = "no-store"
     response.headers["ETag"] = format_etag(view.revision)

@@ -30,6 +30,7 @@ from backend.src.modules.documents.resources import (
     FONTS_DIR,
     FormManifest,
     RendererUnavailable,
+    asset_file,
     font_file,
     read_template,
     resolve_within,
@@ -66,17 +67,28 @@ def _register_fonts(form: FormManifest) -> None:
         pdfmetrics.registerFont(TTFont(name, str(font_file(form))))
 
 
-def _strict_link_callback(uri: str, *args: Any) -> str | None:  # noqa: ARG001 - engine signature
+def _strict_link_callback(manifest: FormManifest) -> Any:
     """Resolve only controlled resources; deny everything else (SPEC-05).
 
-    The template may reference fonts by bare file name — the callback resolves
-    them strictly inside ``backend/resources/fonts/``. Any other URI (external
-    URL, arbitrary file path) is refused and aborts the render with 503.
+    The template may reference fonts by bare file name (resolved inside
+    ``backend/resources/fonts/``) and manifest-approved binary assets
+    (resolved inside ``backend/resources/forms/assets/``). Any other URI
+    (external URL, arbitrary file path) is refused and aborts the render
+    with 503 (ТЗ DR55 §5.8: only the manifest-approved coat is allowed).
     """
-    try:
-        return str(resolve_within(FONTS_DIR, uri))
-    except RendererUnavailable as error:
-        raise RendererUnavailable(f"Внешний или недопустимый ресурс запрещён при рендере формы: {uri!r}.") from error
+
+    def callback(uri: str, *args: Any) -> str | None:  # noqa: ARG001 - engine signature
+        fonts_candidate = resolve_within(FONTS_DIR, uri)
+        if fonts_candidate.is_file():
+            return str(fonts_candidate)
+        try:
+            return str(asset_file(manifest, uri))
+        except RendererUnavailable as error:
+            raise RendererUnavailable(
+                f"Внешний или недопустимый ресурс запрещён при рендере формы: {uri!r}."
+            ) from error
+
+    return callback
 
 
 def _conclusion_mapping(view: ConclusionView) -> dict[str, str]:
@@ -120,7 +132,7 @@ def _fill(template: str, mapping: dict[str, str]) -> str:
     return TOKEN.sub(lambda match: mapping.get(match.group(1), ""), template)
 
 
-def _run_engine(html: str) -> bytes:
+def _run_engine(html: str, callback: Any) -> bytes:
     from xhtml2pdf import pisa
 
     destination = io.BytesIO()
@@ -129,7 +141,7 @@ def _run_engine(html: str) -> bytes:
             html,
             dest=destination,
             encoding="utf-8",
-            link_callback=_strict_link_callback,
+            link_callback=callback,
         )
     except RendererUnavailable:
         raise
@@ -157,7 +169,7 @@ def render_pdf(model: DocumentView, form: FormManifest) -> bytes:
     mapping["form_version"] = _escape(form.version)
     html = _fill(template, mapping)
 
-    data = _run_engine(html)
+    data = _run_engine(html, _strict_link_callback(form))
     try:
         reader = PdfReader(io.BytesIO(data))
         box = reader.pages[0].mediabox

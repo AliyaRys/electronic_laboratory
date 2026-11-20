@@ -41,6 +41,8 @@ from backend.src.modules.arrivals.schemas import (
     trailer_projection,
 )
 from backend.src.modules.catalog_pricing.schemas import PricingSnapshot
+from backend.src.modules.documents.basis import conclusion_flags
+from backend.src.modules.documents.schemas import ConclusionFlagView
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.identity.models import User
 from backend.src.modules.integrations.vetis.document_types import document_type_label
@@ -60,6 +62,7 @@ __all__ = [
     "arrival_page",
     "build_incoming_view",
     "combined_total_of",
+    "conclusion_flags",
     "examination_summaries",
     "party_view",
     "previous_vse_fields",
@@ -124,9 +127,7 @@ def accompanying_document_key(
     occurrence: int = 0,
 ) -> str:
     """ТЗ DR40 §6.1: the deterministic key of one accompanying document."""
-    combination = "|".join(
-        (type_code or "", relationship_type or "", series or "", number or "", created_on or "")
-    )
+    combination = "|".join((type_code or "", relationship_type or "", series or "", number or "", created_on or ""))
     digest = hashlib.sha1(combination.encode("utf-8")).hexdigest()[:_KEY_DIGEST_LENGTH]
     return digest if occurrence == 0 else f"{digest}#{occurrence + 1}"
 
@@ -181,6 +182,7 @@ def accompanying_documents_of(payload: object) -> list[AccompanyingDocumentView]
             )
         )
     return views
+
 
 # Core projection of the ТЗ-06 examination table; the queue read model already
 # accounts for the examination separately from the confirmation (DATA-02) and
@@ -542,9 +544,7 @@ def _external_fields(
             else None
         ),
         "transportDocumentIssuedOn": (
-            str(transport_document.get("issueDate"))
-            if transport_document.get("issueDate") not in (None, "")
-            else None
+            str(transport_document.get("issueDate")) if transport_document.get("issueDate") not in (None, "") else None
         ),
         "consignor": str(consignor.get("name") or ""),
         "consignee": str(consignee.get("name") or ""),
@@ -629,8 +629,7 @@ async def reconciliation_summaries(
         .where(Reconciliation.party_id.in_(party_ids))
     )
     return {
-        reconciliation.party_id: _summary_of(reconciliation, author_name)
-        for reconciliation, author_name in rows.all()
+        reconciliation.party_id: _summary_of(reconciliation, author_name) for reconciliation, author_name in rows.all()
     }
 
 
@@ -724,9 +723,7 @@ async def examination_summaries(
     )
     pricings = reconciliation_pricings or {}
     return {
-        examination.party_id: _examination_summary_of(
-            examination, legacy_name, pricings.get(examination.party_id)
-        )
+        examination.party_id: _examination_summary_of(examination, legacy_name, pricings.get(examination.party_id))
         for examination, legacy_name in rows.all()
     }
 
@@ -738,13 +735,15 @@ async def build_incoming_view(
     *,
     reconciliation_summary: ReconciliationSummary | None | _UNSET = _UNSET(),
     examination_summary: ExaminationSummary | None | _UNSET = _UNSET(),
+    conclusion_flag: ConclusionFlagView | None | _UNSET = _UNSET(),
 ) -> IncomingView:
     """The API-04 ``IncomingView`` of one arrival.
 
     ``reconciliation_summary`` carries the page's bulk read (ТЗ DR39);
-    ``examination_summary`` carries the page's bulk ВСЭ read (ТЗ DR44). The
-    default sentinels load the summaries of this one party with one query each
-    for the single-read endpoint.
+    ``examination_summary`` carries the page's bulk ВСЭ read (ТЗ DR44);
+    ``conclusion_flag`` carries the page's bulk conclusion projection
+    (ТЗ DR55 §5.4). The default sentinels load the summaries of this one
+    party with one query each for the single-read endpoint.
     """
     if isinstance(reconciliation_summary, _UNSET):
         summary = (await reconciliation_summaries(db, [party.id])).get(party.id)
@@ -760,6 +759,10 @@ async def build_incoming_view(
         ).get(party.id)
     else:
         exam_summary = examination_summary
+    if isinstance(conclusion_flag, _UNSET):
+        flag = (await conclusion_flags(db, [party], {party.id: document})).get(party.id)
+    else:
+        flag = conclusion_flag
     has_reconciliation, confirmation = await started_flags(db, party.id)
     document_payload = document.source_snapshot["vdDocument"]
     batch = document_payload["batch"] if isinstance(document_payload, dict) else {}
@@ -786,6 +789,7 @@ async def build_incoming_view(
         confirmation=_confirmation_summary(confirmation) if confirmation is not None else None,
         reconciliation=summary,
         queue=queue_label,
+        conclusion=flag,
         examination_id=str(examination_id) if examination_id is not None else None,
         examination=exam_summary,
         revision=party.rev,

@@ -1,8 +1,9 @@
 /**
- * SavedResearchResults tests (ТЗ DR44 §4.2, Task 5): the readonly saved
- * researches of the card — typed value formatting, Russian names from the
- * canonical INDICATORS registry, the frozen server evaluation, required tone
- * and the honest legacy fallback for an unknown indicator.
+ * SavedResearchResults tests (ТЗ DR55 §5.1/§6.1): the saved card shows ONLY
+ * the useful verdicts «Норма»/«Отклонение» — no hints, no norm criteria, no
+ * service statuses — and a research without an applicable evaluation keeps
+ * NO badge at all. The value stays visible and is programmatically named by
+ * the research heading («Сохранённое значение» is gone).
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -14,39 +15,36 @@ const ORGANOLEPTIC = INDICATORS.find((item) => item.code === "VSE-F18") as (type
 const TEMPERATURE = INDICATORS.find((item) => item.code === "VSE-F20") as (typeof INDICATORS)[number];
 const COOKING = INDICATORS.find((item) => item.code === "VSE-F26") as (typeof INDICATORS)[number];
 const DOSIMETRY = INDICATORS.find((item) => item.code === "VSE-F29") as (typeof INDICATORS)[number];
+const BACTERIOSCOPY = INDICATORS.find((item) => item.code === "VSE-F23") as (typeof INDICATORS)[number];
 const MICROSCOPY = INDICATORS.find((item) => item.code === "VSE-F24") as (typeof INDICATORS)[number];
 const UNKNOWN_ID = "00000000-0000-0000-0000-00000000dead";
 
-const snapshot: PricingSnapshotView = {
-  lines: [
-    {
-      service_code: TEMPERATURE.id,
-      name: "Температура в толще мышц",
+interface LineOverrides {
+  evaluation?: Record<string, unknown> | null;
+  method_snapshot?: Record<string, unknown> | null;
+}
+
+function snapshotOf(lines: { service_code: string; overrides?: LineOverrides }[]): PricingSnapshotView {
+  return {
+    lines: lines.map(({ service_code, overrides }) => ({
+      service_code,
+      name: "line",
       unit_id: "service",
       quantity: "1",
       unit_price: "5.00",
       amount: "5.00",
-      method_snapshot: { rule: { type: "interval", lower: "0", upper: "10" } },
-      evaluation: { status: "DEVIATION", hint: "пересохраните карточку" },
-    },
-    {
-      service_code: ORGANOLEPTIC.id,
-      name: "Органолептическое исследование",
-      unit_id: "service",
-      quantity: "1",
-      unit_price: "5.00",
-      amount: "5.00",
-      method_snapshot: { rule: { type: "qualitative", accepted_values: ["true"] } },
-      evaluation: { status: "IN_NORM" },
-    },
-  ],
-  total: "10.00",
-  currency: "RUB",
-  fair: false,
-};
+      method_snapshot: overrides?.method_snapshot ?? null,
+      evaluation: overrides?.evaluation === undefined ? null : (overrides.evaluation as never),
+    })),
+    total: "5.00",
+    currency: "RUB",
+    fair: false,
+  };
+}
 
 function cardWith(
   researches: Record<string, { kind: string; value: unknown; otherText?: string | null }>,
+  lines: { service_code: string; overrides?: LineOverrides }[] = [],
   overrides: Partial<Pick<ExaminationView, "invasive_findings" | "noncontagious_findings">> = {},
 ): ExaminationView {
   return {
@@ -68,7 +66,7 @@ function cardWith(
     })),
     invasive_findings: [],
     noncontagious_findings: [],
-    pricing: snapshot as unknown as Record<string, unknown>,
+    pricing: snapshotOf(lines) as unknown as Record<string, unknown>,
     sample_collection_id: "44444444-4444-4444-8444-444444444444",
     sample: {
       id: "44444444-4444-4444-8444-444444444444",
@@ -90,79 +88,121 @@ function cardWith(
 }
 
 describe("SavedResearchResults", () => {
-  it("shows the Russian names, not «Показатель UUID»", () => {
+  it("shows the exact verdict badges for IN_NORM and DEVIATION, nothing else", () => {
     render(
       <SavedResearchResults
-        view={cardWith({
-          [ORGANOLEPTIC.id]: { kind: "ENUM", value: "MATCH" },
-          [TEMPERATURE.id]: { kind: "DECIMAL", value: "4.5" },
-        })}
+        view={cardWith(
+          {
+            [ORGANOLEPTIC.id]: { kind: "ENUM", value: "MATCH" },
+            [TEMPERATURE.id]: { kind: "DECIMAL", value: "12" },
+          },
+          [
+            {
+              service_code: ORGANOLEPTIC.id,
+              overrides: { evaluation: { status: "IN_NORM", evaluation_mode: "FIXED" } },
+            },
+            {
+              service_code: TEMPERATURE.id,
+              overrides: {
+                evaluation: { status: "DEVIATION", evaluation_mode: "CONFIGURABLE", hint: "пересохраните карточку" },
+                method_snapshot: { rule: { type: "interval", lower: "0", upper: "10" } },
+              },
+            },
+          ],
+        )}
       />,
     );
-    expect(screen.getByText("Органолептическое исследование")).toBeTruthy();
-    expect(screen.getByText("Температура в толще мышц")).toBeTruthy();
-    expect(screen.queryByText(/Показатель /)).toBeNull();
+    expect(screen.getByText("Норма")).toBeTruthy();
+    const deviation = screen.getByText("Отклонение");
+    // ТЗ DR55 §5.1: no hint, no range/criterion text next to the badge.
+    expect(deviation.textContent).toBe("Отклонение");
+    expect(screen.queryByText(/норма:/)).toBeNull();
+    expect(screen.queryByText(/пересохраните карточку/)).toBeNull();
+    expect(screen.queryByText(/от 0 до 10/)).toBeNull();
   });
 
-  it("formats the typed values: decimal with unit, enum option, other text", () => {
+  it("renders no badge for NOT_APPLICABLE, UNKNOWN, missing evaluation or NONE mode", () => {
+    render(
+      <SavedResearchResults
+        view={cardWith(
+          {
+            [ORGANOLEPTIC.id]: { kind: "ENUM", value: "MATCH" },
+            [TEMPERATURE.id]: { kind: "DECIMAL", value: "4.5" },
+            [BACTERIOSCOPY.id]: { kind: "TEXT", value: "рост не обнаружен" },
+            [MICROSCOPY.id]: { kind: "DECIMAL", value: "2.5" },
+          },
+          [
+            {
+              service_code: ORGANOLEPTIC.id,
+              overrides: { evaluation: { status: "NOT_APPLICABLE", evaluation_mode: "FIXED" } },
+            },
+            {
+              service_code: TEMPERATURE.id,
+              overrides: { evaluation: { status: "UNKNOWN", evaluation_mode: "CONFIGURABLE" } },
+            },
+            {
+              service_code: BACTERIOSCOPY.id,
+              overrides: { evaluation: { status: "IN_NORM", evaluation_mode: "NONE" } },
+            },
+          ],
+        )}
+      />,
+    );
+    const articles = (id: string): Element | null => document.querySelector(`[data-indicator-id="${id}"]`);
+    expect(articles(ORGANOLEPTIC.id)?.querySelector(".vse-research-evaluation")).toBeNull();
+    expect(articles(TEMPERATURE.id)?.querySelector(".vse-research-evaluation")).toBeNull();
+    expect(articles(BACTERIOSCOPY.id)?.querySelector(".vse-research-evaluation")).toBeNull();
+    expect(articles(MICROSCOPY.id)?.querySelector(".vse-research-evaluation")).toBeNull();
+    // A non-applicable verdict never colours the card either.
+    expect(articles(ORGANOLEPTIC.id)?.getAttribute("data-evaluation")).toBeNull();
+  });
+
+  it("keeps the values visible and names them by the research heading", () => {
     render(
       <SavedResearchResults
         view={cardWith({
           [TEMPERATURE.id]: { kind: "DECIMAL", value: "4.5" },
-          [ORGANOLEPTIC.id]: { kind: "ENUM", value: "MATCH" },
           [COOKING.id]: { kind: "ENUM", value: "OTHER", otherText: "свой вариант" },
-          [MICROSCOPY.id]: { kind: "DECIMAL", value: "2.5" },
-        })}
-      />,
-    );
-    expect(screen.getByDisplayValue("4,5 °C")).toBeTruthy();
-    expect(screen.getByDisplayValue("Соответствует")).toBeTruthy();
-    expect(screen.getByDisplayValue("Иное (свой вариант)")).toBeTruthy();
-    expect(screen.getByDisplayValue("2,5")).toBeTruthy();
-  });
-
-  it("formats BOOLEAN and DOSIMETRY values", () => {
-    render(
-      <SavedResearchResults
-        view={cardWith({
-          [ORGANOLEPTIC.id]: { kind: "BOOLEAN", value: false },
           [DOSIMETRY.id]: { kind: "DOSIMETRY", value: { first: "1.2", last: "3.4" } },
         })}
       />,
     );
-    expect(screen.getByDisplayValue("Обнаружено")).toBeTruthy();
-    expect(screen.getByDisplayValue("1,2 / 3,4 мкЗв/ч")).toBeTruthy();
+    expect(screen.queryByText("Сохранённое значение")).toBeNull();
+    // ТЗ DR55 fix-loop: the value is a semantic readonly output (not an
+    // input), and long text wraps inside the card instead of clipping.
+    const temperature = screen.getByText("4,5 °C");
+    expect(temperature.tagName).toBe("OUTPUT");
+    expect(temperature.querySelector("input")).toBeNull();
+    expect(document.querySelector<HTMLInputElement>(".vse-research-value input")).toBeNull();
+    const heading = temperature.getAttribute("aria-labelledby") ?? "";
+    const label = document.getElementById(heading);
+    expect(label?.textContent).toContain("Температура в толще мышц");
+    expect(screen.getByText("Иное (свой вариант)")).toBeTruthy();
+    expect(screen.getByText("1,2 / 3,4 мкЗв/ч")).toBeTruthy();
   });
 
-  it("shows the frozen server evaluation with the norm criterion", () => {
+  it("a very long value wraps inside the card (output, no input clipping)", () => {
+    const long = "Очень длинное сохранённое значение исследования ".repeat(12);
     render(
       <SavedResearchResults
-        view={cardWith({
-          [TEMPERATURE.id]: { kind: "DECIMAL", value: "12" },
-          [ORGANOLEPTIC.id]: { kind: "BOOLEAN", value: true },
-        })}
+        view={cardWith({ [TEMPERATURE.id]: { kind: "TEXT", value: long } })}
       />,
     );
-    const deviation = screen.getAllByText(/Отклонение/)[0];
-    expect(deviation.textContent).toContain("пересохраните карточку");
-    expect(deviation.textContent).toContain("от 0 до 10");
-    const norm = screen.getAllByText(/Норма/)[0];
-    expect(norm.textContent).toContain("норма: true");
+    const value = screen.getByText(
+      (_, element) => (element?.getAttribute("class") ?? "").includes("vse-research-value"),
+    );
+    expect(value.tagName).toBe("OUTPUT");
+    expect(value.textContent).toContain(long.trim());
   });
 
-  it("marks required researches with the light-blue tone", () => {
-    render(
-      <SavedResearchResults
-        view={cardWith({
-          [ORGANOLEPTIC.id]: { kind: "BOOLEAN", value: true },
-          [MICROSCOPY.id]: { kind: "DECIMAL", value: "2.5" },
-        })}
-      />,
-    );
-    expect(
-      document.querySelector(`[data-indicator-id="${ORGANOLEPTIC.id}"].vse-research-required`),
-    ).toBeTruthy();
-    expect(document.querySelector(`[data-indicator-id="${MICROSCOPY.id}"].vse-research-required`)).toBeNull();
+  it("an unknown legacy indicator keeps the value visible with a reserve label", () => {
+    render(<SavedResearchResults view={cardWith({ [UNKNOWN_ID]: { kind: "DECIMAL", value: "7" } })} />);
+    expect(screen.getByText("Исследование")).toBeTruthy();
+    const value = screen.getByText("7");
+    expect(value.tagName).toBe("OUTPUT");
+    const heading = value.getAttribute("aria-labelledby") ?? "";
+    expect(document.getElementById(heading)?.textContent).toContain("Исследование");
+    expect(screen.getByText(/Код показателя/).textContent).toContain(UNKNOWN_ID);
   });
 
   it("renders findings as readonly rows", () => {
@@ -170,6 +210,7 @@ describe("SavedResearchResults", () => {
       <SavedResearchResults
         view={cardWith(
           { [ORGANOLEPTIC.id]: { kind: "BOOLEAN", value: true } },
+          [{ service_code: ORGANOLEPTIC.id, overrides: { evaluation: { status: "IN_NORM", evaluation_mode: "FIXED" } } }],
           {
             invasive_findings: [{ disease: "Трихинеллёз", location: "мышцы" }],
             noncontagious_findings: [{ disease: "Пастереллёз", otherText: "уточнение" }],
@@ -181,13 +222,22 @@ describe("SavedResearchResults", () => {
     expect(screen.getByText("Пастереллёз (уточнение)")).toBeTruthy();
   });
 
-  it("an unknown legacy indicator keeps the value visible with a reserve label", () => {
-    render(<SavedResearchResults view={cardWith({ [UNKNOWN_ID]: { kind: "DECIMAL", value: "7" } })} />);
-    expect(screen.getByText("Исследование")).toBeTruthy();
-    const extra = screen.getByDisplayValue("7");
-    expect(extra).toBeTruthy();
-    expect(screen.getByText(/Код показателя/).textContent).toContain(UNKNOWN_ID);
-    expect(screen.queryByText(/Показатель /)).toBeNull();
+  it("marks required researches with the light-blue tone", () => {
+    render(
+      <SavedResearchResults
+        view={cardWith(
+          {
+            [ORGANOLEPTIC.id]: { kind: "ENUM", value: "MATCH" },
+            [MICROSCOPY.id]: { kind: "DECIMAL", value: "2.5" },
+          },
+          [{ service_code: ORGANOLEPTIC.id, overrides: { evaluation: { status: "IN_NORM", evaluation_mode: "FIXED" } } }],
+        )}
+      />,
+    );
+    expect(
+      document.querySelector(`[data-indicator-id="${ORGANOLEPTIC.id}"].vse-research-required`),
+    ).toBeTruthy();
+    expect(document.querySelector(`[data-indicator-id="${MICROSCOPY.id}"].vse-research-required`)).toBeNull();
   });
 
   it("a saved card with a neutral evaluation stays plain (ТЗ DR54 Task 4)", () => {

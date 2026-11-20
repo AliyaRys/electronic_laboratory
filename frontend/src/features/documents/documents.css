@@ -103,3 +103,79 @@
 .vse-document-error p {
   margin: 0 0 4px 0;
 }
+
+/* ТЗ DR55 §5.5: the shared «Действия с заключением» menu — the 34×34
+   trigger, the 156px popover under it, items of at least 36px. The popover
+   is rendered in a portal with fixed coordinates, so a table container can
+   never clip it. */
+.vse-conclusion-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.vse-conclusion-trigger {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #cbdadb;
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--app-ink, #1d2b30);
+  cursor: pointer;
+}
+
+.vse-conclusion-trigger:focus-visible {
+  outline: 2px solid var(--app-focus, #1f7a8c);
+  outline-offset: 2px;
+}
+
+.vse-conclusion-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.vse-conclusion-popover {
+  position: fixed;
+  z-index: 60;
+  width: 156px;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: #ffffff;
+  border: 1px solid var(--app-line, #c9d6d8);
+  border-radius: 13px;
+  box-shadow: 0 12px 28px rgba(16, 34, 39, 0.16);
+}
+
+.vse-conclusion-item {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--app-ink, #1d2b30);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vse-conclusion-item:hover {
+  background: var(--app-tint, #eef4f4);
+}
+
+.vse-conclusion-item:focus-visible {
+  outline: 2px solid var(--app-focus, #1f7a8c);
+  outline-offset: -2px;
+}
+
+.vse-conclusion-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

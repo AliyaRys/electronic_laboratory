@@ -8,6 +8,7 @@
 import { DataTable, type DataTableColumn, type DataTableRow } from "../../shared/ui/DataTable";
 import { HelpTooltip } from "../../shared/ui/HelpTooltip";
 import { Icon } from "../../shared/ui/Icon";
+import { ConclusionActionsMenu } from "../documents/ConclusionActionsMenu";
 import { STAGE_EMPTY_TEXTS, formatRuDate, moneyLabel, type IncomingView } from "./api";
 import { examinationOutcomeLabel } from "../examinations/api";
 import { formatGoodsDate } from "./api";
@@ -293,13 +294,23 @@ export interface CompletedArrivalsTableProps {
   items: readonly IncomingView[];
   /** Optional column ids hidden by the user's session column chooser. */
   hiddenColumns: ReadonlySet<string>;
+  /**
+   * ТЗ DR55 §5.6: the conclusion capabilities of the current session come
+   * from the page's normalized /me read (the page passes them down). An
+   * absent value means «unknown» and keeps both items — the server route
+   * always re-checks the live right.
+   */
+  conclusionCapabilities?: { download: boolean; print: boolean } | undefined;
 }
 
 export function CompletedArrivalsTable({
   labId,
   items,
   hiddenColumns,
+  conclusionCapabilities,
 }: CompletedArrivalsTableProps): React.ReactElement {
+  const canDownload = conclusionCapabilities?.download ?? true;
+  const canPrint = conclusionCapabilities?.print ?? true;
   const columns: readonly DataTableColumn[] = [
     ...ACCEPTED_CORE_COLUMNS,
     ...ACCEPTED_OPTIONAL_COLUMNS.filter((column) => !hiddenColumns.has(column.id)),
@@ -323,17 +334,27 @@ export function CompletedArrivalsTable({
       { columnId: "vseAuthor", value: vseAuthorText(view) },
       { columnId: "vseNumber", value: vseNumberText(view) },
     ],
-    actions:
-      view.examination_id !== null ? (
-        <a
-          className="arrivals-icon-action compact"
-          href={`/labs/${labId}/examinations/${view.examination_id}`}
-          aria-label="Открыть карточку ВСЭ"
-          title="Открыть карточку ВСЭ"
-        >
-          <Icon name="admin-view" />
-        </a>
-      ) : null,
+    actions: (
+      <>
+        {/* ТЗ DR55 §5.6: the conclusion menu precedes the card button and is
+            rendered ONLY when the server projection says available — no
+            disabled stub. PREVIOUS without examination_id still gets the
+            menu (the card button stays absent for it). */}
+        {view.conclusion?.available === true ? (
+          <ConclusionActionsMenu partyId={view.party_id} canDownload={canDownload} canPrint={canPrint} />
+        ) : null}
+        {view.examination_id !== null ? (
+          <a
+            className="arrivals-icon-action compact"
+            href={`/labs/${labId}/examinations/${view.examination_id}`}
+            aria-label="Открыть карточку ВСЭ"
+            title="Открыть карточку ВСЭ"
+          >
+            <Icon name="admin-view" />
+          </a>
+        ) : null}
+      </>
+    ),
   }));
   return (
     <DataTable

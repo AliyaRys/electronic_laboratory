@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <!--
-  Предварительная форма местной ВСЭ (conclusion-local, version 1).
-  Официального утверждённого образца пока нет: manifest.json держит
-  official=false, а рендерер выводит метку «Предварительная форма».
-  Все значения подставляет рендерер и экранирует до подстановки;
-  в шаблоне запрещены внешние ссылки, скрипты и стили из сети.
+  Печатная форма ветеринарного заключения (conclusion-local, version 2).
+  ТЗ DR55 §5.8: композиция по эталону заключения (герб РФ в верхней части,
+  спокойная чёрно-белая печатная типографика, место для ручной подписи и
+  клейма/печати). Все данные подставляются ТОЛЬКО из серверной
+  ConclusionView; демонстрационные реквизиты статических SVG не копируются.
+  Форма остаётся предварительной: manifest.json хранит official=false, и
+  наличие герба само по себе не делает форму утверждённой (INPUT-04).
 -->
 <html lang="ru">
   <head>
@@ -17,12 +19,26 @@
       }
       @page {
         size: a4 portrait;
-        margin: 20mm 15mm 20mm 15mm;
+        margin: 16mm 15mm 18mm 15mm;
       }
       body {
         font-family: "DejaVuSans";
         font-size: 10pt;
         color: #000000;
+      }
+      .coat {
+        text-align: center;
+        margin: 0 0 3mm 0;
+      }
+      h1 {
+        font-size: 14pt;
+        text-align: center;
+        margin: 0 0 2mm 0;
+      }
+      .subtitle {
+        text-align: center;
+        margin: 0 0 5mm 0;
+        font-size: 10pt;
       }
       .watermark {
         text-align: right;
@@ -30,17 +46,7 @@
         color: #555555;
         border: 1px solid #555555;
         padding: 2mm 3mm;
-        margin-bottom: 6mm;
-      }
-      h1 {
-        font-size: 14pt;
-        text-align: center;
-        margin: 0 0 4mm 0;
-      }
-      .subtitle {
-        text-align: center;
-        margin: 0 0 6mm 0;
-        font-size: 10pt;
+        margin-bottom: 5mm;
       }
       table.requisites {
         width: 100%;
@@ -64,7 +70,12 @@
         padding: 1.5mm 2mm;
       }
       .signature-space {
-        height: 16mm;
+        height: 30mm;
+      }
+      .sign-line {
+        width: 70%;
+        border-bottom: 0.5pt solid #000000;
+        height: 6mm;
       }
       .footer {
         margin-top: 8mm;
@@ -75,20 +86,14 @@
   </head>
   <body>
     <div class="watermark">{{preliminary}}</div>
+    <div class="coat"><img src="russia-coat-small.png" width="110" height="121" /></div>
     <h1>ВЕТЕРИНАРНОЕ ЗАКЛЮЧЕНИЕ</h1>
-    <p class="subtitle">Местная всэ (выполнена в лаборатории)</p>
+    <p class="subtitle">о проведении ветеринарно-санитарной экспертизы уполномоченным лицом (местная ВСЭ)</p>
+    <p class="subtitle">{{organization}} · {{laboratory}}</p>
     <table class="requisites">
       <tbody>
         <tr>
-          <th scope="row">Организация</th>
-          <td>{{organization}}</td>
-        </tr>
-        <tr>
-          <th scope="row">Лаборатория</th>
-          <td>{{laboratory}}</td>
-        </tr>
-        <tr>
-          <th scope="row">Дата</th>
+          <th scope="row">Дата и основание</th>
           <td>{{date}}</td>
         </tr>
         <tr>
@@ -120,7 +125,7 @@
           <td>{{unit}}</td>
         </tr>
         <tr>
-          <th scope="row">Клеймо / оттиск печати</th>
+          <th scope="row">Клеймо лаборатории</th>
           <td>{{stamp}}</td>
         </tr>
       </tbody>
@@ -129,11 +134,12 @@
     <table class="requisites">
       <tbody>
         <tr>
-          <th scope="row">Подпись (заполняется от руки)</th>
+          <th scope="row">Место для подписи и клейма/печати</th>
           <td>{{signature}}</td>
         </tr>
       </tbody>
     </table>
-    <p class="footer">Форма {{form_id}}, версия {{form_version}}. Печатается с живого состояния партии.</p>
+    <div class="sign-line"></div>
+    <p class="footer">Форма {{form_id}}, версия {{form_version}}. Документ построен из живых данных системы; подписание от руки.</p>
   </body>
 </html>

@@ -1,15 +1,11 @@
 """``build_conclusion`` (API-07): derive the conclusion view-model from the
 currently valid basis — never store it, never substitute a missing requisite.
 
-The two basis routes (FT-DOC-03, ФТ 04 route table):
-
-- previous ВСЭ present AND the frozen confirmation says repeat is not
-  required → basis PREVIOUS: the slaughter-point stamp and requisites come
-  from the incoming eVSD CHK record; no local ВСЭ is demanded;
-- otherwise the basis is LOCAL: the party's own completed, suitable (FIT)
-  examination supplies the laboratory stamp. A waiting, unfit or deleted
-  local ВСЭ is never substituted by the previous one (no fallback), and a
-  full return never produces a document.
+The two basis routes (FT-DOC-03, ФТ 04 route table) and the eligibility
+decision live in ONE place: :mod:`backend.src.modules.documents.basis`. The
+same pure predicate answers the bulk read-model projection
+(``conclusion.available``) and this per-request builder, so the list can
+never show an action the live builder would refuse (ТЗ DR55 §5.4).
 
 Missing requisites are enumerated in the 422 problem (FT-DOC-04,
 INPUT-04): demo terms, numbers, signatures or foreign requisites are never
@@ -23,18 +19,25 @@ basis closes the previously served URL (FT-DOC-06).
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.src.core.clock import moscow_date
 from backend.src.core.commands import UnitOfWork
 from backend.src.core.problems import ProblemError, ProblemItem, not_found
 from backend.src.modules.arrivals.confirmation import ensure_confirmed
 from backend.src.modules.arrivals.models import IncomingDocument, Party
 from backend.src.modules.arrivals.queries import party_view, previous_vse_fields
+from backend.src.modules.documents.basis import (
+    BLOCKER_TEXTS,
+    BasisOutcome,
+    evaluate_conclusion_basis,
+    local_basis_fields,
+    previous_basis_fields,
+    unit_display_name,
+)
 from backend.src.modules.documents.schemas import ConclusionView
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
@@ -61,7 +64,7 @@ REQUIRED_FIELD_SPACES: tuple[str, ...] = (
 SIGNATURE_SPACE = "signature"
 
 FORM_ID: dict[str, str] = {"LOCAL": "conclusion-local", "PREVIOUS": "conclusion-previous"}
-FORM_VERSION = "1"
+FORM_VERSION = "2"
 PRELIMINARY_WARNING = "Предварительная форма"
 
 
@@ -83,7 +86,7 @@ def basis_problem(missing: list[str]) -> ProblemError:
 def _number(value: object) -> Decimal | None:
     try:
         parsed = Decimal(str(value)) if value is not None else None
-    except InvalidOperation:
+    except Exception:  # noqa: BLE001 - InvalidOperation/TypeError are the same "not a number"
         return None
     return parsed if parsed is None or parsed.is_finite() else None
 
@@ -109,13 +112,14 @@ def _product_scope(party: Party) -> uuid.UUID | None:
     return uuid.UUID(str(value)) if value is not None else None
 
 
-def _document_fields(document: IncomingDocument) -> dict[str, str | None]:
+def _document_fields(document: IncomingDocument) -> tuple[dict[str, str | None], dict[str, object]]:
     payload = document.source_snapshot.get("vdDocument")
     payload = payload if isinstance(payload, dict) else {}
-    consignee = payload.get("consignee")
     batch = payload.get("batch")
+    batch = batch if isinstance(batch, dict) else {}
+    consignee = payload.get("consignee")
     product_item = batch.get("productItem") if isinstance(batch, dict) else None
-    return {
+    fields = {
         # DR5: the printed conclusion shows the top-level eVSD UUID (bs:uuid);
         # issueNumber stays in the source snapshot but is never displayed as the
         # document requisition (interface term: «UUID ВСД»).
@@ -123,6 +127,7 @@ def _document_fields(document: IncomingDocument) -> dict[str, str | None]:
         "owner": _text(consignee.get("name")) if isinstance(consignee, dict) else None,
         "product": _text(product_item.get("name")) if isinstance(product_item, dict) else None,
     }
+    return fields, batch
 
 
 async def _laboratory_fields(db: AsyncSession, party: Party) -> dict[str, str | None]:
@@ -133,36 +138,12 @@ async def _laboratory_fields(db: AsyncSession, party: Party) -> dict[str, str | 
     }
 
 
-def _previous_fields(snapshot: dict[str, object]) -> tuple[dict[str, str | None], list[str]]:
-    """The PREVIOUS-basis spaces from the CHK record; every gap is reported."""
-    source = previous_vse_fields(snapshot)
-    label = {
-        "previousStamp": "previousStamp",
-        "previousNumber": "previousNumber",
-        "previousPerformedOn": "previousPerformedOn",
-        "previousOrganization": "previousOrganization",
-        "previousResult": "previousResult",
-        "previousConclusion": "previousConclusion",
-    }
-    fields: dict[str, str | None] = {
-        "stamp": _text(source["previousStamp"]),
-        "date": _text(source["previousPerformedOn"]),
-        "basis": None,
-    }
-    number = _text(source["previousNumber"])
-    if number is not None and fields["date"] is not None:
-        fields["basis"] = f"Прежняя ВСЭ № {number} от {fields['date']}"
-    missing = [name for name in label if _text(source[name]) is None]
-    return fields, missing
-
-
-def _local_fields(row: Examination) -> dict[str, str | None]:
-    date = moscow_date(row.first_completed_at).isoformat() if row.first_completed_at is not None else None
-    return {
-        "stamp": _text(row.stamp),
-        "date": date,
-        "basis": f"Местная ВСЭ № {row.number} от {date}" if date is not None else None,
-    }
+def _raise_outcome_problems(outcome: BasisOutcome) -> None:
+    """Map the typed predicate blockers/gaps to the 422 problem (one text map)."""
+    if outcome.blockers:
+        raise basis_problem([BLOCKER_TEXTS[blocker] for blocker in outcome.blockers])
+    if outcome.missing:
+        raise basis_problem(list(outcome.missing))
 
 
 async def build_conclusion(
@@ -171,8 +152,14 @@ async def build_conclusion(
     *,
     uow: AsyncSession | UnitOfWork,
     authorizer: Authorizer | None = None,
+    capability: Literal["conclusion:preview", "conclusion:pdf"] = "conclusion:preview",
 ) -> ConclusionView:
-    """Derive the conclusion view-model of one party from its live basis."""
+    """Derive the conclusion view-model of one party from its live basis.
+
+    ``capability`` is the single checked permission of the calling route
+    (preview → ``conclusion:preview``, PDF → ``conclusion:pdf``, ТЗ DR55
+    §3.5): the scope (laboratory + product area) check stays identical.
+    """
     db = uow.session if isinstance(uow, UnitOfWork) else uow
 
     resolved = await party_view(db, party_id)
@@ -185,7 +172,7 @@ async def build_conclusion(
     await (authorizer or get_authorizer()).authorize(
         db,
         actor_id,
-        "conclusion:preview",
+        capability,
         ScopeTarget(laboratory_id=party.laboratory_id, product_scope_id=_product_scope(party)),
         hide_foreign=True,
     )
@@ -195,42 +182,56 @@ async def build_conclusion(
     accepted_mass = _number(confirmation.accepted_mass_kg) or Decimal("0")
     accepted_quantity = _number(confirmation.accepted_quantity) or Decimal("0")
     returned_quantity = _number(confirmation.returned_quantity) or Decimal("0")
-    if accepted_quantity == 0 and returned_quantity > 0:
-        raise basis_problem(["партия возвращена полностью: заключение о реализации недоступно"])
 
-    missing: list[str] = []
+    fields, batch = _document_fields(document)
     if confirmation.previous_sufficient:
         basis_kind: Literal["LOCAL", "PREVIOUS"] = "PREVIOUS"
         basis_id = str(confirmation.id)
-        fields, gaps = _previous_fields(dict(document.source_snapshot))
-        missing.extend(gaps)
+        basis_fields, previous_missing = previous_basis_fields(document.source_snapshot)
+        local_fields, local_blockers = {}, ()
+        # ТЗ DR55: the CHK requisites of the previous basis are enumerated
+        # under their own CHK names, exactly as the fixture contract expects.
+        source = previous_vse_fields(document.source_snapshot)
+        for name, value in source.items():
+            fields.setdefault(name, value)
     else:
         basis_kind = "LOCAL"
         row = (await db.execute(select(Examination).where(Examination.party_id == party.id))).scalar_one_or_none()
-        if row is None:
-            # A deleted (or never created) locally-required ВСЭ is never
-            # substituted by the previous basis.
-            raise basis_problem(["местная ВСЭ не найдена (удалена или не создана)"])
-        if row.status != "COMPLETED" or row.first_completed_at is None:
-            raise basis_problem(["местная ВСЭ в состоянии ожидания: документ недоступен"])
-        if row.outcome != "FIT":
-            raise basis_problem(["итог местной ВСЭ непригоден: заключение о реализации недоступно"])
-        basis_id = str(row.id)
-        fields = _local_fields(row)
-        for name, value in fields.items():
-            if value is None:
-                missing.append(name)
+        basis_fields, local_blockers = local_basis_fields(row)
+        local_fields = basis_fields
+        # A deleted (or never created) locally-required ВСЭ is never
+        # substituted by the previous basis — the blocker text stays honest.
+        basis_id = str(row.id) if row is not None else ""
 
-    fields.update(_document_fields(document))
-    fields.update(await _laboratory_fields(db, party))
+    laboratory_fields = await _laboratory_fields(db, party)
+    unit_name = unit_display_name(batch, confirmation.accepted_unit_id)
+    outcome = evaluate_conclusion_basis(
+        confirmed=True,
+        accepted_quantity=accepted_quantity,
+        returned_quantity=returned_quantity,
+        previous_sufficient=confirmation.previous_sufficient,
+        laboratory=laboratory_fields,
+        document=fields,
+        local=local_fields if not confirmation.previous_sufficient else None,
+        local_blockers=local_blockers,
+        previous=basis_fields if confirmation.previous_sufficient else None,
+        unit_name=unit_name,
+    )
+    _raise_outcome_problems(outcome)
+
+    fields.update(basis_fields)
+    fields.update(laboratory_fields)
     fields["mass"] = _format(accepted_mass)
     fields["count"] = _format(accepted_quantity)
-    fields["unit"] = _text(confirmation.accepted_unit_id)
+    # ТЗ DR55 §5.8: a GUID/UUID is never printable as the unit — the
+    # human-readable name of the frozen confirmed snapshot is required, its
+    # absence is the honest 422 above.
+    fields["unit"] = unit_name
     fields[SIGNATURE_SPACE] = ""  # the mandatory blank manual-signature space
 
-    missing.extend(name for name in REQUIRED_FIELD_SPACES if not (fields.get(name) or "").strip())
-    if missing:
-        raise basis_problem(missing)
+    still_missing = [name for name in REQUIRED_FIELD_SPACES if not (fields.get(name) or "").strip()]
+    if still_missing:
+        raise basis_problem(still_missing)
 
     return ConclusionView(
         basis_kind=basis_kind,

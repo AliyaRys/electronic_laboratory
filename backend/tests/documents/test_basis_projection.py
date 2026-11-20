@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError
-from backend.src.modules.arrivals.models import IncomingDocument
+from backend.src.modules.arrivals.models import IncomingDocument, ReceiptConfirmation
 from backend.src.modules.arrivals.queries import build_incoming_view, conclusion_flags
 from backend.src.modules.documents.basis import local_basis_fields, unit_display_name
 from backend.src.modules.documents.schemas import ConclusionFlagView
@@ -26,6 +26,7 @@ from backend.src.modules.documents.service import build_conclusion
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.identity.authz import Authorizer, InMemoryDecisionEngine
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole, UserScope
+from backend.src.modules.integrations.vetis.models import VetisReferenceName
 from backend.tests.documents.test_conclusion_basis import (
     BEEF,
     completed_exam,
@@ -266,6 +267,110 @@ async def test_owner_missing_on_both_sources_is_honest(db_session: AsyncSession,
     assert "owner" in str(getattr(raised.value, "detail", "")) + str(
         getattr(getattr(raised.value, "problem", None), "detail", "")
     )
+
+
+# --- the unit reference (fix-loop DR55: the resolved UNIT name) -----------------------
+
+UNIT_KEY = uuid.UUID("069792f0-053d-11e1-99b4-d8d385fbc9e8")  # the VetIS unit UUID
+UNIT_BATCH_GUID = uuid.UUID("21ed96c9-337b-4a27-8761-c6e6ad3c9f5b")  # the batch GUID / accepted_unit_id
+
+
+def test_conclusion_unit_name_priority_and_never_a_guid() -> None:
+    from backend.src.modules.documents.basis import conclusion_unit_name
+
+    batch = {"unit": {"guid": str(UNIT_BATCH_GUID), "uuid": str(UNIT_KEY)}}
+    cache = {str(UNIT_KEY): "кг", str(UNIT_BATCH_GUID): "кг"}
+    # 1) the VetIS snapshot name wins;
+    assert conclusion_unit_name({"unit": {"guid": str(UNIT_KEY), "name": "кг"}}, str(UNIT_KEY), None, cache) == "кг"
+    # 2) the frozen readable name of the read model;
+    assert conclusion_unit_name({"unit": {"guid": str(UNIT_KEY)}}, str(UNIT_KEY), {"acceptedUnitName": "кг"}, cache)
+    # 3) the resolved UNIT cache row (by uuid AND by the приёмка GUID key);
+    assert conclusion_unit_name(batch, str(UNIT_BATCH_GUID), None, cache) == "кг"
+    # 4) nothing resolves → honest missing, never a GUID/UUID.
+    assert conclusion_unit_name(batch, str(UNIT_BATCH_GUID), None, {}) is None
+    frozen_guid_cache = {str(UNIT_KEY): str(UNIT_KEY)}
+    assert conclusion_unit_name(batch, str(UNIT_BATCH_GUID), None, frozen_guid_cache) is None
+
+
+def _resolved_unit_row(db: AsyncSession) -> None:
+    db.add(
+        VetisReferenceName(
+            contour="PILOT",
+            entity_kind="UNIT",
+            guid=UNIT_KEY,
+            uuid=UNIT_BATCH_GUID,
+            name="кг",
+            source="VETIS_LOOKUP",
+            status="RESOLVED",
+            active=True,
+        )
+    )
+
+
+async def _live_unit_case(db_session: AsyncSession, env: SimpleNamespace, *, with_cache: bool) -> tuple:
+    """The real VetIS shape: batch.unit.name is null; the unit resolves only
+    through the reference-name cache."""
+    lab_id = env.lab.id
+    await configure(db_session, lab_id, BEEF, trich=False)
+    party = await party_with_confirmation(db_session, lab_id, BEEF)
+    document = await db_session.scalar(
+        select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id)
+    )
+    document.source_snapshot = {
+        "vdDocument": {
+            "issueNumber": "ЭВСД-120",
+            "consignee": {"name": "ИП Владелец"},
+            "batch": {
+                "volume": "4",
+                "quantity": "4",
+                "productItem": {"name": "Говядина охлаждённая"},
+                "unit": {"guid": str(UNIT_BATCH_GUID), "uuid": str(UNIT_KEY), "name": None},
+            },
+        }
+    }
+    from sqlalchemy import select as _select
+
+    confirmation = (
+        await db_session.execute(_select(ReceiptConfirmation).where(ReceiptConfirmation.party_id == party.id))
+    ).scalar_one()
+    confirmation.accepted_unit_id = str(UNIT_BATCH_GUID)
+    if with_cache:
+        _resolved_unit_row(db_session)
+    await completed_exam(db_session, env, party.id, "U-1")
+    await db_session.commit()
+    return party, document
+
+
+async def test_builder_and_projection_agree_on_the_resolved_unit(
+    db_session: AsyncSession, env: SimpleNamespace
+) -> None:
+    party, document = await _live_unit_case(db_session, env, with_cache=True)
+
+    view = await build_conclusion(env.actor.id, party.id, uow=db_session, authorizer=env.authorizer)
+    assert view.fields["unit"] == "кг"
+
+    flags = await conclusion_flags(db_session, [party], {party.id: document})
+    assert flags[party.id] == ConclusionFlagView(available=True, basis_kind="LOCAL")
+
+
+async def test_unresolved_unit_stays_an_honest_missing(
+    db_session: AsyncSession, env: SimpleNamespace
+) -> None:
+    party, document = await _live_unit_case(db_session, env, with_cache=False)
+
+    flags = await conclusion_flags(db_session, [party], {party.id: document})
+    assert flags[party.id] == ConclusionFlagView(available=False, basis_kind=None)
+
+    with pytest.raises(ProblemError) as raised:
+        await build_conclusion(env.actor.id, party.id, uow=db_session, authorizer=env.authorizer)
+    await db_session.rollback()
+    assert raised.value.status == 422
+    problem_detail = str(getattr(raised.value, "detail", "")) + str(
+        getattr(getattr(raised.value, "problem", None), "detail", "")
+    )
+    assert "unit" in problem_detail
+    # The GUID of the batch unit is NEVER printed as the unit name.
+    assert str(UNIT_BATCH_GUID) not in problem_detail
 
 
 # --- the capability split -----------------------------------------------------------

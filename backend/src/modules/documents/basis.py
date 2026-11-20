@@ -35,9 +35,11 @@ __all__ = [
     "BLOCKER_TEXTS",
     "evaluate_conclusion_basis",
     "conclusion_flags",
+    "conclusion_unit_names",
     "local_basis_fields",
     "owner_display_name",
     "unit_display_name",
+    "unit_name_candidates",
 ]
 
 # Typed blockers; every Russian user text lives in exactly one place.
@@ -98,6 +100,95 @@ def _looks_like_uuid(value: str) -> bool:
     except (ValueError, AttributeError):
         return False
     return True
+
+
+def unit_name_candidates(batch: Mapping[str, Any], accepted_unit_id: str | None) -> list[str]:
+    """The unit identities the read path may match a cached name against (DR55).
+
+    Ordered: the VetIS unit UUID of the snapshot (the GetUnitByUuidOperation
+    key) → the batch unit GUID → the confirmed ``accepted_unit_id`` of the
+    приёмка. GUIDs/UUIDs are keys only — they are NEVER printed as a name.
+    """
+    candidates: list[str] = []
+    unit = batch.get("unit") if isinstance(batch, Mapping) else None
+    if isinstance(unit, Mapping):
+        for key in ("uuid", "guid"):
+            value = unit.get(key)
+            if isinstance(value, str) and value.strip() and value.strip() not in candidates:
+                candidates.append(value.strip())
+    if accepted_unit_id is not None and accepted_unit_id.strip() and accepted_unit_id.strip() not in candidates:
+        candidates.append(accepted_unit_id.strip())
+    return candidates
+
+
+def conclusion_unit_name(
+    batch: Mapping[str, Any],
+    accepted_unit_id: str | None,
+    form_snapshot: object,
+    cache: Mapping[str, str],
+) -> str | None:
+    """The printable unit of the accepted quantity (ТЗ DR55 §5.8, fix-loop).
+
+    Priority: the VetIS ``batch.unit.name`` → the frozen readable name of the
+    read model (``form_snapshot.acceptedUnitName``) → a RESOLVED + active
+    ``UNIT`` row of ``vetis_reference_names`` (the ``cache`` map, one set
+    query per page) → honest missing. A GUID/UUID is never printed: a missing
+    name stays missing and the document reports ``DOCUMENT_BASIS_INCOMPLETE``.
+    The builder and the bulk projector both use THIS one function — the same
+    domain source, never two copies.
+    """
+    snapshot_name = unit_display_name(batch, accepted_unit_id)
+    if snapshot_name is not None:
+        return snapshot_name
+    frozen = form_snapshot.get("acceptedUnitName") if isinstance(form_snapshot, Mapping) else None
+    if isinstance(frozen, str) and frozen.strip() and not _looks_like_uuid(frozen):
+        return frozen.strip()
+    for candidate in unit_name_candidates(batch, accepted_unit_id):
+        resolved = cache.get(candidate)
+        if resolved and not _looks_like_uuid(resolved):
+            return resolved
+    return None
+
+
+async def conclusion_unit_names(
+    db: AsyncSession,
+    contour: str,
+    parties: list[Party],
+    documents: Mapping[uuid.UUID, IncomingDocument],
+    confirmations: Mapping[uuid.UUID, ReceiptConfirmation],
+) -> dict[uuid.UUID, str | None]:
+    """The printable unit names of a PAGE via ONE cache set query (no N+1).
+
+    Both consumers reuse this: the per-request builder passes its single
+    party, the bulk projector its whole page; the pure mapping to a name is
+    :func:`conclusion_unit_name`.
+    """
+    candidates: list[str] = []
+    per_party: dict[uuid.UUID, tuple[Mapping[str, Any], str | None]] = {}
+    for party in parties:
+        confirmation = confirmations.get(party.id)
+        batch = _unit_batch(documents.get(party.id))
+        accepted = str(confirmation.accepted_unit_id) if confirmation is not None else None
+        per_party[party.id] = (batch, accepted)
+        for candidate in unit_name_candidates(batch, accepted):
+            if candidate not in candidates:
+                candidates.append(candidate)
+    from backend.src.modules.integrations.vetis.reference_names import resolved_unit_names
+
+    cache = await resolved_unit_names(db, contour, candidates)
+    names: dict[uuid.UUID, str | None] = {}
+    for party in parties:
+        batch, accepted = per_party[party.id]
+        names[party.id] = conclusion_unit_name(batch, accepted, party.form_snapshot, cache)
+    return names
+
+
+def _unit_batch(document: IncomingDocument | None) -> Mapping[str, Any]:
+    if document is None:
+        return {}
+    payload = document.source_snapshot.get("vdDocument")
+    batch = payload.get("batch") if isinstance(payload, dict) else None
+    return batch if isinstance(batch, dict) else {}
 
 
 def owner_display_name(payload: object, form_snapshot: object) -> str | None:
@@ -265,6 +356,16 @@ async def conclusion_flags(
     laboratories = {
         row.id: row for row in (await db.execute(select(Laboratory).where(Laboratory.id.in_(lab_ids)))).scalars()
     }
+    # Fix-loop DR55: the unit names of the WHOLE page come from ONE cache set
+    # query (no per-row VetIS/cache read), via the shared conclusion_unit_name
+    # source the builder uses.
+    unit_names = await conclusion_unit_names(
+        db,
+        str(next(iter(documents.values())).contour) if documents else "",
+        parties,
+        documents,
+        confirmations,
+    )
     flags: dict[uuid.UUID, ConclusionFlagView] = {}
     for party in parties:
         document = documents[party.id]
@@ -310,7 +411,7 @@ async def conclusion_flags(
                 local=local_fields,
                 local_blockers=local_blockers,
                 previous=previous_fields,
-                unit_name=unit_display_name(batch, confirmation.accepted_unit_id),
+                unit_name=unit_names.get(party.id),
             )
         flags[party.id] = conclusion_view_of(outcome)
     return flags

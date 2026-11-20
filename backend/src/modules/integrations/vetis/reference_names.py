@@ -41,6 +41,7 @@ from backend.src.modules.integrations.vetis.models import (
 from backend.src.modules.integrations.vetis.transport import (
     parse_business_entity_by_guid,
     parse_enterprise_by_guid,
+    parse_unit_by_uuid,
 )
 
 __all__ = [
@@ -53,12 +54,14 @@ __all__ = [
     "ParticipantRef",
     "ResolvedName",
     "extract_participants",
+    "extract_unit",
     "upsert_reference_names",
     "resolve_participants",
     "resolve_due_reference_names",
     "schedule_vetis_lookup_recheck",
     "backfill_reference_names",
     "participant_name_overrides",
+    "resolved_unit_names",
 ]
 
 _LOG = logging.getLogger("vetis.reference_names")
@@ -146,6 +149,37 @@ def extract_participants(snapshot: object) -> dict[str, dict[str, ParticipantRef
     return participants
 
 
+def extract_unit(snapshot: object) -> ParticipantRef | None:
+    """The unit reference of one document's batch (fix-loop DR55).
+
+    The cache key is the VetIS unit UUID (the ``GetUnitByUuidOperation``
+    key); the batch unit GUID travels as the paired identity (stored in the
+    row's ``uuid`` column) so the read side can match a party whose only
+    local copy of the unit is ``receipt_confirmations.accepted_unit_id``.
+    When the snapshot carries no unit uuid, the batch GUID becomes the key —
+    such a row can never resolve through ``GetUnitByUuidOperation`` and stays
+    honestly unresolved instead of fabricating a name.
+    """
+    root = snapshot if isinstance(snapshot, dict) else {}
+    payload = root.get("vdDocument") if isinstance(root.get("vdDocument"), dict) else root
+    batch = payload.get("batch") if isinstance(payload, dict) else None
+    batch = batch if isinstance(batch, dict) else {}
+    unit = batch.get("unit")
+    unit = unit if isinstance(unit, dict) else {}
+    unit_uuid = _parse_uuid(unit.get("uuid"))
+    unit_guid = _parse_uuid(unit.get("guid"))
+    key = unit_uuid if unit_uuid is not None else unit_guid
+    if key is None:
+        return None
+    name = unit.get("name")
+    return ParticipantRef(
+        kind=VetisEntityKind.UNIT,
+        guid=key,
+        ref_uuid=unit_guid if unit_uuid is not None else None,
+        name=str(name) if isinstance(name, str) and name.strip() else None,
+    )
+
+
 async def _upsert_one(
     db: AsyncSession,
     contour: str,
@@ -217,6 +251,13 @@ async def upsert_reference_names(
             seen += 1
             if await _upsert_one(db, contour_text, ref, now=current):
                 created += 1
+    # The unit reference of the same snapshot (fix-loop DR55): the VetIS unit
+    # is part of the printable conclusion, not a participant side.
+    unit_ref = extract_unit(snapshot)
+    if unit_ref is not None:
+        seen += 1
+        if await _upsert_one(db, contour_text, unit_ref, now=current):
+            created += 1
     return {"seen": seen, "created": created}
 
 
@@ -343,6 +384,8 @@ class EnterpriseLookupPort(Protocol):
 
     async def get_business_entity_by_guid(self, guid: str) -> str: ...
 
+    async def get_unit_by_uuid(self, unit_uuid: str) -> str: ...
+
 
 def _backoff(failure_count: int) -> timedelta:
     """Exponential backoff with the 24-hour upper bound (§8)."""
@@ -443,7 +486,10 @@ async def _apply_lookup_result(
     row.source = "VETIS_LOOKUP"
     row.status = "RESOLVED"
     row.active = bool(record.get("active"))
-    row.uuid = _parse_uuid(record.get("uuid"))
+    if row.entity_kind != VetisEntityKind.UNIT.value:
+        # A UNIT row keeps the batch unit GUID paired in ``uuid``; its own
+        # key already IS the VetIS unit uuid (fix-loop DR55).
+        row.uuid = _parse_uuid(record.get("uuid"))
     row.source_created_at = _parse_source_timestamp(record.get("created_at"))
     row.source_updated_at = _parse_source_timestamp(record.get("updated_at"))
     row.last_checked_at = now
@@ -492,12 +538,15 @@ async def resolve_due_reference_names(
         try:
             if kind == VetisEntityKind.ENTERPRISE.value:
                 record = parse_enterprise_by_guid(await transport.get_enterprise_by_guid(str(guid)))
+            elif kind == VetisEntityKind.UNIT.value:
+                record = parse_unit_by_uuid(await transport.get_unit_by_uuid(str(guid)))
             else:
                 record = parse_business_entity_by_guid(await transport.get_business_entity_by_guid(str(guid)))
             # The cheap echo guard (§8): the response GUID must match the
             # requested key before ANY result is applied; a mismatch is a
-            # diagnostic + retry, never an applied name.
-            echo = record.get("guid")
+            # diagnostic + retry, never an applied name. A UNIT row is keyed
+            # by the unit UUID, so the echo check reads the uuid field.
+            echo = record.get("uuid") if kind == VetisEntityKind.UNIT.value else record.get("guid")
             if echo is not None and _parse_uuid(echo) != guid:
                 record = {"problem": "VETIS_REFERENCE_GUID_MISMATCH"}
         except Exception as exc:  # noqa: BLE001 - any failure is an honest retry
@@ -561,6 +610,48 @@ async def backfill_reference_names(
     return {"seen": seen, "created": created}
 
 
+async def resolved_unit_names(
+    db: AsyncSession, contour: VetisContour | str, candidates: object = None
+) -> dict[str, str]:
+    """The resolved readable unit names for the conclusion read path (DR55).
+
+    ``candidates`` are unit identity strings (VetIS unit UUIDs or batch unit
+    GUIDs). One set query per page returns every RESOLVED + active UNIT name
+    whose key (``guid``) or paired batch GUID (``uuid``) matches a candidate —
+    no per-row cache read. The map carries BOTH identities of a row → its
+    name; unknown candidates are absent (honest missing upstream).
+    """
+    key_values = sorted({str(key) for key in (candidates or []) if str(key).strip()})
+    if not key_values:
+        return {}
+    parsed: list[uuid.UUID] = []
+    for value in key_values:
+        parsed_uuid = _parse_uuid(value)
+        if parsed_uuid is not None:
+            parsed.append(parsed_uuid)
+    if not parsed:
+        return {}
+    rows = (
+        await db.execute(
+            select(VetisReferenceName).where(
+                VetisReferenceName.contour == str(contour),
+                VetisReferenceName.entity_kind == VetisEntityKind.UNIT.value,
+                VetisReferenceName.status == "RESOLVED",
+                VetisReferenceName.active.is_(True),
+                VetisReferenceName.name.is_not(None),
+                VetisReferenceName.guid.in_(parsed) | VetisReferenceName.uuid.in_(parsed),
+            )
+        )
+    ).scalars()
+    result: dict[str, str] = {}
+    for row in rows:
+        if row.name:
+            result[str(row.guid)] = row.name
+            if row.uuid is not None:
+                result[str(row.uuid)] = row.name
+    return result
+
+
 def compose_reference_transport(manifest: object) -> EnterpriseLookupPort:
     """Build the pinned EnterpriseService lookup transport from the profile.
 
@@ -587,10 +678,12 @@ def compose_reference_transport(manifest: object) -> EnterpriseLookupPort:
         gateway_password = profile.gateway_password
     enterprise_action = manifest.soap_actions.get("enterprise_by_guid", "getEnterpriseByGuidRequest")
     business_entity_action = manifest.soap_actions.get("business_entity_by_guid", "getBusinessEntityByGUIDRequest")
+    unit_action = manifest.soap_actions.get("unit_by_uuid", "getUnitByUuidRequest")
     return ZeepEnterpriseLookupTransport(
         endpoint=manifest.enterprise_endpoint,
         enterprise_action=enterprise_action,
         business_entity_action=business_entity_action,
+        unit_by_uuid_action=unit_action,
         connect_timeout_s=manifest.constraints.connect_timeout_s,
         read_timeout_s=manifest.constraints.read_timeout_s,
         allowed_urls=enterprise_allowlist(manifest),

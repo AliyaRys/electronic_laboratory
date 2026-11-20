@@ -33,11 +33,11 @@ from backend.src.modules.arrivals.queries import party_view, previous_vse_fields
 from backend.src.modules.documents.basis import (
     BLOCKER_TEXTS,
     BasisOutcome,
+    conclusion_unit_names,
     evaluate_conclusion_basis,
     local_basis_fields,
     owner_display_name,
     previous_basis_fields,
-    unit_display_name,
 )
 from backend.src.modules.documents.schemas import ConclusionView
 from backend.src.modules.examinations.models import Examination
@@ -208,7 +208,17 @@ async def build_conclusion(
         basis_id = str(row.id) if row is not None else ""
 
     laboratory_fields = await _laboratory_fields(db, party)
-    unit_name = unit_display_name(batch, confirmation.accepted_unit_id)
+    # Fix-loop DR55: the unit name follows the shared conclusion_unit_name
+    # source (batch name → frozen read-model name → resolved UNIT cache row),
+    # the same helper the bulk projector uses.
+    names = await conclusion_unit_names(
+        db,
+        document.contour,
+        [party],
+        {party.id: document},
+        {party.id: confirmation},
+    )
+    unit_name = names[party.id]
     outcome = evaluate_conclusion_basis(
         confirmed=True,
         accepted_quantity=accepted_quantity,

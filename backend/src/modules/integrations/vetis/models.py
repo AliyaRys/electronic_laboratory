@@ -41,15 +41,18 @@ __all__ = [
 
 
 class VetisEntityKind(StrEnum):
-    """The two participant object kinds of an incoming eVSD (ТЗ DR18 §5).
+    """The external object kinds of the contour-scoped name cache (ТЗ DR18 §5,
+    extended by the conclusion unit-name fix-loop).
 
-    ``BUSINESS_ENTITY`` (хозяйствующий субъект) and ``ENTERPRISE`` (предприятие)
-    are separate identities even with the same GUID value; they are never
-    merged and never share a cache row.
+    ``BUSINESS_ENTITY`` (хозяйствующий субъект), ``ENTERPRISE`` (предприятие)
+    and ``UNIT`` (единица измерения) are separate identities even with the same
+    GUID value; they are never merged and never share a cache row. A ``UNIT``
+    row is keyed by the VetIS unit UUID — the GetUnitByUuidOperation key.
     """
 
     BUSINESS_ENTITY = "BUSINESS_ENTITY"
     ENTERPRISE = "ENTERPRISE"
+    UNIT = "UNIT"
 
 
 class VetisContour(StrEnum):
@@ -73,7 +76,9 @@ class VetisReferenceName(Base):
     __tablename__ = "vetis_reference_names"
     __table_args__ = (
         CheckConstraint("contour IN ('PILOT','PRODUCTION')", name="vetis_reference_contour_valid"),
-        CheckConstraint("entity_kind IN ('BUSINESS_ENTITY','ENTERPRISE')", name="vetis_reference_kind_valid"),
+        CheckConstraint(
+            "entity_kind IN ('BUSINESS_ENTITY','ENTERPRISE','UNIT')", name="vetis_reference_kind_valid"
+        ),
         CheckConstraint("source IN ('SOURCE_XML','VETIS_LOOKUP')", name="vetis_reference_source_valid"),
         CheckConstraint("status IN ('PENDING','RESOLVED','ERROR')", name="vetis_reference_status_valid"),
         CheckConstraint("failure_count >= 0", name="vetis_reference_failures_positive"),

@@ -35,6 +35,7 @@ from backend.src.modules.documents.basis import (
     BasisOutcome,
     evaluate_conclusion_basis,
     local_basis_fields,
+    owner_display_name,
     previous_basis_fields,
     unit_display_name,
 )
@@ -112,19 +113,22 @@ def _product_scope(party: Party) -> uuid.UUID | None:
     return uuid.UUID(str(value)) if value is not None else None
 
 
-def _document_fields(document: IncomingDocument) -> tuple[dict[str, str | None], dict[str, object]]:
+def _document_fields(
+    document: IncomingDocument, form_snapshot: object = None
+) -> tuple[dict[str, str | None], dict[str, object]]:
     payload = document.source_snapshot.get("vdDocument")
     payload = payload if isinstance(payload, dict) else {}
     batch = payload.get("batch")
     batch = batch if isinstance(batch, dict) else {}
-    consignee = payload.get("consignee")
     product_item = batch.get("productItem") if isinstance(batch, dict) else None
     fields = {
         # DR5: the printed conclusion shows the top-level eVSD UUID (bs:uuid);
         # issueNumber stays in the source snapshot but is never displayed as the
         # document requisition (interface term: «UUID ВСД»).
         "evsd": str(document.evsd_uuid),
-        "owner": _text(consignee.get("name")) if isinstance(consignee, dict) else None,
+        # ТЗ DR55 §5.8 fix-loop: the SAVED read-model participant wins over the
+        # raw consignee (the shared owner_display_name of the basis layer).
+        "owner": owner_display_name(payload, form_snapshot),
         "product": _text(product_item.get("name")) if isinstance(product_item, dict) else None,
     }
     return fields, batch
@@ -183,7 +187,7 @@ async def build_conclusion(
     accepted_quantity = _number(confirmation.accepted_quantity) or Decimal("0")
     returned_quantity = _number(confirmation.returned_quantity) or Decimal("0")
 
-    fields, batch = _document_fields(document)
+    fields, batch = _document_fields(document, party.form_snapshot)
     if confirmation.previous_sufficient:
         basis_kind: Literal["LOCAL", "PREVIOUS"] = "PREVIOUS"
         basis_id = str(confirmation.id)

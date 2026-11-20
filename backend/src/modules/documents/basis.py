@@ -36,6 +36,7 @@ __all__ = [
     "evaluate_conclusion_basis",
     "conclusion_flags",
     "local_basis_fields",
+    "owner_display_name",
     "unit_display_name",
 ]
 
@@ -97,6 +98,28 @@ def _looks_like_uuid(value: str) -> bool:
     except (ValueError, AttributeError):
         return False
     return True
+
+
+def owner_display_name(payload: object, form_snapshot: object) -> str | None:
+    """The printable owner of the conclusion (ТЗ DR55 §5.8 fix-loop).
+
+    Priority: the SAVED human-readable participant of the read model
+    (``party.form_snapshot.participants.receiverOwner.name`` — the frozen
+    create-page value the user saw and confirmed) → the raw ``consignee.name``
+    of the VetIS snapshot. A GUID/UUID is never printed in either source: a
+    missing name stays missing, and the document honestly reports
+    ``DOCUMENT_BASIS_INCOMPLETE``. The builder and the bulk projector both
+    use THIS one function — the same domain source, never two copies.
+    """
+    participants = form_snapshot.get("participants") if isinstance(form_snapshot, Mapping) else None
+    entry = participants.get("receiverOwner") if isinstance(participants, Mapping) else None
+    if isinstance(entry, Mapping):
+        saved = _text(entry.get("name"))
+        if saved is not None and not _looks_like_uuid(saved):
+            return saved
+    consignee = payload.get("consignee") if isinstance(payload, Mapping) else None
+    raw = _text(consignee.get("name")) if isinstance(consignee, Mapping) else None
+    return None if raw is not None and _looks_like_uuid(raw) else raw
 
 
 def local_basis_fields(examination: Examination | None) -> tuple[dict[str, str | None], tuple[str, ...]]:
@@ -255,11 +278,12 @@ async def conclusion_flags(
             payload = payload if isinstance(payload, dict) else {}
             batch = payload.get("batch")
             batch = batch if isinstance(batch, dict) else {}
-            consignee = payload.get("consignee")
             product_item = batch.get("productItem") if isinstance(batch, dict) else None
             document_fields = {
                 "evsd": str(document.evsd_uuid),
-                "owner": _text(consignee.get("name")) if isinstance(consignee, dict) else None,
+                # ТЗ DR55 §5.8 fix-loop: the SAVED read-model participant wins
+                # over the raw consignee (same source as the builder).
+                "owner": owner_display_name(payload, party.form_snapshot),
                 "product": _text(product_item.get("name")) if isinstance(product_item, dict) else None,
             }
             if confirmation.previous_sufficient:

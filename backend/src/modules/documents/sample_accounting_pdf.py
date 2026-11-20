@@ -19,6 +19,7 @@ from typing import Any
 from pypdf import PdfReader
 from zoneinfo import ZoneInfo
 
+from backend.src.modules.documents.pdf import _strict_link_callback
 from backend.src.modules.documents.resources import (
     FormManifest,
     RendererUnavailable,
@@ -49,9 +50,7 @@ def _moscow_stamp(moment: datetime) -> str:
 
 def _balances_rows(view: SampleAccountingDocumentView) -> str:
     if not view.balances:
-        return (
-            '<tr class="empty"><td colspan="2">Положительных остатков нет.</td></tr>'
-        )
+        return '<tr class="empty"><td colspan="2">Положительных остатков нет.</td></tr>'
     return "".join(
         f"<tr><td>{_escape(row.product_name)}</td><td class='num'>{_escape(format_mass(row.mass_kg))}</td></tr>"
         for row in view.balances
@@ -60,9 +59,7 @@ def _balances_rows(view: SampleAccountingDocumentView) -> str:
 
 def _disposals_rows(view: SampleAccountingDocumentView) -> str:
     if not view.disposals:
-        return (
-            f"<tr class=\"empty\"><td colspan=\"5\">{_escape(view.empty_history_text())}</td></tr>"
-        )
+        return f'<tr class="empty"><td colspan="5">{_escape(view.empty_history_text())}</td></tr>'
     return "".join(
         "<tr>"
         f"<td>{_escape(format_day(row.disposed_on))}</td>"
@@ -78,9 +75,7 @@ def _disposals_rows(view: SampleAccountingDocumentView) -> str:
 _TOKEN = re.compile(r"\{\{(\w+)\}\}")
 
 
-def render_sample_accounting_pdf(
-    view: SampleAccountingDocumentView, form: FormManifest
-) -> bytes:
+def render_sample_accounting_pdf(view: SampleAccountingDocumentView, form: FormManifest) -> bytes:
     """Render the accounting document to A4 PDF through the verified template."""
     from backend.src.modules.documents.pdf import _register_fonts, _run_engine
 
@@ -101,7 +96,7 @@ def render_sample_accounting_pdf(
     }
     html = _TOKEN.sub(lambda match: mapping.get(match.group(1), ""), template)
 
-    data = _run_engine(html)
+    data = _run_engine(html, _strict_link_callback(form))
     try:
         reader = PdfReader(io.BytesIO(data))
         box = reader.pages[0].mediabox

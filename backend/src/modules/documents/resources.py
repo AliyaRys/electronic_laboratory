@@ -24,12 +24,14 @@ from backend.src.core.problems import ProblemError
 __all__ = [
     "FormManifest",
     "FontEntry",
+    "AssetEntry",
     "Margins",
     "RendererUnavailable",
     "load_manifest",
     "read_manifest_document",
     "read_template",
     "font_file",
+    "asset_file",
     "resolve_within",
     "RESOURCES_DIR",
 ]
@@ -37,6 +39,7 @@ __all__ = [
 RESOURCES_DIR = Path(__file__).resolve().parents[3] / "resources"
 FORMS_DIR = RESOURCES_DIR / "forms"
 FONTS_DIR = RESOURCES_DIR / "fonts"
+ASSETS_DIR = FORMS_DIR / "assets"
 
 _FORBIDDEN = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")  # any URL scheme (http:, file:, …)
 
@@ -97,6 +100,14 @@ class FontEntry(BaseModel):
     license: str
 
 
+class AssetEntry(BaseModel):
+    """One manifest-approved binary asset of a form (ТЗ DR55 §5.8: the coat)."""
+
+    resource: str
+    sha256: str
+    license: str
+
+
 class FormManifest(BaseModel):
     """One printable form manifest (INPUT-04)."""
 
@@ -116,6 +127,7 @@ class FormManifest(BaseModel):
     noncalculated_cells: list[str] = Field(default_factory=list)
     ton_precision: int = 6
     fonts: list[FontEntry]
+    assets: list[AssetEntry] = Field(default_factory=list)
 
 
 def read_manifest_document() -> dict[str, Any]:
@@ -171,4 +183,23 @@ def font_file(manifest: FormManifest) -> Path:
         raise RendererUnavailable(f"Шрифт формы {manifest.form_id!r} недоступен.")
     if _sha256(path.read_bytes()) != entry.sha256.upper():
         raise RendererUnavailable(f"Шрифт формы {manifest.form_id!r} не совпадает с манифестом (sha256).")
+    return path
+
+
+def asset_file(manifest: FormManifest, name: str) -> Path:
+    """A manifest-approved binary asset (ТЗ DR55 §5.8).
+
+    Only the names listed in the form's manifest ``assets`` are allowed; the
+    file must exist inside ``backend/resources/forms/assets/`` and match its
+    manifest SHA-256. Network URLs, absolute paths, ``..`` and arbitrary
+    local files stay forbidden.
+    """
+    entry = next((item for item in manifest.assets if item.resource == name), None)
+    if entry is None:
+        raise RendererUnavailable(f"Ресурс {name!r} не разрешён манифестом формы {manifest.form_id!r}.")
+    path = resolve_within(ASSETS_DIR, entry.resource)
+    if not path.is_file():
+        raise RendererUnavailable(f"Ресурс формы {manifest.form_id!r} недоступен: {name!r}.")
+    if _sha256(path.read_bytes()) != entry.sha256.upper():
+        raise RendererUnavailable(f"Ресурс {name!r} не совпадает с манифестом (sha256).")
     return path

@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError
+from backend.src.modules.arrivals.models import IncomingDocument
 from backend.src.modules.arrivals.queries import build_incoming_view, conclusion_flags
 from backend.src.modules.documents.basis import local_basis_fields, unit_display_name
 from backend.src.modules.documents.schemas import ConclusionFlagView
@@ -36,7 +37,7 @@ from backend.tests.documents.test_conclusion_basis import (
     previous_party,
     previous_record,
 )
-from backend.tests.examinations.test_create import save_examination  # noqa: F401
+from backend.tests.examinations.test_create import UNIT, save_examination  # noqa: F401
 
 
 @pytest_asyncio.fixture
@@ -171,6 +172,100 @@ async def test_incoming_view_carries_the_flag(db_session: AsyncSession, env: Sim
     assert view.conclusion is not None
     assert view.conclusion.available is True
     assert view.conclusion.basis_kind == "LOCAL"
+
+
+# --- the owner source (ТЗ DR55 §5.8 fix-loop) -----------------------------------------
+
+
+def test_owner_display_name_prefers_the_saved_read_model_participant() -> None:
+    from backend.src.modules.documents.basis import owner_display_name
+
+    payload = {"consignee": {"name": ""}}  # the live VetIS snapshot: empty name
+    form_snapshot = {
+        "participants": {"receiverOwner": {"name": "Хусаинова Гульнур Мансуровна", "state": "VETIS_LOOKUP"}}
+    }
+    assert owner_display_name(payload, form_snapshot) == "Хусаинова Гульнур Мансуровна"
+
+    # Fallback: an absent read-model snapshot falls back to the raw consignee.
+    assert owner_display_name({"consignee": {"name": "ИП Владелец"}}, None) == "ИП Владелец"
+    # A GUID is NEVER printed in either source — the honest missing stays.
+    guid = str(uuid.uuid4())
+    assert owner_display_name({"consignee": {"name": ""}}, {"participants": {"receiverOwner": {"name": guid}}}) is None
+    assert owner_display_name({"consignee": {"name": guid}}, None) is None
+    assert owner_display_name({}, None) is None
+
+
+async def test_builder_and_projection_agree_on_the_saved_owner(db_session: AsyncSession, env: SimpleNamespace) -> None:
+    """The live case: consignee.name is empty; the saved read-model participant
+    supplies the owner — and the bulk flag never shows a menu the builder
+    would refuse (the invariant of the ONE predicate)."""
+    lab_id = env.lab.id
+    await configure(db_session, lab_id, BEEF, trich=False)
+    party = await party_with_confirmation(db_session, lab_id, BEEF)
+    document = await db_session.scalar(
+        select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id)
+    )
+    # The real VetIS snapshot: the raw owner name is an EMPTY string.
+    document.source_snapshot = {
+        "vdDocument": {
+            "issueNumber": "ЭВСД-120",
+            "consignee": {"name": ""},
+            "batch": {
+                "volume": "120",
+                "quantity": "120",
+                "productItem": {"name": "Говядина охлаждённая"},
+                "unit": {"guid": str(UNIT), "name": "кг"},
+            },
+        }
+    }
+    # The read model froze the confirmed participant name at the create page.
+    party.form_snapshot = {
+        "participants": {"receiverOwner": {"name": "Хусаинова Гульнур Мансуровна", "state": "VETIS_LOOKUP"}},
+        "acceptedUnitName": None,
+    }
+    await completed_exam(db_session, env, party.id, "F-5")
+    await db_session.commit()
+
+    view = await build_conclusion(env.actor.id, party.id, uow=db_session, authorizer=env.authorizer)
+    assert view.fields["owner"] == "Хусаинова Гульнур Мансуровна"
+
+    flags = await conclusion_flags(db_session, [party], {party.id: document})
+    assert flags[party.id] == ConclusionFlagView(available=True, basis_kind="LOCAL")
+
+
+async def test_owner_missing_on_both_sources_is_honest(db_session: AsyncSession, env: SimpleNamespace) -> None:
+    lab_id = env.lab.id
+    await configure(db_session, lab_id, BEEF, trich=False)
+    party = await party_with_confirmation(db_session, lab_id, BEEF)
+    document = await db_session.scalar(
+        select(IncomingDocument).where(IncomingDocument.id == party.incoming_document_id)
+    )
+    document.source_snapshot = {
+        "vdDocument": {
+            "issueNumber": "ЭВСД-120",
+            "consignee": {"name": ""},
+            "batch": {
+                "volume": "120",
+                "quantity": "120",
+                "productItem": {"name": "Говядина охлаждённая"},
+                "unit": {"guid": str(UNIT), "name": "кг"},
+            },
+        }
+    }
+    await completed_exam(db_session, env, party.id, "F-6")
+    await db_session.commit()
+
+    # The bulk projection must agree with the refused builder (no phantom menu).
+    flags = await conclusion_flags(db_session, [party], {party.id: document})
+    assert flags[party.id] == ConclusionFlagView(available=False, basis_kind=None)
+
+    with pytest.raises(ProblemError) as raised:
+        await build_conclusion(env.actor.id, party.id, uow=db_session, authorizer=env.authorizer)
+    await db_session.rollback()
+    assert raised.value.status == 422
+    assert "owner" in str(getattr(raised.value, "detail", "")) + str(
+        getattr(getattr(raised.value, "problem", None), "detail", "")
+    )
 
 
 # --- the capability split -----------------------------------------------------------

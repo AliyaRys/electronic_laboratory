@@ -288,6 +288,37 @@ export const ОценкаНормВКарточках: StoryObj = {
   },
 };
 
+/** ТЗ DR54 Task 4: the same story without the technical statuses —
+ * NOT_APPLICABLE/UNKNOWN/absence render a fully neutral card (no badge,
+ * no data-evaluation, no text), IN_NORM/DEVIATION keep their verdict. */
+export const ОценкаНормНейтральныеКарточки: StoryObj = {
+  render: () =>
+    researchRender(
+      researchValues({
+        [F22_ID]: { performed: true, value: "MATCH" },
+        [F23_ID]: { performed: true, value: "рост не обнаружен" },
+        [F24_ID]: { performed: true, value: "2.5" },
+        [F19_ID]: { performed: true, value: "MISMATCH" },
+      }),
+      new Set(),
+      new Map([
+        [F22_ID, { status: "IN_NORM" }],
+        [F19_ID, { status: "DEVIATION" }],
+        [F23_ID, { status: "NOT_APPLICABLE" }],
+        [F24_ID, { status: "UNKNOWN" }],
+      ]),
+    ),
+  parameters: {
+    viewport: { defaultViewport: "desktop" },
+    docs: {
+      description: {
+        story:
+          "ТЗ DR54: оценки только Норма/Отклонение; неприменимые и неопределённые статусы не окрашивают и не подписывают карточку.",
+      },
+    },
+  },
+};
+
 export const ОценкаНормУзкийЭкран: StoryObj = {
   render: () =>
     researchRender(

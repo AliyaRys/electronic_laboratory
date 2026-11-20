@@ -30,6 +30,7 @@ from backend.src.modules.integrations.vetis.worker import (
     resolve_unknown_receipt_not_applied,
     run_receipt_operation,
 )
+from backend.tests.vetis.test_dr10_unit_guid import COMPLETE_CHECKS  # noqa: F401 - shared complete fixture
 from backend.tests.vetis.test_receipt_mapping import SOURCE_EVSD, SOURCE_RECEIVER, SOURCE_UNIT, SOURCE_XML
 
 
@@ -87,7 +88,10 @@ async def receipt_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespa
     await db_session.flush()
     reconciliation = Reconciliation(
         party_id=party.id,
-        checks={"CHK-F35": {"matches": True, "actual": "OTHER_REASON", "reason": "fixture reason"}},
+        checks={
+            **dict(COMPLETE_CHECKS),
+            "CHK-F35": {"matches": True, "actual": "OTHER_REASON", "reason": "fixture reason"},
+        },
         delivered_mass_kg=100,
         delivered_quantity=100,
         delivered_unit_id=unit,
@@ -98,6 +102,7 @@ async def receipt_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespa
         returned_quantity=20,
         returned_unit_id=unit,
         decision="PARTIAL",
+        transaction_planned=False,
         fair=False,
         services=[],
         actor_id=actor.id,
@@ -221,6 +226,14 @@ async def test_documentary_quantity_without_package_source_is_absent(receipt_env
     assert document is not None
     snapshot = _copy.deepcopy(document.source_snapshot)
     snapshot["vdDocument"]["batch"].pop("quantity", None)  # type: ignore[union-attr,index]
+    # The stale mark of the now-absent source field must leave with the
+    # source (the save path never keeps a mark without its source value).
+    reconciliation = await receipt_env.db.get(Reconciliation, receipt_env.reconciliation.id)
+    assert reconciliation is not None
+    checks = dict(reconciliation.checks)
+    checks.pop("CHK-F20", None)
+    reconciliation.checks = checks
+    await receipt_env.db.commit()
     document.source_snapshot = snapshot
     await receipt_env.db.commit()
     monkeypatch.setenv("VETIS_WRITE_ENABLED", "true")
@@ -504,6 +517,56 @@ async def test_processing_timeout_becomes_unknown_without_network(receipt_env: S
         assert saved.problem_code == "VETIS_RESULT_TIMEOUT"
 
 
+# --- ТЗ DR54 Task 3: the server-side receipt gate -----------------------------------
+
+
+async def test_genuinely_incomplete_reconciliation_refuses_preview_without_write(
+    receipt_env: SimpleNamespace,
+) -> None:
+    """ТЗ DR54 Task 3 Шаг 4: a genuinely incomplete сверка receives an honest
+    422 RECONCILIATION_INCOMPLETE before any XML/outbox/SOAP work; the
+    transport spy stays at zero write calls."""
+    from backend.src.modules.identity.models import OutboxEntry
+    from backend.src.modules.integrations.vetis.models import VetisOperation
+
+    reconciliation = await receipt_env.db.get(Reconciliation, receipt_env.reconciliation.id)
+    assert reconciliation is not None
+    reconciliation.checks = {"CHK-F35": {"matches": True, "actual": "OTHER_REASON", "reason": "fixture reason"}}
+    await receipt_env.db.commit()
+    with pytest.raises(ProblemError) as error:
+        await build_receipt_preview(
+            receipt_env.db,
+            party_id=receipt_env.party.id,
+            source_revision=3,
+            reconciliation_revision=2,
+            vet_inspection="CORRESPONDS",
+            return_date=datetime.now(UTC),
+        )
+    assert error.value.status == 422
+    assert error.value.code == "RECONCILIATION_INCOMPLETE"
+    # Nothing was planned or persisted: no XML intent, no outbox, no operation.
+    assert (await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))).scalar_one() == 0
+    assert (await receipt_env.db.execute(select(func.count()).select_from(VetisOperation))).scalar_one() == 0
+
+
+async def test_complete_fixture_passes_the_gate_to_local_preview(
+    receipt_env: SimpleNamespace, monkeypatch
+) -> None:
+    """ТЗ DR54 Task 3 Шаг 4: the complete regression fixture builds the local
+    preview without any external send."""
+    monkeypatch.setenv("VETIS_WRITE_ENABLED", "false")
+    preview = await build_receipt_preview(
+        receipt_env.db,
+        party_id=receipt_env.party.id,
+        source_revision=3,
+        reconciliation_revision=2,
+        vet_inspection="CORRESPONDS",
+        return_date=datetime.now(UTC),
+    )
+    assert preview.application_xml
+    assert (await receipt_env.db.execute(select(func.count()).select_from(OutboxEntry))).scalar_one() == 0
+
+
 # --- ТЗ DR38 Task 4: preview/retry/async result safety -----------------------------
 
 
@@ -519,13 +582,12 @@ async def test_preview_xml_carries_fixed_structure_and_stale_fingerprint_is_refu
     reconciliation = await receipt_env.db.get(Reconciliation, receipt_env.reconciliation.id)
     assert reconciliation is not None
     reconciliation.checks = {
+        **dict(reconciliation.checks),
         "CHK-F21": {
             "matches": False,
-            "source": "100",
             "actual": "80",
             "reason": "Фактический вес больше заявленного",
         },
-        "CHK-F35": {"matches": True, "actual": "OTHER_REASON", "reason": "fixture reason"},
     }
     await receipt_env.db.commit()
     preview = await build_receipt_preview(

@@ -138,6 +138,7 @@ export function ReceiptDecision({
             </div>
             <select
               id="transaction-type"
+              className="vse-rec-select"
               value={value.transaction_type ?? ""}
               onChange={(event) =>
                 onChange({

@@ -12,7 +12,7 @@ Named tests (§6.1–§6.4, §9.3):
   NOT_APPLICABLE and is not blocked by the missing MethodRule;
 - ``test_write_norm_for_fixed_and_none_is_refused`` — POST/PUT of a norm row
   for a FIXED/NONE indicator is an honest 422 in Russian;
-- ``test_legacy_integer_norm_fractional_value_is_honest_unknown`` — a decimal
+- ``test_legacy_integer_norm_is_ignored_by_none_microscopy`` — a decimal
   value against a legacy INTEGER norm is UNKNOWN with a re-save hint, never a
   fabricated verdict;
 - ``test_context_marks_evaluation_modes_and_missing_is_configurable_only`` —
@@ -49,6 +49,7 @@ TEMPERATURE = _mandatory.TEMPERATURE_INDICATOR_ID
 LUMINESCENT = _mandatory.LUMINESCENT_INDICATOR_ID
 BACTERIOSCOPY = _mandatory.BACTERIOSCOPY_INDICATOR_ID
 MICROSCOPY = _mandatory.MICROSCOPY_INDICATOR_ID
+PH = _mandatory.PH_INDICATOR_ID
 COPPER = _mandatory.COPPER_INDICATOR_ID
 PEROXIDASE = _mandatory.PEROXIDASE_INDICATOR_ID
 TRICHINELLA = _mandatory.TRICHINELLA_INDICATOR_ID
@@ -67,7 +68,9 @@ def test_registry_modes_match_the_ft_rules() -> None:
     assert modes["VSE-F23"] == "NONE"
     # ТЗ DR53 Task 6: trichinelloscopy is FIXED now.
     assert modes["VSE-F21"] == "FIXED"
-    for code in ("VSE-F20", "VSE-F24", "VSE-F25", "VSE-F26", "VSE-F29"):
+    # ТЗ DR54 Task 5: microscopy has NO norm at all (owner decision).
+    assert modes["VSE-F24"] == "NONE"
+    for code in ("VSE-F20", "VSE-F25", "VSE-F26", "VSE-F29"):
         assert modes[code] == "CONFIGURABLE", code
 
 
@@ -173,6 +176,62 @@ async def test_none_indicator_is_not_applicable(db_session: AsyncSession) -> Non
     assert evaluation["evaluation_mode"] == "NONE"
 
 
+@pytest.mark.integration
+async def test_microscopy_has_no_norm_but_stays_tariffed(db_session: AsyncSession) -> None:
+    """ТЗ DR54 Task 5: microscopy is NONE — no MethodRule is needed, the
+    performed result is priced with the configured tariff and the evaluation
+    stays NOT_APPLICABLE (the card neutrality belongs to Task 4)."""
+    env = await _seed(db_session)
+    species = uuid.uuid4()
+    db_session.add(_tariff(env.lab.id, None, str(MICROSCOPY), "7.50", unit="RUB"))
+    await db_session.commit()
+
+    snapshot = await evaluate_and_price(
+        UnitOfWork(db_session),
+        _vse_request(
+            env.lab.id,
+            species,
+            uuid.uuid4(),
+            [ResearchValue.model_validate({"indicator_id": str(MICROSCOPY), "performed": True, "value": "2.5"})],
+            quantity="1",
+        ),
+        None,
+    )
+    assert snapshot.lines[0].unit_price == "7.50"
+    assert snapshot.lines[0].amount == "7.50"
+    assert snapshot.lines[0].evaluation["status"] == "NOT_APPLICABLE"
+    assert snapshot.lines[0].evaluation["evaluation_mode"] == "NONE"
+
+
+@pytest.mark.integration
+async def test_microscopy_context_is_never_missing_and_not_a_row(db_session: AsyncSession) -> None:
+    """ТЗ DR54 Task 5: the methods context reports F24 as NONE — it never
+    enters ``missing`` even without an active rule and is not an editable row
+    (a legacy active rule does not resurrect it)."""
+    env = await _seed(db_session)
+    db_session.add(
+        _rule(
+            env.lab.id,
+            uuid.uuid4(),
+            uuid.uuid4(),
+            MICROSCOPY,
+            version=1,
+            result_schema="DECIMAL",
+            unit_id="",
+            rule={"type": "interval", "lower": "0", "upper": "5"},
+        )
+    )
+    await db_session.commit()
+
+    built = await context_module.methods_context(db_session, env.lab.id, context_module.MEAT_AREA_CODE)
+    microscopy = next(item for item in built.indicators if item.code == "VSE-F24")
+    assert microscopy.evaluation_mode == "NONE"
+    missing_ids = set(built.missing)
+    assert MICROSCOPY not in missing_ids
+    editable = {item.id for item in built.indicators if item.evaluation_mode == "CONFIGURABLE"}
+    assert MICROSCOPY not in editable
+
+
 # --- §6.4: writes are refused for FIXED/NONE -------------------------------------------
 
 
@@ -201,11 +260,23 @@ async def test_write_norm_for_fixed_and_none_is_refused(db_session: AsyncSession
     # A configurable indicator keeps its write path.
     payload_ok = MethodRuleWrite(
         laboratory_id=env.lab.id,
-        code="VSE-F24",
+        code="VSE-F25",
         rule={"type": "interval", "lower": "0", "upper": "5"},
     )
     row = await _commands.create_method_rule(db_session, payload_ok)
-    assert row.indicator_id == MICROSCOPY
+    assert row.indicator_id == PH
+
+    # ТЗ DR54 Task 5: a NEW F24 norm is rejected as a NONE indicator (even the
+    # historical active rule does not resurrect the row).
+    payload_micro = MethodRuleWrite(
+        laboratory_id=env.lab.id,
+        code="VSE-F24",
+        rule={"type": "interval", "lower": "0", "upper": "5"},
+    )
+    with pytest.raises(ProblemError) as problem_micro:
+        await _commands.create_method_rule(db_session, payload_micro)
+    assert problem_micro.value.status == 422
+    assert "не имеет нормы" in " ".join(item.message for item in problem_micro.value.errors)
 
     # ТЗ DR53 Task 6: a NEW F21 norm is rejected as a FIXED indicator.
     payload_trich = MethodRuleWrite(
@@ -264,7 +335,10 @@ async def test_trichinella_fixed_mapping_and_legacy_rule_ignored(db_session: Asy
 
 
 @pytest.mark.integration
-async def test_legacy_integer_norm_fractional_value_is_honest_unknown(db_session: AsyncSession) -> None:
+async def test_legacy_integer_norm_is_ignored_by_none_microscopy(db_session: AsyncSession) -> None:
+    """ТЗ DR54 Task 5: a legacy ACTIVE integer F24 rule stays in the database
+    but new calculations ignore it — microscopy has NO norm, the value is a
+    numeric fact and the tariff still applies."""
     env = await _seed(db_session)
     species = uuid.uuid4()
     db_session.add(
@@ -292,11 +366,14 @@ async def test_legacy_integer_norm_fractional_value_is_honest_unknown(db_session
         ),
         None,
     )
+    assert snapshot.lines[0].unit_price == "10.00"
+    assert snapshot.lines[0].amount == "10.00"
     evaluation = snapshot.lines[0].evaluation
-    # No fabricated verdict: a fractional value against a legacy INTEGER norm
-    # stays UNKNOWN and carries the honest re-save hint.
-    assert evaluation["status"] == "UNKNOWN"
-    assert "пересохран" in str(evaluation.get("hint", "")).lower()
+    # No fabricated verdict and no legacy-interversion hint: the NONE mode
+    # keeps the card neutral (Task 4) without any norm evaluation.
+    assert evaluation["status"] == "NOT_APPLICABLE"
+    assert evaluation["evaluation_mode"] == "NONE"
+    assert evaluation.get("hint") is None
 
 
 # --- DR41-B Important: pinned snapshots keep their provenance ---------------------------

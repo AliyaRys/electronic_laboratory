@@ -189,4 +189,19 @@ describe("SavedResearchResults", () => {
     expect(screen.getByText(/Код показателя/).textContent).toContain(UNKNOWN_ID);
     expect(screen.queryByText(/Показатель /)).toBeNull();
   });
+
+  it("a saved card with a neutral evaluation stays plain (ТЗ DR54 Task 4)", () => {
+    render(
+      <SavedResearchResults
+        view={cardWith({
+          [MICROSCOPY.id]: { kind: "DECIMAL", value: "2.5" },
+        })}
+      />,
+    );
+    // NOT_APPLICABLE/UNKNOWN/absence: no badge, no data-evaluation, no text.
+    const card = document.querySelector(`[data-indicator-id="${MICROSCOPY.id}"]`) as HTMLElement | null;
+    expect(card).toBeTruthy();
+    expect(card).not.toHaveAttribute("data-evaluation");
+    expect(screen.queryByText(/Оценка/)).toBeNull();
+  });
 });

@@ -207,22 +207,25 @@ describe("ExaminationForm", () => {
     expect(screen.queryByRole("textbox", { name: "Бактериоскопия" })).toBeNull();
   });
 
-  it("the «Иное» result requires an explanation text", async () => {
+  it("the cooking test offers exactly five variants and no «Иное» (ТЗ DR54 Task 6)", async () => {
     const user = userEvent.setup();
     renderForm();
     await user.click(screen.getByRole("button", { name: "Добавить пробу варки" }));
-    await chooseOption(user, /Проба варки/, "Иное (указать)");
-    await user.type(screen.getByRole("textbox", { name: "Номер ВСЭ *" }), "№ 1");
-    await user.type(
-      screen.getByRole("textbox", { name: "Маркировка — ветеринарное клеймо лаборатории *" }),
-      "кл-1",
-    );
-    // Mandatory research cards are the shared SelectDropdown; choose «Соответствует» twice.
-    await chooseOption(user, /Органолептическое исследование/, "Соответствует");
-    await chooseOption(user, /Идентификация продукции/, "Соответствует");
-    await user.type(screen.getByRole("textbox", { name: "Температура в толще мышц, °C" }), "3.5");
-    await user.click(screen.getByRole("button", { name: "Завершить ВСЭ" }));
-    expect(await screen.findByText(/для «Иное» требуется пояснение/i)).toBeTruthy();
+    // The five allowed variants are in the shared SelectDropdown; «Иное
+    // (указать)» and the «Поясните результат» input no longer exist.
+    await user.click(screen.getByRole("button", { name: /Проба варки/ }));
+    const options = await screen.findAllByRole("option");
+    const labels = options.map((node) => node.textContent ?? "");
+    expect(labels.filter((label) => label.trim() !== "")).toEqual([
+      "Бульон прозрачный, аромат специфический",
+      "Бульон мутный",
+      "Бульон с хлопьями",
+      "Бульон с осадком",
+      "Нехарактерный / неприятный запах",
+    ]);
+    expect(labels.some((label) => label.includes("Иное"))).toBe(false);
+    await user.click(options[1]);
+    expect(screen.queryByRole("textbox", { name: /Поясните результат|пояснение/ })).toBeNull();
   });
 
   it("adds and removes a disease row through accessible names", async () => {

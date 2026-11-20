@@ -114,15 +114,20 @@ describe("ResearchFields evaluation highlight", () => {
     expect(screen.getByText("Отклонение")).toHaveAttribute("data-evaluation", "DEVIATION");
   });
 
-  it("NOT_APPLICABLE keeps the neutral wording", () => {
+  it("NOT_APPLICABLE keeps the card fully neutral (ТЗ DR54 Task 4)", () => {
     renderCards(new Map([[F23, { status: "NOT_APPLICABLE" }]]));
-    expect(screen.getByText("Оценка по норме не применяется")).toHaveAttribute(
-      "data-evaluation",
-      "NOT_APPLICABLE",
-    );
+    // No badge, no data-evaluation, no technical text anywhere on the card.
+    expect(screen.queryByText("Оценка по норме не применяется")).toBeNull();
+    expect(screen.queryByText("Оценка не определена")).toBeNull();
+    const articles = [...document.querySelectorAll("article")];
+    const target = articles.find((article) => article.querySelector('input[type="text"], .app-select-trigger'));
+    expect(target).not.toBeNull();
+    expect(target).not.toHaveAttribute("data-evaluation");
+    expect(target).not.toHaveAttribute("data-evaluated");
+    expect(screen.queryByText(/Оценка/)).toBeNull();
   });
 
-  it("UNKNOWN is never painted as a norm and carries the legacy hint", () => {
+  it("UNKNOWN and a legacy hint stay invisible to the user (ТЗ DR54 Task 4)", () => {
     renderCards(
       new Map([
         [
@@ -134,8 +139,11 @@ describe("ResearchFields evaluation highlight", () => {
         ],
       ]),
     );
-    const badge = screen.getByText("Оценка не определена");
-    expect(badge).toHaveAttribute("data-evaluation", "UNKNOWN");
-    expect(screen.getByText(/пересохраните норму/i)).toBeInTheDocument();
+    expect(screen.queryByText("Оценка не определена")).toBeNull();
+    expect(screen.queryByText(/пересохраните норму/i)).toBeNull();
+    const articles = [...document.querySelectorAll("article")];
+    const target = articles.find((article) => article.querySelector('input[type="text"]'));
+    expect(target).not.toBeNull();
+    expect(target).not.toHaveAttribute("data-evaluation");
   });
 });

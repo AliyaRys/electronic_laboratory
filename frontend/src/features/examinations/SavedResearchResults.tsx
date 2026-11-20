@@ -72,11 +72,15 @@ function SavedResearchCard({
   const status = evaluation?.status;
   const hint = (evaluation as { hint?: string } | null)?.hint;
   const criterion = normCriterion({ method_snapshot: methodSnapshot ?? null });
+  // ТЗ DR54 Task 4: only IN_NORM/DEVIATION produce the verdict badge; the
+  // neutral statuses keep a plain card (no data-evaluation, no technical
+  // text) both in the form and on the saved card.
+  const meaningful = status === "IN_NORM" || status === "DEVIATION";
   return (
     <article
       className={`vse-research-view${required ? " vse-research-required" : ""}`}
       data-indicator-id={indicatorId}
-      data-evaluation={status ?? undefined}
+      data-evaluation={meaningful ? status : undefined}
     >
       <header className="vse-research-head">
         <h4>
@@ -84,15 +88,9 @@ function SavedResearchCard({
           {required ? <span aria-hidden="true"> *</span> : null}
         </h4>
         {def === undefined ? <p className="vse-research-unknown">Код показателя: {indicatorId}</p> : null}
-        {status !== undefined ? (
+        {meaningful ? (
           <span className="vse-research-evaluation" data-evaluation={status}>
-            {status === "IN_NORM"
-              ? "Норма"
-              : status === "DEVIATION"
-                ? "Отклонение"
-                : status === "NOT_APPLICABLE"
-                  ? "Оценка по норме не применяется"
-                  : "Оценка не определена"}
+            {status === "IN_NORM" ? "Норма" : "Отклонение"}
             {hint ? <span className="vse-research-hint"> · {hint}</span> : null}
             {criterion !== null ? <span className="vse-research-hint"> · {criterion}</span> : null}
           </span>

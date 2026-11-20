@@ -9,7 +9,7 @@ import { ComparisonField, ReferenceField, type ComparisonValue } from "./Compari
 import { CheckSectionCard } from "./CheckSectionCard";
 import { ReconciliationActions } from "./ReconciliationActions";
 import { ReconciliationFeedback } from "./ReconciliationFeedback";
-import { ReceiptDecision, type ReceiptDecisionValue } from "./ReceiptDecision";
+import { ReceiptDecision, type ReceiptDecisionProps, type ReceiptDecisionValue } from "./ReceiptDecision";
 import { ActPreview } from "./ActPreview";
 import {
   comparedFields,
@@ -655,4 +655,72 @@ export const АктБезВозврата: StoryObj<typeof ActPreview> = {
     act: { required: false, items: [] },
     problemItems: [],
   },
+};
+
+/* --- ТЗ DR54 Task 1: states of the canonical native select ------------------ */
+
+const withTransaction = (
+  transaction_type: ReceiptDecisionValue["transaction_type"],
+  extra: Partial<ReceiptDecisionProps> = {},
+): StoryObj<typeof ReceiptDecision> => ({
+  render: (args) => <ReceiptDecision {...args} />,
+  args: {
+    value: { ...decisionBase, decision: "ACCEPT_ALL", transaction_planned: true, transaction_type },
+    allowed: ["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"] as Decision[],
+    errors: {},
+    ...extra,
+  } satisfies Partial<ReceiptDecisionProps>,
+});
+
+/** Placeholder: «Выберите тип», honest empty state of the canonical select. */
+export const ТипТранзакцииПлейсхолдер = withTransaction(null);
+
+/** The selected value keeps the same geometry as the reference select. */
+export const ТипТранзакцииВыбран = withTransaction("EXTERNAL");
+
+/** Focus: the visible focus ring of the shared class, applied on mount. */
+export const ТипТранзакцииФокус: StoryObj<typeof ReceiptDecision> = {
+  ...withTransaction("INTERNAL"),
+  render: (args) => (
+    <div
+      ref={(node) => {
+        node?.querySelector("select")?.focus();
+      }}
+    >
+      <ReceiptDecision {...args} />
+    </div>
+  ),
+};
+
+/** Disabled: the whole fieldset unavailable while the context forbids input. */
+export const ТипТранзакцииНедоступен = withTransaction("INTERNAL", { disabled: true });
+
+const transactionArgs = (
+  transaction_type: ReceiptDecisionValue["transaction_type"],
+): ReceiptDecisionProps => ({
+  value: { ...decisionBase, decision: "ACCEPT_ALL", transaction_planned: true, transaction_type },
+  allowed: ["ACCEPT_ALL", "PARTIAL", "RETURN_ALL"] as Decision[],
+  errors: {},
+  onChange: () => undefined,
+});
+
+/** A long observation label next to the select never overflows the card. */
+export const ТипТранзакцииДлиннаяПодпись: StoryObj<typeof ReceiptDecision> = {
+  render: (args) => (
+    <div style={{ maxWidth: 320 }}>
+      <ReceiptDecision {...args} />
+    </div>
+  ),
+  args: transactionArgs("EXTERNAL"),
+};
+
+/** Narrow screen (390 px): the select keeps its geometry without overflow. */
+export const ТипТранзакцииУзкийЭкран: StoryObj<typeof ReceiptDecision> = {
+  parameters: { viewport: { defaultViewport: "mobile2" } },
+  render: (args) => (
+    <div style={{ maxWidth: 390, padding: 8 }}>
+      <ReceiptDecision {...args} />
+    </div>
+  ),
+  args: transactionArgs(null),
 };

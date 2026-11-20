@@ -31,6 +31,20 @@ DT = "{http://api.vetrf.ru/schema/cdm/dictionary/v2}"
 
 UNIT_GUID = SOURCE_UNIT
 
+# ТЗ DR54 Task 3: the fixture reconciliation is COMPLETE under the same
+# validate_receipt the preview runs — the marks of the genuinely compared
+# fields present in this source, the inspection inputs and the transaction
+# answer. A genuinely incomplete row is refused by the preview gate.
+COMPLETE_CHECKS: dict[str, object] = {
+    "CHK-F05": {"matches": True},
+    "CHK-F07": {"matches": True},
+    "CHK-F16": {"matches": True},
+    "CHK-F20": {"matches": True},
+    "CHK-F21": {"matches": True},
+    "CHK-F13": {"matches": True, "actual": "COMPLIANT"},
+    "CHK-F14": {"matches": True, "actual": "NONE"},
+}
+
 
 @pytest.fixture
 async def dr10_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespace:
@@ -87,7 +101,7 @@ async def dr10_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespace:
     await db_session.flush()
     reconciliation = Reconciliation(
         party_id=party.id,
-        checks={},
+        checks=dict(COMPLETE_CHECKS),
         delivered_mass_kg=100,
         delivered_quantity=4,
         delivered_unit_id=UNIT_GUID,
@@ -98,6 +112,7 @@ async def dr10_env(db_session: AsyncSession, test_db_engine) -> SimpleNamespace:
         returned_quantity=0,
         returned_unit_id=UNIT_GUID,
         decision="ACCEPT_ALL",
+        transaction_planned=False,
         fair=False,
         services=[],
         actor_id=actor.id,

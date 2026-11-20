@@ -430,10 +430,12 @@ def validate_receipt(
     # ТЗ DR40 §8.1: a document-level mark of the PRIMARY transport document
     # satisfies the legacy CHK-F25/26/27 requirement; the mark is not copied
     # onto other documents and legacy marks keep being read as before.
-    primary_marked = (
+    # ТЗ DR54 Task 3: the presence of the mark closes the legacy per-field
+    # comparison — the RESULT («Соответствует»/«Не соответствует») does not
+    # matter; a mismatch with a reason is exactly the honest completed check.
+    primary_document_checked = (
         source.primary_document_key is not None
         and source.primary_document_key in payload.document_checks
-        and payload.document_checks[source.primary_document_key].matches
     )
 
     # --- explicit marks for the compared fields (FT-ARR-03) --------------------
@@ -448,7 +450,7 @@ def validate_receipt(
         # never an error and never an automatic mismatch: «Совпадает» is an
         # explicit mark that needs no actual input, and a mark is optional.
         absent_trailer = spec.key == "trailerNumber" and source_value == ABSENT_TRAILER_TEXT
-        if spec.field_id in ("CHK-F25", "CHK-F26", "CHK-F27") and primary_marked:
+        if spec.field_id in ("CHK-F25", "CHK-F26", "CHK-F27") and primary_document_checked:
             continue  # the primary document is marked once, not per field
         if mark is None:
             if not absent_trailer:

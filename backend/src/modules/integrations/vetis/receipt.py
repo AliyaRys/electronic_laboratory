@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.models import IncomingDocument, Party, Reconciliation
-from backend.src.modules.arrivals.reconciliation import row_to_payload, source_projection
+from backend.src.modules.arrivals.reconciliation import (
+    resolved_participant_names,
+    row_to_payload,
+    source_projection,
+)
 from backend.src.modules.arrivals.validation import (
     FIELD_SPECS,
     ReceiptCapabilities,
@@ -182,9 +186,15 @@ async def build_receipt_preview(
     # pure validate_receipt before any XML/outbox/SOAP work. A genuinely
     # incomplete reconciliation is an honest typed refusal; the transport
     # spy confirms zero write attempts for it.
+    # ТЗ DR18 §9 (R-rev131): the receipt path validates against the SAME
+    # resolved-participants projection as the read model the user marked
+    # against — without the names overrides a raw VetIS snapshot gap (empty
+    # consignee names) would reject already honest saved marks and block the
+    # гашение with a false RECONCILIATION_INCOMPLETE.
+    resolved_names = await resolved_participant_names(db, document)
     receipt_validation = validate_receipt(
         row_to_payload(reconciliation),
-        source_projection(document, party),
+        source_projection(document, party, names=resolved_names),
         ReceiptCapabilities(),
     )
     if not receipt_validation.complete:
@@ -192,7 +202,7 @@ async def build_receipt_preview(
     # ТЗ DR38 §5: русские названия полей и исходные значения берутся из
     # закреплённого read model (checksum-verified snapshot); порядок items —
     # стабильный порядок полей сверки FIELD_SPECS, а не порядок dict checks.
-    source_fields = source_projection(document, party).fields
+    source_fields = source_projection(document, party, names=resolved_names).fields
     for spec in FIELD_SPECS:
         if spec.field_id == "CHK-F35" or not isinstance(item := reconciliation.checks.get(spec.field_id), dict):
             continue

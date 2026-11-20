@@ -5,10 +5,12 @@
  * The rules the component keeps:
  * - the Problem response is checked BEFORE any Blob/download/print — an
  *   error shows the Russian problem detail, never a broken file;
- * - both actions fetch the identical ``conclusion.pdf`` bytes (print opens
- *   those bytes, it does not re-render its own copy);
+ * - both actions fetch the identical ``conclusion.pdf`` bytes (print renders
+ *   those bytes on a CLEAN hidden print surface — an iframe whose
+ *   ``contentWindow.print()`` runs after load; no popup at all);
  * - the call is a pure read: no «Выдано» record is written, and cancelling
  *   the print dialog changes nothing on the server;
+ * - every Blob URL is revoked after use and on unmount as a backstop;
  * - a retry repeats exactly the same GET on the same party id, so the
  *   underlying ВСЭ can never be altered by a retry.
  *
@@ -16,7 +18,7 @@
  * {@link useConclusionDocument} — one implementation of the download rules,
  * never three copies.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchConclusionPdf, type Problem } from "./api";
 
 export interface DocumentActionsProps {
@@ -34,44 +36,64 @@ export type ActionsState =
 
 export function openBlob(blob: Blob, mode: "download" | "print", fileName: string): void {
   const url = URL.createObjectURL(blob);
+  tracked.push(url);
   if (mode === "print") {
-    const frame = window.open(url, "_blank");
-    // The opened tab is the print surface; the URL is revoked later.
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    if (frame !== null) {
-      return;
-    }
-    // ТЗ DR55 §5.5: a blocked pop-up is NOT a hidden download — the user
-    // sees an honest error and can retry (the shared hook shows it).
-    URL.revokeObjectURL(url);
-    throw new PopupBlockedError();
+    printSurface(url);
+    window.setTimeout(() => revokeUrl(url), 60_000);
+    return;
   }
   triggerDownload(url, fileName);
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  window.setTimeout(() => revokeUrl(url), 60_000);
 }
 
-export class PopupBlockedError extends Error {
-  constructor() {
-    super("Всплывающее окно заблокировано браузером.");
-  }
+function printSurface(url: string): void {
+  // ТЗ DR55 fix-loop: an explicit CLEAN hidden print surface with the SAME
+  // bytes — no popup and no application chrome; the system print dialog
+  // runs after the PDF loads. No window.open → no popup-blocked path.
+  const surface = document.createElement("iframe");
+  surface.title = "Печать ветеринарного заключения";
+  surface.style.position = "fixed";
+  surface.style.width = "0";
+  surface.style.height = "0";
+  surface.style.border = "0";
+  surface.style.visibility = "hidden";
+  surface.addEventListener("load", () => {
+    surface.contentWindow?.focus();
+    surface.contentWindow?.print();
+  });
+  surface.src = url;
+  document.body.append(surface);
+  window.setTimeout(() => {
+    surface.remove();
+    revokeUrl(url);
+  }, 60_000);
 }
 
-const POPUP_PROBLEM: DocumentProblem = {
-  code: "POPUP_BLOCKED",
-  title: "Печать недоступна",
-  status: 0,
-  detail: "Всплывающее окно печати заблокировано браузером. Разрешите всплывающие окна и повторите.",
-  trace_id: "",
-} as DocumentProblem;
+const tracked: string[] = [];
+
+function revokeUrl(url: string): void {
+  URL.revokeObjectURL(url);
+  const index = tracked.indexOf(url);
+  if (index >= 0) tracked.splice(index, 1);
+}
+
+/** Revokes every URL the owner still holds (a safe unmount backstop). */
+export function revokeTrackedUrls(): void {
+  for (const url of [...tracked]) revokeUrl(url);
+}
 
 /**
  * The single owner of the conclusion-PDF loading (ТЗ DR55 §5.5): the same
- * endpoint and bytes for both actions, the Problem check before any Blob, a
- * busy guard and the honest popup-blocked error — shared by the inline
- * actions and the menu so the download rules live in exactly one place.
+ * endpoint and bytes for both actions, the Problem check before any Blob and
+ * a busy guard — shared by the inline actions and the menu so the download
+ * rules live in exactly one place. Blob URLs are revoked on unmount.
  */
 export function useConclusionDocument(partyId: string) {
   const [state, setState] = useState<ActionsState>({ kind: "idle" });
+
+  // ТЗ DR55 fix-loop: every created Blob URL is released even if the menu or
+  // the actions row unmounts before the fallback timers fire.
+  useEffect(() => () => revokeTrackedUrls(), []);
 
   const run = useCallback(
     async (mode: "download" | "print", fileNameOverride?: string): Promise<void> => {
@@ -83,15 +105,7 @@ export function useConclusionDocument(partyId: string) {
         return;
       }
       setState({ kind: "idle" });
-      try {
-        openBlob(result.blob, mode, fileNameOverride ?? result.fileName ?? fileNameFallback());
-      } catch (error) {
-        if (error instanceof PopupBlockedError) {
-          setState({ kind: "error", problem: POPUP_PROBLEM });
-          return;
-        }
-        throw error;
-      }
+      openBlob(result.blob, mode, fileNameOverride ?? result.fileName ?? fileNameFallback());
     },
     [partyId, state.kind],
   );

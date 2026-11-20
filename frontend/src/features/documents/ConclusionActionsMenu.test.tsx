@@ -4,7 +4,7 @@
  * never turned into a Blob, both items use ONE endpoint and the same bytes,
  * and a blocked popup shows an error instead of a download.
  */
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -71,10 +71,39 @@ describe("ConclusionActionsMenu", () => {
 
   it("renders the items only with the matching capability", async () => {
     const user = userEvent.setup();
+    // ТЗ DR55 fix-loop: print bytes come under conclusion:pdf, so print
+    // WITHOUT the pdf right gets no menu at all (test on the refusal).
     renderMenu({ canDownload: false });
+    expect(screen.queryByRole("button", { name: "Действия с заключением" })).toBeNull();
+    renderMenu({ canPrint: false });
     await user.click(menu());
-    expect(screen.queryByRole("menuitem", { name: "Скачать" })).toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Печать" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Печать" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Скачать" })).toBeTruthy();
+  });
+
+  it("only ONE menu instance stays open across rows (singleton survives cleanups)", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(
+      <>
+        <ConclusionActionsMenu partyId={PARTY} canDownload canPrint />
+        <ConclusionActionsMenu partyId={`${PARTY}-2`} canDownload canPrint />
+      </>,
+    );
+    const triggers = screen.getAllByRole("button", { name: "Действия с заключением" });
+    await user.click(triggers[0]);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    // Opening the second closes the first; the first one's cleanup must NOT
+    // erase the registry entry of the now-open second instance.
+    await user.click(triggers[1]);
+    await waitFor(() => expect(screen.getAllByRole("menu").length).toBe(1));
+    await user.click(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    // The registry is intact: a fresh open still closes on Escape.
+    await user.click(triggers[0]);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    unmount();
   });
 
   it("a Problem response never becomes a Blob or a download", async () => {
@@ -95,27 +124,24 @@ describe("ConclusionActionsMenu", () => {
     );
     const user = userEvent.setup();
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    const open = vi.spyOn(window, "open").mockReturnValue({} as Window);
     renderMenu();
     await user.click(menu());
     await user.click(screen.getByRole("menuitem", { name: "Печать" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("DOCUMENT_BASIS_INCOMPLETE");
     expect(click).not.toHaveBeenCalled();
-    expect(open).not.toHaveBeenCalled();
     click.mockRestore();
-    open.mockRestore();
   });
 
   it("print and download use ONE endpoint and the same bytes", async () => {
     const user = userEvent.setup();
-    const open = vi.spyOn(window, "open").mockReturnValue({} as Window);
     renderMenu();
     await user.click(menu());
     await user.click(screen.getByRole("menuitem", { name: "Печать" }));
     await waitFor(() => expect(requests).toBe(1));
-    expect(open).toHaveBeenCalled();
-    open.mockRestore();
+    // The print surface is a hidden iframe — no popup, no download.
+    expect(document.querySelector('iframe[title="Печать ветеринарного заключения"]')).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
 
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     await user.click(menu());
@@ -125,18 +151,20 @@ describe("ConclusionActionsMenu", () => {
     click.mockRestore();
   });
 
-  it("a blocked popup shows the error and never downloads", async () => {
+  it("print reuses the same bytes and the Blob URL is released on unmount", async () => {
     const user = userEvent.setup();
-    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     renderMenu();
     await user.click(menu());
     await user.click(screen.getByRole("menuitem", { name: "Печать" }));
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/Всплывающее окно/);
+    await waitFor(() => expect(requests).toBe(1));
     expect(click).not.toHaveBeenCalled();
-    open.mockRestore();
     click.mockRestore();
+    // Unmount revokes every URL the owner still holds.
+    cleanup();
+    expect(revoke).toHaveBeenCalled();
+    revoke.mockRestore();
   });
 
   it("a repeated launch during loading is blocked", async () => {

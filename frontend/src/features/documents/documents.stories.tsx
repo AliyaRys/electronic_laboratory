@@ -136,6 +136,19 @@ export const МенюЗаключенияОшибка: StoryObj<typeof Conclusio
   render: () => <MenuErrorSandbox />,
 };
 
+export const МенюЗаключенияДлинноеОкружение: StoryObj<typeof ConclusionActionsMenu> = {
+  render: () => (
+    <div style={{ minHeight: 420, padding: 16 }}>
+      <ConclusionActionsMenu partyId={PARTY} canDownload canPrint />
+      <p style={{ marginTop: 16, maxWidth: 560 }}>
+        Длинный окружающий текст ряда таблицы: завершился оформлением ветеринарно-санитарной экспертизы, действие
+        заключения доступно; меню в портале с фиксированными координатами не обрезается контейнером и не сдвигает
+        соседние строки, а popover остаётся на месте при прокрутке.
+      </p>
+    </div>
+  ),
+};
+
 export const МенюЗаключенияБезПечати: StoryObj<typeof ConclusionActionsMenu> = {
   render: () => (
     <div style={{ minHeight: 420, padding: 16 }}>

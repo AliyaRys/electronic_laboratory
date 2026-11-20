@@ -22,8 +22,11 @@ export interface ConclusionActionsMenuProps {
   defaultOpen?: boolean;
 }
 
-// ТЗ DR55 §5.5: exactly one instance of the menu stays open at a time.
-let openInstanceCloser: (() => void) | null = null;
+// ТЗ DR55 §5.5: exactly one instance of the menu stays open at a time. The
+// registry keeps the closer OBJECT of the currently open instance; a
+// closing/unmounting instance removes ONLY its own entry (token equality),
+// so its cleanup can never wipe the closer of a menu opened after it.
+let openInstanceCloser: { close: () => void } | null = null;
 
 export function ConclusionActionsMenu({
   partyId,
@@ -50,9 +53,12 @@ export function ConclusionActionsMenu({
       setPosition({ left: rect.left, top: rect.bottom + 8 });
     }
     // ТЗ DR55 §5.5: exactly one open menu — a newly opened one closes the
-    // previous instance without stealing its focus.
-    openInstanceCloser?.();
-    openInstanceCloser = () => close(false);
+    // previous instance without stealing its focus. This instance registers
+    // its own closer and, on cleanup, removes ONLY that entry (token
+    // equality), never the closer of a menu opened after it.
+    openInstanceCloser?.close();
+    const mine: { close: () => void } = { close: () => close(false) };
+    openInstanceCloser = mine;
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
         event.stopPropagation();
@@ -70,11 +76,15 @@ export function ConclusionActionsMenu({
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onPointerDown);
-      if (openInstanceCloser !== null) openInstanceCloser = null;
+      if (openInstanceCloser === mine) openInstanceCloser = null;
     };
   }, [open, close, menuId]);
 
-  if (!canDownload && !canPrint) return null;
+  // ТЗ DR55 fix-loop: the print surface fetches the SAME bytes under
+  // ``conclusion:pdf`` (one endpoint), so the «Печать» item shows only when
+  // BOTH rights exist — print without the pdf right gets no menu at all.
+  const canPrintItem = canPrint && canDownload;
+  if (!canDownload && !canPrintItem) return null;
   const error = state.kind === "error" ? state.problem : null;
 
   return (
@@ -111,7 +121,7 @@ export function ConclusionActionsMenu({
                   Скачать
                 </button>
               ) : null}
-              {canPrint ? (
+              {canPrintItem ? (
                 <button
                   type="button"
                   role="menuitem"

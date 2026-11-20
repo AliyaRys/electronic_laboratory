@@ -422,9 +422,7 @@ describe("CompletedArrivalsTable", () => {
     expect(screen.queryByRole("button", { name: "Действия с заключением" })).toBeNull();
   });
 
-
-  it("DR55: the capabilities gate the menu items", async () => {
-    const user = userEvent.setup();
+  it("DR55: the capabilities gate the menu items (print requires the pdf bytes right)", async () => {
     render(
       <CompletedArrivalsTable
         labId={LAB}
@@ -436,15 +434,16 @@ describe("CompletedArrivalsTable", () => {
           }),
         ]}
         hiddenColumns={new Set()}
+        // ТЗ DR55 fix-loop: the print surface fetches the SAME bytes under
+        // ``conclusion:pdf``, so print without the pdf right gets no menu.
         conclusionCapabilities={{ download: false, print: true }}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "Действия с заключением" }));
-    expect(screen.queryByRole("menuitem", { name: "Скачать" })).toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Печать" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Действия с заключением" })).toBeNull();
   });
 
-  it("the cost header carries the accessible help tooltip", async () => {    const user = userEvent.setup();
+  it("the cost header carries the accessible help tooltip", async () => {
+    const user = userEvent.setup();
     render(
       <CompletedArrivalsTable
         labId={LAB}

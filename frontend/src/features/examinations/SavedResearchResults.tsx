@@ -96,14 +96,13 @@ function SavedResearchCard({
           </span>
         ) : null}
       </header>
-      {/* ТЗ DR55 §5.1: the visible «Сохранённое значение» label is gone; the
-          value is programmatically named by the research heading instead. */}
-      <input
-        className="vse-research-value"
-        readOnly
-        value={text}
-        aria-labelledby={headingId}
-      />
+      {/* ТЗ DR55 §5.1 (fix-loop): the visible «Сохранённое значение» label is
+          gone; the value is a semantic readonly output named by the research
+          heading — long text wraps inside the card instead of clipping in a
+          one-line input. */}
+      <output className="vse-research-value" aria-labelledby={headingId}>
+        {text}
+      </output>
     </article>
   );
 }

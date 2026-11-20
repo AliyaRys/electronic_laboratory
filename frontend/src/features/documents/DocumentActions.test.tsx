@@ -54,24 +54,21 @@ describe("DocumentActions", () => {
     );
     const user = userEvent.setup();
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    const open = vi.spyOn(window, "open").mockReturnValue(null);
     render(<DocumentActions partyId={PARTY} />);
     await user.click(screen.getByRole("button", { name: "Печать" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("RENDERER_UNAVAILABLE");
     expect(alert).toHaveTextContent("Шаблон формы недоступен.");
     expect(click).not.toHaveBeenCalled();
-    expect(open).not.toHaveBeenCalled();
     click.mockRestore();
-    open.mockRestore();
   });
 
-  it("prints the same bytes: both actions issue the identical GET", async () => {
+  it("prints the same bytes via the hidden iframe surface", async () => {
     const user = userEvent.setup();
-    const open = vi.spyOn(window, "open").mockReturnValue({} as Window);
     render(<DocumentActions partyId={PARTY} />);
     await user.click(screen.getByRole("button", { name: "Печать" }));
-    await waitFor(() => expect(open).toHaveBeenCalled());
-    open.mockRestore();
+    await waitFor(() =>
+      expect(document.querySelector('iframe[title="Печать ветеринарного заключения"]')).toBeTruthy(),
+    );
   });
 });

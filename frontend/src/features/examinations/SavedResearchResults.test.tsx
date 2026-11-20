@@ -168,19 +168,38 @@ describe("SavedResearchResults", () => {
       />,
     );
     expect(screen.queryByText("Сохранённое значение")).toBeNull();
-    const temperature = screen.getByDisplayValue("4,5 °C");
+    // ТЗ DR55 fix-loop: the value is a semantic readonly output (not an
+    // input), and long text wraps inside the card instead of clipping.
+    const temperature = screen.getByText("4,5 °C");
+    expect(temperature.tagName).toBe("OUTPUT");
+    expect(temperature.querySelector("input")).toBeNull();
+    expect(document.querySelector<HTMLInputElement>(".vse-research-value input")).toBeNull();
     const heading = temperature.getAttribute("aria-labelledby") ?? "";
     const label = document.getElementById(heading);
     expect(label?.textContent).toContain("Температура в толще мышц");
-    expect(screen.getByDisplayValue("Иное (свой вариант)")).toBeTruthy();
-    expect(screen.getByDisplayValue("1,2 / 3,4 мкЗв/ч")).toBeTruthy();
+    expect(screen.getByText("Иное (свой вариант)")).toBeTruthy();
+    expect(screen.getByText("1,2 / 3,4 мкЗв/ч")).toBeTruthy();
+  });
+
+  it("a very long value wraps inside the card (output, no input clipping)", () => {
+    const long = "Очень длинное сохранённое значение исследования ".repeat(12);
+    render(
+      <SavedResearchResults
+        view={cardWith({ [TEMPERATURE.id]: { kind: "TEXT", value: long } })}
+      />,
+    );
+    const value = screen.getByText(
+      (_, element) => (element?.getAttribute("class") ?? "").includes("vse-research-value"),
+    );
+    expect(value.tagName).toBe("OUTPUT");
+    expect(value.textContent).toContain(long.trim());
   });
 
   it("an unknown legacy indicator keeps the value visible with a reserve label", () => {
     render(<SavedResearchResults view={cardWith({ [UNKNOWN_ID]: { kind: "DECIMAL", value: "7" } })} />);
     expect(screen.getByText("Исследование")).toBeTruthy();
-    expect(screen.getByDisplayValue("7")).toBeTruthy();
-    const value = screen.getByDisplayValue("7");
+    const value = screen.getByText("7");
+    expect(value.tagName).toBe("OUTPUT");
     const heading = value.getAttribute("aria-labelledby") ?? "";
     expect(document.getElementById(heading)?.textContent).toContain("Исследование");
     expect(screen.getByText(/Код показателя/).textContent).toContain(UNKNOWN_ID);

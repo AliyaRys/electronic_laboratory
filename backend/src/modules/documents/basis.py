@@ -94,7 +94,7 @@ def unit_display_name(batch: Mapping[str, Any], accepted_unit_id: str | None) ->
 def _looks_like_uuid(value: str) -> bool:
     try:
         uuid.UUID(value)
-    except ValueError, AttributeError:
+    except (ValueError, AttributeError):
         return False
     return True
 

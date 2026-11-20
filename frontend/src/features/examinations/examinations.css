@@ -122,6 +122,7 @@
 /* ТЗ DR55 §5.1: the value keeps the readonly-field look without a visible
    label; the accessible name is the research heading (aria-labelledby). */
 .vse-research-view .vse-research-value {
+  display: block;
   width: 100%;
   min-height: 43px;
   border: 1px solid var(--app-readonly-line);
@@ -132,6 +133,9 @@
   font: inherit;
   cursor: default;
   min-width: 0;
+  /* ТЗ DR55 fix-loop: long values wrap inside the card, never clip. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 /* Горизонтальный скролл на 390 px допустим только внутри таблицы стоимости. */

@@ -7,7 +7,6 @@
   "endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/ApplicationManagementService",
   "dictionary_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/DictionaryService",
   "enterprise_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/EnterpriseService",
-  "product_endpoint": "https://api2.vetrf.ru:8002/platform/services/2.0/ProductService",
   "business_schema_version": "2.0",
   "soap_version": "1.1",
   "namespaces": {
@@ -25,7 +24,7 @@
     "purpose_list": "getPurposeListRequest",
     "enterprise_by_guid": "getEnterpriseByGuidRequest",
     "business_entity_by_guid": "getBusinessEntityByGUIDRequest",
-    "unit_by_uuid": "getUnitByUuidRequest"
+    "unit_by_uuid": "GetUnitByUuid"
   },
   "operations": [
     {
@@ -90,7 +89,7 @@
     "https://help.vetrf.ru/wiki/GetEnterpriseByGuid_v2",
     "https://help.vetrf.ru/wiki/GetBusinessEntityByGUID",
     "https://help.vetrf.ru/wiki/GetUnitByUuidOperation_v2",
-    "http://api.vetrf.ru/schema/platform/services/2.0-last/ProductService_v2.0.wsdl",
+    "http://api.vetrf.ru/schema/platform/services/2.0-last/DictionaryService_v2.0.wsdl",
     "docs/TZ_development/plans/mercury-test-integration-contract.md"
   ]
 }

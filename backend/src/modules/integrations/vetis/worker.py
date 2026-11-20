@@ -569,9 +569,10 @@ async def reference_names_tick() -> dict[str, object]:
         }
         _log_reference_names_tick(result)
         return result
-    # The UNIT dictionary lives in ProductService, not EnterpriseService: a
-    # separate pinned transport; an absent product pin keeps the participant
-    # resolution working and leaves UNIT rows an honest retriable missing.
+    # The UNIT dictionary lives in the DictionaryService, not the
+    # EnterpriseService: a separate pinned transport; an absent dictionary
+    # pin keeps the participant resolution working and leaves UNIT rows an
+    # honest retriable missing.
     unit_transport = None
     try:
         unit_transport = compose_unit_reference_transport(manifest)

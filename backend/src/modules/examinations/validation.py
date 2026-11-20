@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemItem, validation_error
 from backend.src.modules.arrivals.models import IncomingDocument, Party
-from backend.src.modules.catalog_pricing.mandatory import MANDATORY_INDICATOR_IDS, TRICHINELLA_INDICATOR_ID
+from backend.src.modules.catalog_pricing.mandatory import (
+    MANDATORY_INDICATOR_IDS,
+    TRICHINELLA_INDICATOR_ID,
+    indicator_by_code,
+)
 from backend.src.modules.examinations.schemas import ExaminationWrite
 from backend.src.modules.integrations.vetis.models import MercuryProductGuidLvl2
 
@@ -131,5 +135,19 @@ async def validate_researches(db: AsyncSession, party: Party, payload: Examinati
                     message="Допустима только положительная или отрицательная реакция.",
                 )
             )
+
+    # ТЗ DR54 Task 6: «Иное (указать)» was removed from the cooking test —
+    # a NEW result is accepted only as one of the five subject-defined
+    # variants (a typed validation error, not just a missing UI option).
+    allowed_cooking = indicator_by_code("VSE-F26").options or ()
+    cooking = by_id.get(COOKING)
+    if cooking is not None and cooking.kind == "ENUM" and str(cooking.value) not in allowed_cooking:
+        errors.append(
+            ProblemItem(
+                path=f"researches.{COOKING}.value",
+                field_id="VSE-F26",
+                message="Допустим один из пяти вариантов пробы варки; вариант «Иное» больше не поддерживается.",
+            )
+        )
     if errors:
         raise validation_error(errors)

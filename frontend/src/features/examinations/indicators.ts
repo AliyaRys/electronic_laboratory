@@ -49,7 +49,6 @@ const COOKING_OPTIONS: readonly EnumOption[] = [
   { value: "Бульон с хлопьями", label: "Бульон с хлопьями" },
   { value: "Бульон с осадком", label: "Бульон с осадком" },
   { value: "Нехарактерный / неприятный запах", label: "Нехарактерный / неприятный запах" },
-  { value: "OTHER", label: "Иное (указать)", other: true },
 ];
 
 export const INDICATORS: readonly IndicatorDef[] = Object.freeze([

@@ -76,6 +76,10 @@ function SavedResearchCard({
   // text is ever appended: the norm lives in the catalog, not on the card.
   const mode = (evaluation as { evaluation_mode?: unknown } | null)?.evaluation_mode;
   const status = evaluation?.status;
+  // ТЗ DR54 Task 4 + DR55 §5.1: ONLY the two useful verdicts render a badge
+  // and only when an evaluation mode applies at all (NONE keeps a plain
+  // card); service statuses, a missing evaluation and a research without a
+  // norm render nothing, no data-evaluation colour and no technical text.
   const applicable =
     (status === "IN_NORM" || status === "DEVIATION") && mode !== "NONE";
   return (

@@ -15,9 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError, not_found
 from backend.src.modules.arrivals.models import IncomingDocument, Party, Reconciliation
-from backend.src.modules.arrivals.reconciliation import source_projection
+from backend.src.modules.arrivals.reconciliation import row_to_payload, source_projection
 from backend.src.modules.arrivals.validation import (
     FIELD_SPECS,
+    ReceiptCapabilities,
+    validate_receipt,
 )
 from backend.src.modules.arrivals.validation import (
     comparison_source_text as _comparison_source_text,
@@ -175,6 +177,18 @@ async def build_receipt_preview(
         raise _problem(422, "VALIDATION_ERROR", "Единица сверки не совпадает с исходным эВСД.")
 
     discrepancies: list[dict[str, object]] = []
+    # ТЗ DR54 Task 3: the server NEVER trusts a client-side «complete» or a
+    # cached read model — the current saved facts are re-validated by the SAME
+    # pure validate_receipt before any XML/outbox/SOAP work. A genuinely
+    # incomplete reconciliation is an honest typed refusal; the transport
+    # spy confirms zero write attempts for it.
+    receipt_validation = validate_receipt(
+        row_to_payload(reconciliation),
+        source_projection(document, party),
+        ReceiptCapabilities(),
+    )
+    if not receipt_validation.complete:
+        raise _problem(422, "RECONCILIATION_INCOMPLETE", "Сначала полностью заполните и сохраните сверку.")
     # ТЗ DR38 §5: русские названия полей и исходные значения берутся из
     # закреплённого read model (checksum-verified snapshot); порядок items —
     # стабильный порядок полей сверки FIELD_SPECS, а не порядок dict checks.

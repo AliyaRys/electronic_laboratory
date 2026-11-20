@@ -538,7 +538,9 @@ test.describe("examination lifecycle", () => {
     const posts: unknown[] = [];
     await openCreate(page, posts);
     await page.getByLabel("Номер ВСЭ *").fill("№ 14/2026");
-    await page.getByRole("link", { name: "← Сверка эВСД" }).click();
+    // ТЗ DR54 Task 4: the breadcrumb was removed; the dirty-guard is checked
+    // through the form's own «Отменить» button.
+    await page.getByRole("button", { name: "Отменить" }).click();
     const dialog = page.getByRole("dialog", { name: "Несохранённый ввод" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText(/Карточка ВСЭ не сохранён/)).toBeVisible();
@@ -547,7 +549,7 @@ test.describe("examination lifecycle", () => {
     await expect(dialog).toBeHidden();
     await expect(page.getByLabel("Номер ВСЭ *")).toHaveValue("№ 14/2026");
     // Leaving explicitly proceeds without any hidden save.
-    await page.getByRole("link", { name: "← Сверка эВСД" }).click();
+    await page.getByRole("button", { name: "Отменить" }).click();
     await page
       .getByRole("dialog", { name: "Несохранённый ввод" })
       .getByRole("button", { name: "Покинуть без сохранения" })

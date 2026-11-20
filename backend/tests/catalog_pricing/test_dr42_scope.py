@@ -234,7 +234,7 @@ async def test_evaluation_mode_is_part_of_the_snapshot(db_session: AsyncSession)
                 env.lab.id,
                 species,
                 uuid.uuid4(),
-                MICROSCOPY,
+                TEMPERATURE,
                 result_schema="DECIMAL",
                 unit_id="RUB",
                 rule={"type": "interval", "lower": "0", "upper": "5"},
@@ -252,7 +252,7 @@ async def test_evaluation_mode_is_part_of_the_snapshot(db_session: AsyncSession)
     )
     db_session.add_all(
         [
-            _tariff(env.lab.id, species, str(MICROSCOPY), "10.00", unit="RUB"),
+            _tariff(env.lab.id, species, str(TEMPERATURE), "10.00", unit="RUB"),
             _tariff(env.lab.id, species, str(BACTERIOSCOPY), "10.00", unit="RUB"),
         ]
     )
@@ -265,7 +265,7 @@ async def test_evaluation_mode_is_part_of_the_snapshot(db_session: AsyncSession)
             species,
             uuid.uuid4(),
             [
-                ResearchValue.model_validate({"indicator_id": str(MICROSCOPY), "performed": True, "value": "2.5"}),
+                ResearchValue.model_validate({"indicator_id": str(TEMPERATURE), "performed": True, "value": "2.5"}),
                 ResearchValue.model_validate(
                     {"indicator_id": str(BACTERIOSCOPY), "performed": True, "value": "рост не обнаружен"}
                 ),
@@ -274,17 +274,17 @@ async def test_evaluation_mode_is_part_of_the_snapshot(db_session: AsyncSession)
         None,
     )
     by_code = {line.service_code: line for line in snapshot.lines}
-    microscopy = by_code[str(MICROSCOPY)]
+    temperature = by_code[str(TEMPERATURE)]
     bacterioscopy = by_code[str(BACTERIOSCOPY)]
     # The configurable interval carries the verdict and the mode; TEXT has no
     # norm at all and stays neutral (NOT_APPLICABLE) without a fabricated
     # verdict (ТЗ DR41-B §6.2/§7.1).
-    assert microscopy.evaluation["evaluation_mode"] == "CONFIGURABLE"
-    assert microscopy.evaluation["status"] == "IN_NORM"
+    assert temperature.evaluation["evaluation_mode"] == "CONFIGURABLE"
+    assert temperature.evaluation["status"] == "IN_NORM"
     assert bacterioscopy.evaluation["evaluation_mode"] == "NONE"
     assert bacterioscopy.evaluation["status"] == "NOT_APPLICABLE"
-    assert microscopy.method_snapshot is not None
-    assert microscopy.method_snapshot["rule"] == {"type": "interval", "lower": "0", "upper": "5"}
+    assert temperature.method_snapshot is not None
+    assert temperature.method_snapshot["rule"] == {"type": "interval", "lower": "0", "upper": "5"}
 
 
 @pytest.mark.integration

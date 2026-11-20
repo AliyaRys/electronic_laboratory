@@ -11,7 +11,7 @@
 import "../features/examinations/examinations.css";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { RequireSession } from "./RequireSession";
 import { fetchArrival } from "../features/arrivals/api";
 import type { IncomingView, Problem } from "../features/arrivals/api";
@@ -78,9 +78,8 @@ function ExaminationCreateContent(): React.ReactElement {
 
   return (
     <div className="vse-app vse-page vse-exam-page">
-      <nav className="vse-breadcrumb" aria-label="Навигация">
-        <Link to={`/labs/${labId}/arrivals/${partyId}/reconciliation`}>← Сверка эВСД</Link>
-      </nav>
+      {/* ТЗ DR54 Task 4: the redundant breadcrumb «← Сверка эВСД» was removed
+          by the owner decision; the form's own «Отменить» covers navigation. */}
       <div className="vse-page-head">
         <div>
           <p className="vse-eyebrow">Новая запись</p>

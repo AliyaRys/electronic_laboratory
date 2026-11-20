@@ -361,7 +361,9 @@ def test_primary_document_mark_satisfies_legacy_fields() -> None:
     assert "CHK-F27" not in error_ids(result)
 
 
-def test_primary_mismatch_does_not_satisfy_legacy_fields() -> None:
+def test_primary_mismatch_with_reason_satisfies_legacy_fields() -> None:
+    """ТЗ DR54 Task 3: the mark's presence closes CHK-F25–27 regardless of the
+    result; a mismatched mark only demands the reason of that document."""
     transport = {
         "issueSeries": "0006",
         "issueNumber": "5555",
@@ -378,12 +380,53 @@ def test_primary_mismatch_does_not_satisfy_legacy_fields() -> None:
     key = marked_source.primary_document_key
     assert key is not None
     payload = write_payload(
-        documentChecks={key: {"matches": False, "actual": {"typeCode": "1"}, "reason": "Другой документ"}}
+        documentChecks={key: {"matches": False, "reason": "так исторически сложилось"}}  # type: ignore[dict-item]
     )
     result = validate_receipt(payload, marked_source, CAPS)
-    # The document is marked «не соответствует»: the legacy per-field marks are
-    # not silently auto-satisfied.
-    assert "CHK-F25" in error_ids(result)
+    # The single document mark IS the completed comparison; no hidden
+    # CHK-F25/26/27 demands.
+    assert "CHK-F25" not in error_ids(result)
+    assert "CHK-F26" not in error_ids(result)
+    assert "CHK-F27" not in error_ids(result)
+    assert "CHK-F43" not in error_ids(result)
+    # Without the reason, only the document's own CHK-F43 stays.
+    without_reason = write_payload(documentChecks={key: {"matches": False, "reason": None}})  # type: ignore[dict-item]
+    result2 = validate_receipt(without_reason, marked_source, CAPS)
+    assert "CHK-F25" not in error_ids(result2)
+    assert "CHK-F43" in error_ids(result2)
+
+
+def test_full_return_with_marked_mismatch_is_complete() -> None:
+    """ТЗ DR54 Task 3 Шаг 3 regression of the real party: the mismatched
+    primary document with a reason, RETURN_ALL, accepted=0 and
+    returned=delivered — a complete validation, no blocking, no act, route NONE."""
+    transport = {
+        "issueSeries": "0006",
+        "issueNumber": "5555",
+        "issueDate": "2026-11-16",
+        "type": "1",
+        "relationshipType": "1",
+    }
+    marked_source = source_with_documents(
+        transport_document=transport,
+        transportDocumentType="Товарно-транспортная накладная",
+        transportDocumentNumber="5555",
+        transportDocumentIssuedOn="2026-11-16",
+    )
+    key = marked_source.primary_document_key
+    assert key is not None
+    payload = write_payload(
+        documentChecks={key: {"matches": False, "reason": "так исторически сложилось"}},  # type: ignore[dict-item]
+        accepted=QuantitySet(mass_kg="0", quantity="0", unit_id=KG),
+        returned=QuantitySet(mass_kg="120.0", quantity="4", unit_id=KG),
+        decision="RETURN_ALL",
+        return_reason={"code": "UNORDERED_PRODUCT", "text": None},  # type: ignore[dict-item]
+    )
+    result = validate_receipt(payload, marked_source, CAPS)
+    assert result.complete is True, [item.message for item in result.all_errors()]
+    assert result.blocking == []
+    assert result.act.required is False
+    assert result.route == "NONE"
 
 
 # --- 7: act preview shows the concrete document -----------------------------------

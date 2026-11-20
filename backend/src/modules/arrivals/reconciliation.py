@@ -404,8 +404,16 @@ def build_reconciliation_view(
         ),
         fair=row.fair,
         services=[ServiceItem.model_validate(item) for item in row.services],
+        # ТЗ DR54 Task 2: the public read model never publishes a pricing
+        # snapshot from another fair state — ``fair`` and ``pricing.fair``
+        # always agree in the view (compatibility of the already stored row
+        # with a zero fair snapshot and row.fair=false), no migration needed.
         pricing=(
-            PricingSnapshot.model_validate(row.pricing_snapshot) if row.pricing_snapshot is not None else None
+            PricingSnapshot.model_validate(row.pricing_snapshot)
+            if row.pricing_snapshot is not None
+            and isinstance(_as_dict(row.pricing_snapshot).get("fair"), bool)
+            and bool(_as_dict(row.pricing_snapshot).get("fair")) == bool(row.fair)
+            else None
         ),
         actor_id=str(row.actor_id),
         saved_at=row.saved_at,
@@ -635,6 +643,15 @@ async def save_reconciliation(
         # recalculates this stored snapshot; an incomplete re-save keeps the
         # previously frozen value untouched.
         row.pricing_snapshot = snapshot.model_dump(mode="json")  # type: ignore[assignment]
+    elif row.pricing_snapshot is not None:
+        # ТЗ DR54 Task 2: an incomplete re-save never leaves a pricing
+        # snapshot from ANOTHER fair state frozen under a changed row.fair —
+        # the mismatching snapshot is cleared instead of published. A full
+        # save always recomputes the snapshot independently of any preview.
+        stored = _as_dict(row.pricing_snapshot)
+        stored_fair = stored.get("fair")
+        if isinstance(stored_fair, bool) and stored_fair != bool(saved.fair):
+            row.pricing_snapshot = None
     await db.flush()
     await recorder.complete(work, record, row.id)
     return build_reconciliation_view(row, party, document_row, names=names)

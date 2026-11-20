@@ -12,8 +12,9 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.core.problems import ProblemError
+from backend.src.modules.catalog_pricing.mandatory import indicator_by_code
 from backend.src.modules.examinations.schemas import ExaminationWrite, ResearchWrite
-from backend.src.modules.examinations.validation import MICROSCOPY, PH, validate_researches
+from backend.src.modules.examinations.validation import COOKING, MICROSCOPY, PH, validate_researches
 from backend.src.modules.identity.models import Laboratory, Territory, User, UserRole
 from backend.tests.examinations.test_create import BEEF, party_with_confirmation, payload
 
@@ -89,6 +90,67 @@ def test_other_and_findings_are_complete_and_limited() -> None:
                 "noncontagiousFindings": [{"disease": f"Болезнь {index}"} for index in range(11)],
             }
         )
+
+
+# --- ТЗ DR54 Task 6: the cooking test without «Иное (указать)» ----------------------
+
+
+def test_cooking_registry_has_exactly_five_variants() -> None:
+    """ТЗ DR54 Task 6 Шаг 1: the canonical registry carries exactly the five
+    subject-defined variants — «Иное (указать)» is gone."""
+    definition = indicator_by_code("VSE-F26")
+    assert definition.options == (
+        "Бульон прозрачный, аромат специфический",
+        "Бульон мутный",
+        "Бульон с хлопьями",
+        "Бульон с осадком",
+        "Нехарактерный / неприятный запах",
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Бульон прозрачный, аромат специфический",
+        "Бульон мутный",
+        "Бульон с хлопьями",
+        "Бульон с осадком",
+        "Нехарактерный / неприятный запах",
+    ],
+)
+async def test_cooking_five_variants_pass(db_session: AsyncSession, result_env: SimpleNamespace, value: str) -> None:
+    """ТЗ DR54 Task 6: each of the five subject-defined variants is accepted
+    as a NEW cooking result."""
+    party = await party_with_confirmation(db_session, result_env.lab.id, BEEF)
+    base = payload(number=f"COOK-{value[:8]}", trich=False).model_dump(mode="json", by_alias=True)
+    base["researches"].append({"indicatorId": str(COOKING), "kind": "ENUM", "value": value})
+    parsed = ExaminationWrite.model_validate(base)
+    await validate_researches(db_session, party, parsed)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["Иное", "Вариант, которого нет в справочнике"],
+)
+async def test_cooking_legacy_other_and_unknown_fail(
+    db_session: AsyncSession, result_env: SimpleNamespace, value: str
+) -> None:
+    """ТЗ DR54 Task 6: «Иное (указать)» removed — a NEW result with the legacy
+    variant (or any other non-registry value) is a typed VSE-F26 error."""
+    party = await party_with_confirmation(db_session, result_env.lab.id, BEEF)
+    base = payload(trich=False).model_dump(mode="json", by_alias=True)
+    legacy = {"indicatorId": str(COOKING), "kind": "ENUM", "value": value, "otherText": "Старая формулировка"}
+    base["researches"].append(legacy)
+    parsed = ExaminationWrite.model_validate(base)
+    with pytest.raises(ProblemError) as raised:
+        await validate_researches(db_session, party, parsed)
+    items = raised.value.errors
+    assert any(
+        item.field_id == "VSE-F26"
+        and str(COOKING) in str(item.path)
+        and "Допустим один из пяти вариантов пробы варки" in item.message
+        for item in items
+    )
 
 
 @pytest.mark.parametrize("value", ["0", "14"])

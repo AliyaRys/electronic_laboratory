@@ -48,8 +48,10 @@ __all__ = [
     "parse_purpose_list",
     "build_get_enterprise_by_guid_request",
     "build_get_business_entity_by_guid_request",
+    "build_get_unit_by_uuid_request",
     "parse_enterprise_by_guid",
     "parse_business_entity_by_guid",
+    "parse_unit_by_uuid",
     "dictionary_allowlist",
     "enterprise_allowlist",
     "imports_allowlist",
@@ -646,6 +648,24 @@ def build_get_business_entity_by_guid_request(guid: str, *, registry_ns: str = _
     )
 
 
+def build_get_unit_by_uuid_request(unit_uuid: str, *, registry_ns: str = _REGISTRY_DEFINITIONS_NS) -> str:
+    """The plain SOAP envelope of a read-only GetUnitByUuid call.
+
+    The unit dictionary lives in the ProductService family; the request key is
+    the VetIS unit UUID (never a GUID — a GUID key can never resolve here).
+    """
+    from xml.sax.saxutils import escape
+
+    if not is_read_only_operation("GetUnitByUuidOperation"):
+        raise WriteOperationRejected("GetUnitByUuidOperation")
+    return (
+        f'<ws:getUnitByUuidRequest xmlns:ws="{registry_ns}" '
+        f'xmlns:bs="{_BASE_NS}">'
+        f"<bs:uuid>{escape(unit_uuid)}</bs:uuid>"
+        "</ws:getUnitByUuidRequest>"
+    )
+
+
 def _localname(element: ET.Element | None) -> str:
     return element.tag.rsplit("}", 1)[-1] if element is not None else ""
 
@@ -716,6 +736,17 @@ def parse_business_entity_by_guid(result_xml: str) -> dict[str, object]:
     return record
 
 
+def parse_unit_by_uuid(result_xml: str) -> dict[str, object]:
+    """Parse a GetUnitByUuid response: the unit's OWN top-level ``bs:name``."""
+    from xml.etree import ElementTree as ET
+
+    root = ET.fromstring(result_xml)
+    unit = next((node for node in root.iter() if _localname(node) == "unit"), None)
+    record = _identity_record(unit, "unit")
+    record["name"] = _child_text(unit, "name")
+    return record
+
+
 def enterprise_allowlist(manifest: VetisManifest) -> set[str]:
     """The fail-closed allowlist of the EnterpriseService boundary."""
     allowed = dictionary_allowlist(manifest)
@@ -743,10 +774,12 @@ class ZeepEnterpriseLookupTransport:
         allowed_urls: Collection[str] | None = None,
         gateway_user: str | None = None,
         gateway_password: str | None = None,
+        unit_by_uuid_action: str = "getUnitByUuidRequest",
     ) -> None:
         self._endpoint = endpoint
         self._enterprise_action = enterprise_action
         self._business_entity_action = business_entity_action
+        self._unit_by_uuid_action = unit_by_uuid_action
         self._connect_timeout = connect_timeout_s
         self._read_timeout = read_timeout_s
         self._allowed_urls = frozenset(allowed_urls or ())
@@ -778,6 +811,9 @@ class ZeepEnterpriseLookupTransport:
             self._post, self._business_entity_action, build_get_business_entity_by_guid_request(guid)
         )
 
+    async def get_unit_by_uuid(self, unit_uuid: str) -> str:
+        return await asyncio.to_thread(self._post, self._unit_by_uuid_action, build_get_unit_by_uuid_request(unit_uuid))
+
 
 class SpyEnterpriseLookupTransport:
     """A recording spy of the EnterpriseService boundary (ТЗ DR18 §11).
@@ -791,10 +827,12 @@ class SpyEnterpriseLookupTransport:
         *,
         enterprise_responses: list[str] | None = None,
         business_entity_responses: list[str] | None = None,
+        unit_responses: list[str] | None = None,
         failure: Exception | None = None,
     ) -> None:
         self._enterprise_responses = list(enterprise_responses or [])
         self._business_entity_responses = list(business_entity_responses or [])
+        self._unit_responses = list(unit_responses or [])
         self._failure = failure
         self.calls: list[dict[str, object]] = []
 
@@ -813,3 +851,11 @@ class SpyEnterpriseLookupTransport:
         if not self._business_entity_responses:
             raise RuntimeError("spy: no more business entity responses")
         return self._business_entity_responses.pop(0)
+
+    async def get_unit_by_uuid(self, unit_uuid: str) -> str:
+        self.calls.append({"operation": "GetUnitByUuid", "uuid": unit_uuid})
+        if self._failure is not None:
+            raise self._failure
+        if not self._unit_responses:
+            raise RuntimeError("spy: no more unit responses")
+        return self._unit_responses.pop(0)

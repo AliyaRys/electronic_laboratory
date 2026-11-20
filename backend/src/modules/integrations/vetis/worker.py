@@ -551,6 +551,7 @@ async def reference_names_tick() -> dict[str, object]:
     from backend.src.modules.integrations.vetis.manifest import load_runtime_manifest
     from backend.src.modules.integrations.vetis.reference_names import (
         compose_reference_transport,
+        compose_unit_reference_transport,
         resolve_due_reference_names,
     )
 
@@ -568,11 +569,19 @@ async def reference_names_tick() -> dict[str, object]:
         }
         _log_reference_names_tick(result)
         return result
+    # The UNIT dictionary lives in ProductService, not EnterpriseService: a
+    # separate pinned transport; an absent product pin keeps the participant
+    # resolution working and leaves UNIT rows an honest retriable missing.
+    unit_transport = None
+    try:
+        unit_transport = compose_unit_reference_transport(manifest)
+    except ProblemError:
+        unit_transport = None
     factory = get_session_factory()
     try:
         async with factory() as session:
             counters = await resolve_due_reference_names(
-                session, transport, contour=manifest.contour
+                session, transport, contour=manifest.contour, unit_transport=unit_transport
             )
     except Exception as exc:  # noqa: BLE001 - an honest tick diagnostic, not a silent cron
         result = {"result": "ERROR", "problem": type(exc).__name__, "contour": manifest.contour}

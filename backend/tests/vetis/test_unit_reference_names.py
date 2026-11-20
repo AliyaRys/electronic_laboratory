@@ -63,10 +63,15 @@ def unit_snapshot(*, unit_uuid: str | None = str(UNIT_UUID), name: object = None
 # --- the transport surface ----------------------------------------------------------
 
 
-def test_get_unit_by_uuid_is_read_only_and_builds_the_pinned_envelope() -> None:
+def test_get_unit_by_uuid_is_read_only_and_matches_the_verified_contract() -> None:
     assert is_read_only_operation("GetUnitByUuidOperation")
     request = build_get_unit_by_uuid_request(str(UNIT_UUID))
     assert str(UNIT_UUID) in request
+    # The controller-verified envelope: registry ws-definitions request
+    # element with the UUID under the ``base`` prefix (base namespace).
+    assert 'xmlns:ws="http://api.vetrf.ru/schema/cdm/registry/ws-definitions/v2"' in request
+    assert 'xmlns:base="http://api.vetrf.ru/schema/cdm/base"' in request
+    assert "<base:uuid>" in request
     assert "getUnitByUuidRequest" in request
 
 
@@ -77,9 +82,10 @@ def test_parse_unit_by_uuid_reads_the_own_name_only() -> None:
     assert record["active"] is True and record["last"] is True
 
 
-def test_compose_unit_reference_transport_targets_the_product_service() -> None:
-    """The UNIT boundary is the pinned ProductService — never the
-    EnterpriseService (that mismatch was the live HTTP 500)."""
+def test_compose_unit_reference_transport_targets_the_dictionary_service() -> None:
+    """The UNIT boundary is the pinned DictionaryService with the verified
+    SOAPAction ``GetUnitByUuid`` — never the EnterpriseService (that
+    mismatch was the live HTTP 500)."""
     import hashlib
     from pathlib import Path
 
@@ -96,28 +102,30 @@ def test_compose_unit_reference_transport_targets_the_product_service() -> None:
     }
     manifest = load_manifest_with_pins(resources / "manifest.json", pins)
     transport = compose_unit_reference_transport(manifest)
-    assert transport._endpoint == "https://api2.vetrf.ru:8002/platform/services/2.0/ProductService"  # noqa: SLF001
-    assert transport._unit_by_uuid_action == "getUnitByUuidRequest"  # noqa: SLF001
-    # Fail-closed: the product endpoint is in the allowlist.
-    assert "https://api2.vetrf.ru:8002/platform/services/2.0/ProductService" in transport._allowed_urls  # noqa: SLF001
+    assert transport._endpoint == "https://api2.vetrf.ru:8002/platform/services/2.0/DictionaryService"  # noqa: SLF001
+    assert transport._unit_by_uuid_action == "GetUnitByUuid"  # noqa: SLF001
+    # Fail-closed: the dictionary endpoint is in the allowlist.
+    assert "https://api2.vetrf.ru:8002/platform/services/2.0/DictionaryService" in transport._allowed_urls  # noqa: SLF001
 
-    without_product = manifest.model_copy(update={"product_endpoint": None}, deep=True)
+    without_dictionary = manifest.model_copy(update={"dictionary_endpoint": None}, deep=True)
     with pytest.raises(ProblemError) as raised:
-        compose_unit_reference_transport(without_product)
+        compose_unit_reference_transport(without_dictionary)
     assert raised.value.status == 503
     assert raised.value.code == "INTEGRATION_NOT_CONFIGURED"
 
 
-def test_committed_manifest_pins_the_product_service() -> None:
+def test_committed_manifest_routes_the_unit_lookup_through_the_dictionary_service() -> None:
     from pathlib import Path
 
     from backend.src.modules.integrations.vetis.manifest import load_manifest
 
     resources = Path(__file__).resolve().parents[2] / "resources" / "vetis"
     manifest = load_manifest(resources / "manifest.json")
-    assert manifest.product_endpoint == "https://api2.vetrf.ru:8002/platform/services/2.0/ProductService"
-    assert manifest.soap_actions["unit_by_uuid"] == "getUnitByUuidRequest"
+    assert manifest.dictionary_endpoint == "https://api2.vetrf.ru:8002/platform/services/2.0/DictionaryService"
+    assert manifest.soap_actions["unit_by_uuid"] == "GetUnitByUuid"
     assert any(op.name == "GetUnitByUuidOperation" and op.read_only for op in manifest.operations)
+    # ProductService carries NO unit operation — the endpoint pin is gone.
+    assert "ProductService" not in (resources / "manifest.json").read_text(encoding="utf-8")
 
 
 # --- the cache mechanics ------------------------------------------------------------
@@ -205,7 +213,7 @@ async def test_tick_transport_failure_keeps_the_row_pending(db_session: AsyncSes
 
 
 async def test_unit_rows_resolve_through_the_product_service_boundary(db_session: AsyncSession) -> None:
-    """UNIT rows go to the dedicated unit transport (ProductService); the
+    """UNIT rows go to the dedicated unit transport (DictionaryService); the
     EnterpriseService transport is never asked about a unit."""
     await upsert_reference_names(db_session, _PILOT, unit_snapshot(), now=datetime.now(UTC))
     await db_session.commit()

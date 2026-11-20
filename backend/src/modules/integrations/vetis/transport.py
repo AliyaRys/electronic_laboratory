@@ -651,8 +651,11 @@ def build_get_business_entity_by_guid_request(guid: str, *, registry_ns: str = _
 def build_get_unit_by_uuid_request(unit_uuid: str, *, registry_ns: str = _REGISTRY_DEFINITIONS_NS) -> str:
     """The plain SOAP envelope of a read-only GetUnitByUuid call.
 
-    The unit dictionary lives in the ProductService family; the request key is
-    the VetIS unit UUID (never a GUID — a GUID key can never resolve here).
+    The unit dictionary lives in the DictionaryService (verified live by the
+    controller, 200 OK read-only): the request element is a registry
+    ws-definitions child with the unit UUID under the ``base`` prefix, the
+    SOAPAction is ``GetUnitByUuid``. The request key is the VetIS unit UUID —
+    never a GUID (a GUID key can never resolve here).
     """
     from xml.sax.saxutils import escape
 
@@ -660,8 +663,8 @@ def build_get_unit_by_uuid_request(unit_uuid: str, *, registry_ns: str = _REGIST
         raise WriteOperationRejected("GetUnitByUuidOperation")
     return (
         f'<ws:getUnitByUuidRequest xmlns:ws="{registry_ns}" '
-        f'xmlns:bs="{_BASE_NS}">'
-        f"<bs:uuid>{escape(unit_uuid)}</bs:uuid>"
+        f'xmlns:base="{_BASE_NS}">'
+        f"<base:uuid>{escape(unit_uuid)}</base:uuid>"
         "</ws:getUnitByUuidRequest>"
     )
 
@@ -737,7 +740,9 @@ def parse_business_entity_by_guid(result_xml: str) -> dict[str, object]:
 
 
 def parse_unit_by_uuid(result_xml: str) -> dict[str, object]:
-    """Parse a GetUnitByUuid response: the unit's OWN top-level ``bs:name``."""
+    """Parse a GetUnitByUuid response (verified live by the controller):
+    ``getUnitByUuidResponse`` (registry ns) → ``dt:unit`` (dictionary/v2 ns)
+    with ``bs:uuid``/``bs:guid``/``bs:active`` and the OWN ``dt:name``."""
     from xml.etree import ElementTree as ET
 
     root = ET.fromstring(result_xml)

@@ -531,9 +531,9 @@ async def resolve_due_reference_names(
     §5.2): one manifest never reads or changes another contour's rows.
     The never-delete rule holds: an error keeps the previous name.
 
-    ``UNIT`` rows resolve through the ProductService boundary
-    (``unit_transport`` — the units live in a different VetIS service than
-    the EnterpriseService); without the pinned product endpoint they stay
+    ``UNIT`` rows resolve through the pinned DictionaryService boundary
+    (``unit_transport`` — the units live in the dictionary service, not the
+    EnterpriseService); without the pinned dictionary endpoint they stay
     an honest retriable missing and the participant kinds keep resolving
     through the EnterpriseService (fix-loop DR55 unit-reference fix).
     """
@@ -546,7 +546,7 @@ async def resolve_due_reference_names(
     for contour, kind, guid in keys:
         row_transport = transport
         if kind == VetisEntityKind.UNIT.value and unit_transport is None:
-            # The pinned ProductService endpoint is absent: the unit row
+            # The pinned dictionary endpoint is absent: the unit row
             # stays an honest retriable missing — the EnterpriseService is
             # never asked about a unit (that is the 500 bug this fixes).
             row = (
@@ -686,32 +686,40 @@ async def resolved_unit_names(
     return result
 
 
-def product_allowlist(manifest: VetisManifest) -> set[str]:
-    """The fail-closed allowlist of the ProductService lookup boundary."""
-    from backend.src.modules.integrations.vetis.transport import enterprise_allowlist
+def unit_allowlist(manifest: VetisManifest) -> set[str]:
+    """The fail-closed allowlist of the unit-dictionary lookup boundary.
 
-    allowed = enterprise_allowlist(manifest)
-    if manifest.product_endpoint:
-        allowed.add(manifest.product_endpoint)
+    The units live in the DictionaryService (verified live by the controller,
+    200 OK read-only) — the allowlist is the dictionary set plus the pinned
+    dictionary endpoint itself.
+    """
+    from backend.src.modules.integrations.vetis.transport import dictionary_allowlist
+
+    allowed = dictionary_allowlist(manifest)
+    if manifest.dictionary_endpoint:
+        allowed.add(manifest.dictionary_endpoint)
     return allowed
 
 
 def compose_unit_reference_transport(manifest: VetisManifest) -> EnterpriseLookupPort:
-    """Build the pinned ProductService lookup transport for UNIT rows.
+    """Build the pinned DictionaryService lookup transport for UNIT rows.
 
-    The VetIS unit dictionary lives in the ProductService family — pointing
-    it at the EnterpriseService is exactly the HTTP 500 the fix removes.
-    A missing product endpoint pin raises an honest 503: the tick keeps
-    resolving participant kinds and leaves UNIT rows an honest missing.
+    The unit dictionary lives in the DictionaryService with the SOAPAction
+    ``GetUnitByUuid`` — NOT in EnterpriseService (the 500) and NOT in
+    ProductService (it carries no unit operation at all). A missing
+    dictionary endpoint pin raises an honest 503: the tick keeps resolving
+    participant kinds and leaves UNIT rows an honest missing.
     """
     from backend.src.modules.integrations.vetis.manifest import (
         integration_not_configured,
         load_secret_profile,
         secret_profile_path,
     )
-    from backend.src.modules.integrations.vetis.transport import ZeepEnterpriseLookupTransport
+    from backend.src.modules.integrations.vetis.transport import (
+        ZeepEnterpriseLookupTransport,
+    )
 
-    if manifest.schema_pins.status != "PINNED" or not manifest.product_endpoint:
+    if manifest.schema_pins.status != "PINNED" or not manifest.dictionary_endpoint:
         raise integration_not_configured()
     gateway_user = gateway_password = None
     profile_path = secret_profile_path()
@@ -719,15 +727,15 @@ def compose_unit_reference_transport(manifest: VetisManifest) -> EnterpriseLooku
         profile = load_secret_profile(profile_path)
         gateway_user = profile.gateway_user
         gateway_password = profile.gateway_password
-    unit_action = manifest.soap_actions.get("unit_by_uuid", "getUnitByUuidRequest")
+    unit_action = manifest.soap_actions.get("unit_by_uuid", "GetUnitByUuid")
     return ZeepEnterpriseLookupTransport(
-        endpoint=manifest.product_endpoint,
+        endpoint=manifest.dictionary_endpoint,
         enterprise_action="getEnterpriseByGuidRequest",
         business_entity_action="getBusinessEntityByGUIDRequest",
         unit_by_uuid_action=unit_action,
         connect_timeout_s=manifest.constraints.connect_timeout_s,
         read_timeout_s=manifest.constraints.read_timeout_s,
-        allowed_urls=product_allowlist(manifest),
+        allowed_urls=unit_allowlist(manifest),
         gateway_user=gateway_user,
         gateway_password=gateway_password,
     )

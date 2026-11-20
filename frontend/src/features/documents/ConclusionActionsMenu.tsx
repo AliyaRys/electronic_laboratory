@@ -18,6 +18,8 @@ export interface ConclusionActionsMenuProps {
   canDownload: boolean;
   /** The «Печать» item is rendered only with the ``conclusion:print`` right. */
   canPrint: boolean;
+  /** Stories-only: render the popover open initially (§5.5 story states). */
+  defaultOpen?: boolean;
 }
 
 // ТЗ DR55 §5.5: exactly one instance of the menu stays open at a time.
@@ -27,8 +29,9 @@ export function ConclusionActionsMenu({
   partyId,
   canDownload,
   canPrint,
+  defaultOpen = false,
 }: ConclusionActionsMenuProps): React.ReactElement | null {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const { state, run } = useConclusionDocument(partyId);

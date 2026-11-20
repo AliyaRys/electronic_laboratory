@@ -42,7 +42,7 @@ export interface ArrivalsScreenProps {
   hiddenColumns: ReadonlySet<string>;
   onToggleColumn: (id: string) => void;
   /** ТЗ DR55 §5.6: the /me capabilities of the session's conclusion actions. */
-  conclusionCapabilities?: { download: boolean; print: boolean };
+  conclusionCapabilities?: { download: boolean; print: boolean } | undefined;
   labId: string;
   items: readonly IncomingView[];
   loading: boolean;

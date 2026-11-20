@@ -56,7 +56,7 @@ export interface PdfResult {
    * ТЗ DR55 §5.5: the server's Content-Disposition file name; the client
    * fallback is used only when the header is absent.
    */
-  fileName?: string;
+  fileName?: string | undefined;
 }
 
 /**
@@ -80,7 +80,10 @@ export async function fetchConclusionPdf(
       return { problem: await parseProblem(response) };
     }
     const data = await response.arrayBuffer();
-    return { blob: new Blob([data], { type: "application/pdf" }), fileName: dispositionName(response) };
+    return {
+      blob: new Blob([data], { type: "application/pdf" }),
+      ...(dispositionName(response) !== undefined ? { fileName: dispositionName(response) } : {}),
+    };
   } catch (thrown) {
     return { problem: networkProblem(thrown instanceof Error ? thrown.message : "Ошибка сети.") };
   }

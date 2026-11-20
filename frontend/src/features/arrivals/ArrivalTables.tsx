@@ -300,7 +300,7 @@ export interface CompletedArrivalsTableProps {
    * absent value means «unknown» and keeps both items — the server route
    * always re-checks the live right.
    */
-  conclusionCapabilities?: { download: boolean; print: boolean };
+  conclusionCapabilities?: { download: boolean; print: boolean } | undefined;
 }
 
 export function CompletedArrivalsTable({

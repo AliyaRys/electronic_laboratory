@@ -93,7 +93,6 @@ export function useConclusionDocument(partyId: string) {
         throw error;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [partyId, state.kind],
   );
 

@@ -267,8 +267,8 @@ def test_return_without_source_purpose_is_refused() -> None:
         )
 
 
-def test_reason_code_then_other_reason_text_in_special_marks() -> None:
-    """ТЗ DR38 §6: ровно один specialMarks в формате «Причина возврата: CODE»."""
+def test_return_without_source_marks_has_no_special_marks() -> None:
+    """ТЗ DR56 §8.1: источник без specialMarks → ни одного specialMarks."""
     xml = build_process_incoming_application(
         intent(mismatch=False, decision="RETURN_ALL"),
         source_xml=SOURCE_XML,
@@ -277,8 +277,74 @@ def test_reason_code_then_other_reason_text_in_special_marks() -> None:
     )
     root = ET.fromstring(xml)
     marks = [(node.text or "") for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
-    assert len(marks) == 1
-    assert marks[0] == "Причина возврата: OTHER_REASON Обезличенная причина возврата"
+    assert marks == []
+
+
+SOURCE_XML_WITH_MARKS = SOURCE_XML.replace(
+    "</vd:authentication>",
+    "<vd:specialMarks>Особые отметки: описание</vd:specialMarks></vd:authentication>",
+)
+
+
+@pytest.mark.parametrize("decision", ["PARTIALLY", "RETURN_ALL"])
+def test_returned_special_marks_are_exact_source_copy(decision: str) -> None:
+    """ТЗ DR56 §8.1: specialMarks возврата — точная копия исходного текста."""
+    xml = build_process_incoming_application(
+        intent(mismatch=False, decision=decision),
+        source_xml=SOURCE_XML_WITH_MARKS,
+        service_id="s",
+        issuer_id="i",
+    )
+    root = ET.fromstring(xml)
+    marks = [(node.text or "") for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
+    assert marks == ["Особые отметки: описание"]
+    assert "Причина возврата:" not in xml
+
+
+def test_return_reason_code_stays_out_of_every_xml_text_node() -> None:
+    """ТЗ DR56 §8.1: причина возврата не сериализуется в XML."""
+    value = intent(mismatch=False, decision="RETURN_ALL")
+    assert value.return_reason_code == "OTHER_REASON"
+    xml = build_process_incoming_application(
+        value,
+        source_xml=SOURCE_XML_WITH_MARKS,
+        service_id="s",
+        issuer_id="i",
+    )
+    assert "OTHER_REASON" not in xml
+    assert "Причина возврата" not in xml
+    # причина остаётся в intent/аудите — только не в XML
+    assert value.return_reason_code == "OTHER_REASON"
+
+
+def test_multiple_source_marks_keep_order_and_text() -> None:
+    """ТЗ DR56 §8.1: несколько отметок — тот же порядок, тот же текст."""
+    source = SOURCE_XML.replace(
+        "</vd:authentication>",
+        "<vd:specialMarks>Груз осмотрен, клеймо сохранено</vd:specialMarks>"
+        "<vd:specialMarks>Особые отметки: описание</vd:specialMarks></vd:authentication>",
+    )
+    xml = build_process_incoming_application(
+        intent(mismatch=False, decision="PARTIALLY"),
+        source_xml=source,
+        service_id="s",
+        issuer_id="i",
+    )
+    root = ET.fromstring(xml)
+    returned = next(node for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "returnedDelivery")
+    authentication = next(node for node in returned.iter() if node.tag.rsplit("}", 1)[-1] == "authentication")
+    marks = [(node.text or "") for node in authentication if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
+    assert marks == ["Груз осмотрен, клеймо сохранено", "Особые отметки: описание"]
+
+
+def test_source_special_marks_extraction_is_verbatim() -> None:
+    """ТЗ DR56 §8.1: extraction keeps texts verbatim for the evidence check."""
+    from backend.src.modules.integrations.vetis.receipt_mapping import source_special_marks
+
+    assert source_special_marks(SOURCE_XML) == []
+    assert source_special_marks(SOURCE_XML_WITH_MARKS) == ["Особые отметки: описание"]
+    assert source_special_marks("<broken") is None
+    assert source_special_marks("<vd:vetDocument xmlns:vd='x'><bs:a/></vd:vetDocument>") is None
 
 
 def test_request_dates_are_not_mixed() -> None:
@@ -503,29 +569,27 @@ def test_discrepancy_description_too_long_is_refused_before_submit() -> None:
         build_process_incoming_application(value, source_xml=SOURCE_XML, service_id="s", issuer_id="i")
 
 
-SPECIAL_MARK_REASON = "Причина возврата"
-
-
 @pytest.mark.parametrize(
-    ("code", "text", "expected"),
+    ("code", "text"),
     [
-        ("QUANTITY_DISCREPANCY", None, f"{SPECIAL_MARK_REASON}: QUANTITY_DISCREPANCY"),
-        ("OTHER_REASON", "  Пояснение пользователя  ", f"{SPECIAL_MARK_REASON}: OTHER_REASON Пояснение пользователя"),
+        ("QUANTITY_DISCREPANCY", None),
+        ("OTHER_REASON", "  Пояснение пользователя  "),
     ],
 )
-def test_return_reason_is_one_special_mark(code: str, text: str | None, expected: str) -> None:
-    """ТЗ DR38 §6: стандартный код без русской подписи; OTHER_REASON с текстом."""
+def test_return_reason_stays_out_of_xml(code: str, text: str | None) -> None:
+    """ТЗ DR56 §8.1: причина возврата валидируется, но не сериализуется."""
     value = intent(mismatch=False, decision="PARTIALLY").model_copy(
         update={"return_reason_code": code, "return_reason_text": text}
     )
     xml = build_process_incoming_application(value, source_xml=SOURCE_XML, service_id="s", issuer_id="i")
     root = ET.fromstring(xml)
     marks = [(node.text or "") for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
-    assert marks == [expected]
+    assert marks == []
+    assert "Причина возврата" not in xml
 
 
-def test_existing_special_marks_are_merged_not_lost() -> None:
-    """ТЗ DR38 §6: существующие особые отметки не теряются и не дублируют причину."""
+def test_existing_special_marks_are_kept_exactly() -> None:
+    """ТЗ DR56 §8.1: существующие особые отметки сохраняются точно."""
     source = SOURCE_XML.replace(
         "</vd:authentication>",
         "<vd:specialMarks>Груз осмотрен, клеймо сохранено</vd:specialMarks>"
@@ -535,11 +599,13 @@ def test_existing_special_marks_are_merged_not_lost() -> None:
     xml = build_process_incoming_application(value, source_xml=source, service_id="s", issuer_id="i")
     root = ET.fromstring(xml)
     marks = [(node.text or "") for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "specialMarks"]
-    assert len(marks) == 1
-    assert "Груз осмотрен, клеймо сохранено" in marks[0]
-    assert "старая причина" not in marks[0]
-    assert marks[0].endswith("Причина возврата: OTHER_REASON Обезличенная причина возврата")
-    assert marks[0].count("Причина возврата:") == 1
+    assert marks == [
+        "Груз осмотрен, клеймо сохранено",
+        "Причина возврата: старая причина",
+    ]
+    # никакой дописанной причины поверх исходных отметок
+    assert xml.count("Причина возврата") == 1
+    assert value.return_reason_text == "Обезличенная причина возврата"
 
 
 SOURCE_XML_MULTI_PACKAGE = SOURCE_XML.replace(
@@ -643,14 +709,14 @@ def test_six_contract_scenarios(mismatch: bool, decision: str) -> None:
         assert returned.find(f"{VD}volume").text == "20"  # type: ignore[union-attr]
         assert returned.find(f".//{DT}quantity").text == "1"  # type: ignore[union-attr]
         marks = [(n.text or "") for n in root.iter() if n.tag.rsplit("}", 1)[-1] == "specialMarks"]
-        assert marks == ["Причина возврата: QUANTITY_DISCREPANCY"]
+        assert marks == []  # источник без отметок → отметок нет; причина не сериализуется
     else:
         assert accepted is None
         assert returned is not None
         assert returned.find(f"{VD}volume").text == "120"  # type: ignore[union-attr]
         assert returned.find(f".//{DT}quantity").text == "4"  # type: ignore[union-attr]
         marks = [(n.text or "") for n in root.iter() if n.tag.rsplit("}", 1)[-1] == "specialMarks"]
-        assert marks == ["Причина возврата: QUANTITY_DISCREPANCY"]
+        assert marks == []  # источник без отметок → отметок нет; причина не сериализуется
 
 
 @pytest.mark.parametrize(

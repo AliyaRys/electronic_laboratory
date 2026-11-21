@@ -133,7 +133,9 @@ def test_accept_all_does_not_require_absent_returned_delivery() -> None:
 
 
 def test_real_v2_stock_and_documents_prove_partial_receipt() -> None:
-    frozen = intent(mismatch=True, decision="PARTIALLY")
+    frozen = intent(mismatch=True, decision="PARTIALLY").model_copy(
+        update={"source_special_marks": ["Особые отметки: описание"]}
+    )
     xml = f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
       <stockEntry><batch><volume>100</volume><unit><guid>{frozen.unit_id}</guid></unit>
         <packageList><dt:package xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2">
@@ -148,7 +150,7 @@ def test_real_v2_stock_and_documents_prove_partial_receipt() -> None:
         <packageList><dt:package xmlns:dt="http://api.vetrf.ru/schema/cdm/dictionary/v2">
           <dt:level>1</dt:level><dt:quantity>1</dt:quantity></dt:package></packageList>
         </batch></certifiedConsignment>
-       <authentication><specialMarks>Причина возврата: OTHER_REASON Обезличенная причина возврата</specialMarks>
+       <authentication><specialMarks>Особые отметки: описание</specialMarks>
        </authentication>
       </vetDocument>
     </processIncomingConsignmentResponse></response>"""
@@ -156,9 +158,11 @@ def test_real_v2_stock_and_documents_prove_partial_receipt() -> None:
     assert result.state == "CONFIRMED"
 
 
-def test_wrong_reason_code_in_return_document_is_unknown() -> None:
-    """ТЗ DR38 §6: код без обязательного префикса не доказывает причину."""
-    frozen = intent(mismatch=True, decision="PARTIALLY")
+def test_wrong_special_marks_in_return_document_is_unknown() -> None:
+    """ТЗ DR56 §8.1: specialMarks возвратного ВСД, отличные от исходных, не доказываются."""
+    frozen = intent(mismatch=True, decision="PARTIALLY").model_copy(
+        update={"source_special_marks": ["Особые отметки: описание"]}
+    )
     xml = f"""<response><status>COMPLETED</status><processIncomingConsignmentResponse>
       <sourceVetDocumentUuid>{frozen.source_evsd_uuid}</sourceVetDocumentUuid>
       <receiverEnterpriseGuid>{frozen.receiver_enterprise_id}</receiverEnterpriseGuid>

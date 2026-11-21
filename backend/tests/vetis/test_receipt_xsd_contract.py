@@ -57,3 +57,37 @@ def test_scenario_xml_is_valid_against_official_xsd(scenario: str) -> None:
     schema = _load_schema()
     doc = etree.parse(str(SCENARIOS / f"scenario-{scenario}.xml"))
     assert schema.validate(doc), str(schema.error_log)
+
+
+@pytest.mark.parametrize(
+    "scenario", ["1.1.1", "1.1.2", "1.1.3", "1.2.1", "1.2.2", "1.2.3"]
+)
+def test_built_application_is_valid_against_official_xsd(scenario: str) -> None:
+    """ТЗ DR56 §8.3: собранный запрос проходит офлайн XSD-проверку до отправки."""
+    from backend.src.modules.integrations.vetis.receipt_mapping import (
+        build_process_incoming_application,
+    )
+    from backend.tests.vetis.test_receipt_mapping import SOURCE_EVSD, SOURCE_XML, intent
+
+    mismatch = scenario.startswith("1.2")
+    decision = {"1": "ACCEPT_ALL", "2": "PARTIALLY", "3": "RETURN_ALL"}[scenario[-1]]
+    # Тестовые guid/uuid обязаны быть UUID-формата для официального XSD pattern.
+    sender = "00000000-0000-0000-0000-00000000010a"
+    purpose = "00000000-0000-0000-0000-00000000010d"
+    source = (
+        SOURCE_XML.replace("<bs:guid>sender</bs:guid>", f"<bs:guid>{sender}</bs:guid>")
+        .replace("<bs:uuid>source</bs:uuid>", f"<bs:uuid>{SOURCE_EVSD}</bs:uuid>")
+        .replace("<bs:guid>purpose-guid</bs:guid>", f"<bs:guid>{purpose}</bs:guid>")
+    )
+    xml = build_process_incoming_application(
+        intent(mismatch=mismatch, decision=decision).model_copy(
+            update={"return_reason_code": "QUANTITY_DISCREPANCY", "return_reason_text": None}
+        ),
+        source_xml=source,
+        service_id="mercury-vu.service:2.0",
+        issuer_id="fixture",
+    )
+    schema = _load_schema()
+    root = etree.fromstring(xml.encode("utf-8"))
+    request = next(node for node in root.iter() if etree.QName(node).localname == "processIncomingConsignmentRequest")
+    assert schema.validate(etree.ElementTree(request)), str(schema.error_log)

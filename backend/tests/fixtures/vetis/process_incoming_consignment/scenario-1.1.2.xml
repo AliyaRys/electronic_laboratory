@@ -63,7 +63,6 @@
       <vd:vetCertificate>
         <vd:authentication>
           <vd:purpose><bs:guid>00000000-0000-0000-0000-00000000010d</bs:guid></vd:purpose>
-          <vd:specialMarks>Причина возврата: QUANTITY_DISCREPANCY</vd:specialMarks>
         </vd:authentication>
       </vd:vetCertificate>
     </vd:accompanyingForms>

@@ -45,6 +45,7 @@ from backend.src.modules.integrations.vetis.models import (
 from backend.src.modules.integrations.vetis.receipt_mapping import (
     DISCREPANCY_FIELD_LABELS,
     build_process_incoming_application,
+    source_special_marks,
 )
 
 __all__ = ["build_receipt_preview", "queue_receipt", "write_enabled"]
@@ -291,6 +292,9 @@ async def build_receipt_preview(
         "return_reason_text": reason.get("reason"),
         "act_number": reconciliation.repeat_act_number,
         "local_transaction_id": str(operation_id),
+        # ТЗ DR56 §8.1: точные особые отметки исходного ВСД попадают в
+        # intent для проверки совпадения specialMarks возвратного ВСД.
+        "source_special_marks": source_special_marks(source.raw_xml),
     }
     fingerprint = _fingerprint(raw)
     intent = ReceiptIntent.model_validate({**raw, "fingerprint": fingerprint})

@@ -226,7 +226,8 @@
   font-size: 12px;
   font-weight: 700;
 }
-.app-field input {
+.app-field input,
+.app-field textarea {
   min-height: 43px;
   border: 1px solid var(--app-input-line);
   border-radius: 10px;
@@ -236,7 +237,15 @@
   font: inherit;
   width: 100%;
 }
-.app-field input:disabled {
+/* DR56 §9.4: the special-laboratory answer is a textarea — several rows,
+   generous vertical padding, the same visual system. */
+.app-field textarea {
+  min-height: 96px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+.app-field input:disabled,
+.app-field textarea:disabled {
   background: #edf2f2;
   color: #667b80;
   cursor: not-allowed;

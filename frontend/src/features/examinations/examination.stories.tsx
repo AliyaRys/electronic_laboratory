@@ -8,7 +8,9 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ExaminationForm } from "./ExaminationForm";
-import { OutcomeFields, outcomeText } from "./OutcomeFields";
+import { OutcomeFields, SpecialLabResultField, outcomeText } from "./OutcomeFields";
+import { FormSection } from "../../shared/ui/FormSection";
+import { ReadonlyField } from "../../shared/ui/ReadonlyField";
 import { PartyReadonlyFacts } from "./ExaminationSections";
 import { ResearchFields } from "./ResearchFields";
 import { PricingSection } from "./PricingPreview";
@@ -104,6 +106,7 @@ const savedCard: ExaminationView = {
   stamp: "кл-1471",
   status: "WAITING",
   sent_to_lab: true,
+    special_lab_result: null,
   vse_fair: false,
   reconciliation_fair: false,
   fair_source: "NONE",
@@ -878,3 +881,113 @@ export const СохранённыйРасчётОтсутствует: StoryObj 
 };
 
 export type FormValuesStory = ExaminationFormValues;
+/**
+ * DR56 В§9.7: the special-laboratory answer states of the card вЂ” view-only
+ * WAITING, the limited late completion and the saved answer of a completed
+ * card. The stories render the SAME components the page renders.
+ */
+/**
+ * DR56 §9.7: the special-laboratory answer states of the card — view-only
+ * WAITING, the limited late completion and the saved answer of a completed
+ * card. The stories render the SAME components the page renders.
+ */
+
+/** Просмотр WAITING: no interactive fields, honest absence of the answer. */
+export const ОжиданиеТолькоПросмотр: StoryObj = {
+  render: () =>
+    withProviders(
+      <div className="vse-app vse-exam-view-sections">
+        <FormSection icon="exam-sample" title="Проба" description="Данные физической пробы.">
+          <div className="vse-sample-view-stack">
+            <ReadonlyField label="Дата отбора пробы" value="05.11.2026" />
+            <ReadonlyField label="Масса пробы, кг" value="0,8" />
+            <ReadonlyField label="Пробы отправлены в специальную лабораторию" value="Да" />
+            <ReadonlyField label="Результат исследования в спец. лаборатории" value="Ещё не внесён" />
+          </div>
+        </FormSection>
+        <FormSection icon="check-complete" title="Итог экспертизы" description="Заключение и специалист, проводивший ВСЭ.">
+          <p className="vse-exam-note">
+            Итог не указан: карточка ожидает ответа специальной лаборатории. Результат лаборатории и итог
+            ВСЭ вносятся через редактирование карточки.
+          </p>
+        </FormSection>
+      </div>,
+    ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
+/** Позднее ограниченное редактирование: lab answer + итог, кнопка «Завершить ВСЭ». */
+export const ПозднееЗавершениеОжидания: StoryObj = {
+  render: () =>
+    withProviders(
+      <div className="vse-app vse-exam-form">
+        <FormSection
+          icon="exam-sample"
+          title="Проба"
+          description="Данные физической пробы и ответ специальной лаборатории."
+        >
+          <SpecialLabResultField
+            id="late-special-lab-result"
+            value="Выделены Salmonella, серовар Enteritidis; KMAFAnM не обнаружен"
+            disabled={false}
+            onChange={() => undefined}
+          />
+        </FormSection>
+        <FormSection icon="check-complete" title="Итог экспертизы" description="Заключение и специалист, проводивший ВСЭ.">
+          <div className="vse-exam-grid">
+            <OutcomeFields variant="late" idPrefix="late" value={emptyOutcome()} disabled={false} onChange={() => undefined} />
+          </div>
+        </FormSection>
+      </div>,
+    ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
+/** Длинный ответ лаборатории переносится внутри поля, не ломая сетку. */
+export const ПозднееЗавершениеДлинныйОтвет: StoryObj = {
+  render: () =>
+    withProviders(
+      <div className="vse-app vse-exam-form">
+        <FormSection icon="exam-sample" title="Проба" description="Данные физической пробы и ответ специальной лаборатории.">
+          <SpecialLabResultField
+            id="late-special-lab-result"
+            value={"Выделены Salmonella, серовар Enteritidis. ".repeat(12).trim()}
+            disabled={false}
+            onChange={() => undefined}
+          />
+        </FormSection>
+      </div>,
+    ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};
+
+/** Завершённая карточка: сохранённый ответ виден readonly, итог — как обычно. */
+export const ЗавершённаяСОтветомЛаборатории: StoryObj = {
+  render: () =>
+    withProviders(
+      <div className="vse-app vse-exam-view-sections">
+        <FormSection icon="exam-sample" title="Проба" description="Данные физической пробы.">
+          <div className="vse-sample-view-stack">
+            <ReadonlyField label="Дата отбора пробы" value="05.11.2026" />
+            <ReadonlyField label="Масса пробы, кг" value="0,8" />
+            <ReadonlyField label="Пробы отправлены в специальную лабораторию" value="Да" />
+            <ReadonlyField
+              label="Результат исследования в спец. лаборатории"
+              value="Выделены Salmonella, серовар Enteritidis; KMAFAnM не обнаружен"
+            />
+          </div>
+        </FormSection>
+        <FormSection icon="check-complete" title="Итог экспертизы" description="Заключение и специалист, проводивший ВСЭ.">
+          <div className="vse-exam-grid">
+            <div className="vse-span6">
+              <ReadonlyField label="Результат" value={outcomeText("UNFIT", "DESTRUCTION")} />
+            </div>
+            <div className="vse-span6">
+              <ReadonlyField label="Причина направления" value="Порча продукции" />
+            </div>
+          </div>
+        </FormSection>
+      </div>,
+    ),
+  parameters: { viewport: { defaultViewport: "desktop" } },
+};

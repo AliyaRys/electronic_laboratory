@@ -163,7 +163,11 @@ async def test_waiting_day_rules(db_session: AsyncSession, env: SimpleNamespace)
 
     # The explicit late completion on 08.11 is allowed and dated 08.11.
     done_clock = StepClock(COMPLETED_ON)
-    view = await do_complete(db_session, actor_id, exam_id, OutcomeWrite(outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"), done_clock)
+    view = await do_complete(db_session, actor_id, exam_id, OutcomeWrite(
+            outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"
+        ),
+        done_clock,
+    )
     await db_session.commit()
     assert view.status == "COMPLETED"
     assert view.outcome == "FIT" and view.direction == "SALE" and view.reason is None
@@ -261,7 +265,9 @@ async def test_original_author_and_completion(db_session: AsyncSession, env: Sim
             db_session,
             author_b.id,
             exam_id,
-            OutcomeWrite(outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"),
+            OutcomeWrite(
+                outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"
+            ),
             StepClock(datetime(2026, 11, 9, 9, 0, tzinfo=UTC)),
             key=str(uuid.uuid4()),
         )
@@ -271,9 +277,13 @@ async def test_original_author_and_completion(db_session: AsyncSession, env: Sim
 
 async def test_outcome_matrix(db_session: AsyncSession, env: SimpleNamespace) -> None:
     # FIT keeps only SALE without a reason; UNFIT needs DISPOSAL/DESTRUCTION and a reason.
-    fit = OutcomeWrite(outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено")
+    fit = OutcomeWrite(
+        outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"
+    )
     assert fit.reason is None and fit.direction == "SALE"
-    unfit = OutcomeWrite(outcome="UNFIT", direction="DESTRUCTION", reason=" Причина ", special_lab_result="Выделен возбудитель")
+    unfit = OutcomeWrite(
+        outcome="UNFIT", direction="DESTRUCTION", reason=" Причина ", special_lab_result="Выделен возбудитель"
+    )
     assert unfit.reason == " Причина "
     for bad in (
         {"outcome": "FIT", "direction": "SALE", "reason": "не нужно"},
@@ -297,7 +307,11 @@ async def test_outcome_matrix(db_session: AsyncSession, env: SimpleNamespace) ->
     await db_session.commit()
     exam_id = await examination_id_of(db_session, party.id)
     with pytest.raises(ProblemError) as raised:
-        await do_complete(db_session, actor_id, exam_id, OutcomeWrite(outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"), clock)
+        await do_complete(db_session, actor_id, exam_id, OutcomeWrite(
+            outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"
+        ),
+        clock,
+    )
     await db_session.rollback()
     assert raised.value.status == 409
     with pytest.raises(ProblemError) as raised:

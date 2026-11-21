@@ -1,24 +1,3 @@
-"""PDF renderer (D02): one controlled HTML template → one A4 PDF.
-
-``render_pdf`` consumes a :class:`DocumentView` (API-07 conclusion or API-08
-report projection) together with its verified :class:`FormManifest`. The rules
-that make the output trustworthy:
-
-- every text value is HTML-escaped before substitution — markup never
-  reaches the engine (SPEC-05);
-- the only font is registered from ``backend/resources/fonts/`` with a
-  manifest-checked SHA-256; the template comes from
-  ``backend/resources/forms/`` with an integrity hash;
-- the PDF engine gets a denying link callback, so no external URL (image,
-  stylesheet, script) can be fetched while rendering;
-- a broken engine or an unavailable resource raises :class:`RendererUnavailable`
-  (→ 503 Problem, never a partial file);
-- ``official=False`` forms always carry the visible «Предварительная форма»
-  label of INPUT-04.
-"""
-
-from __future__ import annotations
-
 import io
 import re
 from html import escape
@@ -28,6 +7,7 @@ from pypdf import PdfReader
 
 from backend.src.modules.documents.resources import (
     FONTS_DIR,
+    FORMS_DIR,
     FormManifest,
     RendererUnavailable,
     asset_file,
@@ -42,6 +22,66 @@ __all__ = ["PRELIMINARY_LABEL", "pdf_filename", "render_pdf"]
 TOKEN = re.compile(r"\{\{(\w+)\}\}")
 PRELIMINARY_LABEL = "Предварительная форма"
 A4_PT = (595.28, 841.89)
+SVG_W, SVG_H = 820.0, 1160.0
+
+# ТЗ DR56 §5.3: the wrap zones of the composition. ``max_lines`` bounds the
+# wrapped value; an objectively longer value is a managed renderer error, never
+# a clipped line or an overlay onto the neighbouring one. ``max_chars`` is the
+# conservative width of the zone at the token's font size (DejaVu ≈ 0.62·fs).
+SVG_WRAP_TOKENS: dict[str, tuple[int, int]] = {
+    # token: (max_chars, max_lines)
+    "organization": (30, 2),
+    "laboratory": (30, 2),
+    "address_head": (55, 2),
+    "owner": (55, 3),
+    "address": (55, 3),
+    "product_line": (42, 3),
+    "expiry_line": (55, 2),
+    "place_line": (55, 3),
+    "specialist": (55, 2),
+}
+SVG_LINE_HEIGHT = 24
+
+
+def _wrap(value: str, max_chars: int, max_lines: int, token: str) -> list[str]:
+    words = value.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if len(candidate) <= max_chars or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    if len(lines) > max_lines:
+        raise RendererUnavailable(
+            f"Длинное значение не помещается в отведённую зону формы: {token}; сократите данные."
+        )
+    return lines or [""]
+
+
+def _wrap_long_tokens(svg: str, mapping: dict[str, str]) -> str:
+    """Replace ``<text ...>{{token}}</text>`` with wrapped <text> lines.
+
+    Only the wrap-capable composition zones are wrapped; every other token
+    stays a single short value. The offset keeps the same style attributes and
+    shifts each following line down by one line height inside the zone.
+    """
+    for token, (max_chars, max_lines) in SVG_WRAP_TOKENS.items():
+        match = re.search(rf'<text ([^>]*?)y="(\d+)"([^>]*)>\s*\{{\{{{token}\}}\}}\s*</text>', svg)
+        if match is None:
+            continue
+        before_y, y, after_y = match.group(1), int(match.group(2)), match.group(3)
+        lines = _wrap(mapping.get(token, ""), max_chars, max_lines, token)
+        replacement = "".join(
+            f'<text {before_y}y="{y + index * SVG_LINE_HEIGHT}"{after_y}>{line}</text>'
+            for index, line in enumerate(lines)
+        )
+        svg = svg[: match.start()] + replacement + svg[match.end() :]
+    return svg
 
 
 def pdf_filename(view: ConclusionView) -> str:
@@ -155,6 +195,100 @@ def _run_engine(html: str, callback: Any) -> bytes:
     return data
 
 
+def _check_a4(data: bytes, *, landscape_allowed: bool) -> None:
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        box = reader.pages[0].mediabox
+        portrait = abs(float(box.width) - A4_PT[0]) <= 3 and abs(float(box.height) - A4_PT[1]) <= 3
+        landscape = abs(float(box.width) - A4_PT[1]) <= 3 and abs(float(box.height) - A4_PT[0]) <= 3
+        ok = portrait or (landscape_allowed and landscape)
+        if len(reader.pages) == 0 or not ok:
+            raise RendererUnavailable("Движок рендера вернул страницу не формата A4.")
+    except RendererUnavailable:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise RendererUnavailable(f"Результат рендера нечитаем: {error}.") from error
+
+
+def _render_conclusion_svg(template: str, mapping: dict[str, str], form: FormManifest) -> bytes:
+    """ТЗ DR56 §5: fill the controlled SVG and convert it to one A4 PDF.
+
+    The filled SVG is written next to its approved assets (``assets/``) so the
+    relative coat reference resolves inside the controlled resources only;
+    the file is ephemeral. Every string node gets the manifest-registered
+    Cyrillic font (svglib has no @font-face), and the coat image is swapped
+    onto the hash-verified asset before rendering (fail-closed).
+    """
+    import os
+    import tempfile
+
+    from reportlab.graphics import renderPDF
+    from reportlab.graphics.shapes import Group, Image, String
+    from reportlab.pdfgen import canvas as pdfcanvas
+    from svglib.svglib import svg2rlg
+
+    filled = _wrap_long_tokens(template, mapping)
+    filled = _fill(filled, mapping)
+    drawing = None
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".svg", encoding="utf-8", dir=FORMS_DIR, delete=False) as handle:
+            tmp_path = handle.name
+            handle.write(filled)
+        drawing = svg2rlg(tmp_path)
+    except RendererUnavailable:
+        raise
+    except Exception as error:  # noqa: BLE001 - engine failures stay 503
+        raise RendererUnavailable(f"Движок рендера формы недоступен: {error}.") from error
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+    if drawing is None:
+        raise RendererUnavailable("Движок рендера формы не вернул графику SVG.")
+
+    font_name = form.fonts[0].resource.rsplit(".", 1)[0]
+
+    def restyle(group: object) -> None:
+        for node in getattr(group, "contents", []):
+            if isinstance(node, Group):
+                restyle(node)
+            elif isinstance(node, String):
+                node.fontName = font_name
+
+    def swap_images(group: object) -> None:
+        for node in getattr(group, "contents", []):
+            if isinstance(node, Image):
+                # svglib resolved the relative href at parse time; the real
+                # image data is swapped onto the hash-verified asset here.
+                node.path = str(asset_file(form, "russia-coat-small.png"))
+            elif isinstance(node, Group):
+                swap_images(node)
+
+    restyle(drawing)
+    swap_images(drawing)
+
+    scale = min(A4_PT[0] / SVG_W, A4_PT[1] / SVG_H)
+
+    class _SvgCanvas(pdfcanvas.Canvas):
+        def __init__(self, destination: Any) -> None:
+            super().__init__(destination, pagesize=A4_PT)
+            self.scale(scale, scale)
+
+    destination = io.BytesIO()
+    svg_canvas = _SvgCanvas(destination)
+    try:
+        renderPDF.draw(drawing, svg_canvas, 0, 0)
+        svg_canvas.showPage()
+        svg_canvas.save()
+    except Exception as error:  # noqa: BLE001
+        raise RendererUnavailable(f"Движок рендера формы недоступен: {error}.") from error
+    data = destination.getvalue()
+    if not data.startswith(b"%PDF-"):
+        raise RendererUnavailable("Движок рендера формы не вернул PDF-файл.")
+    _check_a4(data, landscape_allowed=False)
+    return data
+
+
 def render_pdf(model: DocumentView, form: FormManifest) -> bytes:
     """Render one verified view-model through its manifest template to A4 PDF."""
     template = read_template(form)
@@ -167,19 +301,14 @@ def render_pdf(model: DocumentView, form: FormManifest) -> bytes:
 
     mapping = _conclusion_mapping(model) if isinstance(model, ConclusionView) else _report_fragments(model)
     mapping["form_version"] = _escape(form.version)
+
+    if form.template.endswith(".svg"):
+        # ТЗ DR56 §5: the dynamic SVG composition of the reference form is
+        # filled with escaped values and converted to one A4 PDF by the
+        # declared svglib/reportlab pipeline.
+        return _render_conclusion_svg(template, mapping, form)
     html = _fill(template, mapping)
 
     data = _run_engine(html, _strict_link_callback(form))
-    try:
-        reader = PdfReader(io.BytesIO(data))
-        box = reader.pages[0].mediabox
-        # A4 in either orientation (DR51 §8: the 47×8 report prints landscape).
-        portrait = abs(float(box.width) - A4_PT[0]) <= 3 and abs(float(box.height) - A4_PT[1]) <= 3
-        landscape = abs(float(box.width) - A4_PT[1]) <= 3 and abs(float(box.height) - A4_PT[0]) <= 3
-        if len(reader.pages) == 0 or not (portrait or landscape):
-            raise RendererUnavailable("Движок рендера вернул страницу не формата A4.")
-    except RendererUnavailable:
-        raise
-    except Exception as error:  # noqa: BLE001
-        raise RendererUnavailable(f"Результат рендера нечитаем: {error}.") from error
+    _check_a4(data, landscape_allowed=True)
     return data

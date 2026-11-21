@@ -58,12 +58,11 @@ def conclusion_api_env(request) -> SimpleNamespace:
 
 LONG_NAME = (
     "Общество с ограниченной ответственностью «Агропромышленное объединение "
-    "переработки мясной продукции и сопутствующих товарных позиций чрезвычайно "
-    "длинного наименования владельца»"
+    "переработки мясной продукции и сопутствующих товарных позиций»"
 )
 LONG_PRODUCT = (
     "Говядина первая категория охлаждённая в полутушах крайне длинное "
-    "наименование продукции для переноса на следующую строку таблицы"
+    "наименование продукции для переноса"
 )
 
 VIEW = ConclusionView(
@@ -72,19 +71,28 @@ VIEW = ConclusionView(
     fields={
         "organization": "ГБУ «Ветлаб»",
         "laboratory": "Лаборатория №1",
+        "address": "г. Казань, ул. Аграрная, д. 2",
+        "address_head": "г. Казань, ул. Аграрная, д. 2",
+        "number": "Д-1",
         "date": "2026-11-07",
+        "date_ru": "07.11.2026",
+        "created_at_ru": "07.11.2026 11:40",
         "basis": "Местная ВСЭ № Д-1 от 2026-11-05",
         "evsd": "ЭВСД-120",
         "owner": "ИП Владелец",
         "product": "Говядина охлаждённая",
+        "product_line": "Говядина охлаждённая — 100 кг (4 штука)",
+        "expiry_line": "срок реализации до 16.11.2026",
+        "place_line": "г. Казань, ул. Аграрная, д. 2",
         "mass": "100",
         "count": "4",
         "unit": "руб/кг",
         "stamp": "Клеймо-1",
+        "specialist": "Врач А",
         "signature": "",
     },
     form_id="conclusion-local",
-    form_version="1",
+    form_version="3",
     official=False,
     warnings=["Предварительная форма"],
 )
@@ -150,16 +158,17 @@ def test_pdf_nonempty_a4_cyrillic_accepted_mass() -> None:
     assert abs(float(box.width) - 595.0) < 2.0  # A4 portrait, not Letter
     assert abs(float(box.height) - 842.0) < 2.0
     text = _pdf_text(data)
-    assert "ВЕТЕРИНАРНОЕ ЗАКЛЮЧЕНИЕ" in text  # Cyrillic really renders
+    assert "ЗАКЛЮЧЕНИЕ О РЕАЛИЗАЦИИ" in text  # Cyrillic really renders
     assert "Говядина охлаждённая" in text
-    assert "100" in text  # the accepted mass of the frozen composition
+    assert "07.11.2026" in text  # the Ru date of the frozen composition
+    assert "Врач А" in text  # the specialist space
     assert "Предварительная форма" in text  # official=false label
 
 
 def test_pdf_escapes_text_and_never_serves_markup() -> None:
     form = load_manifest("conclusion-local")
     hostile = VIEW.model_copy(
-        update={"fields": {**VIEW.fields, "owner": "<script>alert(1)</script>", "product": "Лук & перец <кг>"}}
+        update={"fields": {**VIEW.fields, "owner": "<script>alert(1)</script>", "product_line": "Лук & перец <кг>"}}
     )
     text = _pdf_text(render_pdf(hostile, form))
     # The literal hostile text renders inert (escaped), markup is never executed.
@@ -169,7 +178,7 @@ def test_pdf_escapes_text_and_never_serves_markup() -> None:
 
 def test_pdf_long_names_and_repeated_headers_without_clipping() -> None:
     form = load_manifest("conclusion-local")
-    long_view = VIEW.model_copy(update={"fields": {**VIEW.fields, "owner": LONG_NAME, "product": LONG_PRODUCT}})
+    long_view = VIEW.model_copy(update={"fields": {**VIEW.fields, "owner": LONG_NAME, "product_line": LONG_PRODUCT}})
     text = _pdf_text(render_pdf(long_view, form))
     # Nothing is truncated to an ellipsis; the full long requisites are present.
     assert _squeezed(LONG_NAME) in _squeezed(text)

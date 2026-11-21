@@ -95,12 +95,13 @@ export const Busy: Story = {
 };
 
 /**
- * DR32 §9.3: the receipt summary with a long fingerprint renders on the SAME
- * portal/theme contract (`.app-dialog-layer`); the fingerprint wraps inside
- * the card and never widens the dialog. The classes are the real ones of the
+ * DR56 §7.1: the receipt summary keeps the human-readable requisites only —
+ * the revisions and the fingerprint live in the API/server checks, not in
+ * the dialog. A long ordinary value (the document facts) wraps inside the
+ * card and never widens the dialog; the classes are the real ones of the
  * receipt summary (features/arrivals/reconciliation.css).
  */
-export const ReceiptSummaryLongFingerprint: Story = {
+export const ReceiptSummaryLongValue: Story = {
   render: () => (
     <DialogHarness
       open
@@ -112,17 +113,22 @@ export const ReceiptSummaryLongFingerprint: Story = {
       <dl className="vse-receipt-summary">
         <div>
           <dt>эВСД</dt>
-          <dd>RU016:260812-005102 от 12.08.2026 08:12</dd>
+          <dd>
+            RU016:260812-005102 от 12.08.2026 08:12, серия АБ, номер 001234, организация отправителя —
+            ООО «Обезличенное хозяйство»
+          </dd>
         </div>
         <div>
           <dt>Решение</dt>
           <dd>Принять партию полностью</dd>
         </div>
         <div>
-          <dt>Отпечаток подготовленного запроса</dt>
-          <dd className="vse-receipt-fingerprint">
-            9f2c1d4e5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b
-          </dd>
+          <dt>Документарная проверка</dt>
+          <dd>Сведения соответствуют документу</dd>
+        </div>
+        <div>
+          <dt>Ветеринарный осмотр</dt>
+          <dd>Соответствует ветеринарным требованиям</dd>
         </div>
       </dl>
     </DialogHarness>

@@ -9,6 +9,7 @@ import {
   type ReceiptPreview,
   type ReconciliationView,
 } from "./api";
+import { documentaryInspectionLabel, veterinaryInspectionLabel } from "./inspectionLabels";
 
 export interface ReceiptConfirmationDialogProps {
   open: boolean;
@@ -68,13 +69,6 @@ export function ReceiptConfirmationDialog({
           <dd>{decisionLabel(reconciliation.decision)}</dd>
         </div>
         <div>
-          <dt>Ревизия источника / сверки</dt>
-          <dd>
-            {preview?.intent.source_revision ?? "—"} / {preview?.intent.reconciliation_revision ?? "—"}{" "}
-            (контрольная сумма закреплена)
-          </dd>
-        </div>
-        <div>
           <dt>Принято</dt>
           <dd>
             {/* ТЗ DR24 §5: the same string-only decimal presentation. */}
@@ -100,11 +94,12 @@ export function ReceiptConfirmationDialog({
           </div>
         ) : null}
         <div>
-          <dt>Осмотры</dt>
-          <dd>
-            документарный: {preview?.intent.doc_inspection ?? "—"}; ветеринарный:{" "}
-            {preview?.intent.vet_inspection ?? "—"}
-          </dd>
+          <dt>Документарная проверка</dt>
+          <dd>{documentaryInspectionLabel(preview?.intent.doc_inspection ?? "")}</dd>
+        </div>
+        <div>
+          <dt>Ветеринарный осмотр</dt>
+          <dd>{veterinaryInspectionLabel(preview?.intent.vet_inspection ?? "")}</dd>
         </div>
         {reconciliation.return_reason != null ? (
           <div>
@@ -130,10 +125,6 @@ export function ReceiptConfirmationDialog({
                 ? "Заключение"
                 : "Без продолжения"}
           </dd>
-        </div>
-        <div>
-          <dt>Отпечаток подготовленного запроса</dt>
-          <dd className="vse-receipt-fingerprint">{preview?.fingerprint ?? "—"}</dd>
         </div>
       </dl>
     </Dialog>

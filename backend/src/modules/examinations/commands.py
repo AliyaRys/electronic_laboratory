@@ -288,6 +288,7 @@ async def save_examination(
         outcome=payload.outcome,
         direction=payload.direction,
         reason=payload.reason.strip() if payload.reason is not None else None,
+        special_lab_result=payload.special_lab_result,
         created_by=ctx.actor_id,
         specialist_id=specialist_id,
         specialist_name=specialist_name,

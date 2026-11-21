@@ -132,6 +132,11 @@ class ExaminationWrite(StrictModel):
     outcome: Literal["FIT", "UNFIT"] | None = None
     direction: Literal["SALE", "DISPOSAL", "DESTRUCTION"] | None = None
     reason: str | None = Field(default=None, max_length=2000)
+    # DR56 §9.1: свободный ответ специальной лаборатории. Обязателен только
+    # при переводе WAITING → COMPLETED карточки с sent_to_lab=true (проверка
+    # в домене, где известна карточка); для карточки без пробы значение
+    # отклоняется.
+    special_lab_result: str | None = Field(default=None, max_length=2000)
 
     @field_validator("number", "stamp")
     @classmethod
@@ -139,6 +144,16 @@ class ExaminationWrite(StrictModel):
         trimmed = value.strip()
         if not trimmed:
             raise ValueError("Поле не может быть пустым.")
+        return trimmed
+
+    @field_validator("special_lab_result")
+    @classmethod
+    def trim_special_lab_result(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Результат исследования в специальной лаборатории не может быть пустым.")
         return trimmed
 
     @model_validator(mode="after")
@@ -149,6 +164,8 @@ class ExaminationWrite(StrictModel):
             if self.outcome is not None or self.direction is not None or self.reason is not None:
                 raise ValueError("В режиме ожидания итог, направление и причина не сохраняются.")
             return self
+        if self.special_lab_result is not None and not self.sent_to_lab:
+            raise ValueError("Результат специальной лаборатории хранится только у карточки с отправкой пробы.")
         if self.outcome == "FIT":
             if self.direction != "SALE" or self.reason is not None:
                 raise ValueError("Для пригодной продукции требуется направление SALE без причины.")
@@ -161,11 +178,25 @@ class ExaminationWrite(StrictModel):
 
 
 class OutcomeWrite(StrictModel):
-    """The late completion body (API-05): only the outcome block, nothing else."""
+    """The late completion body (API-05): the outcome block plus, for
+    sent_to_lab cards, the special-laboratory answer (DR56 §9.2)."""
 
     outcome: Literal["FIT", "UNFIT"]
     direction: Literal["SALE", "DISPOSAL", "DESTRUCTION"]
     reason: str | None = Field(default=None, max_length=2000)
+    # DR56 §9.1: обязателен при завершении ожидающей карточки с пробой в
+    # специальной лаборатории; обязательность проверяется в домене ( sent_to_lab).
+    special_lab_result: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("special_lab_result")
+    @classmethod
+    def trim_special_lab_result(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Результат исследования в специальной лаборатории не может быть пустым.")
+        return trimmed
 
     @model_validator(mode="after")
     def outcome_matrix(self) -> OutcomeWrite:
@@ -214,6 +245,8 @@ class ExaminationView(BaseModel):
     outcome: str | None
     direction: str | None
     reason: str | None
+    # DR56 §9.1: свободный ответ специальной лаборатории (nullable).
+    special_lab_result: str | None
     # DR52 §3.3: the honest fair state — the saved card flag, the frozen
     # reconciliation flag and the typed source of the effective free rule.
     vse_fair: bool

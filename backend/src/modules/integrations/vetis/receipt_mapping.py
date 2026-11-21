@@ -8,7 +8,7 @@ from decimal import Decimal
 from xml.etree import ElementTree as ET
 
 from backend.src.core.problems import ProblemError
-from backend.src.modules.arrivals.validation import OTHER_REASON, RETURN_REASON_CODES
+from backend.src.modules.arrivals.validation import RETURN_REASON_CODES
 from backend.src.modules.integrations.vetis.contracts import ReceiptIntent
 
 APP_DEF_NS = "http://api.vetrf.ru/schema/cdm/application/ws-definitions"
@@ -31,7 +31,7 @@ for prefix, namespace in (
 __all__ = [
     "build_discrepancy_description",
     "build_process_incoming_application",
-    "format_return_reason",
+    "source_special_marks",
     "validate_receipt_intent",
 ]
 
@@ -66,16 +66,10 @@ DISCREPANCY_FIELD_LABELS: dict[str, str] = {
 # (пример владельца из раздела 4 API REQUESTS.txt, без технических кодов).
 ACT_REASON_NAME = "Причина несоответствия (акт)"
 
-RETURN_REASON_PREFIX = "Причина возврата: "
-
 # ТЗ DR38 §5: предохранитель объёма текста акта. Официальные типы DeliveryInspection/
 # DiscrepancyReport (help.vetrf.ru) задают xs:string БЕЗ максимальной длины; константа
 # страхует от практических лимитов шины и никогда не приводит к тихой обрезке.
 MAX_DISCREPANCY_TEXT = 2000
-
-# ТЗ DR38 §6: specialMarks — тип bs:Text без ограничения длины (help.vetrf.ru);
-# тот же предохранитель объединённого текста особых отметок.
-MAX_SPECIAL_MARKS_TEXT = 2000
 
 
 def _invalid(detail: str) -> ProblemError:
@@ -106,21 +100,6 @@ def build_discrepancy_description(items: list[dict[str, object]]) -> str:
             fragment = f"{fragment} ({reason})"
         parts.append(fragment)
     return "; ".join(parts)
-
-
-def format_return_reason(code: str | None, text: str | None = None) -> str:
-    """ТЗ DR38 §6: ровно одна фраза «Причина возврата: CODE [текст]»."""
-    normalized = (code or "").strip()
-    if not normalized:
-        raise _invalid("Код причины возврата не задан.")
-    if normalized == OTHER_REASON:
-        explanation = (text or "").strip()
-        if not explanation:
-            raise _invalid("Для причины OTHER_REASON требуется пояснение.")
-        if len(explanation) > 240:
-            raise _invalid("Пояснение причины OTHER_REASON не должно превышать 240 символов.")
-        return f"{RETURN_REASON_PREFIX}OTHER_REASON {explanation}"
-    return f"{RETURN_REASON_PREFIX}{normalized}"
 
 
 def _text(parent: ET.Element, namespace: str, name: str, value: object) -> ET.Element:
@@ -341,23 +320,36 @@ def _delivery(
         purpose = _find_local(authentication, "purpose")
         if purpose is None:
             raise _invalid("Исходный XML не содержит назначение груза; неполный возвратный ВСД не формируется.")
-        # ТЗ DR38 §6: исходные особые отметки не теряются молча — они
-        # объединяются с фразой причины возврата в ОДНО значение specialMarks;
-        # старая фраза причины возврата не дублируется.
-        existing_marks: list[str] = []
-        for child in list(authentication):
-            if _local(child) == "specialMarks":
-                text = (child.text or "").strip()
-                if text and not text.startswith(RETURN_REASON_PREFIX):
-                    existing_marks.append(text)
-                authentication.remove(child)
-        segments = existing_marks + [format_return_reason(intent.return_reason_code, intent.return_reason_text)]
-        combined = "; ".join(segments)
-        if len(combined) > MAX_SPECIAL_MARKS_TEXT:
-            raise _invalid("Объединённые особые отметки превышают допустимый объём; сократите исходные отметки.")
-        _text(authentication, VD_NS, "specialMarks", combined)
+        # ТЗ DR56 §8.1: returnedDelivery specialMarks — ТОЧНАЯ копия особых
+        # отметок исходного входящего ВСД (namespace, текст, порядок и
+        # количество). Причина возврата остаётся в сверке/intent/аудите и в
+        # XML не сериализуется; ВетИС отклоняет возврат, если отметки
+        # возвратного ВСД не совпадают с отметками исходного. Ничего не
+        # добавляем, не объединяем и не тримим: deep-copy authentication уже
+        # несёт исходные specialMarks без изменений.
         certificate.append(authentication)
     return delivery
+
+
+def source_special_marks(source_xml: str) -> list[str] | None:
+    """ТЗ DR56 §8.1: exact source specialMarks texts for the evidence check.
+
+    Returns ``None`` when the snapshot cannot be parsed or has no
+    ``vd:authentication`` (the check is then skipped honestly); an empty
+    list means the source carried no marks, so the returned ВСД must not
+    carry any either. Texts are kept verbatim — never trimmed.
+    """
+    try:
+        root = ET.fromstring(source_xml)
+    except ET.ParseError:
+        return None
+    authentication = next(
+        (node for node in root.iter() if _local(node) == "authentication"),
+        None,
+    )
+    if authentication is None:
+        return None
+    return [node.text or "" for node in authentication if _local(node) == "specialMarks"]
 
 
 def validate_receipt_intent(intent: ReceiptIntent) -> None:

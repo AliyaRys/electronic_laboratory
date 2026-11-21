@@ -19,6 +19,7 @@ basis closes the previously served URL (FT-DOC-06).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Literal
 
@@ -42,7 +43,7 @@ from backend.src.modules.documents.basis import (
 from backend.src.modules.documents.schemas import ConclusionView
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.identity.authz import Authorizer, ScopeTarget, get_authorizer
-from backend.src.modules.identity.models import Laboratory
+from backend.src.modules.identity.models import Laboratory, User
 
 __all__ = ["REQUIRED_FIELD_SPACES", "SIGNATURE_SPACE", "build_conclusion", "basis_problem"]
 
@@ -65,8 +66,81 @@ REQUIRED_FIELD_SPACES: tuple[str, ...] = (
 SIGNATURE_SPACE = "signature"
 
 FORM_ID: dict[str, str] = {"LOCAL": "conclusion-local", "PREVIOUS": "conclusion-previous"}
-FORM_VERSION = "2"
+# ТЗ DR56 §5.4: the dynamic reference-composition form bumps the version.
+FORM_VERSION = "3"
 PRELIMINARY_WARNING = "Предварительная форма"
+
+# ТЗ DR56 §5.2: the LOCAL-composition fields that must carry real data on top
+# of the shared spaces (the PREVIOUS form keeps its own contract).
+LOCAL_REQUIRED_SPACES: tuple[str, ...] = ("number", "date_ru", "specialist")
+
+
+def ru_date(value: object) -> str | None:
+    """ДД.ММ.ГГГГ of a Moscow calendar date built from a UTC timestamp/ISO string."""
+    from datetime import UTC, datetime as _dt  # isort: skip
+
+    from backend.src.core.clock import moscow_date
+
+    parsed: _dt | None
+    if isinstance(value, _dt):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = _dt.fromisoformat(value)
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return moscow_date(parsed).strftime("%d.%m.%Y")
+
+
+def ru_datetime(value: object) -> str | None:
+    """ДД.ММ.ГГГГ ЧЧ:ММ in Europe/Moscow (ТЗ DR56 §5.2)."""
+    from datetime import UTC, datetime as _dt, timedelta, timezone as _tz  # isort: skip
+
+    if isinstance(value, str):
+        try:
+            value = _dt.fromisoformat(value)
+        except ValueError:
+            return None
+    if not isinstance(value, _dt):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(_tz(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M")
+
+
+def expiry_line(batch: Mapping[str, object]) -> str:
+    """ТЗ DR56 §5.2: the typed source expiryDate keeps its type: one date,
+    both dates of a range or the informal text — never a fabricated value."""
+    raw = batch.get("expiryDate")
+    goods = raw if isinstance(raw, dict) else {}
+
+    def day(value: object) -> str | None:
+        iso = _text(value)
+        if iso is None or len(iso) < 10:
+            return _text(value)
+        try:
+            from datetime import date as _date
+
+            parsed = _date.fromisoformat(str(iso)[:10])
+        except ValueError:
+            return _text(value)
+        return parsed.strftime("%d.%m.%Y")
+
+    single = day(goods.get("firstDate")) if goods.get("secondDate") is None else None
+    first = day(goods.get("firstDate"))
+    second = day(goods.get("secondDate"))
+    informal = _text(goods.get("informalDate"))
+    if single is not None:
+        return f"срок реализации до {single}"
+    if first is not None and second is not None:
+        return f"срок реализации: {first} — {second}"
+    if informal is not None:
+        return f"срок реализации: {informal}"
+    return ""
 
 
 def basis_problem(missing: list[str]) -> ProblemError:
@@ -139,6 +213,9 @@ async def _laboratory_fields(db: AsyncSession, party: Party) -> dict[str, str | 
     return {
         "organization": _text(lab.organization) if lab is not None else None,
         "laboratory": _text(lab.name) if lab is not None else None,
+        # ТЗ DR56 §5.2: «по адресу» — the real Laboratory address; a missing
+        # address stays an honest blank line, never «—».
+        "address": _text(lab.address) if lab is not None else None,
     }
 
 
@@ -206,6 +283,21 @@ async def build_conclusion(
         # A deleted (or never created) locally-required ВСЭ is never
         # substituted by the previous basis — the blocker text stays honest.
         basis_id = str(row.id) if row is not None else ""
+        if row is not None:
+            # ТЗ DR56 §5.2: the real requisites of the LOCAL composition. The
+            # displayed specialist is the saved ФИО with the documented
+            # pre-DR35 fallback (never the UUID and never created_by printed).
+            specialist = _text(row.specialist_name)
+            if specialist is None:
+                specialist = await db.scalar(select(User.full_name).where(User.id == row.created_by))
+            fields.update(
+                {
+                    "number": _text(row.number),
+                    "date_ru": ru_date(row.first_completed_at),
+                    "created_at_ru": ru_datetime(row.created_at),
+                    "specialist": specialist,
+                }
+            )
 
     laboratory_fields = await _laboratory_fields(db, party)
     # Fix-loop DR55: the unit name follows the shared conclusion_unit_name
@@ -241,9 +333,21 @@ async def build_conclusion(
     # human-readable name of the frozen confirmed snapshot is required, its
     # absence is the honest 422 above.
     fields["unit"] = unit_name
+    if basis_kind == "LOCAL":
+        # ТЗ DR56 §5.2: only the ACCEPTED composition of the frozen receipt;
+        # the typed source expiry keeps its type; the «по адресу» line is the
+        # real Laboratory address.
+        fields["product_line"] = (
+            f"{fields.get('product') or ''} — {fields['mass']} кг ({fields['count']} {unit_name})"
+        ).strip()
+        fields["expiry_line"] = expiry_line(batch)
+        fields["address_head"] = laboratory_fields.get("address")
+        fields["place_line"] = laboratory_fields.get("address")
     fields[SIGNATURE_SPACE] = ""  # the mandatory blank manual-signature space
 
     still_missing = [name for name in REQUIRED_FIELD_SPACES if not (fields.get(name) or "").strip()]
+    if basis_kind == "LOCAL":
+        still_missing.extend(name for name in LOCAL_REQUIRED_SPACES if not (fields.get(name) or "").strip())
     if still_missing:
         raise basis_problem(still_missing)
 

@@ -60,6 +60,10 @@ class Examination(Base):
     outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
     direction: Mapped[str | None] = mapped_column(String(16), nullable=True)
     reason: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # DR56 §9.1: свободный ответ специальной лаборатории — отдельный факт
+    # карточки с sent_to_lab=true; не enum, не итог ВСЭ. NULL — ответ ещё
+    # не внесён (существующие строки мигрируют без выдумывания ответа).
+    special_lab_result: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     # DR35 §12.3: the specialist of the ВСЭ is a distinct audited entity, not
     # the audit actor. ``specialist_name`` freezes the ФИО at save time so the
     # historical display survives a later user block.

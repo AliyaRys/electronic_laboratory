@@ -109,6 +109,7 @@ async def build_view(db: AsyncSession, row: Examination) -> ExaminationView:
         outcome=row.outcome,
         direction=row.direction,
         reason=row.reason,
+        special_lab_result=row.special_lab_result,
         vse_fair=vse_fair,
         reconciliation_fair=reconciliation_fair,
         fair_source=fair,

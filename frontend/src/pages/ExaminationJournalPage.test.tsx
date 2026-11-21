@@ -470,4 +470,73 @@ describe("Journal rows, badges and pagination (DR47 §2.3.4–2.3.5)", () => {
   });
 });
 
+describe("ТЗ DR56 §6.2: the journal row conclusion menu", () => {
+  function meHandler(capabilities: string[]): void {
+    server.use(
+      http.get("*/api/v1/me", () =>
+        HttpResponse.json({
+          id: "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f",
+            full_name: "Ветврач",
+            login: "vet",
+            email: "vet@lab.test",
+            position: null,
+            role: "VET",
+            active: true,
+            scopes: [{ laboratory_id: LAB, product_scope_id: null }],
+            capabilities,
+            revision: 1,
+            source_presence: "CURRENT_CONFIRMED",
+        }),
+      ),
+    );
+  }
 
+  it("the available COMPLETED FIT row shows the shared conclusion menu", async () => {
+    meHandler(["conclusion:pdf", "conclusion:print"]);
+    server.use(
+      http.get("*/api/v1/examinations", () =>
+        HttpResponse.json({
+          items: [item(EXAM, { conclusion: { available: true, basis_kind: "LOCAL" } })],
+          total: 1,
+        }),
+      ),
+    );
+    renderRoute();
+        expect(
+      await screen.findByRole("button", { name: "Действия с заключением" }, { timeout: 6000 }),
+    ).toBeTruthy();
+  });
+
+  it("a WAITING row and an UNFIT row get no menu at all", async () => {
+    meHandler(["conclusion:pdf", "conclusion:print"]);
+    server.use(
+      http.get("*/api/v1/examinations", () =>
+        HttpResponse.json({
+          items: [
+            item(EXAM, { status: "WAITING", conclusion: { available: true, basis_kind: "LOCAL" } }),
+            item(`${EXAM}-2`, { outcome: "UNFIT" }),
+          ],
+          total: 2,
+        }),
+      ),
+    );
+    renderRoute();
+    expect((await screen.findAllByText("07.11.2026 10:00")).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByTitle("Действия с заключением")).toBeNull();
+  });
+
+  it("a missing conclusion capability shows no menu even when available", async () => {
+    meHandler([]);
+    server.use(
+      http.get("*/api/v1/examinations", () =>
+        HttpResponse.json({
+          items: [item(EXAM, { conclusion: { available: true, basis_kind: "LOCAL" } })],
+          total: 1,
+        }),
+      ),
+    );
+    renderRoute();
+    expect(await screen.findByText("07.11.2026 10:00")).toBeTruthy();
+    expect(screen.queryByTitle("Действия с заключением")).toBeNull();
+  });
+});

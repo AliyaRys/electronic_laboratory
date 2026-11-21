@@ -62,7 +62,7 @@ export function OutcomeFields({
       <div className="vse-span4">
         <SelectDropdown
           id={`${idPrefix}-result`}
-          label={variant === "late" ? "Результат специальной лаборатории" : "Результат ВСЭ *"}
+          label={variant === "late" ? "Результат ВСЭ *" : "Результат ВСЭ *"}
           value={value.outcome}
           options={RESULT_OPTIONS}
           placeholder="Выберите результат"
@@ -135,4 +135,36 @@ export function outcomeText(outcome: string | null, direction: string | null): s
     parts.push(DIRECTION_LABELS[direction] ?? direction);
   }
   return parts.join(" · ");
+}
+
+/**
+ * DR56 §9.4: the free-text answer of the special laboratory — a textarea (never
+ * a select), maxLength 2000 mirrored from the server contract. The result
+ * itself is read separately: the special laboratory never picks the outcome.
+ */
+export const SPECIAL_LAB_RESULT_LABEL = "Результат исследования в спец. лаборатории";
+
+export function SpecialLabResultField(props: {
+  id: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}): React.ReactElement {
+  return (
+    <div className="vse-span12">
+      <div className="app-field">
+        <label className="app-field-heading" htmlFor={props.id}>
+          {SPECIAL_LAB_RESULT_LABEL} *
+        </label>
+        <textarea
+          id={props.id}
+          rows={3}
+          value={props.value}
+          disabled={props.disabled}
+          maxLength={2000}
+          onChange={(event) => props.onChange(event.target.value)}
+        />
+      </div>
+    </div>
+  );
 }

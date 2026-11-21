@@ -32,7 +32,7 @@ import { SavedPricingTable } from "../features/examinations/SavedPricingTable";
 import { SavedResearchResults } from "../features/examinations/SavedResearchResults";
 import { ExaminationFactsSection, ParticipantsSection } from "../features/examinations/ExaminationSections";
 import { ExaminationForm } from "../features/examinations/ExaminationForm";
-import { OutcomeFields, outcomeText } from "../features/examinations/OutcomeFields";
+import { OutcomeFields, outcomeText, SpecialLabResultField } from "../features/examinations/OutcomeFields";
 import { DeleteDialog } from "../features/examinations/DeleteDialog";
 import { emptyOutcome, type OutcomeEntry } from "../features/examinations/formValues";
 import { useCommand } from "../shared/api/command";
@@ -86,9 +86,12 @@ function ExaminationViewContent(): React.ReactElement {
   const queryClient = useQueryClient();
   const me = useMe();
   const command = useCommand<ExaminationView>();
-  const [editing, setEditing] = useState(false);
+  // ТЗ DR56 §9.3: two distinct edit modes — the full same-day edit and the
+  // limited late completion (the special-lab answer + the outcome block).
+  const [editing, setEditing] = useState<false | "full" | "late">(false);
   const [deleting, setDeleting] = useState(false);
   const [outcome, setOutcome] = useState<OutcomeEntry>(emptyOutcome());
+  const [specialLabResult, setSpecialLabResult] = useState("");
   const [lateError, setLateError] = useState("");
 
   const card = useQuery({
@@ -110,7 +113,7 @@ function ExaminationViewContent(): React.ReactElement {
   const collections = useQuery({
     queryKey: [labId ?? null, view?.party_id ?? null, "available-collections"],
     queryFn: ({ signal }) => fetchCollections({ laboratory_id: labId ?? "", page: 1 }, signal),
-    enabled: view !== null && labId !== undefined && editing,
+    enabled: view !== null && labId !== undefined && editing !== false,
   });
   const allCollections: CollectionView[] =
     collections.data !== undefined && !("code" in collections.data)
@@ -122,7 +125,7 @@ function ExaminationViewContent(): React.ReactElement {
   const formViewQuery = useQuery({
     queryKey: [labId ?? null, view?.party_id ?? null, "examination-form"],
     queryFn: ({ signal }) => fetchExaminationForm(view?.party_id ?? "", signal),
-    enabled: view !== null && labId !== undefined && editing,
+    enabled: view !== null && labId !== undefined && editing !== false,
   });
   const formView =
     formViewQuery.data !== undefined && !("code" in formViewQuery.data) ? formViewQuery.data : null;
@@ -184,6 +187,12 @@ function ExaminationViewContent(): React.ReactElement {
     ) : null;
 
   const runLateOutcome = (): void => {
+    // ТЗ DR56 §9.1: the special-laboratory answer is required exactly for the
+    // WAITING → COMPLETED transition of a sent_to_lab card.
+    if (specialLabResult.trim() === "") {
+      setLateError("Внесите результат исследования в специальной лаборатории.");
+      return;
+    }
     if (outcome.outcome === "" || outcome.direction === "") {
       setLateError("Выберите итог и направление.");
       return;
@@ -196,6 +205,7 @@ function ExaminationViewContent(): React.ReactElement {
     const payload: OutcomeWrite = {
       outcome: outcome.outcome as "FIT" | "UNFIT",
       direction: outcome.direction as "SALE" | "DISPOSAL" | "DESTRUCTION",
+      specialLabResult: specialLabResult.trim(),
       ...(outcome.outcome === "UNFIT" ? { reason: outcome.reason.trim() } : {}),
     };
     void command.submit(
@@ -220,18 +230,30 @@ function ExaminationViewContent(): React.ReactElement {
       <div className="vse-page-head">
         <div>
           <p className="vse-eyebrow">Просмотр записи</p>
-          <h1>{examinationTitle(view.number)}</h1>
+          {/* ТЗ DR56 §6.1: the conclusion menu sits directly to the right of
+              the <h1> in one flex row; edit/delete stay in page actions. */}
+          <div className="vse-title-row">
+            <h1>{examinationTitle(view.number)}</h1>
+            {conclusionMenu}
+          </div>
         </div>
         <div className="vse-page-actions">
-          {conclusionMenu}
-          {canAct && sameDay && !editing ? (
-            <Tooltip text="Редактировать ВСЭ">
+          {canAct && !editing && (sameDay || (waiting && view.sent_to_lab)) ? (
+            /* ТЗ DR56 §9.3: the edit button of a WAITING card stays available
+               after the creation day — for the limited completion (the
+               special-lab answer + the outcome block). */
+            <Tooltip text={sameDay ? "Редактировать ВСЭ" : "Внести результат лаборатории и завершить ВСЭ"}>
               <Button
                 variant="secondary"
                 icon="admin-edit"
                 iconOnly
                 label="Редактировать ВСЭ"
-                onClick={() => setEditing(true)}
+                onClick={() => {
+                  setOutcome(emptyOutcome());
+                  setSpecialLabResult(view.special_lab_result ?? "");
+                  setLateError("");
+                  setEditing(sameDay ? "full" : "late");
+                }}
               />
             </Tooltip>
           ) : null}
@@ -246,9 +268,10 @@ function ExaminationViewContent(): React.ReactElement {
               />
             </Tooltip>
           ) : null}
-          {canAct && !sameDay ? (
-            /* ТЗ DR47 §2.2: the honest day rule — no internal codes, in the
-               same subject condition as the hidden same-day actions. */
+          {canAct && !sameDay && !editing && !(waiting && view.sent_to_lab) ? (
+            /* ТЗ DR47 §2.2: the honest day rule — shown only when there is
+               really nothing to do (a WAITING sent_to_lab card offers the
+               limited completion instead). */
             <span className="vse-arrival-hint">
               Редактировать или удалить карточку можно только в день её создания.
             </span>
@@ -256,8 +279,10 @@ function ExaminationViewContent(): React.ReactElement {
         </div>
       </div>
 
-      {/* In edit mode the form itself carries the party sections (DR30). */}
-      {editing ? (
+      {/* In the full edit mode the form itself carries the party sections
+          (DR30); the limited late edit edits ONLY the special-lab answer and
+          the outcome block (DR56 §9.3). */}
+      {editing === "full" ? (
         <ExaminationForm
           party={partyView as IncomingView}
           view={view}
@@ -273,6 +298,71 @@ function ExaminationViewContent(): React.ReactElement {
           }}
           onCancel={() => setEditing(false)}
         />
+      ) : editing === "late" ? (
+        <div className="vse-exam-view-sections">
+          {/* 4 «Проба»: the readonly sample facts + the editable lab answer. */}
+          <FormSection
+            icon="exam-sample"
+            title="Проба"
+            description="Данные физической пробы и ответ специальной лаборатории."
+          >
+            <div className="vse-sample-view-stack">
+              <ReadonlyField label="Дата отбора пробы" value={formatRuDate(view.sample.collected_on)} />
+              <ReadonlyField label="Масса пробы, кг" value={formatDecimalDisplay(view.sample.mass_kg)} />
+              <ReadonlyField
+                label="Пробы отправлены в специальную лабораторию"
+                value={view.sent_to_lab ? "Да" : "Нет"}
+              />
+            </div>
+            <SpecialLabResultField
+              id="late-special-lab-result"
+              value={specialLabResult}
+              disabled={command.status === "pending"}
+              onChange={(next) => setSpecialLabResult(next)}
+            />
+          </FormSection>
+          {/* 5 «Итог экспертизы»: the outcome stays the vet specialist's own
+              decision — the laboratory answer never picks it automatically. */}
+          <FormSection icon="check-complete" title="Итог экспертизы" description="Заключение и специалист, проводивший ВСЭ.">
+            <div className="vse-exam-grid">
+              <OutcomeFields
+                variant="late"
+                idPrefix="late"
+                value={outcome}
+                disabled={command.status === "pending"}
+                onChange={(next) => setOutcome(next)}
+              />
+            </div>
+            <div className="vse-form-actions">
+              <Button
+                variant="primary"
+                busy={command.status === "pending"}
+                busyLabel="Завершаем ВСЭ…"
+                aria-label="Завершить ВСЭ"
+                onClick={() => runLateOutcome()}
+              >
+                Завершить ВСЭ
+              </Button>
+            </div>
+            {lateError !== "" ? (
+              <StatusView state="forbidden" title="Проверьте введённые значения." detail={lateError} />
+            ) : null}
+            {problem !== null && problem.code !== "VALIDATION_ERROR" ? (
+              <StatusView
+                state="network-error"
+                title="Не удалось завершить карточку."
+                detail={problem.detail}
+                trace={problem.trace_id !== "" ? `trace_id: ${problem.trace_id}` : undefined}
+                onRetry={() => void command.retry()}
+              />
+            ) : null}
+          </FormSection>
+          <div className="vse-form-actions">
+            <Button variant="secondary" onClick={() => setEditing(false)}>
+              Отмена
+            </Button>
+          </div>
+        </div>
       ) : (
         <>
           {/* ТЗ DR52 §8: the readonly business sections share ONE
@@ -332,59 +422,33 @@ function ExaminationViewContent(): React.ReactElement {
                     label="Пробы отправлены в специальную лабораторию"
                     value={view.sent_to_lab ? "Да" : "Нет"}
                   />
+                  {view.sent_to_lab ? (
+                    /* ТЗ DR56 §9.5: the saved laboratory answer shows readonly
+                       in the «Проба» block; a waiting card shows the honest
+                       absence, never a fabricated value. */
+                    <ReadonlyField
+                      label="Результат исследования в спец. лаборатории"
+                      value={view.special_lab_result ?? "Ещё не внесён"}
+                    />
+                  ) : null}
                 </div>
               </FormSection>
 
-              {/* 5 «Итог экспертизы»: WAITING never fabricates a conclusion. */}
+              {/* 5 «Итог экспертизы»: WAITING never fabricates a conclusion;
+                  the view mode holds NO interactive fields (DR56 §9.5). */}
               {waiting ? (
                 <FormSection
                   icon="check-complete"
                   title="Итог экспертизы"
                   description="Заключение и специалист, проводивший ВСЭ."
                 >
-                  <p className="vse-exam-note">Итог не указан: карточка ожидает ответа лаборатории.</p>
-                  {canAct ? (
-                    <>
-                      <p className="vse-exam-note">
-                        Заключение формируется только после завершения карточки. Подтверждение ответа —
-                        отдельное действие; изменение остальных полей после дня создания невозможно.
-                      </p>
-                      <OutcomeFields
-                        variant="late"
-                        idPrefix="late"
-                        value={outcome}
-                        disabled={command.status === "pending"}
-                        onChange={(next) => setOutcome(next)}
-                      />
-                      <div className="vse-form-actions">
-                        <Button
-                          variant="primary"
-                          busy={command.status === "pending"}
-                          busyLabel="Завершаем ожидание…"
-                          aria-label="Завершить ожидание результата"
-                          onClick={() => runLateOutcome()}
-                        >
-                          Завершить ожидание
-                        </Button>
-                      </div>
-                      {lateError !== "" ? (
-                        <StatusView
-                          state="forbidden"
-                          title="Проверьте введённые значения."
-                          detail={lateError}
-                        />
-                      ) : null}
-                      {problem !== null && problem.code !== "VALIDATION_ERROR" ? (
-                        <StatusView
-                          state="network-error"
-                          title="Не удалось завершить карточку."
-                          detail={problem.detail}
-                          trace={problem.trace_id !== "" ? `trace_id: ${problem.trace_id}` : undefined}
-                          onRetry={() => void command.retry()}
-                        />
-                      ) : null}
-                    </>
-                  ) : null}
+                  <p className="vse-exam-note">
+                    Итог не указан: карточка ожидает ответа специальной лаборатории. Результат лаборатории и
+                    итог ВСЭ вносятся через редактирование карточки.
+                  </p>
+                  <p className="vse-exam-note">
+                    Заключение формируется только после завершения карточки.
+                  </p>
                 </FormSection>
               ) : (
                 <FormSection

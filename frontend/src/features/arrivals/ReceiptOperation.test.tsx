@@ -403,12 +403,22 @@ describe("ReceiptOperation", () => {
     await user.selectOptions(await screen.findByLabelText("Результат ветеринарного осмотра"), "CORRESPONDS");
     await user.click(screen.getByRole("button", { name: "Подготовить гашение" }));
     const dialog = await screen.findByRole("dialog", { name: "Подтвердите гашение эВСД" });
-    expect(dialog.textContent).toContain("Ревизия источника / сверки");
+    // ТЗ DR56 §7.1: the revisions and the fingerprint of the request stay in
+    // the API/server checks but are never rendered to the user.
+    expect(dialog.textContent).not.toContain("Ревизия источника / сверки");
+    expect(dialog.textContent).not.toContain("Отпечаток подготовленного запроса");
+    expect(dialog.textContent).not.toContain("c".repeat(64));
     expect(dialog.textContent).toContain("Дата поступления");
     // ТЗ DR24 §6: the technical unit GUID is hidden from the visible summary.
     expect(dialog.textContent).not.toContain("Единица измерения");
     expect(dialog.textContent).not.toContain("GUID:");
-    expect(dialog.textContent).toContain("Осмотры");
+    // ТЗ DR56 §7.2: the inspections are two separate Russian lines — no raw
+    // English enum in the user text.
+    expect(dialog.textContent).toContain("Документарная проверка");
+    expect(dialog.textContent).toContain("Сведения соответствуют документу");
+    expect(dialog.textContent).toContain("Ветеринарный осмотр");
+    expect(dialog.textContent).toContain("Соответствует ветеринарным требованиям");
+    expect(dialog.textContent).not.toContain("CORRESPONDS");
     expect(dialog.textContent).toContain("Маршрут после гашения");
   });
 

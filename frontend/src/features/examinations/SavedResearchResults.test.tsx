@@ -55,6 +55,7 @@ function cardWith(
     stamp: "Клеймо-1",
     status: "COMPLETED",
     sent_to_lab: false,
+    special_lab_result: null,
     vse_fair: false,
     reconciliation_fair: false,
     fair_source: "NONE",

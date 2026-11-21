@@ -1986,6 +1986,7 @@ export interface components {
             evsd_uuid: string;
             /** Consignor Name */
             consignor_name: string | null;
+            conclusion?: components["schemas"]["ConclusionFlagView"] | null;
         };
         /**
          * ExaminationSampleView
@@ -2069,6 +2070,8 @@ export interface components {
             direction: string | null;
             /** Reason */
             reason: string | null;
+            /** Special Lab Result */
+            special_lab_result: string | null;
             /** Vse Fair */
             vse_fair: boolean;
             /** Reconciliation Fair */
@@ -2130,6 +2133,8 @@ export interface components {
             direction?: ("SALE" | "DISPOSAL" | "DESTRUCTION") | null;
             /** Reason */
             reason?: string | null;
+            /** Speciallabresult */
+            specialLabResult?: string | null;
         };
         /** ExternalFields */
         ExternalFields: {
@@ -2487,7 +2492,8 @@ export interface components {
         };
         /**
          * OutcomeWrite
-         * @description The late completion body (API-05): only the outcome block, nothing else.
+         * @description The late completion body (API-05): the outcome block plus, for
+         *     sent_to_lab cards, the special-laboratory answer (DR56 §9.2).
          */
         OutcomeWrite: {
             /**
@@ -2502,6 +2508,8 @@ export interface components {
             direction: "SALE" | "DISPOSAL" | "DESTRUCTION";
             /** Reason */
             reason?: string | null;
+            /** Speciallabresult */
+            specialLabResult?: string | null;
         };
         /** Page[CheckServiceRuleView] */
         Page_CheckServiceRuleView_: {
@@ -2943,6 +2951,8 @@ export interface components {
             local_transaction_id: string;
             /** Fingerprint */
             fingerprint: string;
+            /** Source Special Marks */
+            source_special_marks?: string[] | null;
         };
         /** ReceiptPreview */
         ReceiptPreview: {

@@ -86,6 +86,7 @@ function card(overrides: Partial<ExaminationView>): ExaminationView {
     stamp: "кл-1",
     status: "WAITING",
     sent_to_lab: true,
+    special_lab_result: null,
     vse_fair: false,
     reconciliation_fair: false,
     fair_source: "NONE",
@@ -157,10 +158,15 @@ describe("ExaminationViewPage", () => {
       await screen.findByDisplayValue("1f0e6d2a-1111-4222-8333-444444444444", {}, { timeout: 6000 }),
     ).toBeTruthy();
     expect(screen.getByDisplayValue("100")).toBeTruthy();
-    // The late completion is its own single action.
-    expect(screen.getByRole("button", { name: "Завершить ожидание" })).toBeTruthy();
+    // ТЗ DR56 §9.5: the view mode of a WAITING card has NO interactive
+    // outcome fields and no «Завершить ожидание» button; the late completion
+    // lives only in edit mode.
+    expect(screen.queryByRole("button", { name: "Завершить ожидание" })).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.getByRole("button", { name: "Редактировать ВСЭ" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Удалить ВСЭ" })).toBeTruthy();
+    // The special-laboratory answer shows readonly in the «Проба» block.
+    expect(screen.getByDisplayValue("Ещё не внесён")).toBeTruthy();
     // ТЗ DR46 §3.2: no «← Журнал ВСЭ» breadcrumb and no title badge.
     expect(screen.queryByRole("link", { name: /Журнал ВСЭ/ })).toBeNull();
     expect(document.querySelectorAll(".vse-status-badge").length).toBe(0);
@@ -364,24 +370,57 @@ describe("ExaminationViewPage", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
-  it("a WAITING card still fabricates no outcome but keeps the late action", async () => {
+  it("a WAITING card still fabricates no outcome and the view mode has no late controls", async () => {
     server.use(http.get(`*/api/v1/examinations/${EXAM}`, () => HttpResponse.json(card({}))));
     renderRoute();
     await screen.findByRole("heading", { name: /ВСЭ № 12/ });
     expect(screen.queryByText("Пригодно")).toBeNull();
     expect(screen.queryByText("Непригодно")).toBeNull();
     expect(
-      await screen.findByText("Итог не указан: карточка ожидает ответа лаборатории.", {}, { timeout: 6000 }),
+      await screen.findByText(/Итог не указан: карточка ожидает ответа специальной лаборатории/, {}, { timeout: 6000 }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Завершить ожидание" })).toBeTruthy();
+    // ТЗ DR56 §9.5: no interactive outcome fields in the view mode.
+    expect(screen.queryByRole("button", { name: "Завершить ожидание" })).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
   });
 
-  // --- ТЗ DR47 §2.2: the honest day limitation -----------------------------------
+  // --- ТЗ DR56 §9.3: the limited late completion of a WAITING card ---------------
 
-  it("an old card shows the exact day-limitation text without internal codes", async () => {
+  it("an old WAITING lab card keeps the edit button and opens the limited late edit", async () => {
+    const act = userEvent.setup();
     server.use(
       http.get(`*/api/v1/examinations/${EXAM}`, () =>
-        HttpResponse.json(card({ created_at: "2020-01-01T09:00:00Z", first_completed_at: "2020-01-01T12:00:00Z" })),
+        HttpResponse.json(card({ created_at: "2020-01-01T09:00:00Z" })),
+      ),
+    );
+    renderRoute();
+    await screen.findByRole("heading", { name: /ВСЭ № 12/ });
+    expect(screen.queryByText("Редактировать или удалить карточку можно только в день её создания.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Редактировать ВСЭ" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Удалить ВСЭ" })).toBeNull();
+    await act.click(screen.getByRole("button", { name: "Редактировать ВСЭ" }));
+    expect(
+      await screen.findByText("Результат исследования в спец. лаборатории *", {}, { timeout: 6000 }),
+    ).toBeTruthy();
+    // The sample facts stay readonly in the late mode; only the lab answer
+    // and the outcome block are active.
+    expect(screen.getByDisplayValue("0,8")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Завершить ВСЭ" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Выберите результат/ })).toBeTruthy();
+  });
+
+  it("an old COMPLETED card shows the exact day-limitation text without internal codes", async () => {
+    server.use(
+      http.get(`*/api/v1/examinations/${EXAM}`, () =>
+        HttpResponse.json(
+          card({
+            created_at: "2020-01-01T09:00:00Z",
+            status: "COMPLETED",
+            outcome: "FIT",
+            direction: "SALE",
+            first_completed_at: "2020-01-01T12:00:00Z",
+          }),
+        ),
       ),
     );
     renderRoute();

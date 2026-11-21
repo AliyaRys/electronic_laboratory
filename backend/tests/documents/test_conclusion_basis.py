@@ -306,7 +306,7 @@ async def test_unfit_examination_blocks_document(db_session: AsyncSession, env: 
     await complete_waiting(
         CommandContext(actor_id=env.actor.id, idempotency_key=str(uuid.uuid4()), expected_revision=1),
         exam_id,
-        OutcomeWrite(outcome="UNFIT", direction="DISPOSAL", reason="Порча"),
+        OutcomeWrite(outcome="UNFIT", direction="DISPOSAL", reason="Порча", special_lab_result="Выделен возбудитель"),
         uow=db_session,
     )
     await db_session.commit()

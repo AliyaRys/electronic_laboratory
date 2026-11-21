@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.src.core.clock import Clock, moscow_date
@@ -163,7 +163,11 @@ async def test_waiting_day_rules(db_session: AsyncSession, env: SimpleNamespace)
 
     # The explicit late completion on 08.11 is allowed and dated 08.11.
     done_clock = StepClock(COMPLETED_ON)
-    view = await do_complete(db_session, actor_id, exam_id, OutcomeWrite(outcome="FIT", direction="SALE"), done_clock)
+    view = await do_complete(db_session, actor_id, exam_id, OutcomeWrite(
+            outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"
+        ),
+        done_clock,
+    )
     await db_session.commit()
     assert view.status == "COMPLETED"
     assert view.outcome == "FIT" and view.direction == "SALE" and view.reason is None
@@ -247,7 +251,7 @@ async def test_original_author_and_completion(db_session: AsyncSession, env: Sim
         db_session,
         author_b.id,
         exam_id,
-        OutcomeWrite(outcome="UNFIT", direction="DISPOSAL", reason="Порча"),
+        OutcomeWrite(outcome="UNFIT", direction="DISPOSAL", reason="Порча", special_lab_result="Выделен возбудитель"),
         done_clock,
     )
     await db_session.commit()
@@ -261,7 +265,9 @@ async def test_original_author_and_completion(db_session: AsyncSession, env: Sim
             db_session,
             author_b.id,
             exam_id,
-            OutcomeWrite(outcome="FIT", direction="SALE"),
+            OutcomeWrite(
+                outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"
+            ),
             StepClock(datetime(2026, 11, 9, 9, 0, tzinfo=UTC)),
             key=str(uuid.uuid4()),
         )
@@ -271,9 +277,13 @@ async def test_original_author_and_completion(db_session: AsyncSession, env: Sim
 
 async def test_outcome_matrix(db_session: AsyncSession, env: SimpleNamespace) -> None:
     # FIT keeps only SALE without a reason; UNFIT needs DISPOSAL/DESTRUCTION and a reason.
-    fit = OutcomeWrite(outcome="FIT", direction="SALE")
+    fit = OutcomeWrite(
+        outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"
+    )
     assert fit.reason is None and fit.direction == "SALE"
-    unfit = OutcomeWrite(outcome="UNFIT", direction="DESTRUCTION", reason=" Причина ")
+    unfit = OutcomeWrite(
+        outcome="UNFIT", direction="DESTRUCTION", reason=" Причина ", special_lab_result="Выделен возбудитель"
+    )
     assert unfit.reason == " Причина "
     for bad in (
         {"outcome": "FIT", "direction": "SALE", "reason": "не нужно"},
@@ -297,7 +307,11 @@ async def test_outcome_matrix(db_session: AsyncSession, env: SimpleNamespace) ->
     await db_session.commit()
     exam_id = await examination_id_of(db_session, party.id)
     with pytest.raises(ProblemError) as raised:
-        await do_complete(db_session, actor_id, exam_id, OutcomeWrite(outcome="FIT", direction="SALE"), clock)
+        await do_complete(db_session, actor_id, exam_id, OutcomeWrite(
+            outcome="FIT", direction="SALE", special_lab_result="Патогенных микроорганизмов не обнаружено"
+        ),
+        clock,
+    )
     await db_session.rollback()
     assert raised.value.status == 409
     with pytest.raises(ProblemError) as raised:
@@ -469,3 +483,89 @@ async def test_foreign_party_form_and_pricing_are_not_disclosed(
         # No party data and no names are leaked through the error either.
         assert "Секретная продукция" not in text
         assert "expectedTotal" not in text and "lines" not in text and "total" not in text
+
+# --- DR56 §9: the special-laboratory answer -----------------------------------
+
+async def test_late_completion_requires_special_lab_result_for_lab_card(
+    db_session: AsyncSession, env: SimpleNamespace
+) -> None:
+    lab_id, actor_id = env.lab.id, env.actor.id
+    await configure(db_session, lab_id, BEEF, trich=False)
+    party = await party_with_confirmation(db_session, lab_id, BEEF)
+    clock = StepClock(CREATED_ON)
+    exam_id, _ = await create_waiting(db_session, env, party.id, clock)
+    # WAITING создаётся с specialLabResult=null.
+    view = await get_view(db_session, exam_id)
+    await db_session.commit()
+    assert view.sent_to_lab and view.special_lab_result is None
+
+    # Пробельный результат отклоняется схемой (pydantic) → управляемая 422
+    # на HTTP-границе; в домене та же проверка валидации.
+    with pytest.raises(ValidationError):
+        OutcomeWrite(outcome="FIT", direction="SALE", special_lab_result="   ")
+
+    # Отсутствие результата → 422.
+    with pytest.raises(ProblemError) as raised:
+        await do_complete(
+            db_session, actor_id, exam_id, OutcomeWrite(outcome="FIT", direction="SALE"), clock
+        )
+    await db_session.rollback()
+    assert raised.value.status == 422
+
+    # Результат до 2000 символов + FIT/SALE → COMPLETED, поля атомарно сохранены.
+    answer = "Выделены Salmonella, серовар Enteritidis; KMAFAnM не обнаружен"
+    assert len(answer) < 2000
+    done = await do_complete(
+        db_session,
+        actor_id,
+        exam_id,
+        OutcomeWrite(outcome="FIT", direction="SALE", special_lab_result=answer),
+        StepClock(COMPLETED_ON),
+    )
+    await db_session.commit()
+    assert done.status == "COMPLETED"
+    assert done.special_lab_result == answer
+    assert done.outcome == "FIT" and done.direction == "SALE" and done.reason is None
+    assert moscow_date(done.first_completed_at) == date(2026, 11, 8)
+    # Позднее завершение не меняет замороженные поля.
+    assert done.created_by == str(actor_id)
+    assert done.number == "L-1" and done.stamp == view.stamp
+
+
+async def test_completion_of_ordinary_card_rejects_special_lab_result(
+    db_session: AsyncSession, env: SimpleNamespace
+) -> None:
+    lab_id, actor_id = env.lab.id, env.actor.id
+    await configure(db_session, lab_id, BEEF, trich=False)
+    party = await party_with_confirmation(db_session, lab_id, BEEF)
+    clock = StepClock(CREATED_ON)
+    exam_id, _ = await create_waiting(db_session, env, party.id, clock)
+    # Карточка обычная: sent_to_lab=false подменой payload отклоняется.
+    await db_session.execute(
+        update(Examination).where(Examination.id == exam_id).values(sent_to_lab=False)
+    )
+    await db_session.commit()
+    with pytest.raises(ProblemError) as raised:
+        await do_complete(
+            db_session,
+            actor_id,
+            exam_id,
+            OutcomeWrite(outcome="FIT", direction="SALE", special_lab_result="Ответ"),
+            clock,
+        )
+    await db_session.rollback()
+    assert raised.value.status == 422
+
+
+def test_special_lab_result_contract() -> None:
+    # maxLength 2000 закреплён схемой.
+    with pytest.raises(ValidationError):
+        OutcomeWrite(outcome="FIT", direction="SALE", special_lab_result="я" * 2001)
+    with pytest.raises(ValidationError):
+        ExaminationWrite.model_validate(
+            payload(number="L-9", trich=False, mode="WAITING").model_dump(mode="json", by_alias=True)
+            | {"specialLabResult": "я" * 2001}
+        )
+    # Результат не превращается в итог: произвольный человекочитаемый текст.
+    body = OutcomeWrite(outcome="UNFIT", direction="DISPOSAL", reason="Порча", special_lab_result="КМАФАнМ 5×10⁶")
+    assert body.special_lab_result == "КМАФАнМ 5×10⁶"

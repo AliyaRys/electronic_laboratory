@@ -2,10 +2,10 @@
   "forms": [
     {
       "form_id": "conclusion-local",
-      "version": "2",
-      "date": "2026-11-19",
-      "template": "conclusion-local.html",
-      "template_sha256": "9BC30219444AC31DD088508A0785E68FF78B5E25B7E19E142658D6E0591030E3",
+      "version": "3",
+      "date": "2026-11-21",
+      "template": "conclusion-local.svg",
+      "template_sha256": "472EEE4072C48BEBAE552BD27C94D6778193033A602C7D0E06E70F5A73C16F9D",
       "official": false,
       "title": "Ветеринарное заключение (местная ВСЭ)",
       "required_fields": [

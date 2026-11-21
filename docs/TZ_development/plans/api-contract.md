@@ -46,7 +46,7 @@ GET /arrivals →Page<IncomingView> по queue EXPECTED/WORK/ACCEPTED и result 
 
 ## API-05. ВСЭ
 
-`ExaminationWrite{number,stamp,research:ResearchValue[],invasive_findings:[{disease_code,other_text?,location}],noncontagious_findings:[{disease_code,other_text?}],sample:SampleSelection,sent_to_lab:boolean,outcome?:FIT|UNFIT,direction?:SALE|DISPOSAL|DESTRUCTION,reason?:string}`. `ResearchValue{indicator_id,performed:true,value}`; отсутствие optional элемента означает не выполнено, mandatory пропуск →422. Типы VSE-F18–29 из field-mapping, болезни не ResearchValue. `SampleSelection` — API-06. Все readonly поля из party/user/clock не разрешены во write.
+`ExaminationWrite{number,stamp,research:ResearchValue[],invasive_findings:[{disease_code,other_text?,location}],noncontagious_findings:[{disease_code,other_text?}],sample:SampleSelection,sent_to_lab:boolean,special_lab_result?:string≤2000,outcome?:FIT|UNFIT,direction?:SALE|DISPOSAL|DESTRUCTION,reason?:string}`. DR56 §9: `special_lab_result` — свободный ответ специальной лаборатории (не enum), только для карточек с `sent_to_lab=true`; при переводе WAITING→COMPLETED обязателен; хранится отдельным фактом, итог ВСЭ выносит ветеринарный специалист. `ResearchValue{indicator_id,performed:true,value}`; отсутствие optional элемента означает не выполнено, mandatory пропуск →422. Типы VSE-F18–29 из field-mapping, болезни не ResearchValue. `SampleSelection` — API-06. Все readonly поля из party/user/clock не разрешены во write.
 
 | Method / path | Контракт |
 | --- | --- |
@@ -56,7 +56,7 @@ GET /arrivals →Page<IncomingView> по queue EXPECTED/WORK/ACCEPTED и result 
 | POST /arrivals/:party_id/examination/wait | ExaminationWrite →201 WAITING; If-Match партии; sent_to_lab=true |
 | POST /arrivals/:party_id/examination/complete | ExaminationWrite →201 COMPLETED; If-Match партии; при sent_to_lab=true до ответа использовать wait, не первый complete |
 | PUT /examinations/:id | ExaminationWrite →200; полная разрешённая правка в день создания, сохраняет текущий status; для WAITING полный итог сам не завершает |
-| POST /examinations/:id/complete-waiting | `{outcome,direction,reason?}` →200 COMPLETED; только WAITING, явное подтверждение получения ответа действием; после дня создания никакие другие поля |
+| POST /examinations/:id/complete-waiting | `{outcome,direction,reason?,specialLabResult?}` →200 COMPLETED; только WAITING, явное подтверждение получения ответа действием; `specialLabResult` обязателен для карточки с `sentToLab=true` (DR56 §9), отклоняется для обычной карточки; после дня создания никакие другие поля |
 | DELETE /examinations/:id | →204 только после remote WAL flush; 202 при UNKNOWN с operation_id; в день создания VET/HEAD |
 
 `save_examination` различает command action из маршрута, не принимает произвольный status. Повторная ВСЭ после удаления получает новый UUID, номер можно использовать снова. Клиент не отправляет old UUID как upsert. Ошибки: EXAMINATION_ALREADY_EXISTS с existing_id в доступной области, DAY_CLOSED, RECEIPT_NOT_CONFIRMED, SAMPLE_DISPOSED, REQUIRED_RESULT_MISSING. Чтение контекста не создаёт пробу/цену/резерв.

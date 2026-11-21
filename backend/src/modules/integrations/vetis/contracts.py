@@ -110,6 +110,10 @@ class ReceiptIntent(BaseModel):
     act_number: str | None = None
     local_transaction_id: str
     fingerprint: str
+    # ТЗ DR56 §8.1: точные особые отметки исходного ВСД для доказательства
+    # совпадения specialMarks возвратного ВСД. ``None`` — снимок без
+    # vd:authentication (проверка пропускается); список — точные тексты.
+    source_special_marks: list[str] | None = None
 
 
 class ReceiptPreview(BaseModel):

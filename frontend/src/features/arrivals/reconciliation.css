@@ -709,14 +709,6 @@
   overflow-wrap: anywhere;
 }
 
-.vse-receipt-fingerprint {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.78rem;
-  /* DR32 §5.4/§6.1: a long fingerprint wraps inside the card — it never
-     widens the dialog or the page. */
-  overflow-wrap: anywhere;
-}
-
 .vse-receipt-route {
   display: inline-flex;
   margin-top: 12px;

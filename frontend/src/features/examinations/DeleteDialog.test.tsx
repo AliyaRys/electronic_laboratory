@@ -20,6 +20,7 @@ const EXAM: ExaminationView = {
   stamp: "кл-1",
   status: "WAITING",
   sent_to_lab: true,
+  special_lab_result: null,
   vse_fair: false,
   reconciliation_fair: false,
   fair_source: "NONE",

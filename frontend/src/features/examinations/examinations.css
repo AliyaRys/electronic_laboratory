@@ -19,6 +19,19 @@
   letter-spacing: -0.035em;
   margin: 0;
 }
+/* ТЗ DR56 §6.1: h1 and the conclusion actions in one flex row — the menu
+   sits directly to the right of the title, aligned to its vertical centre. */
+.vse-exam-page .vse-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+.vse-exam-page .vse-title-row h1 {
+  margin: 0;
+}
+
 .vse-exam-page .vse-arrival-hint {
   margin: -16px 0 22px;
   color: var(--app-muted);

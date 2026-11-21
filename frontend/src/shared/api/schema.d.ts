@@ -1986,6 +1986,7 @@ export interface components {
             evsd_uuid: string;
             /** Consignor Name */
             consignor_name: string | null;
+            conclusion?: components["schemas"]["ConclusionFlagView"] | null;
         };
         /**
          * ExaminationSampleView

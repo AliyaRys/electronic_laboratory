@@ -28,6 +28,8 @@ import {
 } from "../features/examinations/api";
 import type { Problem } from "../features/arrivals/api";
 import { StatusView } from "../shared/ui/StatusView";
+import { useMe } from "../shared/api/me";
+import { ConclusionActionsMenu } from "../features/documents/ConclusionActionsMenu";
 import { Button } from "../shared/ui/Button";
 import { Tooltip } from "../shared/ui/HelpTooltip";
 import { Icon } from "../shared/ui/Icon";
@@ -436,6 +438,24 @@ export function JournalRow({
   view: ExaminationJournalItem;
 }): React.ReactElement {
   const badge = journalBadgeOf(view);
+  // ТЗ DR56 §6.2: the journal row shows the SAME shared conclusion menu only
+  // when the completed FIT row's read-model reports ``conclusion.available``.
+  // WAITING/UNFIT rows and a missing capability get NO button at all (never a
+  // disabled stub). The row uses the page's bulk projection — no preview
+  // request per row.
+  const me = useMe();
+  const capabilities = me.user?.capabilities ?? [];
+  const conclusionMenu =
+    view.status === "COMPLETED" &&
+    view.outcome === "FIT" &&
+    view.conclusion?.available === true &&
+    (capabilities.includes("conclusion:pdf") || capabilities.includes("conclusion:print")) ? (
+      <ConclusionActionsMenu
+        partyId={view.party_id}
+        canDownload={capabilities.includes("conclusion:pdf")}
+        canPrint={capabilities.includes("conclusion:print")}
+      />
+    ) : null;
   return (
     <article className="vse-journal-card">
       <div>
@@ -467,6 +487,7 @@ export function JournalRow({
             <Icon name="admin-view" />
           </Link>
         </Tooltip>
+        {conclusionMenu}
       </div>
     </article>
   );

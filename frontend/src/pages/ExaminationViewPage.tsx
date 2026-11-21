@@ -230,10 +230,14 @@ function ExaminationViewContent(): React.ReactElement {
       <div className="vse-page-head">
         <div>
           <p className="vse-eyebrow">Просмотр записи</p>
-          <h1>{examinationTitle(view.number)}</h1>
+          {/* ТЗ DR56 §6.1: the conclusion menu sits directly to the right of
+              the <h1> in one flex row; edit/delete stay in page actions. */}
+          <div className="vse-title-row">
+            <h1>{examinationTitle(view.number)}</h1>
+            {conclusionMenu}
+          </div>
         </div>
         <div className="vse-page-actions">
-          {conclusionMenu}
           {canAct && !editing && (sameDay || (waiting && view.sent_to_lab)) ? (
             /* ТЗ DR56 §9.3: the edit button of a WAITING card stays available
                after the creation day — for the limited completion (the

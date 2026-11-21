@@ -318,7 +318,10 @@ async def test_full_page_runs_a_bounded_number_of_statements(dispose_env: Simple
         event.remove(engine.sync_engine, "before_cursor_execute", _before)
     assert len(items) == 20
     assert all(item.specialist_name is not None for item in items)
-    assert len(statements) <= 3
+    # ТЗ DR56 §6.2: the page query (+count) stays a bounded number of
+    # statements even with the page-level bulk conclusion projection added
+    # (count + page read + the projector's three set reads).
+    assert len(statements) <= 6
 
 
 async def test_specialist_filter_filters_before_count(dispose_env: SimpleNamespace) -> None:

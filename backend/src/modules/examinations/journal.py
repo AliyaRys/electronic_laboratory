@@ -23,6 +23,8 @@ from sqlalchemy import String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.modules.arrivals.models import IncomingDocument, Party
+from backend.src.modules.documents.basis import conclusion_flags
+from backend.src.modules.documents.schemas import ConclusionFlagView
 from backend.src.modules.examinations.models import Examination
 from backend.src.modules.identity.models import User
 
@@ -49,6 +51,9 @@ class ExaminationJournalItem(BaseModel):
     specialist_name: str | None
     evsd_uuid: str
     consignor_name: str | None
+    # ТЗ DR56 §6.2: the page-level bulk conclusion availability of the row —
+    # the same bulk projection the arrivals lists use (no per-row preview).
+    conclusion: ConclusionFlagView | None = None
 
 
 def _ref_name(entry: object) -> str | None:
@@ -117,6 +122,8 @@ async def journal_page(
     base = (
         select(
             Examination,
+            Party,
+            IncomingDocument,
             IncomingDocument.evsd_uuid,
             IncomingDocument.source_snapshot,
         )
@@ -142,7 +149,14 @@ async def journal_page(
         .all()
     )
     items: list[ExaminationJournalItem] = []
-    for examination, evsd_uuid, snapshot, specialist_frozen in rows:
+    # ТЗ DR56 §6.2: the ONE bulk projection of the page's conclusion
+    # availability — the same domain predicate the builder uses, no per-row
+    # preview request and no N+1 (one reuse of the arrivals projector).
+    parties = [row[1] for row in rows]
+    documents = {row[1].id: row[2] for row in rows}
+    flags = await conclusion_flags(db, parties, documents)
+    for row in rows:
+        examination, party, document, evsd_uuid, snapshot, specialist_frozen = row
         # DR35 §12.3: the displayed specialist is the saved specialist_id; a
         # pre-DR35 row keeps the audit actor as the displayed specialist.
         specialist_uuid = examination.specialist_id if examination.specialist_id is not None else examination.created_by
@@ -164,6 +178,7 @@ async def journal_page(
                 specialist_name=name,
                 evsd_uuid=str(evsd_uuid),
                 consignor_name=_consignor_name(snapshot),
+                conclusion=flags.get(party.id),
             )
         )
     return items, int(total)

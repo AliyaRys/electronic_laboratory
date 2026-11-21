@@ -165,6 +165,19 @@ def test_pdf_nonempty_a4_cyrillic_accepted_mass() -> None:
     assert "Предварительная форма" in text  # official=false label
 
 
+def test_pdf_temp_file_stays_out_of_the_read_only_forms_dir() -> None:
+    """The runtime container mounts resources/ read-only: the renderer's
+    ephemeral SVG must be written to the system temp dir (a live 503
+    «Read-only file system» on party 2d4973bc), while the PDF still renders
+    with the coat."""
+    form = load_manifest("conclusion-local")
+    data = render_pdf(VIEW, form)
+    assert data[:5] == b"%PDF-"
+    # No ephemeral SVG/tmp dir is left inside the approved resources tree.
+    leftovers = [p for p in FORMS_DIR.rglob("*") if p.is_file() and "tmp" in p.name]
+    assert not leftovers
+
+
 def test_pdf_escapes_text_and_never_serves_markup() -> None:
     form = load_manifest("conclusion-local")
     hostile = VIEW.model_copy(

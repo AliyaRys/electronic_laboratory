@@ -1,5 +1,7 @@
 import io
+import os
 import re
+import shutil
 from html import escape
 from typing import Any
 
@@ -7,7 +9,6 @@ from pypdf import PdfReader
 
 from backend.src.modules.documents.resources import (
     FONTS_DIR,
-    FORMS_DIR,
     FormManifest,
     RendererUnavailable,
     asset_file,
@@ -213,13 +214,13 @@ def _check_a4(data: bytes, *, landscape_allowed: bool) -> None:
 def _render_conclusion_svg(template: str, mapping: dict[str, str], form: FormManifest) -> bytes:
     """ТЗ DR56 §5: fill the controlled SVG and convert it to one A4 PDF.
 
-    The filled SVG is written next to its approved assets (``assets/``) so the
-    relative coat reference resolves inside the controlled resources only;
-    the file is ephemeral. Every string node gets the manifest-registered
+    The filled SVG is written to the system temp directory (the runtime
+    container mounts ``resources/`` read-only); the file is ephemeral and the
+    coat image is swapped programmatically, so no relative asset reference is
+    needed at render time. Every string node gets the manifest-registered
     Cyrillic font (svglib has no @font-face), and the coat image is swapped
     onto the hash-verified asset before rendering (fail-closed).
     """
-    import os
     import tempfile
 
     from reportlab.graphics import renderPDF
@@ -230,9 +231,17 @@ def _render_conclusion_svg(template: str, mapping: dict[str, str], form: FormMan
     filled = _wrap_long_tokens(template, mapping)
     filled = _fill(filled, mapping)
     drawing = None
+    tmp_dir = tempfile.mkdtemp(prefix="vse-forms-")
     tmp_path = ""
     try:
-        with tempfile.NamedTemporaryFile("w", suffix=".svg", encoding="utf-8", dir=FORMS_DIR, delete=False) as handle:
+        # The temp SVG lives outside resources/ (read-only in the runtime
+        # container), so svglib still resolves the template's relative asset
+        # href: the hash-verified coat is copied next to it, and swap_images
+        # below re-points the parsed image onto the approved asset anyway.
+        asset_dir = os.path.join(tmp_dir, "assets")
+        os.makedirs(asset_dir, exist_ok=True)
+        shutil.copyfile(asset_file(form, "russia-coat-small.png"), os.path.join(asset_dir, "russia-coat-small.png"))
+        with tempfile.NamedTemporaryFile("w", suffix=".svg", encoding="utf-8", dir=tmp_dir, delete=False) as handle:
             tmp_path = handle.name
             handle.write(filled)
         drawing = svg2rlg(tmp_path)
@@ -243,6 +252,7 @@ def _render_conclusion_svg(template: str, mapping: dict[str, str], form: FormMan
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     if drawing is None:
         raise RendererUnavailable("Движок рендера формы не вернул графику SVG.")
 

@@ -212,6 +212,13 @@ async def update_examination(
     row.number = payload.number
     row.stamp = payload.stamp
     row.sent_to_lab = payload.sent_to_lab
+    # DR56 §9.1: a special-laboratory answer belongs only to sent_to_lab
+    # cards; a value on an ordinary card is a forged payload. A missing value
+    # keeps the stored answer (an edit never clears it silently).
+    if payload.special_lab_result is not None:
+        if not payload.sent_to_lab:
+            raise _validation("Результат специальной лаборатории хранится только у карточки с отправкой пробы.")
+        row.special_lab_result = payload.special_lab_result
     # DR52 §3.2: the card's own VSE-only waiver is editable same-day and never
     # touches the reconciliation fair flag.
     previous_vse_fair = bool(row.vse_fair)
@@ -294,12 +301,22 @@ async def complete_waiting(
     if row.status != "WAITING":
         raise _conflict("Завершить ожидание можно только у карточки в состоянии ожидания ответа.")
 
+    # DR56 §9.1: the special-laboratory answer is required exactly for the
+    # WAITING → COMPLETED transition of a sent_to_lab card; an ordinary card
+    # must never carry one. Trimmed emptiness is a validation error.
+    if row.sent_to_lab:
+        if not (outcome.special_lab_result or "").strip():
+            raise _validation("Внесите результат исследования в специальной лаборатории перед завершением ВСЭ.")
+    elif outcome.special_lab_result is not None:
+        raise _validation("Результат специальной лаборатории хранится только у карточки с отправкой пробы.")
+
     # Only the outcome block is written; sample/researches/cost/stamp and the
     # sent_to_lab flag are never overwritten by the late completion.
     row.status = "COMPLETED"
     row.outcome = outcome.outcome
     row.direction = outcome.direction
     row.reason = outcome.reason.strip() if outcome.reason is not None else None
+    row.special_lab_result = outcome.special_lab_result
     if row.first_completed_at is None:
         row.first_completed_at = now
     row.rev = int(row.rev) + 1
